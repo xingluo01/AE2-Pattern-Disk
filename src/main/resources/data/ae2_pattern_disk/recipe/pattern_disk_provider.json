@@ -1,0 +1,20 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "g": { "item": "ae2:quartz_glass" },
+    "q": { "item": "ae2:pattern_provider" },
+    "p": { "item": "ae2:logic_processor" },
+    "d": { "item": "ae2:engineering_processor" },
+    "f": { "item": "ae2:fluix_pearl" }
+  },
+  "pattern": [
+    "gpg",
+    "gqf",
+    "gdg"
+  ],
+  "result": {
+    "count": 1,
+    "id": "ae2_pattern_disk:pattern_disk_provider"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "itemGroup.ae2_pattern_disk": "AE2 Pattern Disk",
+
+  "item.ae2_pattern_disk.pattern_disk_1k": "1k Pattern Disk",
+  "item.ae2_pattern_disk.pattern_disk_4k": "4k Pattern Disk",
+  "item.ae2_pattern_disk.pattern_disk_16k": "16k Pattern Disk",
+  "item.ae2_pattern_disk.pattern_disk_64k": "64k Pattern Disk",
+
+  "block.ae2_pattern_disk.pattern_transferer": "Pattern Transferer",
+  "gui.ae2_pattern_disk.pattern_transferer": "Pattern Transferer",
+  "block.ae2_pattern_disk.pattern_disk_provider": "Pattern Disk Provider",
+  "gui.ae2_pattern_disk.pattern_disk_provider": "Pattern Disk Provider",
+  "block.ae2_pattern_disk.pattern_disk_assembler": "Efficient Molecular Assembler",
+  "ae2_pattern_disk.assembler.threads": "%d parallel threads",
+  "gui.ae2_pattern_disk.provider_disks": "Pattern Disks",
+  "gui.ae2_pattern_disk.provider_return": "Return Inventory",
+
+  "ae2_pattern_disk.tooltip.capacity": "%s / %s patterns",
+  "ae2_pattern_disk.tooltip.type": "Type: %s",
+  "ae2_pattern_disk.tooltip.untyped": "Untyped (empty)",
+  "ae2_pattern_disk.tooltip.type.crafting": "Crafting",
+  "ae2_pattern_disk.tooltip.type.processing": "Processing",
+  "ae2_pattern_disk.tooltip.type.smithing": "Smithing",
+  "ae2_pattern_disk.tooltip.type.stonecutting": "Stonecutting"
+}

@@ -1,0 +1,25 @@
+{
+  "itemGroup.ae2_pattern_disk": "AE2 样板磁盘",
+
+  "item.ae2_pattern_disk.pattern_disk_1k": "1k 样板磁盘",
+  "item.ae2_pattern_disk.pattern_disk_4k": "4k 样板磁盘",
+  "item.ae2_pattern_disk.pattern_disk_16k": "16k 样板磁盘",
+  "item.ae2_pattern_disk.pattern_disk_64k": "64k 样板磁盘",
+
+  "block.ae2_pattern_disk.pattern_transferer": "样板转存器",
+  "gui.ae2_pattern_disk.pattern_transferer": "样板转存器",
+  "block.ae2_pattern_disk.pattern_disk_provider": "样板磁盘供应器",
+  "gui.ae2_pattern_disk.pattern_disk_provider": "样板磁盘供应器",
+  "block.ae2_pattern_disk.pattern_disk_assembler": "高效分子装配室",
+  "ae2_pattern_disk.assembler.threads": "%d 个并行线程",
+  "gui.ae2_pattern_disk.provider_disks": "样板磁盘",
+  "gui.ae2_pattern_disk.provider_return": "返回库存",
+
+  "ae2_pattern_disk.tooltip.capacity": "%s / %s 个样板",
+  "ae2_pattern_disk.tooltip.type": "类型：%s",
+  "ae2_pattern_disk.tooltip.untyped": "未定型（空）",
+  "ae2_pattern_disk.tooltip.type.crafting": "合成",
+  "ae2_pattern_disk.tooltip.type.processing": "处理",
+  "ae2_pattern_disk.tooltip.type.smithing": "锻造",
+  "ae2_pattern_disk.tooltip.type.stonecutting": "切石"
+}

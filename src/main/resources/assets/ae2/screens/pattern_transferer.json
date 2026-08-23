@@ -1,0 +1,43 @@
+{
+  "$schema": "schema.json",
+  "includes": [
+    "common/common.json",
+    "common/player_inventory.json"
+  ],
+  "background": {
+    "texture": "guis/ae2_pattern_disk.png",
+    "srcRect": [0, 0, 176, 168]
+  },
+  "slots": {
+    "UPGRADE": {
+      "left": 170,
+      "top": 6,
+      "grid": "VERTICAL"
+    },
+    "ae2_pattern_disk:transfer_input": {
+      "left": 19,
+      "top": 17,
+      "grid": "BREAK_AFTER_2COLS"
+    },
+    "ae2_pattern_disk:transfer_application": {
+      "left": 122,
+      "top": 17,
+      "grid": "BREAK_AFTER_2COLS"
+    },
+    "ae2_pattern_disk:transfer_blank_output": {
+      "left": 80,
+      "top": 53
+    }
+  },
+  "text": {
+    "dialog_title": {
+      "text": {
+        "translate": "gui.ae2_pattern_disk.pattern_transferer"
+      },
+      "position": {
+        "left": 8,
+        "top": 6
+      }
+    }
+  }
+}

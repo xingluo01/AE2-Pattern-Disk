@@ -1,0 +1,39 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        maven {
+            name = "NeoForged"
+            url = "https://maven.neoforged.net/releases/"
+        }
+        mavenCentral()
+    }
+}
+
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.8.0'
+}
+
+rootProject.name = "AE2-Pattern-Disk"
+
+// ModDevMCP: local source-build substitution. When the ModDevMCP repo is present,
+// resolve dev.vfyjxf:moddevmcp directly to its :Mod subproject (Java 21 / NeoForge
+// 21.1 build) instead of the incompatible mavenLocal 0.3 fork.
+def modDevMcpRepoPath = providers.gradleProperty('moddevmcp_repo_path')
+        .map { it.trim() }
+        .filter { !it.isEmpty() }
+        .orNull
+def defaultModDevMcpRepo = file('C:/Users/星落/source/repos/ModDevMCP')
+
+if (modDevMcpRepoPath != null && file(modDevMcpRepoPath).exists()) {
+    includeBuild(modDevMcpRepoPath) {
+        dependencySubstitution {
+            substitute(module("dev.vfyjxf:moddevmcp")).using(project(":Mod"))
+        }
+    }
+} else if (defaultModDevMcpRepo.exists()) {
+    includeBuild(defaultModDevMcpRepo) {
+        dependencySubstitution {
+            substitute(module("dev.vfyjxf:moddevmcp")).using(project(":Mod"))
+        }
+    }
+}

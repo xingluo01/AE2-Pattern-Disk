@@ -1,0 +1,20 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "g": { "item": "ae2:quartz_glass" },
+    "i": { "item": "ae2_pattern_disk:pattern_disk_1k" },
+    "p": { "item": "ae2:logic_processor" },
+    "d": { "item": "ae2:engineering_processor" },
+    "h": { "item": "ae2:item_cell_housing" }
+  },
+  "pattern": [
+    "gig",
+    "php",
+    "gdg"
+  ],
+  "result": {
+    "count": 1,
+    "id": "ae2_pattern_disk:pattern_transferer"
+  }
+}

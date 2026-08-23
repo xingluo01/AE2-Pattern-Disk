@@ -1,0 +1,20 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "g": { "item": "ae2:quartz_glass" },
+    "m": { "item": "ae2:molecular_assembler" },
+    "p": { "item": "ae2:engineering_processor" },
+    "c": { "item": "ae2:logic_processor" },
+    "i": { "item": "ae2:item_cell_housing" }
+  },
+  "pattern": [
+    "gmg",
+    "ipc",
+    "gcg"
+  ],
+  "result": {
+    "count": 1,
+    "id": "ae2_pattern_disk:pattern_disk_assembler"
+  }
+}
