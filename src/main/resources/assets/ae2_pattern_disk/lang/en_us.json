@@ -11,6 +11,7 @@
   "block.ae2_pattern_disk.pattern_disk_provider": "Pattern Disk Provider",
   "gui.ae2_pattern_disk.pattern_disk_provider": "Pattern Disk Provider",
   "block.ae2_pattern_disk.pattern_disk_assembler": "Efficient Molecular Assembler",
+  "gui.ae2_pattern_disk.pattern_disk_assembler": "Efficient Molecular Assembler",
   "ae2_pattern_disk.assembler.threads": "%d parallel threads",
   "gui.ae2_pattern_disk.provider_disks": "Pattern Disks",
   "gui.ae2_pattern_disk.provider_return": "Return Inventory",

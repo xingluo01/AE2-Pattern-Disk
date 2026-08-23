@@ -1,0 +1,29 @@
+{
+  "$schema": "schema.json",
+  "includes": [
+    "common/common.json",
+    "common/player_inventory.json"
+  ],
+  "background": {
+    "texture": "guis/pattern_disk_assembler_gui.png",
+    "srcRect": [0, 0, 176, 199]
+  },
+  "slots": {
+    "UPGRADE": {
+      "left": 176,
+      "top": 6,
+      "grid": "VERTICAL"
+    }
+  },
+  "text": {
+    "dialog_title": {
+      "text": {
+        "translate": "gui.ae2_pattern_disk.pattern_disk_assembler"
+      },
+      "position": {
+        "left": 8,
+        "top": 6
+      }
+    }
+  }
+}

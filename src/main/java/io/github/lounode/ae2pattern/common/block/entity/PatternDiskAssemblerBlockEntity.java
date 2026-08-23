@@ -107,6 +107,15 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
         saveChanges();
     }
 
+    /** Total crafting progress across all threads (0..THREADS*100). */
+    public int getCraftingProgressAcrossThreads() {
+        int total = 0;
+        for (var unit : units) {
+            total += (int) Math.min(unit.progress, 100);
+        }
+        return total;
+    }
+
     @Override
     public IUpgradeInventory getUpgrades() {
         return upgrades;

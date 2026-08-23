@@ -169,7 +169,7 @@ dependencies {
     localRuntime "maven.modrinth:guideme:21.1.15"
 
     // AECS (AE2-Crystal-Science) dev build: local jar for pattern-disk compatibility integration.
-    localRuntime files("E:/GitHub/AE2-Crystal-Science/build/libs/ae2cs-1.21.1-neoforge-1.1.0.jar")
+    localRuntime files("E:/GitHub/AE2-Crystal-Science/build/libs/ae2cs-1.21.1-1.2.2.jar")
 
     // Runtime environment mods (1.21.1 NeoForge) from Modrinth.
     // Modern UI

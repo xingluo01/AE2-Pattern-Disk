@@ -33,6 +33,7 @@ public final class AEPatternCreativeTabs {
                         output.accept(AEPatternItems.PATTERN_DISK_64K.get());
                         output.accept(AEPatternItems.PATTERN_TRANSFERER.get());
                         output.accept(AEPatternItems.PATTERN_DISK_PROVIDER.get());
+                        output.accept(AEPatternItems.PATTERN_DISK_ASSEMBLER.get());
                     })
                     .build());
 }

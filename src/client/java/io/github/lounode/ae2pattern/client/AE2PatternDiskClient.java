@@ -7,6 +7,7 @@ import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 
 import io.github.lounode.ae2pattern.AE2PatternDisk;
+import io.github.lounode.ae2pattern.client.gui.PatternDiskAssemblerScreen;
 import io.github.lounode.ae2pattern.client.gui.PatternDiskProviderScreen;
 import io.github.lounode.ae2pattern.client.gui.PatternTransfererScreen;
 import io.github.lounode.ae2pattern.core.AEPatternMenus;
@@ -29,5 +30,6 @@ public class AE2PatternDiskClient {
     private void registerScreens(RegisterMenuScreensEvent event) {
         event.register(AEPatternMenus.PATTERN_TRANSFERER.get(), PatternTransfererScreen::new);
         event.register(AEPatternMenus.PATTERN_DISK_PROVIDER.get(), PatternDiskProviderScreen::new);
+        event.register(AEPatternMenus.PATTERN_DISK_ASSEMBLER.get(), PatternDiskAssemblerScreen::new);
     }
 }
