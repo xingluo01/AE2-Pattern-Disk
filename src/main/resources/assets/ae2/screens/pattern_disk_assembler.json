@@ -2,94 +2,58 @@
   "$schema": "schema.json",
   "includes": [
     "common/common.json",
-    "common/player_inventory.json"
+    "common/player_inventory.json",
+    "common/toolbox.json"
   ],
+  "helpTopic": "ae2_pattern_disk:ae2guide/items-blocks-machines/pattern_disk_assembler.md",
   "background": {
-    "texture": "guis/pattern_disk_assembler_gui.png",
-    "srcRect": [
-      0,
-      0,
-      214,
-      252
-    ]
+    "texture": "guis/ex_molecular_assembler.png",
+    "srcRect": [0, 0, 176, 199]
   },
   "slots": {
-    "UPGRADE": {
-      "right": 2,
-      "top": 6,
-      "grid": "VERTICAL"
-    },
-    "ae2_pattern_disk:assembler_output_0": {
-      "left": 8,
-      "top": 24
-    },
     "ae2_pattern_disk:assembler_grid_0": {
-      "left": 30,
-      "top": 24,
-      "grid": "HORIZONTAL"
-    },
-    "ae2_pattern_disk:assembler_output_1": {
-      "left": 8,
-      "top": 42
+      "left": 29,
+      "top": 30,
+      "grid": "BREAK_AFTER_3COLS"
     },
     "ae2_pattern_disk:assembler_grid_1": {
-      "left": 30,
-      "top": 42,
-      "grid": "HORIZONTAL"
-    },
-    "ae2_pattern_disk:assembler_output_2": {
-      "left": 8,
-      "top": 60
+      "left": 29,
+      "top": 30,
+      "grid": "BREAK_AFTER_3COLS"
     },
     "ae2_pattern_disk:assembler_grid_2": {
-      "left": 30,
-      "top": 60,
-      "grid": "HORIZONTAL"
-    },
-    "ae2_pattern_disk:assembler_output_3": {
-      "left": 8,
-      "top": 78
+      "left": 29,
+      "top": 30,
+      "grid": "BREAK_AFTER_3COLS"
     },
     "ae2_pattern_disk:assembler_grid_3": {
-      "left": 30,
-      "top": 78,
-      "grid": "HORIZONTAL"
-    },
-    "ae2_pattern_disk:assembler_output_4": {
-      "left": 8,
-      "top": 96
+      "left": 29,
+      "top": 30,
+      "grid": "BREAK_AFTER_3COLS"
     },
     "ae2_pattern_disk:assembler_grid_4": {
-      "left": 30,
-      "top": 96,
-      "grid": "HORIZONTAL"
-    },
-    "ae2_pattern_disk:assembler_output_5": {
-      "left": 8,
-      "top": 114
+      "left": 29,
+      "top": 30,
+      "grid": "BREAK_AFTER_3COLS"
     },
     "ae2_pattern_disk:assembler_grid_5": {
-      "left": 30,
-      "top": 114,
-      "grid": "HORIZONTAL"
-    },
-    "ae2_pattern_disk:assembler_output_6": {
-      "left": 8,
-      "top": 132
+      "left": 29,
+      "top": 30,
+      "grid": "BREAK_AFTER_3COLS"
     },
     "ae2_pattern_disk:assembler_grid_6": {
-      "left": 30,
-      "top": 132,
-      "grid": "HORIZONTAL"
-    },
-    "ae2_pattern_disk:assembler_output_7": {
-      "left": 8,
-      "top": 150
+      "left": 29,
+      "top": 30,
+      "grid": "BREAK_AFTER_3COLS"
     },
     "ae2_pattern_disk:assembler_grid_7": {
-      "left": 30,
-      "top": 150,
-      "grid": "HORIZONTAL"
+      "left": 29,
+      "top": 30,
+      "grid": "BREAK_AFTER_3COLS"
+    },
+    "MACHINE_OUTPUT": {
+      "left": 126,
+      "top": 48
     }
   },
   "text": {
@@ -101,6 +65,18 @@
         "left": 8,
         "top": 6
       }
+    }
+  },
+  "images": {
+    "progressBar": {
+      "texture": "guis/ex_molecular_assembler.png",
+      "srcRect": [176, 0, 6, 18]
+    }
+  },
+  "widgets": {
+    "progressBar": {
+      "left": 148,
+      "top": 48
     }
   }
 }

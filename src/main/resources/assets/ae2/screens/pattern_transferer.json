@@ -4,6 +4,7 @@
     "common/common.json",
     "common/player_inventory.json"
   ],
+  "helpTopic": "ae2_pattern_disk:ae2guide/items-blocks-machines/pattern_transferer.md",
   "background": {
     "texture": "guis/ae2_pattern_disk.png",
     "srcRect": [0, 0, 176, 168]

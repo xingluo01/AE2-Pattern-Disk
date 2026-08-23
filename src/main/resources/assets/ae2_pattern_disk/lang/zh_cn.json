@@ -5,6 +5,7 @@
   "item.ae2_pattern_disk.pattern_disk_4k": "4k 样板磁盘",
   "item.ae2_pattern_disk.pattern_disk_16k": "16k 样板磁盘",
   "item.ae2_pattern_disk.pattern_disk_64k": "64k 样板磁盘",
+  "item.ae2_pattern_disk.pattern_disk_256k": "256k 样板磁盘",
 
   "block.ae2_pattern_disk.pattern_transferer": "样板转存器",
   "gui.ae2_pattern_disk.pattern_transferer": "样板转存器",
@@ -12,9 +13,13 @@
   "gui.ae2_pattern_disk.pattern_disk_provider": "样板磁盘供应器",
   "block.ae2_pattern_disk.pattern_disk_assembler": "高效分子装配室",
   "gui.ae2_pattern_disk.pattern_disk_assembler": "高效分子装配室",
+  "gui.ae2_pattern_disk.pattern_disk_assembler.guide": "打开样板磁盘指南",
+  "gui.ae2_pattern_disk.pattern_disk_assembler.page": "合成任务 %s / %s",
+  "gui.ae2_pattern_disk.pattern_disk_assembler.next": "下一个合成任务",
+  "gui.ae2_pattern_disk.pattern_disk_assembler.previous": "上一个合成任务",
   "ae2_pattern_disk.assembler.threads": "%d 个并行线程",
   "gui.ae2_pattern_disk.provider_disks": "样板磁盘",
-  "gui.ae2_pattern_disk.provider_return": "返回库存",
+  "gui.ae2_pattern_disk.provider_return": "物品返回栏",
 
   "ae2_pattern_disk.tooltip.capacity": "%s / %s 个样板",
   "ae2_pattern_disk.tooltip.type": "类型：%s",

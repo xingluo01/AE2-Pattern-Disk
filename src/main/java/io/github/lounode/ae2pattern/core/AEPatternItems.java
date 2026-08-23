@@ -26,6 +26,7 @@ public final class AEPatternItems {
     public static final DeferredItem<PatternDiskItem> PATTERN_DISK_4K = disk(PatternDiskTier.SIZE_4K);
     public static final DeferredItem<PatternDiskItem> PATTERN_DISK_16K = disk(PatternDiskTier.SIZE_16K);
     public static final DeferredItem<PatternDiskItem> PATTERN_DISK_64K = disk(PatternDiskTier.SIZE_64K);
+    public static final DeferredItem<PatternDiskItem> PATTERN_DISK_256K = disk(PatternDiskTier.SIZE_256K);
 
     // Block items.
     public static final DeferredItem<net.minecraft.world.item.BlockItem> PATTERN_TRANSFERER = ITEMS

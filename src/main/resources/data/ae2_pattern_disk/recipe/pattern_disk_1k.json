@@ -1,16 +1,9 @@
 {
-  "type": "minecraft:crafting_shaped",
+  "type": "minecraft:crafting_shapeless",
   "category": "misc",
-  "key": {
-    "g": { "item": "ae2:quartz_glass" },
-    "c": { "item": "ae2:cell_component_1k" },
-    "p": { "item": "ae2:logic_processor" },
-    "f": { "item": "ae2:fluix_pearl" }
-  },
-  "pattern": [
-    "ggg",
-    "gcf",
-    "gpg"
+  "ingredients": [
+    { "item": "ae2:blank_pattern" },
+    { "item": "ae2:item_cell_housing" }
   ],
   "result": {
     "count": 1,

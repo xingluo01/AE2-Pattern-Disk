@@ -5,6 +5,7 @@
   "item.ae2_pattern_disk.pattern_disk_4k": "4k Pattern Disk",
   "item.ae2_pattern_disk.pattern_disk_16k": "16k Pattern Disk",
   "item.ae2_pattern_disk.pattern_disk_64k": "64k Pattern Disk",
+  "item.ae2_pattern_disk.pattern_disk_256k": "256k Pattern Disk",
 
   "block.ae2_pattern_disk.pattern_transferer": "Pattern Transferer",
   "gui.ae2_pattern_disk.pattern_transferer": "Pattern Transferer",
@@ -12,9 +13,13 @@
   "gui.ae2_pattern_disk.pattern_disk_provider": "Pattern Disk Provider",
   "block.ae2_pattern_disk.pattern_disk_assembler": "Efficient Molecular Assembler",
   "gui.ae2_pattern_disk.pattern_disk_assembler": "Efficient Molecular Assembler",
+  "gui.ae2_pattern_disk.pattern_disk_assembler.guide": "Open Pattern Disk guide",
+  "gui.ae2_pattern_disk.pattern_disk_assembler.page": "Crafting Job %s / %s",
+  "gui.ae2_pattern_disk.pattern_disk_assembler.next": "Next crafting job",
+  "gui.ae2_pattern_disk.pattern_disk_assembler.previous": "Previous crafting job",
   "ae2_pattern_disk.assembler.threads": "%d parallel threads",
   "gui.ae2_pattern_disk.provider_disks": "Pattern Disks",
-  "gui.ae2_pattern_disk.provider_return": "Return Inventory",
+  "gui.ae2_pattern_disk.provider_return": "Returned Items",
 
   "ae2_pattern_disk.tooltip.capacity": "%s / %s patterns",
   "ae2_pattern_disk.tooltip.type": "Type: %s",

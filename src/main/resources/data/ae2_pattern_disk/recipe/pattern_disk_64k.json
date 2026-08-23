@@ -2,16 +2,15 @@
   "type": "minecraft:crafting_shaped",
   "category": "misc",
   "key": {
-    "g": { "item": "ae2:quartz_glass" },
-    "c": { "item": "ae2:cell_component_64k" },
-    "p": { "item": "ae2:engineering_processor" },
-    "f": { "item": "ae2:fluix_pearl" },
-    "b": { "item": "ae2:blank_pattern" }
+    "a": { "item": "minecraft:glowstone_dust" },
+    "b": { "item": "ae2:calculation_processor" },
+    "c": { "item": "ae2_pattern_disk:pattern_disk_16k" },
+    "d": { "item": "ae2:quartz_glass" }
   },
   "pattern": [
-    "gbg",
-    "gcf",
-    "gpg"
+    "aba",
+    "cdc",
+    "aca"
   ],
   "result": {
     "count": 1,

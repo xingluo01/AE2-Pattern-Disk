@@ -69,7 +69,6 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
         IMolecularAssemblerSupportedPattern plan = null;
         double progress = 0;
         Direction pushDirection = null;
-        boolean forcePlan = false;
 
         CraftUnit() {
             var menu = new net.minecraft.world.inventory.AbstractContainerMenu(null, 0) {
@@ -148,6 +147,14 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
         return (int) Math.min(units[index].progress, 100);
     }
 
+    /** Current supported crafting pattern for one unit, or {@code null} when the page is idle. */
+    public @Nullable IMolecularAssemblerSupportedPattern getCurrentPattern(int index) {
+        if (index < 0 || index >= THREADS) {
+            return null;
+        }
+        return units[index].plan;
+    }
+
     /** True if one unit is currently executing a plan or holding leftover output. */
     public boolean isUnitBusy(int index) {
         if (index < 0 || index >= THREADS) {
@@ -177,10 +184,10 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
         }
         for (var unit : units) {
             if (unit.plan == null && unit.grid.isEmpty()) {
-                unit.forcePlan = true;
                 unit.plan = pattern;
                 unit.pushDirection = where;
                 fillGrid(unit, table, pattern);
+                this.getMainNode().ifPresent((grid, node) -> grid.getTickManager().alertDevice(node));
                 return true;
             }
         }
@@ -209,7 +216,7 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
 
     @Override
     public TickingRequest getTickingRequest(IGridNode node) {
-        return new TickingRequest(10, 10, false);
+        return new TickingRequest(1, 1, false);
     }
 
     @Override
@@ -225,15 +232,16 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
      * Advances one crafting unit; returns true if it is still busy.
      */
     private boolean advanceUnit(IGridNode node, CraftUnit unit, int ticksSinceLastCall) {
-        // Eject finished output first.
+        // Keep retrying both finished output and container remainders until all leftovers are exported.
         ItemStack output = unit.grid.getStackInSlot(OUTPUT_SLOT);
         if (!output.isEmpty()) {
             pushOut(unit, output);
-            return unit.plan != null;
+            if (!unit.grid.getStackInSlot(OUTPUT_SLOT).isEmpty()) {
+                return true;
+            }
         }
-
         if (unit.plan == null) {
-            return false;
+            return drainRemainders(unit);
         }
 
         int speedCards = upgrades.getInstalledUpgrades(AEItems.SPEED_CARD);
@@ -250,17 +258,27 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
             if (level != null) {
                 var positioned = craftGrid(unit);
                 var craftInput = positioned.input();
-                ItemStack result = unit.plan.assemble(craftInput, level);
-                if (!result.isEmpty()) {
-                    unit.grid.setItemDirect(OUTPUT_SLOT, result);
+                var plan = unit.plan;
+                ItemStack result = plan.assemble(craftInput, level);
+                if (result.isEmpty()) {
+                    // A failed recipe must release its inputs instead of retrying forever or
+                    // treating ordinary inputs as container remainders.
+                    unit.plan = null;
+                    return drainRemainders(unit);
                 }
-                // Handle crafting remainders (non-consumed ingredients, e.g. buckets).
-                var remainders = unit.plan.getRemainingItems(craftInput);
+
+                unit.grid.setItemDirect(OUTPUT_SLOT, result);
+                // A successful craft consumes the input grid; put container remainders back afterward.
+                for (int i = 0; i < GRID_SIZE; i++) {
+                    unit.grid.setItemDirect(i, ItemStack.EMPTY);
+                }
+                var remainders = plan.getRemainingItems(craftInput);
                 for (int r = 0; r < remainders.size() && r < GRID_SIZE; r++) {
                     if (!remainders.get(r).isEmpty()) {
                         unit.grid.setItemDirect(r, remainders.get(r));
                     }
                 }
+                unit.plan = null;
                 return true;
             }
         }
@@ -290,11 +308,26 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
         return unit.craftingInv.asPositionedCraftInput();
     }
 
-    private void pushOut(CraftUnit unit, ItemStack stack) {
-        if (level == null || level.isClientSide()) {
-            return;
+    /** Keeps returning crafting containers and other remainders until the unit is empty. */
+    private boolean drainRemainders(CraftUnit unit) {
+        boolean pending = false;
+        for (int i = 0; i < GRID_SIZE; i++) {
+            ItemStack remainder = unit.grid.getStackInSlot(i);
+            if (remainder.isEmpty()) {
+                continue;
+            }
+            ItemStack left = pushItemOut(unit, remainder);
+            unit.grid.setItemDirect(i, left);
+            pending |= !left.isEmpty();
         }
-        // Push to the adjacent machine indicated by pushDirection, or any face-if none set.
+        return pending;
+    }
+
+    /** Pushes an item to the configured adjacent target and then to ME storage. */
+    private ItemStack pushItemOut(CraftUnit unit, ItemStack stack) {
+        if (level == null || level.isClientSide() || stack.isEmpty()) {
+            return stack;
+        }
         Direction dir = unit.pushDirection;
         if (dir != null) {
             stack = pushToAdjacent(stack, dir);
@@ -302,11 +335,10 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
             for (Direction d : Direction.values()) {
                 stack = pushToAdjacent(stack, d);
                 if (stack.isEmpty()) {
-                    break;
+                    return stack;
                 }
             }
         }
-        // Anything left goes back to the ME network (best-effort), else stays in output slot.
         if (!stack.isEmpty()) {
             var grid = this.getMainNode().getGrid();
             if (grid != null) {
@@ -320,13 +352,15 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
                 }
             }
         }
-        if (!stack.isEmpty()) {
-            unit.grid.setItemDirect(OUTPUT_SLOT, stack);
-        } else {
-            unit.grid.setItemDirect(OUTPUT_SLOT, ItemStack.EMPTY);
-        }
-        unit.forcePlan = false;
-        unit.plan = null;
+        return stack;
+    }
+
+    /**
+     * Pushes the output slot through the same adjacent/network path used for remainders.
+     */
+    private void pushOut(CraftUnit unit, ItemStack stack) {
+        ItemStack left = pushItemOut(unit, stack);
+        unit.grid.setItemDirect(OUTPUT_SLOT, left);
     }
 
     private ItemStack pushToAdjacent(ItemStack output, Direction d) {

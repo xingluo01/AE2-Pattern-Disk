@@ -103,5 +103,11 @@ public class AE2PatternDisk {
         if (machine != null && speedCard != null) {
             appeng.api.upgrades.Upgrades.add(speedCard, machine, 4);
         }
+
+        var assembler = net.minecraft.core.registries.BuiltInRegistries.BLOCK
+                .get(net.minecraft.resources.ResourceLocation.parse("ae2_pattern_disk:pattern_disk_assembler"));
+        if (assembler != null && speedCard != null) {
+            appeng.api.upgrades.Upgrades.add(speedCard, assembler, 5);
+        }
     }
 }

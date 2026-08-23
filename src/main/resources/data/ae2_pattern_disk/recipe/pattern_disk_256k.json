@@ -2,9 +2,9 @@
   "type": "minecraft:crafting_shaped",
   "category": "misc",
   "key": {
-    "a": { "item": "minecraft:glowstone_dust" },
+    "a": { "item": "ae2:sky_dust" },
     "b": { "item": "ae2:calculation_processor" },
-    "c": { "item": "ae2_pattern_disk:pattern_disk_4k" },
+    "c": { "item": "ae2_pattern_disk:pattern_disk_64k" },
     "d": { "item": "ae2:quartz_glass" }
   },
   "pattern": [
@@ -14,6 +14,6 @@
   ],
   "result": {
     "count": 1,
-    "id": "ae2_pattern_disk:pattern_disk_16k"
+    "id": "ae2_pattern_disk:pattern_disk_256k"
   }
 }

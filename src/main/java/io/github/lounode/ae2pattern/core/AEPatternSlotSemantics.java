@@ -29,17 +29,13 @@ public final class AEPatternSlotSemantics {
 
     /**
      * Crafting grid slots of each assembler unit (each unit gets its own semantic so the ScreenStyle
-     * JSON can lay out every unit's 3x3 grid + output independently).
+     * JSON can lay out every unit's 3x3 grid at the shared EAE page position).
      */
     public static final SlotSemantic[] ASSEMBLER_GRID = new SlotSemantic[8];
-
-    /** Output slot of each assembler unit. */
-    public static final SlotSemantic[] ASSEMBLER_OUTPUT = new SlotSemantic[8];
 
     static {
         for (int i = 0; i < 8; i++) {
             ASSEMBLER_GRID[i] = SlotSemantics.register("ae2_pattern_disk:assembler_grid_" + i, false);
-            ASSEMBLER_OUTPUT[i] = SlotSemantics.register("ae2_pattern_disk:assembler_output_" + i, false);
         }
     }
 }

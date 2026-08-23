@@ -26,5 +26,7 @@ public final class InitPatternDiskProperties {
                 (stack, level, entity, seed) -> PatternDiskItem.typePropertyValue(stack));
         ItemProperties.register(AEPatternItems.PATTERN_DISK_64K.get(), propertyId,
                 (stack, level, entity, seed) -> PatternDiskItem.typePropertyValue(stack));
+        ItemProperties.register(AEPatternItems.PATTERN_DISK_256K.get(), propertyId,
+                (stack, level, entity, seed) -> PatternDiskItem.typePropertyValue(stack));
     }
 }

@@ -1,12 +1,11 @@
 package io.github.lounode.ae2pattern.common.pattern;
 
 /**
- * Capacity tiers for pattern disks, mirroring AE2's storage-cell naming (1k/4k/16k/64k).
+ * Capacity tiers for pattern disks, mirroring AE2's storage-cell naming.
  *
  * <p>Each tier stores a fixed number of encoded patterns (4 per "k"). The upper bound is governed by the
- * network packet limit for ItemStack sync (~32 KB): a disk must serialize below that to be usable in
- * inventories and menus. The 64k tier (256 patterns, ~128 KB serialized) therefore exceeds the safe
- * single-packet limit and is intended only for static archival, not for network/menu interaction.</p>
+ * network packet limit for ItemStack sync (~32 KB): larger tiers may exceed safe menu-sync sizes and
+ * should be treated as advanced archival tiers until runtime packet limits are verified.</p>
  */
 public enum PatternDiskTier {
 
@@ -14,6 +13,7 @@ public enum PatternDiskTier {
     SIZE_4K(4, 16),
     SIZE_16K(16, 64),
     SIZE_64K(64, 256),
+    SIZE_256K(256, 1024),
     ;
 
     private final int sizeK;
