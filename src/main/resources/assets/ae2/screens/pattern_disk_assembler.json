@@ -6,13 +6,90 @@
   ],
   "background": {
     "texture": "guis/pattern_disk_assembler_gui.png",
-    "srcRect": [0, 0, 176, 199]
+    "srcRect": [
+      0,
+      0,
+      214,
+      252
+    ]
   },
   "slots": {
     "UPGRADE": {
-      "left": 176,
+      "right": 2,
       "top": 6,
       "grid": "VERTICAL"
+    },
+    "ae2_pattern_disk:assembler_output_0": {
+      "left": 8,
+      "top": 24
+    },
+    "ae2_pattern_disk:assembler_grid_0": {
+      "left": 30,
+      "top": 24,
+      "grid": "HORIZONTAL"
+    },
+    "ae2_pattern_disk:assembler_output_1": {
+      "left": 8,
+      "top": 42
+    },
+    "ae2_pattern_disk:assembler_grid_1": {
+      "left": 30,
+      "top": 42,
+      "grid": "HORIZONTAL"
+    },
+    "ae2_pattern_disk:assembler_output_2": {
+      "left": 8,
+      "top": 60
+    },
+    "ae2_pattern_disk:assembler_grid_2": {
+      "left": 30,
+      "top": 60,
+      "grid": "HORIZONTAL"
+    },
+    "ae2_pattern_disk:assembler_output_3": {
+      "left": 8,
+      "top": 78
+    },
+    "ae2_pattern_disk:assembler_grid_3": {
+      "left": 30,
+      "top": 78,
+      "grid": "HORIZONTAL"
+    },
+    "ae2_pattern_disk:assembler_output_4": {
+      "left": 8,
+      "top": 96
+    },
+    "ae2_pattern_disk:assembler_grid_4": {
+      "left": 30,
+      "top": 96,
+      "grid": "HORIZONTAL"
+    },
+    "ae2_pattern_disk:assembler_output_5": {
+      "left": 8,
+      "top": 114
+    },
+    "ae2_pattern_disk:assembler_grid_5": {
+      "left": 30,
+      "top": 114,
+      "grid": "HORIZONTAL"
+    },
+    "ae2_pattern_disk:assembler_output_6": {
+      "left": 8,
+      "top": 132
+    },
+    "ae2_pattern_disk:assembler_grid_6": {
+      "left": 30,
+      "top": 132,
+      "grid": "HORIZONTAL"
+    },
+    "ae2_pattern_disk:assembler_output_7": {
+      "left": 8,
+      "top": 150
+    },
+    "ae2_pattern_disk:assembler_grid_7": {
+      "left": 30,
+      "top": 150,
+      "grid": "HORIZONTAL"
     }
   },
   "text": {

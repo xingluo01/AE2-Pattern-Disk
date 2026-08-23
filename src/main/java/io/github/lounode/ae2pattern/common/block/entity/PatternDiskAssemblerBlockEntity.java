@@ -23,6 +23,7 @@ import appeng.api.networking.ticking.IGridTickable;
 import appeng.api.networking.ticking.TickRateModulation;
 import appeng.api.networking.ticking.TickingRequest;
 import appeng.api.stacks.AEItemKey;
+import appeng.api.inventories.InternalInventory;
 import appeng.api.stacks.KeyCounter;
 import appeng.api.upgrades.IUpgradeInventory;
 import appeng.api.upgrades.IUpgradeableObject;
@@ -114,6 +115,45 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
             total += (int) Math.min(unit.progress, 100);
         }
         return total;
+    }
+
+    /** Number of threads currently executing a plan (busy). */
+    public int getRunningThreads() {
+        int busy = 0;
+        for (var unit : units) {
+            if (unit.plan != null || !unit.grid.isEmpty()) {
+                busy++;
+            }
+        }
+        return busy;
+    }
+
+    /**
+     * Read-only view of one unit's crafting grid (3x3 input + output at index 9). The returned
+     * inventory is a live view of the unit; the client uses it to render the per-unit grid slot
+     * contents while the machine runs. Never modify it from the client.
+     */
+    public InternalInventory getUnitGrid(int index) {
+        if (index < 0 || index >= THREADS) {
+            return InternalInventory.empty();
+        }
+        return units[index].grid;
+    }
+
+    /** Current crafting progress of one unit, in percent (0..100). */
+    public int getUnitProgress(int index) {
+        if (index < 0 || index >= THREADS) {
+            return 0;
+        }
+        return (int) Math.min(units[index].progress, 100);
+    }
+
+    /** True if one unit is currently executing a plan or holding leftover output. */
+    public boolean isUnitBusy(int index) {
+        if (index < 0 || index >= THREADS) {
+            return false;
+        }
+        return units[index].plan != null || !units[index].grid.isEmpty();
     }
 
     @Override
