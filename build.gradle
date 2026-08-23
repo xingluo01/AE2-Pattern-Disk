@@ -170,6 +170,10 @@ dependencies {
 
     // AECS (AE2-Crystal-Science) dev build: local jar for pattern-disk compatibility integration.
     localRuntime files("E:/GitHub/AE2-Crystal-Science/build/libs/ae2cs-1.21.1-1.2.2.jar")
+    // AECS 1.2.x depends on AE2WTLib (de.mari_023) at runtime; provide the missing prerequisite so its
+    // AEPlugin can load (without this the client fails with NoClassDefFoundError de/mari_023/.../Icon).
+    localRuntime "de.mari_023:ae2wtlib:19.5.0"
+    localRuntime "de.mari_023:ae2wtlib_api:19.5.0"
 
     // Runtime environment mods (1.21.1 NeoForge) from Modrinth.
     // Modern UI

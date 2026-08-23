@@ -28,25 +28,42 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
 
     private final Supplier<AppEngInternalInventory> diskInventorySupplier;
 
+    /** Fingerprint of the last rebuilt disk content; skips a full rebuild when unchanged. */
+    private int lastDiskFingerprint;
+    /** True once the first successful rebuild has settled the fingerprint. */
+    private boolean fingerprintInitialized;
+
     public PatternDiskProviderLogic(IManagedGridNode mainNode, PatternProviderLogicHost host,
             Supplier<AppEngInternalInventory> diskInventorySupplier) {
         super(mainNode, host, 1024);
         this.diskInventorySupplier = diskInventorySupplier;
+        this.lastDiskFingerprint = 0;
+        this.fingerprintInitialized = false;
     }
 
     /**
      * Rebinds the parent's pattern inventory to the encoded patterns on all inserted disks, then lets the
      * parent rebuild its pattern list.
+     *
+     * <p>Strategy 2 (static resolver): recompute the disk fingerprint; if it is unchanged since the last
+     * rebuild we short-circuit and skip the expensive {@code clear + rewrite + updatePatterns()} so a
+     * burst of same-content invocations coalesces into a single rebuild. A content change (slot in/out or
+     * disk repattern) rebuilds fresh in one pass.</p>
      */
-    public void refreshPatternsFromDisks() {
+    public boolean refreshPatternsFromDisks() {
         var diskInventory = diskInventorySupplier.get();
         if (diskInventory == null) {
-            return;
+            return false;
+        }
+
+        int fingerprint = computeFingerprint(diskInventory);
+        if (fingerprintInitialized && fingerprint == lastDiskFingerprint) {
+            return false; // unchanged: coalesce, skip full rebuild
         }
 
         InternalInventory patternInv = getPatternInv();
         if (patternInv == null) {
-            return;
+            return false;
         }
 
         java.util.List<ItemStack> all = new java.util.ArrayList<>();
@@ -66,6 +83,34 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
 
         // Parent decodes patternInventory into its patterns list and requests a grid update.
         updatePatterns();
+
+        lastDiskFingerprint = fingerprint;
+        fingerprintInitialized = true;
+        return true;
+    }
+
+    /**
+     * A content fingerprint over the disk inventory: each non-empty slot contributes its item id and its
+     * component patch hash (container components). Slot indices are included so removing a disk at a
+     * different position is treated as a change. Ignoring stack count keeps a disk with a burst of
+     * insertions stable.
+     */
+    private static int computeFingerprint(AppEngInternalInventory diskInventory) {
+        int hash = 1;
+        for (int i = 0; i < diskInventory.size(); i++) {
+            ItemStack stack = diskInventory.getStackInSlot(i);
+            if (stack.isEmpty()) {
+                hash = 31 * hash + (i + 1); // empty slot contributes its index
+                continue;
+            }
+            int itemHash = net.minecraft.core.registries.BuiltInRegistries.ITEM
+                    .getKey(stack.getItem()).hashCode();
+            int componentsHash = stack.getComponentsPatch().hashCode();
+            hash = 31 * hash + itemHash;
+            hash = 31 * hash + componentsHash;
+            hash = 31 * hash + (i + 1);
+        }
+        return hash;
     }
 
     // The parent's updatePatterns re-reads patternInventory; our refresh already filled it.

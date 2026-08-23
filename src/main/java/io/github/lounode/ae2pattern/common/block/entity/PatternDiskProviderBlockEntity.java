@@ -9,6 +9,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 
+import appeng.api.inventories.InternalInventory;
 import appeng.api.stacks.AEItemKey;
 import appeng.blockentity.crafting.PatternProviderBlockEntity;
 import appeng.helpers.patternprovider.PatternProviderLogic;
@@ -32,6 +33,9 @@ public class PatternDiskProviderBlockEntity extends PatternProviderBlockEntity i
 
     private final AppEngInternalInventory diskInventory = new AppEngInternalInventory(this, DISK_SLOT_COUNT);
 
+    /** Cached terminal view; rebuilt only when the disk fingerprint actually changes. */
+    private InternalInventory cachedTerminalInventory;
+
     public PatternDiskProviderBlockEntity(BlockPos pos, BlockState blockState) {
         super(AEPatternBlockEntities.PATTERN_DISK_PROVIDER.get(), pos, blockState);
     }
@@ -49,10 +53,14 @@ public class PatternDiskProviderBlockEntity extends PatternProviderBlockEntity i
 
     /**
      * Terminal view: exposes every encoded pattern stored across all inserted disks so AE2 pattern
-     * access terminals can enumerate and display them.
+     * access terminals can enumerate and display them. The view is cached and only rebuilt when the
+     * disk fingerprint actually changes (led by {@link #refreshFromDisks()}).
      */
     @Override
     public appeng.api.inventories.InternalInventory getTerminalPatternInventory() {
+        if (cachedTerminalInventory != null) {
+            return cachedTerminalInventory;
+        }
         var all = new java.util.ArrayList<net.minecraft.world.item.ItemStack>();
         for (int i = 0; i < diskInventory.size(); i++) {
             var stack = diskInventory.getStackInSlot(i);
@@ -60,7 +68,8 @@ public class PatternDiskProviderBlockEntity extends PatternProviderBlockEntity i
                 all.addAll(disk.contents(stack).patterns());
             }
         }
-        return new PatternDiskInventoryAdapter(all);
+        cachedTerminalInventory = new PatternDiskInventoryAdapter(all);
+        return cachedTerminalInventory;
     }
 
     @Override
@@ -73,8 +82,12 @@ public class PatternDiskProviderBlockEntity extends PatternProviderBlockEntity i
      * Rebuilds the provider's pattern list from current disk contents.
      */
     public void refreshFromDisks() {
+        boolean rebuilt = false;
         if (getLogic() instanceof PatternDiskProviderLogic diskLogic) {
-            diskLogic.refreshPatternsFromDisks();
+            rebuilt = diskLogic.refreshPatternsFromDisks();
+        }
+        if (rebuilt) {
+            cachedTerminalInventory = null; // invalidate cached terminal view
         }
     }
 
@@ -127,6 +140,7 @@ public class PatternDiskProviderBlockEntity extends PatternProviderBlockEntity i
     public void clearContent() {
         super.clearContent();
         diskInventory.clear();
+        cachedTerminalInventory = null;
     }
 
     @Override
