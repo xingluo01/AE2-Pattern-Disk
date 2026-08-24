@@ -22,7 +22,8 @@ public class PatternDiskProviderMenu extends AEBaseMenu {
 
     public static final MenuType<PatternDiskProviderMenu> TYPE = MenuTypeBuilder
             .create(PatternDiskProviderMenu::new, PatternDiskProviderBlockEntity.class)
-            .build("pattern_disk_provider");
+            .buildUnregistered(
+                    net.minecraft.resources.ResourceLocation.parse("ae2_pattern_disk:pattern_disk_provider"));
 
     private final PatternDiskProviderBlockEntity host;
 

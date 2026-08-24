@@ -36,7 +36,8 @@ public class PatternDiskAssemblerMenu extends UpgradeableMenu<PatternDiskAssembl
 
     public static final MenuType<PatternDiskAssemblerMenu> TYPE = MenuTypeBuilder
             .create(PatternDiskAssemblerMenu::new, PatternDiskAssemblerBlockEntity.class)
-            .build("pattern_disk_assembler");
+            .buildUnregistered(
+                    net.minecraft.resources.ResourceLocation.parse("ae2_pattern_disk:pattern_disk_assembler"));
 
     private final PatternDiskAssemblerBlockEntity host;
     private final List<AppEngSlot> outputs = new ArrayList<>();

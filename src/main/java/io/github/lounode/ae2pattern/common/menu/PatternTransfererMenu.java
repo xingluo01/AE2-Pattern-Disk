@@ -25,7 +25,8 @@ public class PatternTransfererMenu extends UpgradeableMenu<PatternTransfererBloc
 
     public static final MenuType<PatternTransfererMenu> TYPE = MenuTypeBuilder
             .create(PatternTransfererMenu::new, PatternTransfererBlockEntity.class)
-            .build("pattern_transferer");
+            .buildUnregistered(
+                    net.minecraft.resources.ResourceLocation.parse("ae2_pattern_disk:pattern_transferer"));
 
     private final PatternTransfererBlockEntity host;
 
