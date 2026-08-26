@@ -9,6 +9,7 @@ import net.minecraft.world.item.ItemStack;
 
 import appeng.api.inventories.InternalInventory;
 import appeng.api.stacks.AEItemKey;
+import appeng.api.stacks.GenericStack;
 import appeng.client.Point;
 import appeng.menu.SlotSemantics;
 import appeng.menu.guisync.GuiSync;
@@ -41,6 +42,7 @@ public class PatternDiskAssemblerMenu extends UpgradeableMenu<PatternDiskAssembl
 
     private final PatternDiskAssemblerBlockEntity host;
     private final List<AppEngSlot> outputs = new ArrayList<>();
+    private final List<AppEngSlot> patternSlots = new ArrayList<>();
 
     /** Progress of the selected CraftUnit, synchronized like EAE's ex assembler. */
     @GuiSync(4)
@@ -68,6 +70,10 @@ public class PatternDiskAssemblerMenu extends UpgradeableMenu<PatternDiskAssembl
             outputs.add((AppEngSlot) addSlot(
                     new OutputSlot(grid, PatternDiskAssemblerBlockEntity.GRID_SIZE, null),
                     SlotSemantics.MACHINE_OUTPUT));
+            // Per-unit encoded-pattern display slot: shows what this page is currently assembling.
+            patternSlots.add((AppEngSlot) addSlot(
+                    new AssemblerPatternSlot(this, unit),
+                    AEPatternSlotSemantics.ASSEMBLER_PATTERN[unit]));
         }
     }
 
@@ -101,6 +107,7 @@ public class PatternDiskAssemblerMenu extends UpgradeableMenu<PatternDiskAssembl
                 }
             }
             outputs.get(unit).setSlotEnabled(enabled);
+            patternSlots.get(unit).setSlotEnabled(enabled);
         }
     }
 
@@ -181,6 +188,72 @@ public class PatternDiskAssemblerMenu extends UpgradeableMenu<PatternDiskAssembl
         @Override
         public Point getBackgroundPos() {
             return new Point(x - 1, y - 1);
+        }
+    }
+
+    /**
+     * Read-only slot showing the primary output of the pattern the given unit is currently assembling.
+     * This mirrors the original molecular assembler's {@code ENCODED_PATTERN} slot, one per page.
+     */
+    private static final class AssemblerPatternSlot extends AppEngSlot implements IOptionalSlot {
+        private final PatternDiskAssemblerMenu menu;
+        private final int unit;
+
+        private AssemblerPatternSlot(PatternDiskAssemblerMenu menu, int unit) {
+            super(new EmptyDiskInventory(), 0);
+            this.menu = menu;
+            this.unit = unit;
+        }
+
+        @Override
+        public ItemStack getItem() {
+            var pattern = menu.getHost().getCurrentPattern(unit);
+            if (pattern == null) {
+                return ItemStack.EMPTY;
+            }
+            GenericStack primary = pattern.getPrimaryOutput();
+            if (primary != null && primary.what() instanceof AEItemKey itemKey) {
+                return itemKey.toStack((int) Math.max(1, primary.amount()));
+            }
+            return ItemStack.EMPTY;
+        }
+
+        // The slot is display-only; never allow dropping/insertion.
+        @Override
+        public boolean mayPlace(ItemStack stack) {
+            return false;
+        }
+
+        @Override
+        public boolean isRenderDisabled() {
+            return true;
+        }
+
+        @Override
+        public boolean isSlotEnabled() {
+            return super.isSlotEnabled();
+        }
+
+        @Override
+        public Point getBackgroundPos() {
+            return new Point(x - 1, y - 1);
+        }
+    }
+
+    /** A zero-capacity {@link InternalInventory} used as the backing store of display-only slots. */
+    private static final class EmptyDiskInventory implements InternalInventory {
+        @Override
+        public int size() {
+            return 1;
+        }
+
+        @Override
+        public ItemStack getStackInSlot(int index) {
+            return ItemStack.EMPTY;
+        }
+
+        @Override
+        public void setItemDirect(int index, ItemStack stack) {
         }
     }
 }

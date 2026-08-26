@@ -33,9 +33,16 @@ public final class AEPatternSlotSemantics {
      */
     public static final SlotSemantic[] ASSEMBLER_GRID = new SlotSemantic[8];
 
+    /**
+     * Per-unit encoded-pattern display slot (mirrors what the page is currently assembling), one slot per
+     * CraftUnit so each page can show its own sample pattern independently.
+     */
+    public static final SlotSemantic[] ASSEMBLER_PATTERN = new SlotSemantic[8];
+
     static {
         for (int i = 0; i < 8; i++) {
             ASSEMBLER_GRID[i] = SlotSemantics.register("ae2_pattern_disk:assembler_grid_" + i, false);
+            ASSEMBLER_PATTERN[i] = SlotSemantics.register("ae2_pattern_disk:assembler_pattern_" + i, false);
         }
     }
 }

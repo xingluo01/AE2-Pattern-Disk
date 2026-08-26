@@ -51,6 +51,38 @@
       "top": 30,
       "grid": "BREAK_AFTER_3COLS"
     },
+    "ae2_pattern_disk:assembler_pattern_0": {
+      "left": 126,
+      "top": 16
+    },
+    "ae2_pattern_disk:assembler_pattern_1": {
+      "left": 126,
+      "top": 16
+    },
+    "ae2_pattern_disk:assembler_pattern_2": {
+      "left": 126,
+      "top": 16
+    },
+    "ae2_pattern_disk:assembler_pattern_3": {
+      "left": 126,
+      "top": 16
+    },
+    "ae2_pattern_disk:assembler_pattern_4": {
+      "left": 126,
+      "top": 16
+    },
+    "ae2_pattern_disk:assembler_pattern_5": {
+      "left": 126,
+      "top": 16
+    },
+    "ae2_pattern_disk:assembler_pattern_6": {
+      "left": 126,
+      "top": 16
+    },
+    "ae2_pattern_disk:assembler_pattern_7": {
+      "left": 126,
+      "top": 16
+    },
     "MACHINE_OUTPUT": {
       "left": 126,
       "top": 48
@@ -76,7 +108,7 @@
   "widgets": {
     "progressBar": {
       "left": 148,
-      "top": 48
+      "top": 47
     }
   }
 }

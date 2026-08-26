@@ -155,6 +155,33 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
         return units[index].plan;
     }
 
+    /**
+     * World-render helper: returns the first output of the earliest active unit, or {@link ItemStack#EMPTY}
+     * when no unit is currently assembling. The renderer draws this inside the machine to mirror the
+     * original molecular assembler's in-world item depiction.
+     */
+    public ItemStack getRenderedAssemblyItem() {
+        for (int i = 0; i < THREADS; i++) {
+            if (!isUnitBusy(i)) {
+                continue;
+            }
+            var pattern = units[i].plan;
+            if (pattern == null) {
+                continue;
+            }
+            var primary = pattern.getPrimaryOutput();
+            if (primary != null && primary.what() instanceof AEItemKey itemKey) {
+                return itemKey.toStack((int) Math.max(1, primary.amount()));
+            }
+        }
+        return ItemStack.EMPTY;
+    }
+
+    /** True when the machine has an active grid channel (used to drive the border status light). */
+    public boolean isPowered() {
+        return getMainNode() != null && getMainNode().isActive();
+    }
+
     /** True if one unit is currently executing a plan or holding leftover output. */
     public boolean isUnitBusy(int index) {
         if (index < 0 || index >= THREADS) {

@@ -46,5 +46,17 @@
         "top": 86
       }
     }
+  },
+  "widgets": {
+    "openPriority": {
+      "left": 152,
+      "top": -5,
+      "width": 20,
+      "height": 20
+    },
+    "lockReason": {
+      "left": 5,
+      "top": 15
+    }
   }
 }
