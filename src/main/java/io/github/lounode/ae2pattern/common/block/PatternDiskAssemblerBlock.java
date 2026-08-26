@@ -24,7 +24,9 @@ import io.github.lounode.ae2pattern.common.menu.PatternDiskAssemblerMenu;
 public class PatternDiskAssemblerBlock extends AEBaseEntityBlock<PatternDiskAssemblerBlockEntity> {
 
     public PatternDiskAssemblerBlock() {
-        super(AEBaseBlock.metalProps());
+        // Transparent (cutout) machine: the model renders with alpha; noOcclusion keeps adjacent
+        // faces visible (mirrors AE2's charger).
+        super(AEBaseBlock.metalProps().noOcclusion());
     }
 
     @Override

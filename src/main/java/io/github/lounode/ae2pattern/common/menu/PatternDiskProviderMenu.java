@@ -16,7 +16,7 @@ import io.github.lounode.ae2pattern.core.AEPatternSlotSemantics;
 
 /**
  * Menu for the pattern disk provider: shows the disk slots. Layout is driven by the ScreenStyle JSON
- * ({@code assets/ae2/screens/pattern_disk_provider.json}).
+ * ({@code assets/ae2/screens/ae2_pattern_disk/pattern_disk_provider.json}).
  */
 public class PatternDiskProviderMenu extends AEBaseMenu {
 

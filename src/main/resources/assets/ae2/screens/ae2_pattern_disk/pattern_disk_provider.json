@@ -1,9 +1,9 @@
 {
-  "$schema": "schema.json",
-  "includes": ["common/common.json", "common/player_inventory.json"],
+  "$schema": "../schema.json",
+  "includes": ["../common/common.json", "../common/player_inventory.json"],
   "helpTopic": "ae2_pattern_disk:ae2guide/items-blocks-machines/pattern_disk_provider.md",
   "background": {
-    "texture": "guis/pattern_provider.png",
+    "texture": "guis/ae2_pattern_disk/pattern_provider.png",
     "srcRect": [0, 0, 176, 215]
   },
   "slots": {

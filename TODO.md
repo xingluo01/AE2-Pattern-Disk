@@ -54,6 +54,20 @@
 ### 10. 完整紧凑编码（改 PatternDiskContents 数据格式）— ⏸ 高风险
 - 破坏存档兼容，保留后续专轮 + 迁移
 
-## 三、执行约束
+## 四、功能缺口（需求记录，未实施）
+
+### A. 样板磁盘供应器缺原版三按钮 — P2 ⏸
+- 现状：`PatternDiskProviderMenu extends AEBaseMenu`（非 UpgradeableMenu），json 无按钮 widget
+- 对照原版 `PatternProviderMenu`：缺失【阻挡模式/优先级】+【锁定合成】+【样板管理终端】三个左侧按钮
+- 实现方向：Menu 注册 client action + json `widgets` 布局（如原版 openPriority 等）
+
+### B. 样板管理终端取出样板逻辑 — P2 ⏸
+- 从样板磁盘取出样板时：需消耗 ME 网络中空样板；两者（空样板不足/磁盘无该样板）任一不满足则阻止取出
+- 并须真实从样板磁盘移除对应存储配方（非仅 UI 展示）
+
+### C. EAE 拓展样板管理终端 — P3 ⏸
+- 同样板管理终端（B）的取出/消耗/移除逻辑，在 EAE 的拓展样板管理终端同样生效
+
+## 五、执行约束
 - 目标：NeoForge 21.1.248 / MC 1.21.1 / JDK 21 / AE2 19.2.8
 - 只用 AE2 公共 API；美术全部复制到本地路径

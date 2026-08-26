@@ -11,11 +11,11 @@ import io.github.lounode.ae2pattern.common.menu.PatternTransfererMenu;
 
 /**
  * Client screen for the pattern transferer. Layout is driven by the ScreenStyle JSON
- * ({@code assets/ae2/screens/pattern_transferer.json}), loaded through AE2's {@link StyleManager}.
+ * ({@code assets/ae2/screens/ae2_pattern_disk/pattern_transferer.json}), loaded through AE2's {@link StyleManager}.
  */
 public class PatternTransfererScreen extends UpgradeableScreen<PatternTransfererMenu> {
 
     public PatternTransfererScreen(PatternTransfererMenu menu, Inventory playerInventory, Component title) {
-        super(menu, playerInventory, title, StyleManager.loadStyleDoc("/screens/pattern_transferer.json"));
+        super(menu, playerInventory, title, StyleManager.loadStyleDoc("/screens/ae2_pattern_disk/pattern_transferer.json"));
     }
 }

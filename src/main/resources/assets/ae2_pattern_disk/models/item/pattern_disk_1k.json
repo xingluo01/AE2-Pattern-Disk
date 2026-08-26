@@ -1,12 +1,33 @@
 {
   "parent": "minecraft:item/generated",
   "textures": {
-    "layer0": "ae2_pattern_disk:item/certus_quartz_crystal"
+    "layer0": "ae2_pattern_disk:item/pattern_disk_base",
+    "layer1": "ae2_pattern_disk:item/pattern_disk_capacity_1k"
   },
   "overrides": [
-    { "predicate": { "ae2_pattern_disk:pattern_type": 1 }, "model": "ae2_pattern_disk:item/pattern_disk_type_crafting" },
-    { "predicate": { "ae2_pattern_disk:pattern_type": 2 }, "model": "ae2_pattern_disk:item/pattern_disk_type_processing" },
-    { "predicate": { "ae2_pattern_disk:pattern_type": 3 }, "model": "ae2_pattern_disk:item/pattern_disk_type_smithing" },
-    { "predicate": { "ae2_pattern_disk:pattern_type": 4 }, "model": "ae2_pattern_disk:item/pattern_disk_type_stonecutting" }
+    {
+      "predicate": {
+        "ae2_pattern_disk:pattern_type": 1
+      },
+      "model": "ae2_pattern_disk:item/pattern_disk_1k_crafting"
+    },
+    {
+      "predicate": {
+        "ae2_pattern_disk:pattern_type": 2
+      },
+      "model": "ae2_pattern_disk:item/pattern_disk_1k_processing"
+    },
+    {
+      "predicate": {
+        "ae2_pattern_disk:pattern_type": 3
+      },
+      "model": "ae2_pattern_disk:item/pattern_disk_1k_smithing"
+    },
+    {
+      "predicate": {
+        "ae2_pattern_disk:pattern_type": 4
+      },
+      "model": "ae2_pattern_disk:item/pattern_disk_1k_stonecutting"
+    }
   ]
 }

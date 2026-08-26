@@ -18,7 +18,7 @@ import io.github.lounode.ae2pattern.core.AEPatternSlotSemantics;
 /**
  * Menu for the pattern transferer.
  *
- * <p>Slot layout is defined externally via the AE2 ScreenStyle JSON ({@code assets/ae2/screens/pattern_transferer.json}):
+ * <p>Slot layout is defined externally via the AE2 ScreenStyle JSON ({@code assets/ae2/screens/ae2_pattern_disk/pattern_transferer.json}):
  * 6 input slots (2x3), 6 application slots (2x3), and 1 blank output slot.</p>
  */
 public class PatternTransfererMenu extends UpgradeableMenu<PatternTransfererBlockEntity> {

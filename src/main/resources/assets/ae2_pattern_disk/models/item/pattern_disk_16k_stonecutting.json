@@ -1,0 +1,8 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "ae2_pattern_disk:item/pattern_disk_base",
+    "layer1": "ae2_pattern_disk:item/pattern_disk_capacity_16k",
+    "layer2": "ae2_pattern_disk:item/pattern_disk_type_stonecutting"
+  }
+}
