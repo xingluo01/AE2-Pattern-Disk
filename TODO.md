@@ -68,6 +68,11 @@
 ### C. EAE 拓展样板管理终端 — P3 ⏸
 - 同样板管理终端（B）的取出/消耗/移除逻辑，在 EAE 的拓展样板管理终端同样生效
 
+### D. 创造模式中键复制含内容物方块 — P3 ⏸（2026-08 记录，待清理）
+- 现象：创造模式中键复制会复制含内容物的 mod 方块（磁盘/样板/升级卡），正常行为应复制一个完全无内容物的方块
+- 线索：MC 1.21 默认 `Block.getCloneItemStack(LevelReader, BlockPos, BlockState)`（3 参）返回干净 `new ItemStack(this)`；但 NeoForge `Minecraft.pickBlock` 走 `BlockState.getCloneItemStack(HitResult, LevelReader, BlockPos, Player)`（4 参，NeoForge 扩展），疑似该路径带 BE 数据复制逻辑
+- 处理方向：确认 4 参 `getCloneItemStack` 的 NeoForge 实现是否复制 BE NBT/组件；为三个 Block（assembler/provider/transferer）覆写返回干净 ItemStack
+
 ## 五、执行约束
 - 目标：NeoForge 21.1.248 / MC 1.21.1 / JDK 21 / AE2 19.2.8
 - 只用 AE2 公共 API；美术全部复制到本地路径
