@@ -2,7 +2,7 @@
 minecraft = "1.21.1"
 neoForge = "21.1.243"
 parchment = "2024.11.17"
-modDevGradle = "2.0.141"
+modDevGradle = "2.0.144"
 mixin = "0.8.7"
 jetbrains-annotations = "26.1.0"
 
@@ -15,11 +15,9 @@ neoForge = { module = "net.neoforged:neoforge", version.ref = "neoForge" }
 jetbrains-annotations = { module = "org.jetbrains:annotations", version.ref = "jetbrains-annotations" }
 mixin = { module = "org.spongepowered:mixin", version.ref = "mixin" }
 
-# AE2 core API (compile-only classifier for addons; runtime provided by the game)
 ae2 = { module = "org.appliedenergistics:appliedenergistics2", version.ref = "ae2" }
 guideme = { module = "org.appliedenergistics:guideme", version.ref = "guideme" }
 
-# Recipe viewers
 emi = { module = "dev.emi:emi-neoforge", version = "1.1.22+1.21.1" }
 
 [plugins]
