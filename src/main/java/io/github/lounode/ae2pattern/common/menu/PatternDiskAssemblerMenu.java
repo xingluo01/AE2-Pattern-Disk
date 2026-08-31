@@ -195,21 +195,4 @@ public class PatternDiskAssemblerMenu extends UpgradeableMenu<PatternDiskAssembl
             return new Point(x - 1, y - 1);
         }
     }
-
-    /** A zero-capacity {@link InternalInventory} used as the backing store of display-only slots. */
-    private static final class EmptyDiskInventory implements InternalInventory {
-        @Override
-        public int size() {
-            return 1;
-        }
-
-        @Override
-        public ItemStack getStackInSlot(int index) {
-            return ItemStack.EMPTY;
-        }
-
-        @Override
-        public void setItemDirect(int index, ItemStack stack) {
-        }
-    }
 }

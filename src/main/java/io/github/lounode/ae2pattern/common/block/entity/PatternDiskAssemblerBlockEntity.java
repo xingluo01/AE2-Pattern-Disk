@@ -271,9 +271,6 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
         var inputs = plan.getInputs();
         boolean changed = false;
         for (int slot = 0; slot < GRID_SIZE && slot < inputs.length; slot++) {
-            if (!unit.grid.getStackInSlot(slot).isEmpty()) {
-                continue;
-            }
             var input = inputs[slot];
             if (input == null) {
                 continue;
@@ -287,9 +284,24 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
                     continue;
                 }
                 if (possible.what() instanceof AEItemKey itemKey) {
-                    long extracted = storage.extract(itemKey, amount, Actionable.MODULATE, actionSource);
+                    var existing = unit.grid.getStackInSlot(slot);
+                    long have = existing.isEmpty() ? 0 : existing.getCount();
+                    long need = amount - have;
+                    if (need <= 0) {
+                        // Slot already holds enough of this input.
+                        break;
+                    }
+                    if (!existing.isEmpty() && !itemKey.equals(AEItemKey.of(existing))) {
+                        // Wrong item in slot: never overwrite, leave it for canAssemble to reject.
+                        break;
+                    }
+                    long extracted = storage.extract(itemKey, need, Actionable.MODULATE, actionSource);
                     if (extracted > 0) {
-                        unit.grid.setItemDirect(slot, itemKey.toStack((int) extracted));
+                        if (existing.isEmpty()) {
+                            unit.grid.setItemDirect(slot, itemKey.toStack((int) extracted));
+                        } else {
+                            existing.grow((int) extracted);
+                        }
                         changed = true;
                         break;
                     }
@@ -361,13 +373,15 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
             if (unit.plan == null) {
                 return drainRemainders(unit);
             }
-            if (!unit.patternInv.isEmpty()) {
-                // Pull inputs from the ME network and only start crafting once the grid is complete,
-                // so a shortage never consumes progress or destroys partially extracted inputs.
-                tryFillGridFromNetwork(unit);
-                if (!canAssemble(unit)) {
-                    return true;
-                }
+        }
+
+        // Self-executing page guard: every tick (not just the decode tick) verify the grid is
+        // complete before accumulating progress, so a material shortage never consumes progress
+        // or destroys partially extracted inputs (the shortage loop extracts only what is missing).
+        if (!unit.patternInv.isEmpty()) {
+            tryFillGridFromNetwork(unit);
+            if (!canAssemble(unit)) {
+                return true;
             }
         }
 
