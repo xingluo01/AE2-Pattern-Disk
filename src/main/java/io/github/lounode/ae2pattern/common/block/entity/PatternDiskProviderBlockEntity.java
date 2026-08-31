@@ -10,6 +10,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 
 import appeng.api.inventories.InternalInventory;
+import appeng.api.networking.security.IActionSource;
 import appeng.api.stacks.AEItemKey;
 import appeng.blockentity.crafting.PatternProviderBlockEntity;
 import appeng.helpers.patternprovider.PatternProviderLogic;
@@ -17,7 +18,7 @@ import appeng.util.inv.AppEngInternalInventory;
 import appeng.util.inv.InternalInventoryHost;
 
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
-import io.github.lounode.ae2pattern.common.pattern.PatternDiskInventoryAdapter;
+import io.github.lounode.ae2pattern.common.pattern.PatternDiskRemoveInventory;
 
 import io.github.lounode.ae2pattern.common.logic.PatternDiskProviderLogic;
 import io.github.lounode.ae2pattern.core.AEPatternBlockEntities;
@@ -34,7 +35,7 @@ public class PatternDiskProviderBlockEntity extends PatternProviderBlockEntity i
     private final AppEngInternalInventory diskInventory = new AppEngInternalInventory(this, DISK_SLOT_COUNT);
 
     /** Cached terminal view; rebuilt only when the disk fingerprint actually changes. */
-    private InternalInventory cachedTerminalInventory;
+    private PatternDiskRemoveInventory cachedTerminalInventory;
 
     public PatternDiskProviderBlockEntity(BlockPos pos, BlockState blockState) {
         super(AEPatternBlockEntities.PATTERN_DISK_PROVIDER.get(), pos, blockState);
@@ -53,23 +54,45 @@ public class PatternDiskProviderBlockEntity extends PatternProviderBlockEntity i
 
     /**
      * Terminal view: exposes every encoded pattern stored across all inserted disks so AE2 pattern
-     * access terminals can enumerate and display them. The view is cached and only rebuilt when the
-     * disk fingerprint actually changes (led by {@link #refreshFromDisks()}).
+     * access terminals can enumerate, display, and {@code extract} them. Extraction physically drops the
+     * pattern from its source disk and costs one blank pattern drawn from the attached ME network.
      */
     @Override
     public appeng.api.inventories.InternalInventory getTerminalPatternInventory() {
         if (cachedTerminalInventory != null) {
             return cachedTerminalInventory;
         }
-        var all = new java.util.ArrayList<net.minecraft.world.item.ItemStack>();
-        for (int i = 0; i < diskInventory.size(); i++) {
-            var stack = diskInventory.getStackInSlot(i);
-            if (!stack.isEmpty() && stack.getItem() instanceof PatternDiskItem disk) {
-                all.addAll(disk.contents(stack).patterns());
-            }
-        }
-        cachedTerminalInventory = new PatternDiskInventoryAdapter(all);
+        cachedTerminalInventory = new PatternDiskRemoveInventory(diskInventory, this::tryDrawBlankPattern,
+                this::markTerminalChanged);
         return cachedTerminalInventory;
+    }
+
+    /**
+     * Draws {@code count} blank patterns from the attached ME network, all-or-nothing: first a
+     * simulated check confirms the network can cover count, then a single modulate extract removes them.
+     * Returns {@code false} (drawing nothing) when the network lacks count blank patterns or the machine
+     * is not on a grid yet.
+     */
+    private boolean tryDrawBlankPattern(int count) {
+        var grid = getMainNode().getGrid();
+        if (grid == null || count <= 0) {
+            return false;
+        }
+        var storage = grid.getStorageService().getInventory();
+        var blank = AEItemKey.of(appeng.core.definitions.AEItems.BLANK_PATTERN);
+        if (storage.extract(blank, count, appeng.api.config.Actionable.SIMULATE, IActionSource.ofMachine(this)) != count) {
+            return false; // cannot cover the whole extraction: refuse, draw nothing
+        }
+        return storage.extract(blank, count, appeng.api.config.Actionable.MODULATE, IActionSource.ofMachine(this)) == count;
+    }
+
+    /** Rebuilds the terminal view after a real mutation, persisting the disk inventory change. */
+    private void markTerminalChanged() {
+        if (cachedTerminalInventory != null) {
+            cachedTerminalInventory.rebuild();
+        }
+        refreshFromDisks();
+        saveChanges();
     }
 
     @Override

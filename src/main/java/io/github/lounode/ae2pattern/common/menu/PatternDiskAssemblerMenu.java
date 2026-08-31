@@ -9,6 +9,7 @@ import net.minecraft.world.item.ItemStack;
 
 import appeng.api.inventories.InternalInventory;
 import appeng.api.stacks.AEItemKey;
+import appeng.api.stacks.GenericStack;
 import appeng.client.Point;
 import appeng.menu.SlotSemantics;
 import appeng.menu.guisync.GuiSync;
@@ -18,6 +19,7 @@ import appeng.menu.interfaces.IProgressProvider;
 import appeng.menu.slot.AppEngSlot;
 import appeng.menu.slot.IOptionalSlot;
 import appeng.menu.slot.OutputSlot;
+import appeng.menu.slot.RestrictedInputSlot;
 
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskAssemblerBlockEntity;
 import io.github.lounode.ae2pattern.core.AEPatternSlotSemantics;
@@ -41,6 +43,7 @@ public class PatternDiskAssemblerMenu extends UpgradeableMenu<PatternDiskAssembl
 
     private final PatternDiskAssemblerBlockEntity host;
     private final List<AppEngSlot> outputs = new ArrayList<>();
+    private final List<AppEngSlot> patternSlots = new ArrayList<>();
 
     /** Progress of the selected CraftUnit, synchronized like EAE's ex assembler. */
     @GuiSync(4)
@@ -68,6 +71,14 @@ public class PatternDiskAssemblerMenu extends UpgradeableMenu<PatternDiskAssembl
             outputs.add((AppEngSlot) addSlot(
                     new OutputSlot(grid, PatternDiskAssemblerBlockEntity.GRID_SIZE, null),
                     SlotSemantics.MACHINE_OUTPUT));
+            // Per-unit encoded-pattern slot: accepts only molecular-assembler patterns; a manually
+            // inserted pattern turns this page into a self-executing unit (AE2 ENCODED_PATTERN-style).
+            patternSlots.add((AppEngSlot) addSlot(
+                    new RestrictedInputSlot(
+                            RestrictedInputSlot.PlacableItemType.MOLECULAR_ASSEMBLER_PATTERN,
+                            host.getUnitPatternInv(unit),
+                            0),
+                    AEPatternSlotSemantics.ASSEMBLER_PATTERN[unit]));
         }
     }
 
@@ -101,6 +112,7 @@ public class PatternDiskAssemblerMenu extends UpgradeableMenu<PatternDiskAssembl
                 }
             }
             outputs.get(unit).setSlotEnabled(enabled);
+            patternSlots.get(unit).setSlotEnabled(enabled);
         }
     }
 

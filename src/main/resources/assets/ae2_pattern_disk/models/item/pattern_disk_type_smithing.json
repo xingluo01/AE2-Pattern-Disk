@@ -1,6 +1,0 @@
-{
-  "parent": "minecraft:item/generated",
-  "textures": {
-    "layer0": "ae2_pattern_disk:item/smithing_table_pattern"
-  }
-}

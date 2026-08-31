@@ -1,20 +1,15 @@
 {
-  "$schema": "schema.json",
+  "$schema": "../schema.json",
   "includes": [
-    "common/common.json",
-    "common/player_inventory.json"
+    "../common/common.json",
+    "../common/player_inventory.json"
   ],
   "helpTopic": "ae2_pattern_disk:ae2guide/items-blocks-machines/pattern_transferer.md",
   "background": {
-    "texture": "guis/ae2_pattern_disk.png",
+    "texture": "ae2_pattern_disk:textures/guis/ae2_pattern_disk.png",
     "srcRect": [0, 0, 176, 168]
   },
   "slots": {
-    "UPGRADE": {
-      "left": 170,
-      "top": 6,
-      "grid": "VERTICAL"
-    },
     "ae2_pattern_disk:transfer_input": {
       "left": 19,
       "top": 17,

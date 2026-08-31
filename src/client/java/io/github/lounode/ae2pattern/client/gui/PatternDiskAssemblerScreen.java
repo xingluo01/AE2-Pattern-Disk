@@ -22,7 +22,7 @@ public class PatternDiskAssemblerScreen extends UpgradeableScreen<PatternDiskAss
     private final IconButton previousPage;
 
     public PatternDiskAssemblerScreen(PatternDiskAssemblerMenu menu, Inventory playerInventory, Component title) {
-        super(menu, playerInventory, title, StyleManager.loadStyleDoc("/screens/pattern_disk_assembler.json"));
+        super(menu, playerInventory, title, StyleManager.loadStyleDoc("/screens/ae2_pattern_disk/pattern_disk_assembler.json"));
 
         this.progressBar = new ProgressBar(menu, style.getImage("progressBar"), ProgressBar.Direction.VERTICAL);
         widgets.add("progressBar", progressBar);

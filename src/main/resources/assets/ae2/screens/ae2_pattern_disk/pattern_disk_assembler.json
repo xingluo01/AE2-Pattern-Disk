@@ -1,13 +1,13 @@
 {
-  "$schema": "schema.json",
+  "$schema": "../schema.json",
   "includes": [
-    "common/common.json",
-    "common/player_inventory.json",
-    "common/toolbox.json"
+    "../common/common.json",
+    "../common/player_inventory.json",
+    "../common/toolbox.json"
   ],
   "helpTopic": "ae2_pattern_disk:ae2guide/items-blocks-machines/pattern_disk_assembler.md",
   "background": {
-    "texture": "guis/ex_molecular_assembler.png",
+    "texture": "ae2_pattern_disk:textures/guis/ex_molecular_assembler.png",
     "srcRect": [0, 0, 176, 199]
   },
   "slots": {
@@ -51,6 +51,38 @@
       "top": 30,
       "grid": "BREAK_AFTER_3COLS"
     },
+    "ae2_pattern_disk:assembler_pattern_0": {
+      "left": 126,
+      "top": 16
+    },
+    "ae2_pattern_disk:assembler_pattern_1": {
+      "left": 126,
+      "top": 16
+    },
+    "ae2_pattern_disk:assembler_pattern_2": {
+      "left": 126,
+      "top": 16
+    },
+    "ae2_pattern_disk:assembler_pattern_3": {
+      "left": 126,
+      "top": 16
+    },
+    "ae2_pattern_disk:assembler_pattern_4": {
+      "left": 126,
+      "top": 16
+    },
+    "ae2_pattern_disk:assembler_pattern_5": {
+      "left": 126,
+      "top": 16
+    },
+    "ae2_pattern_disk:assembler_pattern_6": {
+      "left": 126,
+      "top": 16
+    },
+    "ae2_pattern_disk:assembler_pattern_7": {
+      "left": 126,
+      "top": 16
+    },
     "MACHINE_OUTPUT": {
       "left": 126,
       "top": 48
@@ -69,14 +101,14 @@
   },
   "images": {
     "progressBar": {
-      "texture": "guis/ex_molecular_assembler.png",
+      "texture": "ae2_pattern_disk:textures/guis/ex_molecular_assembler.png",
       "srcRect": [176, 0, 6, 18]
     }
   },
   "widgets": {
     "progressBar": {
       "left": 148,
-      "top": 48
+      "top": 47
     }
   }
 }
