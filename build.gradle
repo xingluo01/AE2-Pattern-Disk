@@ -125,7 +125,7 @@ tasks.named('jar', Jar) {
     from sourceSets.client.output
 }
 
-tasks.named('remapJar').configure {
+tasks.matching { it.name == 'remapJar' }.configureEach {
     dependsOn sourceSets.client.classesTaskName
 }
 
@@ -259,3 +259,4 @@ repositories {
         filter { includeGroup 'curse.maven' }
     }
 }
+
