@@ -173,9 +173,12 @@ dependencies {
 
     // AECS development integration. Prefer a sibling checkout when available;
     // override AECS_DEV_JAR to use a different location without editing this file.
-    def aecsDevJar = providers.environmentVariable('AECS_DEV_JAR')
+    // Resolved eagerly at configuration time (no script-object reference in a closure) so the
+    // runClient task remains compatible with the Gradle configuration cache.
+    def aecsDevJarPath = providers.environmentVariable('AECS_DEV_JAR')
         .orElse(layout.projectDirectory.file('../AE2-Crystal-Science/build/libs/ae2cs-1.21.1-1.2.2.jar').asFile.absolutePath)
-    localRuntime files(aecsDevJar.map { file(it) })
+        .get()
+    localRuntime files(aecsDevJarPath)
 
     // AECS runtime prerequisite.
     localRuntime 'de.mari_023:ae2wtlib:19.5.0'
@@ -187,6 +190,10 @@ dependencies {
     localRuntime 'curse.maven:advancedae-1084104:7849217'
     // Glodium: shared AE2-ecosystem UI library required at runtime by both EAE and AAE.
     localRuntime 'io.github.glodblock:Glodium:1.21-2.2-neoforge'
+    // GeckoLib: mandatory runtime dependency of AdvancedAE (requires >= 4.8.2 for 1.21.1).
+    // Use the modrinth version id (not the bare version number, which collides across loaders
+    // and resolves to the Fabric jar).
+    localRuntime 'maven.modrinth:geckolib:gFmrC8Ru'
 
     // Runtime environment mods used for integration testing.
     localRuntime 'maven.modrinth:modern-ui:3.13.0.1'
