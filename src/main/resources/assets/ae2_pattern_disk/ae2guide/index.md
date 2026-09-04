@@ -11,4 +11,5 @@ navigation:
 * [样板磁盘](items-blocks-machines/pattern_disks.md)
 * [样板磁盘供应器](items-blocks-machines/pattern_disk_provider.md)
 * [样板转存器](items-blocks-machines/pattern_transferer.md)
+* [ME样板磁盘编码终端](items-blocks-machines/pattern_disk_encoding_terminal.md)
 * [高效分子装配室](items-blocks-machines/pattern_disk_assembler.md)
