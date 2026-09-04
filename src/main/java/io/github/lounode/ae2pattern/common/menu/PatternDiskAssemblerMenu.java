@@ -22,7 +22,7 @@ import appeng.menu.slot.OutputSlot;
 import appeng.menu.slot.RestrictedInputSlot;
 
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskAssemblerBlockEntity;
-import io.github.lounode.ae2pattern.core.AEPatternSlotSemantics;
+import io.github.lounode.ae2pattern.AEPatternRegistries;
 
 /**
  * EAE-style page menu for the parallel molecular assembler.
@@ -66,7 +66,7 @@ public class PatternDiskAssemblerMenu extends UpgradeableMenu<PatternDiskAssembl
         for (int unit = 0; unit < MAX_PAGE; unit++) {
             var grid = host.getUnitGrid(unit);
             for (int i = 0; i < PatternDiskAssemblerBlockEntity.GRID_SIZE; i++) {
-                addSlot(new AssemblerInputSlot(this, grid, i), AEPatternSlotSemantics.ASSEMBLER_GRID[unit]);
+                addSlot(new AssemblerInputSlot(this, grid, i), AEPatternRegistries.ASSEMBLER_GRID[unit]);
             }
             outputs.add((AppEngSlot) addSlot(
                     new OutputSlot(grid, PatternDiskAssemblerBlockEntity.GRID_SIZE, null),
@@ -78,7 +78,7 @@ public class PatternDiskAssemblerMenu extends UpgradeableMenu<PatternDiskAssembl
                             RestrictedInputSlot.PlacableItemType.MOLECULAR_ASSEMBLER_PATTERN,
                             host.getUnitPatternInv(unit),
                             0),
-                    AEPatternSlotSemantics.ASSEMBLER_PATTERN[unit]));
+                    AEPatternRegistries.ASSEMBLER_PATTERN[unit]));
         }
     }
 
@@ -106,7 +106,7 @@ public class PatternDiskAssemblerMenu extends UpgradeableMenu<PatternDiskAssembl
     public void showPage() {
         for (int unit = 0; unit < MAX_PAGE; unit++) {
             boolean enabled = page == unit;
-            for (var slot : getSlots(AEPatternSlotSemantics.ASSEMBLER_GRID[unit])) {
+            for (var slot : getSlots(AEPatternRegistries.ASSEMBLER_GRID[unit])) {
                 if (slot instanceof AppEngSlot appEngSlot) {
                     appEngSlot.setSlotEnabled(enabled);
                 }

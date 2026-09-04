@@ -8,11 +8,16 @@ import org.jetbrains.annotations.Nullable;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.state.BlockState;
+
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.api.distmarker.OnlyIn;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 import appeng.api.config.Actionable;
 import appeng.api.crafting.PatternDetailsHelper;
@@ -38,9 +43,9 @@ import appeng.me.helpers.MachineSource;
 import appeng.util.inv.AppEngInternalInventory;
 import appeng.util.inv.InternalInventoryHost;
 
-import io.github.lounode.ae2pattern.core.AEPatternBlockEntities;
-import io.github.lounode.ae2pattern.core.AEPatternBlocks;
-import io.github.lounode.ae2pattern.core.AEPatternItems;
+import io.github.lounode.ae2pattern.network.AssemblerAnimationPayload;
+import io.github.lounode.ae2pattern.network.AssemblerAnimationStatus;
+import io.github.lounode.ae2pattern.AEPatternRegistries;
 
 /**
  * A parallel molecular assembler that accepts many crafting patterns (from a pattern disk provider or any
@@ -63,42 +68,20 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
     private final IActionSource actionSource = new MachineSource(this);
     private final IUpgradeInventory upgrades;
 
-    /** One execution unit per thread. */
-    private static final class CraftUnit {
-        final AppEngInternalInventory grid = new AppEngInternalInventory(GRID_SIZE + 1);
-        /** Manual encoded pattern (slot 0); when populated this unit self-executes it (AE2-style). */
-        final AppEngInternalInventory patternInv;
-        // Persisted crafting container, reused across crafts (avoids per-craft object churn).
-        final net.minecraft.world.inventory.TransientCraftingContainer craftingInv;
-        IMolecularAssemblerSupportedPattern plan = null;
-        double progress = 0;
-        Direction pushDirection = null;
-
-        CraftUnit(InternalInventoryHost host) {
-            this.patternInv = new AppEngInternalInventory(host, 1);
-            var menu = new net.minecraft.world.inventory.AbstractContainerMenu(null, 0) {
-                @Override
-                public net.minecraft.world.item.ItemStack quickMoveStack(net.minecraft.world.entity.player.Player p, int i) {
-                    return net.minecraft.world.item.ItemStack.EMPTY;
-                }
-
-                @Override
-                public boolean stillValid(net.minecraft.world.entity.player.Player p) {
-                    return true;
-                }
-            };
-            this.craftingInv = new net.minecraft.world.inventory.TransientCraftingContainer(menu, 3, 3);
-        }
-    }
-
     private final CraftUnit[] units = new CraftUnit[THREADS];
 
+    /** Client-synced power state. */
+    private boolean isPowered = false;
+
+    @OnlyIn(Dist.CLIENT)
+    private AssemblerAnimationStatus animationStatus;
+
     public PatternDiskAssemblerBlockEntity(BlockPos pos, BlockState blockState) {
-        super(AEPatternBlockEntities.PATTERN_DISK_ASSEMBLER.get(), pos, blockState);
+        super(AEPatternRegistries.BE_ASSEMBLER.get(), pos, blockState);
         for (int i = 0; i < THREADS; i++) {
             units[i] = new CraftUnit(this);
         }
-        this.upgrades = UpgradeInventories.forMachine(AEPatternBlocks.PATTERN_DISK_ASSEMBLER.get(), 5,
+        this.upgrades = UpgradeInventories.forMachine(AEPatternRegistries.BLOCK_ASSEMBLER.get(), 5,
                 this::onUpgradesChanged);
         this.getMainNode()
                 .setFlags(GridFlags.REQUIRE_CHANNEL)
@@ -200,9 +183,34 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
         return ItemStack.EMPTY;
     }
 
+    @Override
+    protected boolean readFromStream(RegistryFriendlyByteBuf data) {
+        final boolean c = super.readFromStream(data);
+        final boolean oldPower = this.isPowered;
+        this.isPowered = data.readBoolean();
+        return this.isPowered != oldPower || c;
+    }
+
+    @Override
+    protected void writeToStream(RegistryFriendlyByteBuf data) {
+        super.writeToStream(data);
+        data.writeBoolean(this.isPowered);
+    }
+
     /** True when the machine has an active grid channel (used to drive the border status light). */
     public boolean isPowered() {
-        return getMainNode() != null && getMainNode().isActive();
+        return isPowered;
+    }
+
+    @OnlyIn(Dist.CLIENT)
+    public void setAnimationStatus(@org.jetbrains.annotations.Nullable AssemblerAnimationStatus status) {
+        this.animationStatus = status;
+    }
+
+    @OnlyIn(Dist.CLIENT)
+    @org.jetbrains.annotations.Nullable
+    public AssemblerAnimationStatus getAnimationStatus() {
+        return animationStatus;
     }
 
     /** True if one unit is currently executing a plan or holding leftover output. */
@@ -331,8 +339,8 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
     @Override
     public appeng.api.implementations.blockentities.PatternContainerGroup getCraftingMachineInfo() {
         return new appeng.api.implementations.blockentities.PatternContainerGroup(
-                AEItemKey.of(AEPatternItems.PATTERN_DISK_ASSEMBLER.get()),
-                AEPatternItems.PATTERN_DISK_ASSEMBLER.get().getDescription(),
+                AEItemKey.of(AEPatternRegistries.ITEM_ASSEMBLER.get()),
+                AEPatternRegistries.ITEM_ASSEMBLER.get().getDescription(),
                 List.of(Component.translatable("ae2_pattern_disk.assembler.threads", THREADS)));
     }
 
@@ -409,6 +417,17 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
                 }
 
                 unit.grid.setItemDirect(OUTPUT_SLOT, result);
+
+                // Send animation packet to nearby players (visual parity with AE2 molecular assembler)
+                var itemKey = AEItemKey.of(result);
+                if (itemKey != null) {
+                    PacketDistributor.sendToPlayersNear(
+                            node.getLevel(), null,
+                            worldPosition.getX(), worldPosition.getY(), worldPosition.getZ(),
+                            32,
+                            new AssemblerAnimationPayload(worldPosition, (byte) speed, itemKey));
+                }
+
                 // A successful craft consumes the input grid; put container remainders back afterward.
                 for (int i = 0; i < GRID_SIZE; i++) {
                     unit.grid.setItemDirect(i, ItemStack.EMPTY);
@@ -523,7 +542,11 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
 
     @Override
     public void onMainNodeStateChanged(IGridNodeListener.State state) {
-        markForUpdate();
+        boolean newState = getMainNode() != null && getMainNode().isActive();
+        if (newState != this.isPowered) {
+            this.isPowered = newState;
+            markForUpdate();
+        }
     }
 
     @Override

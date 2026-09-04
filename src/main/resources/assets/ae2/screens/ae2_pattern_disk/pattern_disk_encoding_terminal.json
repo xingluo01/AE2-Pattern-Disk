@@ -1,0 +1,314 @@
+{
+ "$schema": "../schema.json",
+ "includes": [
+  "../common/common.json",
+  "../common/player_inventory.json",
+  "../common/terminal_toolbox.json"
+ ],
+ "helpTopic": "ae2_pattern_disk:ae2guide/items-blocks-machines/pattern_disk_encoding_terminal.md",
+ "background": {
+  "texture": "ae2_pattern_disk:textures/guis/pattern.png",
+  "srcRect": [
+   0,
+   0,
+   195,
+   251
+  ]
+ },
+ "terminalStyle": {
+  "slotsPerRow": 9,
+  "header": {
+   "texture": "ae2_pattern_disk:textures/guis/pattern.png",
+   "srcRect": [
+    0,
+    0,
+    195,
+    17
+   ]
+  },
+  "firstRow": {
+   "texture": "ae2_pattern_disk:textures/guis/pattern.png",
+   "srcRect": [
+    0,
+    17,
+    195,
+    18
+   ]
+  },
+  "row": {
+   "texture": "ae2_pattern_disk:textures/guis/pattern.png",
+   "srcRect": [
+    0,
+    35,
+    195,
+    18
+   ]
+  },
+  "lastRow": {
+   "texture": "ae2_pattern_disk:textures/guis/pattern.png",
+   "srcRect": [
+    0,
+    53,
+    195,
+    18
+   ]
+  },
+  "bottom": {
+   "texture": "ae2_pattern_disk:textures/guis/pattern.png",
+   "srcRect": [
+    0,
+    71,
+    195,
+    180
+   ]
+  }
+ },
+ "slots": {
+  "CRAFTING_GRID": {
+   "left": 42,
+   "bottom": 159,
+   "grid": "BREAK_AFTER_3COLS"
+  },
+  "CRAFTING_RESULT": {
+   "left": 125,
+   "bottom": 141
+  },
+  "PROCESSING_INPUTS": {
+   "left": 51,
+   "bottom": 158,
+   "grid": "BREAK_AFTER_3COLS"
+  },
+  "PROCESSING_OUTPUTS": {
+   "left": 128,
+   "bottom": 158,
+   "grid": "VERTICAL"
+  },
+  "SMITHING_TABLE_TEMPLATE": {
+   "left": 43,
+   "bottom": 140
+  },
+  "SMITHING_TABLE_BASE": {
+   "left": 61,
+   "bottom": 140
+  },
+  "SMITHING_TABLE_ADDITION": {
+   "left": 79,
+   "bottom": 140
+  },
+  "SMITHING_TABLE_RESULT": {
+   "left": 128,
+   "bottom": 140
+  },
+  "STONECUTTING_INPUT": {
+   "left": 43,
+   "bottom": 139
+  },
+  "BLANK_PATTERN": {
+   "left": 166,
+   "bottom": 165
+  },
+  "ENCODED_PATTERN": {
+   "left": 166,
+   "bottom": 118
+  }
+ },
+ "tooltips": {
+  "processing-primary-output": {
+   "left": 127,
+   "bottom": 159,
+   "width": 18,
+   "height": 18,
+   "tooltip": [
+    {
+     "translate": "gui.ae2.PatternEncoding.primary_processing_result_tooltip"
+    },
+    {
+     "translate": "gui.ae2.PatternEncoding.primary_processing_result_hint",
+     "color": "#666666"
+    }
+   ]
+  },
+  "processing-optional-output1": {
+   "left": 127,
+   "bottom": 159,
+   "width": 18,
+   "height": 18,
+   "tooltip": [
+    {
+     "translate": "gui.ae2.PatternEncoding.secondary_processing_result_tooltip"
+    },
+    {
+     "translate": "gui.ae2.PatternEncoding.secondary_processing_result_hint",
+     "color": "#666666"
+    }
+   ]
+  },
+  "processing-optional-output2": {
+   "left": 127,
+   "bottom": 141,
+   "width": 18,
+   "height": 18,
+   "tooltip": [
+    {
+     "translate": "gui.ae2.PatternEncoding.secondary_processing_result_tooltip"
+    },
+    {
+     "translate": "gui.ae2.PatternEncoding.secondary_processing_result_hint",
+     "color": "#666666"
+    }
+   ]
+  },
+  "processing-optional-output3": {
+   "left": 127,
+   "bottom": 123,
+   "width": 18,
+   "height": 18,
+   "tooltip": [
+    {
+     "translate": "gui.ae2.PatternEncoding.secondary_processing_result_tooltip"
+    },
+    {
+     "translate": "gui.ae2.PatternEncoding.secondary_processing_result_hint",
+     "color": "#666666"
+    }
+   ]
+  }
+ },
+ "text": {
+  "dialog_title": {
+   "text": {
+    "translate": "gui.ae2.Terminal"
+   },
+   "position": {
+    "left": 8,
+    "top": 6
+   }
+  },
+  "encoding_title": {
+   "text": {
+    "translate": "gui.ae2_pattern_disk.encoding_title"
+   },
+   "position": {
+    "left": 8,
+    "bottom": 177
+   }
+  }
+ },
+ "widgets": {
+  "modePanel0": {
+   "left": 36,
+   "bottom": 165,
+   "width": 115,
+   "height": 66
+  },
+  "modePanel1": {
+   "left": 36,
+   "bottom": 165,
+   "width": 115,
+   "height": 66
+  },
+  "modePanel2": {
+   "left": 36,
+   "bottom": 165,
+   "width": 115,
+   "height": 66
+  },
+  "modePanel3": {
+   "left": 36,
+   "bottom": 165,
+   "width": 115,
+   "height": 66
+  },
+  "diskList": {
+   "left": 8,
+   "bottom": 165,
+   "width": 24,
+   "height": 66
+  },
+  "encodePattern": {
+   "left": 166,
+   "bottom": 145
+  },
+  "craftingClearPattern": {
+   "left": 98,
+   "bottom": 159
+  },
+  "craftingSubstitutions": {
+   "left": 108,
+   "bottom": 159
+  },
+  "craftingFluidSubstitutions": {
+   "left": 118,
+   "bottom": 159
+  },
+  "processingPatternModeScrollbar": {
+   "left": 41,
+   "bottom": 159,
+   "height": 54
+  },
+  "processingClearPattern": {
+   "left": 107,
+   "bottom": 159
+  },
+  "processingMergeItems": {
+   "left": 117,
+   "bottom": 149
+  },
+  "processingRotatePrimary": {
+   "left": 117,
+   "bottom": 159
+  },
+  "processingSubstitutions": {
+   "left": 107,
+   "bottom": 149
+  },
+  "smithingTableSubstitutions": {
+   "left": 52,
+   "bottom": 151
+  },
+  "smithingTableClearPattern": {
+   "left": 42,
+   "bottom": 151
+  },
+  "stonecuttingPatternModeScrollbar": {
+   "left": 139,
+   "bottom": 160,
+   "height": 56
+  },
+  "scrollbar": {
+   "left": 175,
+   "top": 18
+  },
+  "viewCells": {
+   "right": 800,
+   "top": 0
+  },
+  "craftingStatus": {
+   "left": 171,
+   "top": -5,
+   "hideEdge": false,
+   "width": 20,
+   "height": 20
+  },
+  "search": {
+   "left": 80,
+   "top": 4,
+   "width": 89,
+   "height": 12
+  },
+  "miniSearch": {
+   "left": 46,
+   "bottom": 179,
+   "width": 66,
+   "height": 8
+  },
+  "processingMultiply": {
+   "left": 107,
+   "bottom": 113
+  },
+  "processingDivide": {
+   "left": 117,
+   "bottom": 113
+  }
+ }
+}

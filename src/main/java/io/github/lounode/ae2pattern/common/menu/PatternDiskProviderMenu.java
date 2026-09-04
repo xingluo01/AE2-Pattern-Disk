@@ -10,7 +10,6 @@ import appeng.api.config.Settings;
 import appeng.api.config.YesNo;
 import appeng.api.inventories.InternalInventory;
 import appeng.api.stacks.GenericStack;
-import appeng.client.gui.Icon;
 import appeng.helpers.externalstorage.GenericStackInv;
 import appeng.helpers.patternprovider.PatternProviderReturnInventory;
 import appeng.menu.AEBaseMenu;
@@ -21,7 +20,7 @@ import appeng.menu.slot.AppEngSlot;
 
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskProviderBlockEntity;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
-import io.github.lounode.ae2pattern.core.AEPatternSlotSemantics;
+import io.github.lounode.ae2pattern.AEPatternRegistries;
 
 /**
  * Menu for the pattern disk provider: shows the disk slots plus the three toolbar toggles shared with
@@ -59,7 +58,7 @@ public class PatternDiskProviderMenu extends AEBaseMenu {
         // Disk slots (our own): the source of patterns for this provider.
         var inv = host.getDiskInventory();
         for (int i = 0; i < PatternDiskProviderBlockEntity.DISK_SLOT_COUNT; i++) {
-            this.addSlot(new DiskSlot(inv, i), AEPatternSlotSemantics.PROVIDER_DISK);
+            this.addSlot(new DiskSlot(inv, i), AEPatternRegistries.PROVIDER_DISK);
         }
 
         // Return inventory slots, mirroring AE2's provider.
@@ -116,11 +115,13 @@ public class PatternDiskProviderMenu extends AEBaseMenu {
         return host;
     }
 
-    private static class DiskSlot extends AppEngSlot {
+    /**
+     * 供应器磁盘槽：仅接受样板磁盘；空槽底图由 Screen 用 states.png (240,16,16,16) 自绘。
+     */
+    public static class DiskSlot extends AppEngSlot {
         DiskSlot(InternalInventory inventory, int index) {
             super(inventory, index);
-            // Pattern icon background, mirroring the original sample-provider's pattern slot styling.
-            setIcon(Icon.BACKGROUND_ENCODED_PATTERN);
+            // 背景覆盖层由 Screen 使用 states.png (240,16,16,16) 自绘，不依赖 AE2 内置槽图标
         }
 
         @Override

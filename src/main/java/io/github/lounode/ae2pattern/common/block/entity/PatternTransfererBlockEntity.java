@@ -27,10 +27,8 @@ import appeng.util.inv.InternalInventoryHost;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
 import io.github.lounode.ae2pattern.common.pattern.PatternClassifier;
 import io.github.lounode.ae2pattern.common.pattern.PatternDiskContents;
-import io.github.lounode.ae2pattern.core.AEPatternBlockEntities;
-import io.github.lounode.ae2pattern.core.AEPatternBlocks;
-import io.github.lounode.ae2pattern.core.AEPatternComponents;
-import io.github.lounode.ae2pattern.core.AEPatternItems;
+import io.github.lounode.ae2pattern.common.pattern.TransferMode;
+import io.github.lounode.ae2pattern.AEPatternRegistries;
 
 /**
  * Block entity for the pattern transferer.
@@ -45,9 +43,10 @@ import io.github.lounode.ae2pattern.core.AEPatternItems;
  * <p>Each server tick it performs one work cycle:</p>
  * <ol>
  *   <li>Blank patterns in the output slot are returned to the connected ME network (if any).</li>
- *   <li>For each input slot: if it holds an encoded pattern, extract it into an application disk and produce a
- *       blank pattern into the output slot. If it holds a populated pattern disk, move its patterns into the
- *       application disks.</li>
+ *   <li>For each input slot: STORE mode transfers encoded patterns into application disks (extract) or
+ *       moves patterns from a populated source disk into the application disks (source disk drains);
+ *       COPY mode copies patterns from a populated source disk into the application disks while keeping
+ *       the source disk's contents.</li>
  * </ol>
  */
 public class PatternTransfererBlockEntity extends AENetworkedBlockEntity
@@ -65,6 +64,20 @@ public class PatternTransfererBlockEntity extends AENetworkedBlockEntity
     /** Number of upgrade slots (accelerator/speed cards). */
     public static final int UPGRADE_SLOT_COUNT = 4;
 
+    /** 转存器工作模式（样板存储 / 样板复写）。 */
+    private TransferMode mode = TransferMode.STORE;
+
+    public TransferMode getMode() {
+        return mode;
+    }
+
+    public void setMode(TransferMode mode) {
+        if (this.mode != mode) {
+            this.mode = mode;
+            saveChanges();
+        }
+    }
+
     /** Ticks per second (Minecraft). */
     private static final double TICKS_PER_SECOND = 20.0;
 
@@ -76,9 +89,9 @@ public class PatternTransfererBlockEntity extends AENetworkedBlockEntity
     private final IUpgradeInventory upgrades;
 
     public PatternTransfererBlockEntity(BlockPos pos, BlockState blockState) {
-        super(AEPatternBlockEntities.PATTERN_TRANSFERER.get(), pos, blockState);
+        super(AEPatternRegistries.BE_TRANSFERER.get(), pos, blockState);
         this.upgrades = UpgradeInventories.forMachine(
-                AEPatternBlocks.PATTERN_TRANSFERER.get(),
+                AEPatternRegistries.BLOCK_TRANSFERER.get(),
                 UPGRADE_SLOT_COUNT,
                 this::onUpgradesChanged);
         this.getMainNode()
@@ -100,7 +113,7 @@ public class PatternTransfererBlockEntity extends AENetworkedBlockEntity
 
     @Override
     protected IManagedGridNode createMainNode() {
-        return super.createMainNode().setVisualRepresentation(AEPatternItems.PATTERN_TRANSFERER.get());
+        return super.createMainNode().setVisualRepresentation(AEPatternRegistries.ITEM_TRANSFERER.get());
     }
 
     @Override
@@ -214,6 +227,12 @@ public class PatternTransfererBlockEntity extends AENetworkedBlockEntity
     /**
      * Processes the six input slots, distributing patterns across the application disks.
      *
+     * <p>Mode dispatch:</p>
+     * <ul>
+     *   <li>{@link TransferMode#STORE}：编码样板提取到磁盘；磁盘配方<b>移动</b>到目标盘（源盘被清空）。</li>
+     *   <li>{@link TransferMode#COPY}：磁盘配方<b>复制</b>到目标盘（源盘内容保留）。</li>
+     * </ul>
+     *
      * @param limit maximum number of patterns to transfer this tick.
      */
     private boolean processInputs(int limit) {
@@ -224,70 +243,140 @@ public class PatternTransfererBlockEntity extends AENetworkedBlockEntity
                 continue;
             }
 
-            boolean did = false;
+            int transferred = 0;
             if (input.getItem() instanceof PatternDiskItem disk) {
-                did = drainDiskInto(input, disk, limit - processed);
+                if (mode == TransferMode.STORE) {
+                    // 样板存储：磁盘 → 磁盘（移动：源盘配方转出，目标盘接收）
+                    transferred = storeDiskInto(input, disk, limit - processed);
+                } else if (mode == TransferMode.COPY) {
+                    // 样板复写：磁盘 → 磁盘（复制：源盘内容保留）
+                    transferred = copyDiskInto(input, disk, limit - processed);
+                }
             } else if (PatternClassifier.isEncodedPatternStack(input)) {
-                did = extractPatternInto(input);
+                if (mode == TransferMode.STORE) {
+                    // 样板存储：编码样板 → 磁盘
+                    transferred = extractPatternInto(input) ? 1 : 0;
+                }
             }
-            if (did) {
-                processed++;
-            }
+            processed += transferred;
         }
         return processed > 0;
     }
 
     /**
-     * Moves all patterns from a populated source disk into application disks with matching/empty type.
+     * 移动语义：将源磁盘中的配方依次移入目标应用磁盘，源盘已移出的配方被移除。
+     * 每个配方优先写入第一个满足条件的目标盘：类型匹配（未定型或同类型）、未满、
+     * 且不含产生相同主输出的配方（同输出互斥）。
+     * 无法安置的配方（类型不匹配/全满/互斥）保留在源盘中，不丢弃。
+     *
+     * @param limit 本次最多移动的配方数量
+     * @return 本次实际移动的配方数
      */
-    private boolean drainDiskInto(ItemStack source, PatternDiskItem sourceDisk, int limit) {
+    private int storeDiskInto(ItemStack source, PatternDiskItem sourceDisk, int limit) {
         var sourceContents = sourceDisk.contents(source);
         if (sourceContents.isEmpty() || limit <= 0) {
-            return false;
+            return 0;
+        }
+        var sourceType = sourceContents.type();
+        // 损坏数据防御：有配方却未定型（type=null）的源盘无法安全移动，跳过
+        if (sourceType == null) {
+            return 0;
         }
 
         boolean changed = false;
         int moved = 0;
-        for (int slot = 0; slot < APPLICATION_SLOT_COUNT && !sourceContents.isEmpty() && moved < limit; slot++) {
-            ItemStack appDisk = inventory.getStackInSlot(applicationSlot(slot));
-            if (appDisk.isEmpty() || !(appDisk.getItem() instanceof PatternDiskItem app)) {
-                continue;
-            }
-            var appContents = app.contents(appDisk);
-            if (appContents.isTyped() && !appContents.type().equals(sourceContents.type())) {
-                continue; // Type mismatch for this disk.
-            }
-
-            while (!sourceContents.isEmpty() && !appContents.isFull() && moved < limit) {
-                var candidate = sourceContents.patterns().get(0);
-                // Same-result exclusivity: skip patterns that duplicate an output already on the disk.
-                if (hasConflictingOutput(appContents, candidate, this.level)) {
-                    sourceContents = sourceContents.remove(0);
-                    continue;
+        var remaining = new java.util.ArrayList<ItemStack>();
+        for (var candidate : sourceContents.patterns()) {
+            boolean placed = false;
+            if (moved < limit) {
+                for (int slot = 0; slot < APPLICATION_SLOT_COUNT; slot++) {
+                    ItemStack appDisk = inventory.getStackInSlot(applicationSlot(slot));
+                    if (appDisk.isEmpty() || !(appDisk.getItem() instanceof PatternDiskItem app)) {
+                        continue;
+                    }
+                    var appContents = app.contents(appDisk);
+                    if (appContents.isFull()) {
+                        continue;
+                    }
+                    if (appContents.isTyped() && !appContents.type().equals(sourceType)) {
+                        continue; // 类型不匹配的目标盘
+                    }
+                    if (hasConflictingOutput(appContents, candidate, this.level)) {
+                        continue; // 同主产物互斥
+                    }
+                    var updated = appContents.add(candidate, sourceType);
+                    if (updated == null) {
+                        continue;
+                    }
+                    appDisk.set(AEPatternRegistries.DISK_CONTENTS.get(), updated);
+                    moved++;
+                    changed = true;
+                    placed = true;
+                    break; // 该配方已移出，处理下一个
                 }
-                var updated = appContents.add(candidate, sourceContents.type());
-                if (updated == null) {
-                    break;
-                }
-                appContents = updated;
-                sourceContents = sourceContents.remove(0);
-                moved++;
-                changed = true;
             }
-
-            if (moved > 0) {
-                appDisk.set(AEPatternComponents.DISK_CONTENTS.get(), appContents);
+            if (!placed) {
+                remaining.add(candidate); // 本次未安置：保留在源盘
             }
         }
 
         if (changed) {
-            if (sourceContents.isEmpty()) {
-                source.remove(AEPatternComponents.DISK_CONTENTS.get());
+            if (remaining.isEmpty()) {
+                source.remove(AEPatternRegistries.DISK_CONTENTS.get());
             } else {
-                source.set(AEPatternComponents.DISK_CONTENTS.get(), sourceContents);
+                source.set(AEPatternRegistries.DISK_CONTENTS.get(),
+                        new PatternDiskContents(sourceType, sourceContents.capacity(), remaining));
             }
         }
-        return changed;
+        return moved;
+    }
+
+    /**
+     * 复制语义：将源磁盘中的每个配方复制到目标应用磁盘，源磁盘内容保持不变。
+     * 每个配方优先写入第一个满足条件的目标盘：类型匹配（未定型或同类型）、未满、
+     * 且不含产生相同主输出的配方（同输出互斥，天然避免重复复制）。
+     *
+     * @param limit 本次最多复制的配方数量
+     * @return 本次实际复制的配方数
+     */
+    private int copyDiskInto(ItemStack source, PatternDiskItem sourceDisk, int limit) {
+        var sourceContents = sourceDisk.contents(source);
+        if (sourceContents.isEmpty() || limit <= 0) {
+            return 0;
+        }
+
+        int copied = 0;
+        // 只读遍历源盘配方，绝不修改源盘（复制而非移动）
+        for (var candidate : sourceContents.patterns()) {
+            if (copied >= limit) {
+                break;
+            }
+            for (int slot = 0; slot < APPLICATION_SLOT_COUNT; slot++) {
+                ItemStack appDisk = inventory.getStackInSlot(applicationSlot(slot));
+                if (appDisk.isEmpty() || !(appDisk.getItem() instanceof PatternDiskItem app)) {
+                    continue;
+                }
+                var appContents = app.contents(appDisk);
+                if (appContents.isFull()) {
+                    continue;
+                }
+                if (appContents.isTyped() && !appContents.type().equals(sourceContents.type())) {
+                    continue; // 类型不匹配的目标盘
+                }
+                // 目标盘已含同输出配方（此前已复制或已存在）则跳过该盘
+                if (hasConflictingOutput(appContents, candidate, this.level)) {
+                    continue;
+                }
+                var updated = appContents.add(candidate, sourceContents.type());
+                if (updated == null) {
+                    continue;
+                }
+                appDisk.set(AEPatternRegistries.DISK_CONTENTS.get(), updated);
+                copied++;
+                break; // 该配方已复制，处理下一个配方
+            }
+        }
+        return copied;
     }
 
     /**
@@ -339,11 +428,11 @@ public class PatternTransfererBlockEntity extends AENetworkedBlockEntity
         }
 
         ItemStack appDisk = inventory.getStackInSlot(applicationSlot(targetSlot));
-        appDisk.set(AEPatternComponents.DISK_CONTENTS.get(), updated);
+        appDisk.set(AEPatternRegistries.DISK_CONTENTS.get(), updated);
         inventory.setItemDirect(inputSlotOf(input), ItemStack.EMPTY);
 
         // Produce a blank pattern into the output slot.
-        ItemStack blank = AEPatternItems.blankPattern();
+        ItemStack blank = AEPatternRegistries.blankPattern();
         ItemStack output = inventory.getStackInSlot(OUTPUT_SLOT);
         if (output.isEmpty()) {
             inventory.setItemDirect(OUTPUT_SLOT, blank);
@@ -367,25 +456,7 @@ public class PatternTransfererBlockEntity extends AENetworkedBlockEntity
      * Used to enforce same-result mutual exclusion (only one crafting route per output may be stored).
      */
     private boolean hasConflictingOutput(PatternDiskContents contents, ItemStack candidate, Level level) {
-        if (contents == null || contents.isEmpty()) {
-            return false;
-        }
-        var candidateDetails = PatternClassifier.decode(candidate, level);
-        if (candidateDetails == null) {
-            return false;
-        }
-        var candidateOutput = candidateDetails.getPrimaryOutput();
-        for (var existing : contents.patterns()) {
-            var details = PatternClassifier.decode(existing, level);
-            if (details != null) {
-                var existingOutput = details.getPrimaryOutput();
-                if (existingOutput != null && candidateOutput != null
-                        && existingOutput.what().equals(candidateOutput.what())) {
-                    return true;
-                }
-            }
-        }
-        return false;
+        return PatternClassifier.hasSamePrimaryOutput(contents.patterns(), candidate, level);
     }
 
     @Override
@@ -408,6 +479,7 @@ public class PatternTransfererBlockEntity extends AENetworkedBlockEntity
         super.saveAdditional(tag, registries);
         inventory.writeToNBT(tag, "inv", registries);
         upgrades.writeToNBT(tag, "upgrades", registries);
+        tag.putString("mode", mode.name());
         tag.putDouble("patternAccumulator", patternAccumulator);
     }
 
@@ -416,6 +488,11 @@ public class PatternTransfererBlockEntity extends AENetworkedBlockEntity
         super.loadTag(tag, registries);
         inventory.readFromNBT(tag, "inv", registries);
         upgrades.readFromNBT(tag, "upgrades", registries);
+        try {
+            mode = TransferMode.valueOf(tag.getString("mode"));
+        } catch (IllegalArgumentException e) {
+            mode = TransferMode.STORE;
+        }
         patternAccumulator = tag.getDouble("patternAccumulator");
     }
 

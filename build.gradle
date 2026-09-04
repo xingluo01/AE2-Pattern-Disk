@@ -164,8 +164,12 @@ dependencies {
     accessCompileOnly(libs.ae2)
     compileOnly(libs.guideme)
 
+    // EMI API for recipe-transfer integration (runtime is provided by the modpack).
+    clientCompileOnly(libs.emi)
+
     // Client source set: explicit client-side API access.
     clientCompileOnly(libs.ae2)
+    clientCompileOnly(libs.guideme)
 
     // Runtime-only development mods.
     localRuntime 'curse.maven:applied-energistics-2-223794:7027323'
@@ -209,6 +213,11 @@ dependencies {
     localRuntime 'maven.modrinth:refined-storage:2.0.9'
     localRuntime 'dev.vfyjxf:moddevmcp:0.1.6'
     localRuntime(libs.emi)
+
+    // EnderIO + EnderIO Evolution + Conduit Optimizer（开发环境集成测试）
+    localRuntime 'maven.modrinth:enderio:Tfs8aJPH'
+    localRuntime 'maven.modrinth:enderio_evolution:29EVRQ7y'
+    localRuntime 'maven.modrinth:ender-io-conduit-optimizer:lIFulFB9'
 
     implementation('dev.vfyjxf:moddevmcp:0.3') {
         transitive = false

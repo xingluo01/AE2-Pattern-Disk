@@ -1,0 +1,8 @@
+{
+  "parent": "ae2:part/display_off",
+  "textures": {
+    "lightsBright": "ae2_pattern_disk:part/pattern_disk_encoding_terminal_bright",
+    "lightsMedium": "ae2_pattern_disk:part/pattern_disk_encoding_terminal_medium",
+    "lightsDark": "ae2_pattern_disk:part/pattern_disk_encoding_terminal_dark"
+  }
+}

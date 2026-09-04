@@ -1,7 +1,12 @@
 package io.github.lounode.ae2pattern.client.gui;
 
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.Slot;
+
+import guideme.PageAnchor;
 
 import appeng.api.config.LockCraftingMode;
 import appeng.api.config.Settings;
@@ -9,6 +14,7 @@ import appeng.api.config.YesNo;
 import appeng.api.upgrades.Upgrades;
 import appeng.client.gui.AEBaseScreen;
 import appeng.client.gui.Icon;
+import appeng.client.gui.style.Blitter;
 import appeng.client.gui.style.ScreenStyle;
 import appeng.client.gui.style.StyleManager;
 import appeng.client.gui.widgets.ServerSettingToggleButton;
@@ -39,6 +45,11 @@ public class PatternDiskProviderScreen extends AEBaseScreen<PatternDiskProviderM
     private final SettingToggleButton<LockCraftingMode> lockCraftingModeButton;
     private final ToggleButton showInPatternAccessTerminalButton;
 
+    /** 磁盘槽空槽覆盖层：states.png (240,16,16,16)。 */
+    private static final Blitter DISK_SLOT_OVERLAY = Blitter
+            .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/states.png"))
+            .src(240, 16, 16, 16);
+
     public PatternDiskProviderScreen(PatternDiskProviderMenu menu, Inventory playerInventory, Component title) {
         super(menu, playerInventory, title,
                 StyleManager.loadStyleDoc("/screens/ae2_pattern_disk/pattern_disk_provider.json"));
@@ -57,6 +68,22 @@ public class PatternDiskProviderScreen extends AEBaseScreen<PatternDiskProviderM
                 GuiText.PatternAccessTerminalHint.text(),
                 btn -> selectNextPatternProviderMode());
         this.addToLeftToolbar(this.showInPatternAccessTerminalButton);
+    }
+
+    @Override
+    protected PageAnchor getHelpTopic() {
+        return new PageAnchor(
+                ResourceLocation.parse("ae2_pattern_disk:items-blocks-machines/pattern_disk_provider.md"),
+                null);
+    }
+
+    @Override
+    public void renderSlot(GuiGraphics guiGraphics, Slot slot) {
+        // 磁盘槽仅在有物品时占据槽位，空槽时由 Screen 绘制自定义覆盖层图标
+        if (slot instanceof PatternDiskProviderMenu.DiskSlot diskSlot && diskSlot.getItem().isEmpty()) {
+            DISK_SLOT_OVERLAY.dest(diskSlot.x, diskSlot.y).zOffset(20).blit(guiGraphics);
+        }
+        super.renderSlot(guiGraphics, slot);
     }
 
     @Override

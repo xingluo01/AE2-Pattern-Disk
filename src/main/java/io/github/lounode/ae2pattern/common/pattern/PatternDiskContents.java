@@ -76,8 +76,8 @@ public record PatternDiskContents(
     }
 
     /**
-     * Adds a single pattern, locking the type if this disk was untyped. Returns {@code null} on success,
-     * or the offending stack if the disk is full or the pattern type does not match.
+     * Adds a single pattern, locking the type if this disk was untyped. Returns the new contents on success,
+     * or null if the disk is full or the pattern type does not match.
      */
     public PatternDiskContents add(ItemStack pattern, String patternType) {
         if (isFull()) {
@@ -88,6 +88,27 @@ public record PatternDiskContents(
         }
         var newPatterns = new ArrayList<>(patterns);
         newPatterns.add(pattern.copy());
+        var newType = type != null ? type : patternType;
+        return new PatternDiskContents(newType, capacity, newPatterns);
+    }
+
+    /**
+     * Inserts a single pattern back at {@code index} (undo of {@link #remove(int)}): restores a pattern
+     * to its original position during an AE2 swap rollback. Out-of-range indices clamp to the end. Returns
+     * the new contents on success, or null if the disk is full or the pattern type does not match.
+     */
+    public PatternDiskContents insert(int index, ItemStack pattern, String patternType) {
+        if (isFull()) {
+            return null;
+        }
+        if (type != null && !type.equals(patternType)) {
+            return null;
+        }
+        if (index < 0 || index > patterns.size()) {
+            index = patterns.size();
+        }
+        var newPatterns = new ArrayList<>(patterns);
+        newPatterns.add(index, pattern.copy());
         var newType = type != null ? type : patternType;
         return new PatternDiskContents(newType, capacity, newPatterns);
     }

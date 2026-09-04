@@ -21,8 +21,7 @@ import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
 import io.github.lounode.ae2pattern.common.pattern.PatternDiskRemoveInventory;
 
 import io.github.lounode.ae2pattern.common.logic.PatternDiskProviderLogic;
-import io.github.lounode.ae2pattern.core.AEPatternBlockEntities;
-import io.github.lounode.ae2pattern.core.AEPatternItems;
+import io.github.lounode.ae2pattern.AEPatternRegistries;
 
 /**
  * Block entity for the pattern disk provider: holds up to {@link #DISK_SLOT_COUNT} pattern disks and
@@ -34,11 +33,16 @@ public class PatternDiskProviderBlockEntity extends PatternProviderBlockEntity i
 
     private final AppEngInternalInventory diskInventory = new AppEngInternalInventory(this, DISK_SLOT_COUNT);
 
-    /** Cached terminal view; rebuilt only when the disk fingerprint actually changes. */
+    /**
+     * Cached terminal view for the next PAT session that opens. AE2's PAT keeps a fixed row count per
+     * open session, so an open PAT keeps using the instance it grabbed at open time (its rows freeze,
+     * removals mark rows empty in place). Any disk change invalidates this cache so the next PAT that
+     * opens re-scans the disks into a fresh, compacted view (re-flowed rows + newly written patterns).
+     */
     private PatternDiskRemoveInventory cachedTerminalInventory;
 
     public PatternDiskProviderBlockEntity(BlockPos pos, BlockState blockState) {
-        super(AEPatternBlockEntities.PATTERN_DISK_PROVIDER.get(), pos, blockState);
+        super(AEPatternRegistries.BE_PROVIDER.get(), pos, blockState);
     }
 
     @Override
@@ -52,19 +56,46 @@ public class PatternDiskProviderBlockEntity extends PatternProviderBlockEntity i
         return diskInventory;
     }
 
-    /**
-     * Terminal view: exposes every encoded pattern stored across all inserted disks so AE2 pattern
-     * access terminals can enumerate, display, and {@code extract} them. Extraction physically drops the
-     * pattern from its source disk and costs one blank pattern drawn from the attached ME network.
-     */
     @Override
     public appeng.api.inventories.InternalInventory getTerminalPatternInventory() {
         if (cachedTerminalInventory != null) {
             return cachedTerminalInventory;
         }
-        cachedTerminalInventory = new PatternDiskRemoveInventory(diskInventory, this::tryDrawBlankPattern,
+        cachedTerminalInventory = new PatternDiskRemoveInventory(diskInventory,
+                new PatternDiskRemoveInventory.BlankPatternSink() {
+                    @Override
+                    public boolean drawBlankPatterns(int count) {
+                        return tryDrawBlankPattern(count);
+                    }
+
+                    @Override
+                    public boolean hasBlankPatterns(int count) {
+                        return canDrawBlankPattern(count);
+                    }
+
+                    @Override
+                    public boolean returnBlankPatterns(int count) {
+                        return returnBlankPattern(count);
+                    }
+                },
                 this::markTerminalChanged);
         return cachedTerminalInventory;
+    }
+
+    /**
+     * Read-only pre-check: whether the attached ME network currently holds at least {@code count}
+     * blank patterns (SIMULATE, nothing is extracted). Returns false when the machine is not on a
+     * grid yet or the network cannot cover the whole count.
+     */
+    private boolean canDrawBlankPattern(int count) {
+        var grid = getMainNode().getGrid();
+        if (grid == null || count <= 0) {
+            return false;
+        }
+        var storage = grid.getStorageService().getInventory();
+        var blank = AEItemKey.of(appeng.core.definitions.AEItems.BLANK_PATTERN);
+        return storage.extract(blank, count, appeng.api.config.Actionable.SIMULATE,
+                IActionSource.ofMachine(this)) == count;
     }
 
     /**
@@ -74,23 +105,35 @@ public class PatternDiskProviderBlockEntity extends PatternProviderBlockEntity i
      * is not on a grid yet.
      */
     private boolean tryDrawBlankPattern(int count) {
+        if (!canDrawBlankPattern(count)) {
+            return false;
+        }
+        var grid = getMainNode().getGrid();
+        var storage = grid.getStorageService().getInventory();
+        var blank = AEItemKey.of(appeng.core.definitions.AEItems.BLANK_PATTERN);
+        return storage.extract(blank, count, appeng.api.config.Actionable.MODULATE,
+                IActionSource.ofMachine(this)) == count;
+    }
+
+    /**
+     * Returns {@code count} blank patterns to the attached ME network (undo of {@link #tryDrawBlankPattern},
+     * used when an AE2 swap restore re-inserts a just-taken pattern).
+     */
+    private boolean returnBlankPattern(int count) {
         var grid = getMainNode().getGrid();
         if (grid == null || count <= 0) {
             return false;
         }
         var storage = grid.getStorageService().getInventory();
         var blank = AEItemKey.of(appeng.core.definitions.AEItems.BLANK_PATTERN);
-        if (storage.extract(blank, count, appeng.api.config.Actionable.SIMULATE, IActionSource.ofMachine(this)) != count) {
-            return false; // cannot cover the whole extraction: refuse, draw nothing
-        }
-        return storage.extract(blank, count, appeng.api.config.Actionable.MODULATE, IActionSource.ofMachine(this)) == count;
+        return storage.insert(blank, count, appeng.api.config.Actionable.MODULATE,
+                IActionSource.ofMachine(this)) == count;
     }
 
-    /** Rebuilds the terminal view after a real mutation, persisting the disk inventory change. */
+    /** Rebuilds the provider's pattern list and invalidates the cached terminal view after a real
+     * mutation. An already-open PAT keeps using its own instance (rows frozen, removals empty rows in
+     * place); the next PAT that opens rebuilds a fresh, compacted view of the current disk layout. */
     private void markTerminalChanged() {
-        if (cachedTerminalInventory != null) {
-            cachedTerminalInventory.rebuild();
-        }
         refreshFromDisks();
         saveChanges();
     }
@@ -102,21 +145,23 @@ public class PatternDiskProviderBlockEntity extends PatternProviderBlockEntity i
     }
 
     /**
-     * Rebuilds the provider's pattern list from current disk contents.
+     * Rebuilds the provider's pattern list from current disk contents and invalidates the cached
+     * terminal view so the next PAT session opens a fresh, compacted view. An open PAT keeps its own
+     * (frozen-row) instance and is never re-synced here — re-syncing would grow its row count past the
+     * PAT's fixed client slot count and crash the server (AE2 limitation).
      */
     public void refreshFromDisks() {
-        boolean rebuilt = false;
         if (getLogic() instanceof PatternDiskProviderLogic diskLogic) {
-            rebuilt = diskLogic.refreshPatternsFromDisks();
+            diskLogic.refreshPatternsFromDisks();
         }
-        if (rebuilt) {
-            cachedTerminalInventory = null; // invalidate cached terminal view
-        }
+        cachedTerminalInventory = null; // invalidate: next PAT opening rebuilds a fresh view
     }
 
     @Override
     public void onChangeInventory(AppEngInternalInventory inv, int slot) {
         if (inv == diskInventory) {
+            // 磁盘槽内容变化（含 PAT 取出真删、编码终端写盘、取盘/换盘）：磁盘已是最终状态，
+            // 只需重建 pattern 列表并使缓存视图失效（下次 PAT 打开重建紧凑视图）。
             refreshFromDisks();
             saveChanges();
         }
@@ -168,11 +213,11 @@ public class PatternDiskProviderBlockEntity extends PatternProviderBlockEntity i
 
     @Override
     public AEItemKey getTerminalIcon() {
-        return AEItemKey.of(AEPatternItems.PATTERN_DISK_PROVIDER.get());
+        return AEItemKey.of(AEPatternRegistries.ITEM_PROVIDER.get());
     }
 
     @Override
     public ItemStack getMainMenuIcon() {
-        return new ItemStack(AEPatternItems.PATTERN_DISK_PROVIDER.get());
+        return new ItemStack(AEPatternRegistries.ITEM_PROVIDER.get());
     }
 }

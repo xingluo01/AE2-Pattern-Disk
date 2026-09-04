@@ -16,7 +16,6 @@ import appeng.menu.locator.MenuLocators;
 import appeng.util.InteractionUtil;
 
 import io.github.lounode.ae2pattern.common.block.entity.PatternTransfererBlockEntity;
-import io.github.lounode.ae2pattern.core.AEPatternMenus;
 
 /**
  * In-world block hosting the pattern transferer. Two pattern disks can be swapped/transferred between,

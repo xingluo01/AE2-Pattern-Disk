@@ -14,7 +14,7 @@ import net.minecraft.world.level.Level;
 import io.github.lounode.ae2pattern.common.pattern.PatternClassifier;
 import io.github.lounode.ae2pattern.common.pattern.PatternDiskContents;
 import io.github.lounode.ae2pattern.common.pattern.PatternDiskTier;
-import io.github.lounode.ae2pattern.core.AEPatternComponents;
+import io.github.lounode.ae2pattern.AEPatternRegistries;
 
 /**
  * A physical disk that stores up to {@link #capacity()} encoded patterns, all of a single type.
@@ -47,7 +47,7 @@ public class PatternDiskItem extends Item {
      * Returns the current contents of the disk, or an empty untyped disk if none is stored yet.
      */
     public PatternDiskContents contents(ItemStack stack) {
-        var contents = stack.get(AEPatternComponents.DISK_CONTENTS.get());
+        var contents = stack.get(AEPatternRegistries.DISK_CONTENTS.get());
         return contents != null ? contents : PatternDiskContents.empty(capacity());
     }
 
@@ -89,7 +89,7 @@ public class PatternDiskItem extends Item {
         if (updated == null) {
             return false;
         }
-        disk.set(AEPatternComponents.DISK_CONTENTS.get(), updated);
+        disk.set(AEPatternRegistries.DISK_CONTENTS.get(), updated);
         return true;
     }
 
@@ -99,7 +99,7 @@ public class PatternDiskItem extends Item {
     public void removeAt(ItemStack disk, int index) {
         var contents = contents(disk);
         var updated = contents.remove(index);
-        disk.set(AEPatternComponents.DISK_CONTENTS.get(), updated);
+        disk.set(AEPatternRegistries.DISK_CONTENTS.get(), updated);
     }
 
     /**

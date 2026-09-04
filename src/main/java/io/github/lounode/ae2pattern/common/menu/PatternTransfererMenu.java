@@ -7,13 +7,15 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 
 import appeng.menu.SlotSemantics;
+import appeng.menu.guisync.GuiSync;
 import appeng.menu.implementations.MenuTypeBuilder;
 import appeng.menu.implementations.UpgradeableMenu;
 
 import io.github.lounode.ae2pattern.common.block.entity.PatternTransfererBlockEntity;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
 import io.github.lounode.ae2pattern.common.pattern.PatternClassifier;
-import io.github.lounode.ae2pattern.core.AEPatternSlotSemantics;
+import io.github.lounode.ae2pattern.common.pattern.TransferMode;
+import io.github.lounode.ae2pattern.AEPatternRegistries;
 
 /**
  * Menu for the pattern transferer.
@@ -30,9 +32,28 @@ public class PatternTransfererMenu extends UpgradeableMenu<PatternTransfererBloc
 
     private final PatternTransfererBlockEntity host;
 
+    @GuiSync(90)
+    public TransferMode transferMode = TransferMode.STORE;
+
     public PatternTransfererMenu(int id, Inventory playerInv, PatternTransfererBlockEntity host) {
         super(TYPE, id, playerInv, host);
         this.host = host;
+        this.transferMode = host.getMode();
+        registerClientAction("setTransferMode", TransferMode.class, this::setTransferMode);
+    }
+
+    public void setTransferMode(TransferMode mode) {
+        if (isClientSide()) {
+            sendClientAction("setTransferMode", mode);
+        } else {
+            host.setMode(mode);
+            this.transferMode = mode;
+            broadcastChanges();
+        }
+    }
+
+    public TransferMode getTransferMode() {
+        return transferMode;
     }
 
     @Override
@@ -43,18 +64,18 @@ public class PatternTransfererMenu extends UpgradeableMenu<PatternTransfererBloc
         // 6 input slots.
         for (int i = 0; i < PatternTransfererBlockEntity.INPUT_SLOT_COUNT; i++) {
             this.addSlot(new InputSlot(inv, PatternTransfererBlockEntity.inputSlot(i)),
-                    AEPatternSlotSemantics.TRANSFER_INPUT);
+                    AEPatternRegistries.TRANSFER_INPUT);
         }
 
         // 6 application slots.
         for (int i = 0; i < PatternTransfererBlockEntity.APPLICATION_SLOT_COUNT; i++) {
             this.addSlot(new DiskOnlySlot(inv, PatternTransfererBlockEntity.applicationSlot(i)),
-                    AEPatternSlotSemantics.TRANSFER_APPLICATION);
+                    AEPatternRegistries.TRANSFER_APPLICATION);
         }
 
         // Blank output slot.
         this.addSlot(new BlankOutputSlot(inv, PatternTransfererBlockEntity.OUTPUT_SLOT),
-                AEPatternSlotSemantics.TRANSFER_BLANK_OUTPUT);
+                AEPatternRegistries.TRANSFER_BLANK_OUTPUT);
     }
 
     public PatternTransfererBlockEntity getTransferer() {

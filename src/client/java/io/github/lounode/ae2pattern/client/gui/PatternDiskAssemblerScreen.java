@@ -2,7 +2,10 @@ package io.github.lounode.ae2pattern.client.gui;
 
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
+
+import guideme.PageAnchor;
 
 import appeng.client.gui.Icon;
 import appeng.client.gui.implementations.UpgradeableScreen;
@@ -43,6 +46,13 @@ public class PatternDiskAssemblerScreen extends UpgradeableScreen<PatternDiskAss
         previousPage.setMessage(Component.translatable("gui.ae2_pattern_disk.pattern_disk_assembler.previous"));
         addToLeftToolbar(nextPage);
         addToLeftToolbar(previousPage);
+    }
+
+    @Override
+    protected PageAnchor getHelpTopic() {
+        return new PageAnchor(
+                ResourceLocation.parse("ae2_pattern_disk:items-blocks-machines/pattern_disk_assembler.md"),
+                null);
     }
 
     @Override

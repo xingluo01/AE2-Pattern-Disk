@@ -4,10 +4,14 @@
     "../common/common.json",
     "../common/player_inventory.json"
   ],
-  "helpTopic": "ae2_pattern_disk:ae2guide/items-blocks-machines/pattern_transferer.md",
   "background": {
     "texture": "ae2_pattern_disk:textures/guis/ae2_pattern_disk.png",
-    "srcRect": [0, 0, 176, 168]
+    "srcRect": [
+      0,
+      0,
+      176,
+      168
+    ]
   },
   "slots": {
     "ae2_pattern_disk:transfer_input": {

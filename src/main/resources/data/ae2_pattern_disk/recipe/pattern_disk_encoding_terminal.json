@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    { "item": "ae2:pattern_encoding_terminal" },
+    { "item": "ae2_pattern_disk:pattern_disk_1k" }
+  ],
+  "result": {
+    "count": 1,
+    "id": "ae2_pattern_disk:pattern_disk_encoding_terminal"
+  }
+}
