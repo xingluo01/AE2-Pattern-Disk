@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "a": { "item": "ae2:quartz_glass" },
+    "b": { "item": "ae2:calculation_processor" },
+    "c": { "item": "ae2_pattern_disk:pattern_disk_assembler" },
+    "d": { "item": "ae2_pattern_disk:pattern_disk_64k" }
+  },
+  "pattern": [
+    "aba",
+    "dcd",
+    "aba"
+  ],
+  "result": {
+    "count": 1,
+    "id": "ae2_pattern_disk:batch_molecular_assembler"
+  }
+}

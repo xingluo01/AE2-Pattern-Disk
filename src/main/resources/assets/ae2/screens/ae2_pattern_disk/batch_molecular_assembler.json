@@ -1,0 +1,40 @@
+{
+  "$schema": "../schema.json",
+  "includes": [
+    "../common/common.json",
+    "../common/player_inventory.json",
+    "../common/toolbox.json"
+  ],
+  "background": {
+    "texture": "ae2_pattern_disk:textures/guis/ex_molecular_assembler.png",
+    "srcRect": [
+      0,
+      0,
+      176,
+      199
+    ]
+  },
+  "slots": {
+    "ae2_pattern_disk:batch_cell": {
+      "left": 29,
+      "top": 30,
+      "grid": "BREAK_AFTER_3COLS"
+    },
+    "ae2_pattern_disk:batch_disk": {
+      "left": 111,
+      "top": 30,
+      "grid": "BREAK_AFTER_3COLS"
+    }
+  },
+  "text": {
+    "dialog_title": {
+      "text": {
+        "translate": "gui.ae2_pattern_disk.batch_molecular_assembler"
+      },
+      "position": {
+        "left": 8,
+        "top": 6
+      }
+    }
+  }
+}

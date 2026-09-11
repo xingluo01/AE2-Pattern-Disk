@@ -12,7 +12,6 @@ import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.state.BlockState;
 
 import net.neoforged.api.distmarker.Dist;
@@ -145,20 +144,49 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
         return (int) Math.min(units[index].progress, 100);
     }
 
+    /** True while a unit executes a plan; the client uses it to keep provider-driven pages undimmed. */
+    public boolean isUnitExecuting(int index) {
+        if (index < 0 || index >= THREADS) {
+            return false;
+        }
+        return units[index].plan != null;
+    }
+
     /** Current supported crafting pattern for one unit, or {@code null} when the page is idle. */
     public @Nullable IMolecularAssemblerSupportedPattern getCurrentPattern(int index) {
         if (index < 0 || index >= THREADS) {
             return null;
         }
         var unit = units[index];
-        if (unit.plan == null && !unit.patternInv.isEmpty() && level instanceof ServerLevel) {
+        if (isClientSide()) {
+            // The execution plan is server-side state and is never mirrored to the client. Decode the
+            // manual pattern from the (synced) pattern slot instead, so slot validation and the
+            // disabled-slot overlay match the server-side state.
+            return decodeManualPattern(unit);
+        }
+        if (unit.plan == null && !unit.patternInv.isEmpty()) {
             // Decode the manually inserted pattern on demand so slot validation works immediately.
-            var item = unit.patternInv.getStackInSlot(0);
-            if (PatternDetailsHelper.decodePattern(item, level) instanceof IMolecularAssemblerSupportedPattern supported) {
+            var supported = decodeManualPattern(unit);
+            if (supported != null) {
                 unit.plan = supported;
+                unit.planSource = unit.patternInv.getStackInSlot(0).copy();
             }
         }
         return unit.plan;
+    }
+
+    /** Decodes the encoded pattern manually inserted into a unit's slot, or {@code null} if unusable. */
+    private @Nullable IMolecularAssemblerSupportedPattern decodeManualPattern(CraftUnit unit) {
+        if (level == null || unit.patternInv.isEmpty()) {
+            return null;
+        }
+        var item = unit.patternInv.getStackInSlot(0);
+        if (item.isEmpty()) {
+            return null;
+        }
+        return PatternDetailsHelper.decodePattern(item, level) instanceof IMolecularAssemblerSupportedPattern supported
+                ? supported
+                : null;
     }
 
     /**
@@ -245,6 +273,8 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
             // accept provider-pushed jobs (mirrors AE2's pattern-inventory gating).
             if (unit.plan == null && unit.grid.isEmpty() && unit.patternInv.isEmpty()) {
                 unit.plan = pattern;
+                unit.planSource = ItemStack.EMPTY;
+                unit.progress = 0;
                 unit.pushDirection = where;
                 fillGrid(unit, table, pattern);
                 this.getMainNode().ifPresent((grid, node) -> grid.getTickManager().alertDevice(node));
@@ -265,6 +295,12 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
      * Extracts this unit's pattern inputs from the ME network into its crafting grid. Used only for
      * self-executing pages (a pattern manually inserted into the unit's pattern slot). Missing inputs
      * are simply left empty; the caller re-checks readiness via {@link #canAssemble}.
+     *
+     * <p>The sparse 3x3 slot mapping is resolved through
+     * {@link IMolecularAssemblerSupportedPattern#fillCraftingGrid}, because the compressed input list
+     * returned by {@code IPatternDetails#getInputs()} does not expose recipe slot indices. Items are
+     * extracted from the network before they are placed into the grid, so the grid never contains
+     * items that were not actually removed from ME storage.</p>
      */
     private void tryFillGridFromNetwork(CraftUnit unit) {
         var plan = unit.plan;
@@ -277,44 +313,58 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
         }
         var storage = grid.getStorageService().getInventory();
         var inputs = plan.getInputs();
-        boolean changed = false;
-        for (int slot = 0; slot < GRID_SIZE && slot < inputs.length; slot++) {
-            var input = inputs[slot];
+        if (inputs.length == 0) {
+            return;
+        }
+
+        // Availability probe per input: the table only has to be large enough for the sparse slots
+        // the pattern maps onto it, so availability of a single item is checked and GRID_SIZE offered.
+        var table = new KeyCounter[inputs.length];
+        for (int i = 0; i < inputs.length; i++) {
+            table[i] = new KeyCounter();
+            var input = inputs[i];
             if (input == null) {
                 continue;
             }
             for (var possible : input.getPossibleInputs()) {
-                if (possible == null || possible.what() == null) {
+                if (possible == null || !(possible.what() instanceof AEItemKey itemKey)) {
                     continue;
                 }
-                long amount = possible.amount() * input.getMultiplier();
-                if (amount <= 0) {
-                    continue;
-                }
-                if (possible.what() instanceof AEItemKey itemKey) {
-                    var existing = unit.grid.getStackInSlot(slot);
-                    long have = existing.isEmpty() ? 0 : existing.getCount();
-                    long need = amount - have;
-                    if (need <= 0) {
-                        // Slot already holds enough of this input.
-                        break;
-                    }
-                    if (!existing.isEmpty() && !itemKey.equals(AEItemKey.of(existing))) {
-                        // Wrong item in slot: never overwrite, leave it for canAssemble to reject.
-                        break;
-                    }
-                    long extracted = storage.extract(itemKey, need, Actionable.MODULATE, actionSource);
-                    if (extracted > 0) {
-                        if (existing.isEmpty()) {
-                            unit.grid.setItemDirect(slot, itemKey.toStack((int) extracted));
-                        } else {
-                            existing.grow((int) extracted);
-                        }
-                        changed = true;
-                        break;
-                    }
+                if (storage.extract(itemKey, 1, Actionable.SIMULATE, actionSource) > 0) {
+                    table[i].add(itemKey, GRID_SIZE);
+                    break;
                 }
             }
+        }
+
+        // Resolve which sparse slot requires which item without touching the real grid first:
+        // fillCraftingGrid writes each required input into its sparse slot, captured here.
+        var target = new ItemStack[GRID_SIZE];
+        plan.fillCraftingGrid(table, (slot, stack) -> {
+            if (slot >= 0 && slot < GRID_SIZE) {
+                target[slot] = stack;
+            }
+        });
+
+        // Extract for real, but only for slots that are still empty.
+        boolean changed = false;
+        for (int slot = 0; slot < GRID_SIZE; slot++) {
+            var stack = target[slot];
+            if (stack == null || stack.isEmpty() || !unit.grid.getStackInSlot(slot).isEmpty()) {
+                continue;
+            }
+            var key = AEItemKey.of(stack);
+            if (key == null) {
+                continue;
+            }
+            // A crafting grid slot holds exactly one item, even if a third-party pattern wrote a
+            // larger stack into the probe table.
+            long extracted = storage.extract(key, 1, Actionable.MODULATE, actionSource);
+            if (extracted <= 0) {
+                continue;
+            }
+            unit.grid.setItemDirect(slot, key.toStack(1));
+            changed = true;
         }
         if (changed) {
             saveChanges();
@@ -333,7 +383,14 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
 
     @Override
     public boolean acceptsPlans() {
-        return true;
+        // A unit running a manually inserted pattern does not take provider-pushed jobs, so the
+        // machine only accepts new plans while at least one unit is completely idle.
+        for (var unit : units) {
+            if (unit.plan == null && unit.grid.isEmpty() && unit.patternInv.isEmpty()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
@@ -369,24 +426,42 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
             if (!unit.grid.getStackInSlot(OUTPUT_SLOT).isEmpty()) {
                 return true;
             }
+            // The output slot is free again: move any grid item that is no longer valid for the
+            // current pattern into it, so stale inputs cannot block the unit forever.
+            ejectHeldItems(unit);
         }
-        if (unit.plan == null) {
-            // Self-executing page: decode the manually inserted encoded pattern from the unit's slot.
-            if (!unit.patternInv.isEmpty() && level instanceof ServerLevel) {
-                var item = unit.patternInv.getStackInSlot(0);
-                if (PatternDetailsHelper.decodePattern(item, level) instanceof IMolecularAssemblerSupportedPattern supported) {
-                    unit.plan = supported;
-                }
+        // Keep the plan in sync with the manual pattern slot: while the slot holds an item it is
+        // authoritative, so a newly inserted or swapped pattern takes over immediately and a removed
+        // pattern releases the grid (mirrors AE2's recalculatePlan).
+        var slotPattern = unit.patternInv.getStackInSlot(0);
+        if (slotPattern.isEmpty()) {
+            if (!unit.planSource.isEmpty()) {
+                unit.plan = null;
+                unit.planSource = ItemStack.EMPTY;
+                unit.progress = 0;
             }
             if (unit.plan == null) {
                 return drainRemainders(unit);
             }
+        } else if (unit.plan == null || !ItemStack.isSameItemSameComponents(slotPattern, unit.planSource)) {
+            var supported = decodeManualPattern(unit);
+            if (supported == null) {
+                // The inserted pattern cannot be decoded: release the grid instead of stalling.
+                unit.plan = null;
+                unit.planSource = ItemStack.EMPTY;
+                unit.progress = 0;
+                return drainRemainders(unit);
+            }
+            unit.plan = supported;
+            unit.planSource = slotPattern.copy();
+            unit.progress = 0;
         }
 
-        // Self-executing page guard: every tick (not just the decode tick) verify the grid is
-        // complete before accumulating progress, so a material shortage never consumes progress
-        // or destroys partially extracted inputs (the shortage loop extracts only what is missing).
-        if (!unit.patternInv.isEmpty()) {
+        // Self-executing page guard: never accumulate progress unless the grid can actually be
+        // assembled, so a material shortage can not consume progress or destroy partial inputs.
+        if (!unit.patternInv.isEmpty() && !canAssemble(unit)) {
+            // Drop anything the pattern no longer uses before topping the grid up from the network.
+            ejectHeldItems(unit);
             tryFillGridFromNetwork(unit);
             if (!canAssemble(unit)) {
                 return true;
@@ -428,17 +503,26 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
                             new AssemblerAnimationPayload(worldPosition, (byte) speed, itemKey));
                 }
 
-                // A successful craft consumes the input grid; put container remainders back afterward.
+                // A successful craft consumes the input grid; put container remainders back into the
+                // exact slots of the recipe bounding box inside the 3x3 grid.
+                var remainders = plan.getRemainingItems(craftInput);
                 for (int i = 0; i < GRID_SIZE; i++) {
                     unit.grid.setItemDirect(i, ItemStack.EMPTY);
                 }
-                var remainders = plan.getRemainingItems(craftInput);
-                for (int r = 0; r < remainders.size() && r < GRID_SIZE; r++) {
-                    if (!remainders.get(r).isEmpty()) {
-                        unit.grid.setItemDirect(r, remainders.get(r));
+                for (int row = 0; row < craftInput.height(); row++) {
+                    for (int col = 0; col < craftInput.width(); col++) {
+                        var remainder = remainders.get(col + row * craftInput.width());
+                        if (!remainder.isEmpty()) {
+                            unit.grid.setItemDirect(col + positioned.left() + (row + positioned.top()) * 3, remainder);
+                        }
                     }
                 }
-                unit.plan = null;
+                // A manually inserted pattern stays in the unit and drives the next craft; a
+                // provider-pushed plan is consumed with this craft.
+                if (unit.planSource.isEmpty()) {
+                    unit.plan = null;
+                }
+                ejectHeldItems(unit);
                 return true;
             }
         }
@@ -481,6 +565,32 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
             pending |= !left.isEmpty();
         }
         return pending;
+    }
+
+    /**
+     * Moves one grid item that is no longer a valid input for the unit's current pattern into the
+     * output slot (when free), so it can be pushed out instead of blocking the unit forever. Mirrors
+     * AE2's ejection of stale crafting-grid items after pattern changes and craft completion.
+     */
+    private void ejectHeldItems(CraftUnit unit) {
+        if (!unit.grid.getStackInSlot(OUTPUT_SLOT).isEmpty()) {
+            return;
+        }
+        var plan = unit.plan;
+        for (int i = 0; i < GRID_SIZE; i++) {
+            var stack = unit.grid.getStackInSlot(i);
+            if (stack.isEmpty()) {
+                continue;
+            }
+            var key = AEItemKey.of(stack);
+            if (plan != null && key != null && plan.isItemValid(i, key, level)) {
+                continue;
+            }
+            unit.grid.setItemDirect(OUTPUT_SLOT, stack);
+            unit.grid.setItemDirect(i, ItemStack.EMPTY);
+            saveChanges();
+            return;
+        }
     }
 
     /** Pushes an item to the configured adjacent target and then to ME storage. */
@@ -552,11 +662,19 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
     @Override
     public void onChangeInventory(AppEngInternalInventory inv, int slot) {
         saveChanges();
+        // AE2 parks this device through TickRateModulation.SLEEP once no unit is busy and only resumes
+        // it via the tick manager, so inventory changes (a pattern inserted into a page, grid items to
+        // return) must nudge the ticker or the new work would never be picked up.
+        alertTicker();
     }
 
     @Override
     public void saveChangedInventory(AppEngInternalInventory inv) {
         saveChanges();
+    }
+
+    private void alertTicker() {
+        this.getMainNode().ifPresent((grid, node) -> grid.getTickManager().alertDevice(node));
     }
 
     @Override

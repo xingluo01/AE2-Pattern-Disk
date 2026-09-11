@@ -3,7 +3,7 @@
 An addon for [Applied Energistics 2](https://github.com/AppliedEnergistics/Applied-Energistics-2) that adds high-capacity pattern disks, a disk-backed pattern provider, a pattern transferer, and an efficient parallel molecular assembler.
 
 - **Loader / MC**: NeoForge 1.21.1
-- **NeoForge**: 21.1.248
+- **NeoForge**: 21.1.241
 - **AE2**: 19.2.8
 - **Java**: 21
 
@@ -31,6 +31,12 @@ A parallel molecular assembler with **eight independent execution threads**. It 
 
 The GUI exposes one page per thread (mirroring EAE's extension molecular assembler) with vertical progress only for the selected page. Accepts up to **five AE2 Speed Cards** with multipliers `1.0x / 1.3x / 1.7x / 2.0x / 2.5x / 5.0x`.
 
+Each page also has an optional pattern slot. Inserting an encoded crafting pattern there turns that page into a self-executing unit: it pulls its own inputs from the ME network, crafts continuously while materials last, and pushes products plus container remainders to adjacent inventories or back into the network. A page running a manual pattern does not accept provider-pushed jobs, so the machine only takes pushed jobs while at least one page is idle.
+
+### Batch Molecular Assembler
+
+Buffers the jobs pushed by AE2 crafting CPUs inside nine private storage-cell slots and executes them in batches once no new material has arrived for a short while. Supports crafting-table, smithing-table and stonecutting recipes. Storage cells inserted here are private to the machine (never exposed to the ME network) and are locked while work is buffered; breaking the block or pressing cancel returns the buffer to the network. Up to **three AE2 Speed Cards** raise the input-concurrency multiplier by one each. Two batch-delay modes can be toggled from the GUI toolbar: standard (wait 20 ticks after the last input) and fast (wait 5 ticks).
+
 ## Blocks & Items
 
 | ID | Type |
@@ -43,6 +49,7 @@ The GUI exposes one page per thread (mirroring EAE's extension molecular assembl
 | `ae2_pattern_disk:pattern_transferer` | Block |
 | `ae2_pattern_disk:pattern_disk_provider` | Block |
 | `ae2_pattern_disk:pattern_disk_assembler` | Block |
+| `ae2_pattern_disk:batch_molecular_assembler` | Block |
 
 All items are available in the dedicated creative tab **AE2 Pattern Disk**.
 

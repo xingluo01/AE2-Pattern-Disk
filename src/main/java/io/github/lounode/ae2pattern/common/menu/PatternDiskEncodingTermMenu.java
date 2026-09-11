@@ -84,9 +84,11 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
     private static final String ACTION_BIND_PREFIX = "bindPrefix";
     private static final String ACTION_RENAME_DISK = "renameDisk";
 
+    // 不可用 build()：会将实例推入 AE2 的 InitMenuTypes 注册队列，与下方 MENUS DeferredRegister 形成同实例双通道注册，
+    // 注册冲突即触发 NeoForge MappedRegistry 的 duplicate value 崩溃；其余三个菜单均用 buildUnregistered 单通道。
     public static final MenuType<PatternDiskEncodingTermMenu> TYPE = MenuTypeBuilder
             .create(PatternDiskEncodingTermMenu::new, PatternDiskEncodingTerminalPart.class)
-            .build("pattern_disk_encoding_terminal");
+            .buildUnregistered(net.minecraft.resources.ResourceLocation.parse("ae2_pattern_disk:pattern_disk_encoding_terminal"));
 
     private final PatternDiskEncodingTerminalPart host;
     private final DiskEncodingLogic encodingLogic;

@@ -24,13 +24,16 @@ import appeng.menu.SlotSemantic;
 import appeng.menu.SlotSemantics;
 import appeng.api.parts.PartModels;
 
+import io.github.lounode.ae2pattern.common.block.BatchAssemblerBlock;
 import io.github.lounode.ae2pattern.common.block.PatternDiskAssemblerBlock;
 import io.github.lounode.ae2pattern.common.block.PatternDiskProviderBlock;
 import io.github.lounode.ae2pattern.common.block.PatternTransfererBlock;
+import io.github.lounode.ae2pattern.common.block.entity.BatchAssemblerBlockEntity;
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskAssemblerBlockEntity;
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskProviderBlockEntity;
 import io.github.lounode.ae2pattern.common.block.entity.PatternTransfererBlockEntity;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
+import io.github.lounode.ae2pattern.common.menu.BatchAssemblerMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskAssemblerMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternTransfererMenu;
@@ -101,6 +104,10 @@ public final class AEPatternRegistries {
             "pattern_disk_assembler",
             PatternDiskAssemblerBlock::new);
 
+    public static final DeferredBlock<BatchAssemblerBlock> BLOCK_BATCH_ASSEMBLER = BLOCKS.register(
+            "batch_molecular_assembler",
+            BatchAssemblerBlock::new);
+
     /** Block items (registered after the blocks they reference). */
     public static final DeferredItem<net.minecraft.world.item.BlockItem> ITEM_TRANSFERER = ITEMS
             .registerSimpleBlockItem("pattern_transferer", BLOCK_TRANSFERER);
@@ -108,6 +115,8 @@ public final class AEPatternRegistries {
             .registerSimpleBlockItem("pattern_disk_provider", BLOCK_PROVIDER);
     public static final DeferredItem<net.minecraft.world.item.BlockItem> ITEM_ASSEMBLER = ITEMS
             .registerSimpleBlockItem("pattern_disk_assembler", BLOCK_ASSEMBLER);
+    public static final DeferredItem<net.minecraft.world.item.BlockItem> ITEM_BATCH_ASSEMBLER = ITEMS
+            .registerSimpleBlockItem("batch_molecular_assembler", BLOCK_BATCH_ASSEMBLER);
 
     // ---- Block entities ------------------------------------------------------
 
@@ -138,6 +147,14 @@ public final class AEPatternRegistries {
                             BLOCK_ASSEMBLER.get())
                             .build(null));
 
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<BatchAssemblerBlockEntity>> BE_BATCH_ASSEMBLER = BLOCK_ENTITIES
+            .register(
+                    "batch_molecular_assembler",
+                    () -> BlockEntityType.Builder.of(
+                            BatchAssemblerBlockEntity::new,
+                            BLOCK_BATCH_ASSEMBLER.get())
+                            .build(null));
+
     // ---- Menus ---------------------------------------------------------------
 
     public static final DeferredRegister<MenuType<?>> MENUS = DeferredRegister.create(Registries.MENU,
@@ -151,6 +168,9 @@ public final class AEPatternRegistries {
 
     public static final DeferredHolder<MenuType<?>, MenuType<PatternDiskAssemblerMenu>> MENU_ASSEMBLER = MENUS
             .register("pattern_disk_assembler", () -> PatternDiskAssemblerMenu.TYPE);
+
+    public static final DeferredHolder<MenuType<?>, MenuType<BatchAssemblerMenu>> MENU_BATCH_ASSEMBLER = MENUS
+            .register("batch_molecular_assembler", () -> BatchAssemblerMenu.TYPE);
 
     public static final DeferredHolder<MenuType<?>, MenuType<PatternDiskEncodingTermMenu>> MENU_PATTERN_DISK_ENCODING_TERMINAL = MENUS
             .register("pattern_disk_encoding_terminal", () -> PatternDiskEncodingTermMenu.TYPE);
@@ -204,6 +224,7 @@ public final class AEPatternRegistries {
                         output.accept(ITEM_TRANSFERER.get());
                         output.accept(ITEM_PROVIDER.get());
                         output.accept(ITEM_ASSEMBLER.get());
+                        output.accept(ITEM_BATCH_ASSEMBLER.get());
                         output.accept(ITEM_PATTERN_DISK_ENCODING_TERMINAL.get());
                     })
                     .build());
@@ -240,6 +261,15 @@ public final class AEPatternRegistries {
      * CraftUnit so each page can show its own sample pattern independently.
      */
     public static final SlotSemantic[] ASSEMBLER_PATTERN = new SlotSemantic[8];
+
+    /**
+     * Storage-cell slots of the batch molecular assembler (private material/product buffer). One
+     * semantic carries all nine slots so the screen JSON can lay them out as a grid.
+     */
+    public static final SlotSemantic BATCH_CELL = SlotSemantics.register("ae2_pattern_disk:batch_cell", false);
+
+    /** Pattern-disk slots of the batch molecular assembler (shared recipe pool source). */
+    public static final SlotSemantic BATCH_DISK = SlotSemantics.register("ae2_pattern_disk:batch_disk", false);
 
     static {
         for (int i = 0; i < 8; i++) {

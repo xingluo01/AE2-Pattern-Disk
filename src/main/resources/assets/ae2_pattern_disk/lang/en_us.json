@@ -48,5 +48,11 @@
   "gui.ae2_pattern_disk.encoding_terminal.divide_line1": "Click to /2 recipe",
   "gui.ae2_pattern_disk.encoding_terminal.divide_line2": "Shift+Click to /3 recipe",
   "gui.ae2_pattern_disk.encoding_terminal.divide_line3": "Ctrl+Click to /5 recipe",
-  "gui.ae2_pattern_disk.encoding_terminal.divide_line4": "Alt+Click to /10 recipe"
+  "gui.ae2_pattern_disk.encoding_terminal.divide_line4": "Alt+Click to /10 recipe",
+  "block.ae2_pattern_disk.batch_molecular_assembler": "Batch Molecular Assembler",
+  "gui.ae2_pattern_disk.batch_molecular_assembler": "Batch Molecular Assembler",
+  "gui.ae2_pattern_disk.batch_assembler.cancel": "Cancel crafting (return buffer to network)",
+  "gui.ae2_pattern_disk.batch_assembler.buffer": "Buffer",
+  "gui.ae2_pattern_disk.batch_assembler.batch_mode.standard": "Standard: start 20 ticks after the last input",
+  "gui.ae2_pattern_disk.batch_assembler.batch_mode.fast": "Fast: start 5 ticks after the last input"
 }

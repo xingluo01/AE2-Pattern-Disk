@@ -15,6 +15,7 @@ import appeng.client.gui.style.StyleManager;
 import io.github.lounode.ae2pattern.client.render.PatternDiskAssemblerRenderer;
 
 import io.github.lounode.ae2pattern.AE2PatternDisk;
+import io.github.lounode.ae2pattern.client.gui.BatchAssemblerScreen;
 import io.github.lounode.ae2pattern.client.gui.PatternDiskEncodingTermScreen;
 import io.github.lounode.ae2pattern.client.gui.PatternDiskAssemblerScreen;
 import io.github.lounode.ae2pattern.client.gui.PatternDiskProviderScreen;
@@ -52,6 +53,7 @@ public class AE2PatternDiskClient {
         event.register(AEPatternRegistries.MENU_TRANSFERER.get(), PatternTransfererScreen::new);
         event.register(AEPatternRegistries.MENU_PROVIDER.get(), PatternDiskProviderScreen::new);
         event.register(AEPatternRegistries.MENU_ASSEMBLER.get(), PatternDiskAssemblerScreen::new);
+        event.register(AEPatternRegistries.MENU_BATCH_ASSEMBLER.get(), BatchAssemblerScreen::new);
         registerEncodingTerminalScreen(event);
     }
 

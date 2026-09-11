@@ -74,5 +74,5 @@
 - 处理方向：确认 4 参 `getCloneItemStack` 的 NeoForge 实现是否复制 BE NBT/组件；为三个 Block（assembler/provider/transferer）覆写返回干净 ItemStack
 
 ## 五、执行约束
-- 目标：NeoForge 21.1.248 / MC 1.21.1 / JDK 21 / AE2 19.2.8
+- 目标：NeoForge 21.1.241 / MC 1.21.1 / JDK 21 / AE2 19.2.8
 - 只用 AE2 公共 API；美术全部复制到本地路径

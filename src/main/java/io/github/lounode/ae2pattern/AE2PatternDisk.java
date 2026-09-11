@@ -69,6 +69,17 @@ public class AE2PatternDisk {
                 appeng.api.AECapabilities.IN_WORLD_GRID_NODE_HOST,
                 AEPatternRegistries.BE_ASSEMBLER.get(),
                 (be, dir) -> (appeng.api.networking.IInWorldGridNodeHost) be);
+
+        // Batch assembler: grid node host + crafting machine (receives provider-pushed patterns).
+        // NOTE: deliberately no ME_STORAGE / IStorageProvider exposure - its cell slots must stay private.
+        event.registerBlockEntity(
+                appeng.api.AECapabilities.IN_WORLD_GRID_NODE_HOST,
+                AEPatternRegistries.BE_BATCH_ASSEMBLER.get(),
+                (be, dir) -> (appeng.api.networking.IInWorldGridNodeHost) be);
+        event.registerBlockEntity(
+                appeng.api.AECapabilities.CRAFTING_MACHINE,
+                AEPatternRegistries.BE_BATCH_ASSEMBLER.get(),
+                (be, dir) -> (appeng.api.implementations.blockentities.ICraftingMachine) be);
     }
 
     private void associateBlockEntities(RegisterEvent event) {
@@ -88,6 +99,12 @@ public class AE2PatternDisk {
             AEPatternRegistries.BLOCK_ASSEMBLER.get().setBlockEntity(
                     PatternDiskAssemblerBlockEntity.class,
                     AEPatternRegistries.BE_ASSEMBLER.get(),
+                    null,
+                    null);
+
+            AEPatternRegistries.BLOCK_BATCH_ASSEMBLER.get().setBlockEntity(
+                    io.github.lounode.ae2pattern.common.block.entity.BatchAssemblerBlockEntity.class,
+                    AEPatternRegistries.BE_BATCH_ASSEMBLER.get(),
                     null,
                     null);
         }
@@ -127,6 +144,12 @@ public class AE2PatternDisk {
                 .get(net.minecraft.resources.ResourceLocation.parse("ae2_pattern_disk:pattern_disk_assembler"));
         if (assembler != null && speedCard != null) {
             appeng.api.upgrades.Upgrades.add(speedCard, assembler, 5);
+        }
+
+        var batchAssembler = net.minecraft.core.registries.BuiltInRegistries.BLOCK
+                .get(net.minecraft.resources.ResourceLocation.parse("ae2_pattern_disk:batch_molecular_assembler"));
+        if (batchAssembler != null && speedCard != null) {
+            appeng.api.upgrades.Upgrades.add(speedCard, batchAssembler, 3);
         }
     }
 }

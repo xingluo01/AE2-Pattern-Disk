@@ -53,6 +53,13 @@ public class PatternDiskAssemblerMenu extends UpgradeableMenu<PatternDiskAssembl
     @GuiSync(7)
     public int page;
 
+    /**
+     * True while the selected page executes a server-side plan (provider-pushed) that the client cannot
+     * decode; such pages stay undimmed instead of marking every empty grid slot as disabled.
+     */
+    @GuiSync(8)
+    public boolean pageExecuting;
+
     public PatternDiskAssemblerMenu(int id, Inventory playerInv, PatternDiskAssemblerBlockEntity host) {
         super(TYPE, id, playerInv, host);
         this.host = host;
@@ -66,7 +73,7 @@ public class PatternDiskAssemblerMenu extends UpgradeableMenu<PatternDiskAssembl
         for (int unit = 0; unit < MAX_PAGE; unit++) {
             var grid = host.getUnitGrid(unit);
             for (int i = 0; i < PatternDiskAssemblerBlockEntity.GRID_SIZE; i++) {
-                addSlot(new AssemblerInputSlot(this, grid, i), AEPatternRegistries.ASSEMBLER_GRID[unit]);
+                addSlot(new AssemblerInputSlot(this, grid, i, unit), AEPatternRegistries.ASSEMBLER_GRID[unit]);
             }
             outputs.add((AppEngSlot) addSlot(
                     new OutputSlot(grid, PatternDiskAssemblerBlockEntity.GRID_SIZE, null),
@@ -120,6 +127,7 @@ public class PatternDiskAssemblerMenu extends UpgradeableMenu<PatternDiskAssembl
     public void broadcastChanges() {
         page = Math.max(0, Math.min(MAX_PAGE - 1, page));
         craftProgress = host.getUnitProgress(page);
+        pageExecuting = host.isUnitExecuting(page);
         standardDetectAndSendChanges();
     }
 
@@ -148,10 +156,12 @@ public class PatternDiskAssemblerMenu extends UpgradeableMenu<PatternDiskAssembl
     /** Input slot matching EAE's page-local molecular assembler slot validation. */
     private static final class AssemblerInputSlot extends AppEngSlot implements IOptionalSlot {
         private final PatternDiskAssemblerMenu menu;
+        private final int unitIndex;
 
-        private AssemblerInputSlot(PatternDiskAssemblerMenu menu, InternalInventory inventory, int slot) {
+        private AssemblerInputSlot(PatternDiskAssemblerMenu menu, InternalInventory inventory, int slot, int unitIndex) {
             super(inventory, slot);
             this.menu = menu;
+            this.unitIndex = unitIndex;
         }
 
         @Override
@@ -167,7 +177,10 @@ public class PatternDiskAssemblerMenu extends UpgradeableMenu<PatternDiskAssembl
 
         @Override
         public boolean isRenderDisabled() {
-            return true;
+            // All eight pages share the same JSON slot position, so drawing every page's background would
+            // stack seven extra 20%-alpha overlays on the selected page and wash out the disabled-slot
+            // shading. Only the selected page renders its own slot background.
+            return menu.page == unitIndex;
         }
 
         @Override
@@ -178,14 +191,15 @@ public class PatternDiskAssemblerMenu extends UpgradeableMenu<PatternDiskAssembl
             if (!getInventory().getStackInSlot(getSlotIndex()).isEmpty()) {
                 return true;
             }
-            // The plan is server-side execution state and is not mirrored into the client BE. Keep
-            // empty page slots visible on the client; the server remains authoritative in mayPlace.
-            if (menu.getAssembler().isClientSide()) {
-                return true;
-            }
+            // Both sides can decode the manual pattern (the client decodes the synced pattern slot),
+            // so the disabled-slot overlay shows exactly which grid slots the current pattern uses.
             var pattern = menu.getHost().getCurrentPattern(menu.page);
-            return pattern != null
-                    && getSlotIndex() >= 0
+            if (pattern == null) {
+                // A provider-pushed plan is server-side state the client cannot decode: keep such pages
+                // undimmed instead of falsely marking every empty grid slot as disabled.
+                return menu.pageExecuting;
+            }
+            return getSlotIndex() >= 0
                     && getSlotIndex() < PatternDiskAssemblerBlockEntity.GRID_SIZE
                     && pattern.isSlotEnabled(getSlotIndex());
         }
