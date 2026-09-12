@@ -211,6 +211,10 @@ dependencies {
     localRuntime 'maven.modrinth:mekanism-tools:10.7.19.85'
     localRuntime 'maven.modrinth:embeddium:1.0.15+mc1.21.1'
     localRuntime 'maven.modrinth:refined-storage:2.0.9'
+    // AE2 Omni Cells: mixed-type storage cells (items+fluids in one cell, up to 256m tiers) used to
+    // build storage test setups the vanilla cell tiers cannot cover. Dev-only (localRuntime).
+    // Modrinth version id k444ySGT = AE Omni Cells 1.1.6 for 1.21.1 neoforge.
+    localRuntime 'maven.modrinth:ae2-omni-cells:k444ySGT'
     localRuntime 'dev.vfyjxf:moddevmcp:0.1.6'
     localRuntime(libs.emi)
 

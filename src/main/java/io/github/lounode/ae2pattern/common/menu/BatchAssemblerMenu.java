@@ -29,7 +29,7 @@ public class BatchAssemblerMenu extends UpgradeableMenu<BatchAssemblerBlockEntit
 
     private final BatchAssemblerBlockEntity host;
 
-    /** Batch delay mode mirrored to the client: false = standard (20 ticks), true = fast (5 ticks). */
+    /** Batch delay mode mirrored to the client: false = standard (40 ticks), true = fast (10 ticks). */
     @GuiSync(9)
     public boolean fastBatchMode;
 
@@ -60,7 +60,7 @@ public class BatchAssemblerMenu extends UpgradeableMenu<BatchAssemblerBlockEntit
     }
 
     /**
-     * Client-side request to switch the batch delay between standard (20 ticks) and fast (5 ticks).
+     * Client-side request to switch the batch delay between standard (40 ticks) and fast (10 ticks).
      * Mirrors {@code PatternTransfererMenu#setTransferMode}: the client sends an absolute value rather
      * than a toggle, so duplicated clicks cannot desynchronise the mode.
      */

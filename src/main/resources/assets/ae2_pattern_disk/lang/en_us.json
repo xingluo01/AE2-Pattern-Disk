@@ -53,8 +53,8 @@
   "gui.ae2_pattern_disk.batch_molecular_assembler": "Batch Molecular Assembler",
   "gui.ae2_pattern_disk.batch_assembler.cancel": "Return to Buffer",
   "gui.ae2_pattern_disk.batch_assembler.cancel_desc": "Return the buffered materials to the network",
-  "gui.ae2_pattern_disk.batch_assembler.buffer": "Buffer Cells",
+  "gui.ae2_pattern_disk.batch_assembler.buffer": "Buffer",
   "gui.ae2_pattern_disk.batch_assembler.disks": "Pattern Disks",
-  "gui.ae2_pattern_disk.batch_assembler.batch_mode.standard": "Standard: start at 16 queued jobs or 20 idle ticks",
-  "gui.ae2_pattern_disk.batch_assembler.batch_mode.fast": "Fast: start at 8 queued jobs or 5 idle ticks"
+  "gui.ae2_pattern_disk.batch_assembler.batch_mode.standard": "Standard: start after 40 idle ticks",
+  "gui.ae2_pattern_disk.batch_assembler.batch_mode.fast": "Fast: start after 10 idle ticks"
 }

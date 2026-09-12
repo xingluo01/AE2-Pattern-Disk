@@ -2,13 +2,16 @@ package io.github.lounode.ae2pattern.client.gui;
 
 import java.util.List;
 
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.Slot;
 
 import appeng.client.gui.implementations.UpgradeableScreen;
 import appeng.client.gui.style.Blitter;
 import appeng.client.gui.style.StyleManager;
+import appeng.menu.slot.AppEngSlot;
 
 import io.github.lounode.ae2pattern.common.menu.BatchAssemblerMenu;
 
@@ -21,6 +24,10 @@ public class BatchAssemblerScreen extends UpgradeableScreen<BatchAssemblerMenu> 
 
     private static final ResourceLocation STATES = ResourceLocation
             .parse("ae2_pattern_disk:textures/guis/states.png");
+
+    // 空槽覆盖层：states.png (240,16,16,16) 样板磁盘槽（与样板磁盘供应器同款）、(240,48,16,16) 缓存栏槽
+    private static final Blitter DISK_SLOT_OVERLAY = Blitter.texture(STATES).src(240, 16, 16, 16);
+    private static final Blitter CELL_SLOT_OVERLAY = Blitter.texture(STATES).src(240, 48, 16, 16);
 
     // states.png (0,48,16,16) 退回缓存图标：存入按钮 (0,32) 的下方
     private static final Blitter RETURN_TO_BUFFER = Blitter.texture(STATES).src(0, 48, 16, 16);
@@ -65,5 +72,20 @@ public class BatchAssemblerScreen extends UpgradeableScreen<BatchAssemblerMenu> 
         super.updateBeforeRender();
         // GuiSync 值回读：点击后服务端切换模式，图标/tooltip 随之刷新（与样板转存器同款做法）
         this.batchModeButton.setState(getMenu().isFastBatchMode());
+    }
+
+    @Override
+    public void renderSlot(GuiGraphics guiGraphics, Slot slot) {
+        // 空槽时按槽位身份绘制自定义覆盖层（样板磁盘 / 缓存栏），与底图槽井风格统一
+        if (slot instanceof AppEngSlot appEngSlot && appEngSlot.getItem().isEmpty()) {
+            var host = getMenu().getHost();
+            var inv = appEngSlot.getInventory();
+            if (inv == host.getDiskInventory()) {
+                DISK_SLOT_OVERLAY.dest(slot.x, slot.y).zOffset(20).blit(guiGraphics);
+            } else if (inv == host.getCellInventory()) {
+                CELL_SLOT_OVERLAY.dest(slot.x, slot.y).zOffset(20).blit(guiGraphics);
+            }
+        }
+        super.renderSlot(guiGraphics, slot);
     }
 }

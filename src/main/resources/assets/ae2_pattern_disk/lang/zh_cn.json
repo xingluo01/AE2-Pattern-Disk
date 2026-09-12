@@ -52,9 +52,9 @@
   "block.ae2_pattern_disk.batch_molecular_assembler": "批处理分子装配室",
   "gui.ae2_pattern_disk.batch_molecular_assembler": "批处理分子装配室",
   "gui.ae2_pattern_disk.batch_assembler.cancel": "退回缓存",
-  "gui.ae2_pattern_disk.batch_assembler.cancel_desc": "将缓存区的原材料返回网络",
-  "gui.ae2_pattern_disk.batch_assembler.buffer": "元件缓存区",
+  "gui.ae2_pattern_disk.batch_assembler.cancel_desc": "将缓存栏的原材料返回网络",
+  "gui.ae2_pattern_disk.batch_assembler.buffer": "缓存栏",
   "gui.ae2_pattern_disk.batch_assembler.disks": "样板磁盘",
-  "gui.ae2_pattern_disk.batch_assembler.batch_mode.standard": "标准：攒满 16 单或静默 20 tick 后开做",
-  "gui.ae2_pattern_disk.batch_assembler.batch_mode.fast": "极速：攒满 8 单或静默 5 tick 后开做"
+  "gui.ae2_pattern_disk.batch_assembler.batch_mode.standard": "标准：静默 40 tick 后开做",
+  "gui.ae2_pattern_disk.batch_assembler.batch_mode.fast": "极速：静默 10 tick 后开做"
 }

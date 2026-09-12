@@ -45,6 +45,11 @@ public class PatternDiskAssemblerMenu extends UpgradeableMenu<PatternDiskAssembl
     private final List<AppEngSlot> outputs = new ArrayList<>();
     private final List<AppEngSlot> patternSlots = new ArrayList<>();
 
+    /** Pattern slots of the eight CraftUnits, indexed by unit id (for slot overlay rendering). */
+    public List<AppEngSlot> getPatternSlots() {
+        return List.copyOf(patternSlots);
+    }
+
     /** Progress of the selected CraftUnit, synchronized like EAE's ex assembler. */
     @GuiSync(4)
     public int craftProgress;
@@ -80,11 +85,14 @@ public class PatternDiskAssemblerMenu extends UpgradeableMenu<PatternDiskAssembl
                     SlotSemantics.MACHINE_OUTPUT));
             // Per-unit encoded-pattern slot: accepts only molecular-assembler patterns; a manually
             // inserted pattern turns this page into a self-executing unit (AE2 ENCODED_PATTERN-style).
+            var patternSlot = new RestrictedInputSlot(
+                    RestrictedInputSlot.PlacableItemType.MOLECULAR_ASSEMBLER_PATTERN,
+                    host.getUnitPatternInv(unit),
+                    0);
+            // 空槽背景由 Screen 的 states.png (240,80) 覆盖层负责，禁用内建图标避免同位叠绘
+            patternSlot.setIcon(null);
             patternSlots.add((AppEngSlot) addSlot(
-                    new RestrictedInputSlot(
-                            RestrictedInputSlot.PlacableItemType.MOLECULAR_ASSEMBLER_PATTERN,
-                            host.getUnitPatternInv(unit),
-                            0),
+                    patternSlot,
                     AEPatternRegistries.ASSEMBLER_PATTERN[unit]));
         }
     }
