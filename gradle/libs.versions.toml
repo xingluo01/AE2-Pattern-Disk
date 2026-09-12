@@ -6,7 +6,7 @@ modDevGradle = "2.0.144"
 mixin = "0.8.7"
 jetbrains-annotations = "26.1.0"
 
-ae2 = "19.2.8"
+ae2 = "19.2.17"
 guideme = "21.1.15"
 
 [libraries]

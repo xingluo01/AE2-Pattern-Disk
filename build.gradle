@@ -215,6 +215,21 @@ dependencies {
     // build storage test setups the vanilla cell tiers cannot cover. Dev-only (localRuntime).
     // Modrinth version id k444ySGT = AE Omni Cells 1.1.6 for 1.21.1 neoforge.
     localRuntime 'maven.modrinth:ae2-omni-cells:k444ySGT'
+    // Neo ECO AE Extension: separates crafting/storage/computation into multiblock structures whose
+    // computation cluster supplies a huge crafting-dispatch budget (thousands of parallel ops) through
+    // its own CraftingService mixin. Dev-only; used to test large-order throughput.
+    // Modrinth version id gWMhHBje = Neo ECO AE Extension 21.1.1 for 1.21.1 neoforge.
+    localRuntime 'maven.modrinth:neoecoae:gWMhHBje'
+    // LDLib: mandatory runtime dependency of Neo ECO AE Extension (its GUI library). Pin the exact
+    // version Neo ECO itself depends on (2.2.39.a) instead of the plain 2.2.39 release, so Gradle
+    // cannot downgrade the transitive requirement.
+    // Modrinth version id ZjqqrcWk = ldlib2 1.21.1-2.2.39.a neoforge.
+    localRuntime 'maven.modrinth:ldlib:ZjqqrcWk'
+    // Neo ECO AE Extension + LDLib2: multiblock computing cluster (user test target: 3744 parallel /
+    // 7G computation capacity) to verify the batch assembler against a non-bottleneck dispatch budget.
+    // Dev-only (localRuntime). Version ids from Modrinth (ldlib 2.2.39.a-neoforge / neoecoae 21.1.1).
+    localRuntime 'maven.modrinth:ldlib:ZjqqrcWk'
+    localRuntime 'maven.modrinth:neoecoae:gWMhHBje'
     localRuntime 'dev.vfyjxf:moddevmcp:0.1.6'
     localRuntime(libs.emi)
 
