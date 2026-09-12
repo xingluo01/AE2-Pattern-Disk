@@ -16,6 +16,7 @@
   ]
  },
  "terminalStyle": {
+  "supportsAutoCrafting": true,
   "slotsPerRow": 9,
   "header": {
    "texture": "ae2_pattern_disk:textures/guis/pattern.png",

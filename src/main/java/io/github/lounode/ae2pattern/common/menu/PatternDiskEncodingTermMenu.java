@@ -55,7 +55,7 @@ import io.github.lounode.ae2pattern.common.menu.DiskEncodingLogic;
 import io.github.lounode.ae2pattern.common.pattern.PatternClassifier;
 import io.github.lounode.ae2pattern.common.pattern.PatternDiskContents;
 import io.github.lounode.ae2pattern.common.part.PatternDiskEncodingTerminalPart;
-import io.github.lounode.ae2pattern.common.block.entity.PatternDiskProviderBlockEntity;
+import io.github.lounode.ae2pattern.common.block.entity.IPatternDiskHost;
 import io.github.lounode.ae2pattern.network.DiskListPayload;
 
 /**
@@ -142,7 +142,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
     private int lastDiskFingerprint;
     private boolean fingerprintInitialized;
 
-    private record DiskRef(PatternDiskProviderBlockEntity provider, int slot) {
+    private record DiskRef(IPatternDiskHost host, int slot) {
     }
 
 
@@ -421,7 +421,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
 
         var ref = diskRefs.get(serial);
         if (ref == null) return;
-        var inv = ref.provider().getDiskInventory();
+        var inv = ref.host().getDiskInventory();
         var stack = inv.getStackInSlot(ref.slot());
         if (stack.isEmpty() || !(stack.getItem() instanceof PatternDiskItem disk)) return;
 
@@ -434,7 +434,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
 
         var updated = stack.copy();
         if (disk.tryInsert(updated, encoded, level)) {
-            inv.setItemDirect(ref.slot(), updated); // triggers provider refresh
+            inv.setItemDirect(ref.slot(), updated); // triggers host refresh
             // 样板已存入磁盘：编码槽清空，原编码样板回退为空白样板并按 样板槽→ME网→背包 优先级落位
             this.encodedPatternSlot.set(ItemStack.EMPTY);
             returnBlankPatternToStorage();
@@ -458,14 +458,14 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
         var typeName = resolveCurrentPatternTypeName();
         if (typeName == null) return;
 
-        var inv = ref.provider().getDiskInventory();
+        var inv = ref.host().getDiskInventory();
         var stack = inv.getStackInSlot(ref.slot());
         if (stack.isEmpty() || !(stack.getItem() instanceof PatternDiskItem)) return;
 
         var updated = stack.copy();
         updated.set(io.github.lounode.ae2pattern.AEPatternRegistries.DISK_PREFIX, typeName);
         updated.set(DataComponents.CUSTOM_NAME, Component.literal(typeName));
-        inv.setItemDirect(ref.slot(), updated); // triggers provider refresh
+        inv.setItemDirect(ref.slot(), updated); // triggers host refresh
     }
 
     /**
@@ -534,25 +534,26 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
     // ---- 磁盘列表同步（服务端扫描 <-> 客户端渲染） ----
 
     /**
-     * 服务端：扫描网格中所有样板磁盘供应器的磁盘槽，指纹变化时重建 serial 映射并
-     * 推送全量列表到客户端。serial 在本菜单生命周期内稳定映射到 (供应器, 槽位)。
+     * 服务端：扫描网格中所有样板磁盘宿主（样板磁盘供应器、批处理分子装配室等）的磁盘槽，
+     * 指纹变化时重建 serial 映射并推送全量列表到客户端。serial 在本菜单生命周期内稳定
+     * 映射到 (磁盘宿主, 槽位)。
      */
     private void syncDiskList() {
-        // 收集当前网格中所有供应器磁盘槽（item 类型为 PatternDiskItem 的非空槽）
+        // 收集当前网格中所有磁盘宿主的磁盘槽（item 类型为 PatternDiskItem 的非空槽）
         var grid = getGrid();
         var slots = new java.util.ArrayList<DiskRef>();
         if (grid != null) {
             for (var machineClass : grid.getMachineClasses()) {
-                if (machineClass == null || !PatternDiskProviderBlockEntity.class.isAssignableFrom(machineClass)) {
+                if (machineClass == null || !IPatternDiskHost.class.isAssignableFrom(machineClass)) {
                     continue;
                 }
                 for (var machine : grid.getActiveMachines(machineClass)) {
-                    if (!(machine instanceof PatternDiskProviderBlockEntity provider)) continue;
-                    var inv = provider.getDiskInventory();
+                    if (!(machine instanceof IPatternDiskHost host)) continue;
+                    var inv = host.getDiskInventory();
                     for (int i = 0; i < inv.size(); i++) {
                         var stack = inv.getStackInSlot(i);
                         if (stack.isEmpty() || !(stack.getItem() instanceof PatternDiskItem)) continue;
-                        slots.add(new DiskRef(provider, i));
+                        slots.add(new DiskRef(host, i));
                     }
                 }
             }
@@ -571,22 +572,22 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
         for (var ref : slots) {
             var serial = nextDiskSerial++;
             diskRefs.put(serial, ref);
-            var stack = ref.provider().getDiskInventory().getStackInSlot(ref.slot());
+            var stack = ref.host().getDiskInventory().getStackInSlot(ref.slot());
             entries.add(new DiskListPayload.DiskEntry(serial, stack.copy()));
         }
         sendPacketToClient(new DiskListPayload(entries));
     }
 
     /**
-     * Fingerprint over the set of disk slots: item id, slot index and provider position.
+     * Fingerprint over the set of disk slots: item id, slot index and host position.
      */
     private static int computeDiskFingerprint(List<DiskRef> slots) {
         int hash = 1;
         for (var ref : slots) {
-            var stack = ref.provider().getDiskInventory().getStackInSlot(ref.slot());
+            var stack = ref.host().getDiskInventory().getStackInSlot(ref.slot());
             hash = 31 * hash + net.minecraft.core.registries.BuiltInRegistries.ITEM.getId(stack.getItem());
             hash = 31 * hash + stack.getComponentsPatch().hashCode();
-            hash = 31 * hash + ref.provider().getBlockPos().hashCode();
+            hash = 31 * hash + ref.host().getBlockPos().hashCode();
             hash = 31 * hash + ref.slot();
         }
         return hash;

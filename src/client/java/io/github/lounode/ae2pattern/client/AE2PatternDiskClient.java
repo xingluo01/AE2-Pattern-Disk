@@ -8,9 +8,12 @@ import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.ModelEvent;
+import net.neoforged.neoforge.client.event.RegisterColorHandlersEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 
+import appeng.api.util.AEColor;
 import appeng.client.gui.style.StyleManager;
+import appeng.client.render.StaticItemColor;
 
 import io.github.lounode.ae2pattern.client.render.PatternDiskAssemblerRenderer;
 
@@ -34,6 +37,16 @@ public class AE2PatternDiskClient {
         modBus.addListener(this::clientSetup);
         modBus.addListener(this::registerBlockRenderers);
         modBus.addListener(this::registerAdditionalModels);
+        modBus.addListener(this::registerItemColors);
+    }
+
+    /**
+     * The encoding terminal is a PartItem whose model relies on tint indices (same as AE2's own part
+     * items); without a color handler the front layers render blank/white.
+     */
+    private void registerItemColors(RegisterColorHandlersEvent.Item event) {
+        event.register(new StaticItemColor(AEColor.TRANSPARENT),
+                AEPatternRegistries.ITEM_PATTERN_DISK_ENCODING_TERMINAL.get());
     }
 
     private void clientSetup(FMLClientSetupEvent event) {

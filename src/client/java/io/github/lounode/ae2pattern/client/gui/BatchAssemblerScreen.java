@@ -2,27 +2,28 @@ package io.github.lounode.ae2pattern.client.gui;
 
 import java.util.List;
 
-import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
 
-import appeng.client.gui.Icon;
 import appeng.client.gui.implementations.UpgradeableScreen;
 import appeng.client.gui.style.Blitter;
 import appeng.client.gui.style.StyleManager;
-import appeng.client.gui.widgets.IconButton;
 
 import io.github.lounode.ae2pattern.common.menu.BatchAssemblerMenu;
 
 /**
- * Screen of the batch molecular assembler: cell slots, disk slots plus the two left-toolbar buttons
- * (cancel crafting and batch-delay mode), with no per-thread game pages.
+ * Screen of the batch molecular assembler. The layout mirrors the pattern disk provider: pattern disk
+ * slots on the top row, cell (buffer) slots on the bottom row. Left toolbar holds the return-to-buffer
+ * button and the batch-delay mode toggle.
  */
 public class BatchAssemblerScreen extends UpgradeableScreen<BatchAssemblerMenu> {
 
     private static final ResourceLocation STATES = ResourceLocation
             .parse("ae2_pattern_disk:textures/guis/states.png");
+
+    // states.png (0,48,16,16) 退回缓存图标：存入按钮 (0,32) 的下方
+    private static final Blitter RETURN_TO_BUFFER = Blitter.texture(STATES).src(0, 48, 16, 16);
 
     // states.png (32,32,16,16) 标准 / (48,32,16,16) 极速，紧邻存入、复写图标右侧
     private static final Blitter MODE_STANDARD = Blitter.texture(STATES).src(32, 32, 16, 16);
@@ -38,14 +39,15 @@ public class BatchAssemblerScreen extends UpgradeableScreen<BatchAssemblerMenu> 
         super(menu, playerInventory, title,
                 StyleManager.loadStyleDoc("/screens/ae2_pattern_disk/batch_molecular_assembler.json"));
 
-        var cancelButton = new IconButton(button -> menu.cancelCraft()) {
-            @Override
-            protected Icon getIcon() {
-                return Icon.CLEAR;
-            }
-        };
-        cancelButton.setMessage(Component.translatable("gui.ae2_pattern_disk.batch_assembler.cancel"));
-        addToLeftToolbar(cancelButton);
+        var returnButton = new StatesToggleButton(RETURN_TO_BUFFER, RETURN_TO_BUFFER,
+                state -> menu.cancelCraft());
+        returnButton.setBackground(BG_MODE_NORMAL, BG_MODE_HOVER);
+        List<Component> cancelTooltip = List.of(
+                Component.translatable("gui.ae2_pattern_disk.batch_assembler.cancel"),
+                Component.translatable("gui.ae2_pattern_disk.batch_assembler.cancel_desc"));
+        returnButton.setTooltipOn(cancelTooltip);
+        returnButton.setTooltipOff(cancelTooltip);
+        addToLeftToolbar(returnButton);
 
         // 状态为 true 时显示极速图标，与 fastBatchMode 语义一一对应
         this.batchModeButton = new StatesToggleButton(MODE_FAST, MODE_STANDARD, menu::setFastBatchMode);
@@ -61,17 +63,7 @@ public class BatchAssemblerScreen extends UpgradeableScreen<BatchAssemblerMenu> 
     @Override
     protected void updateBeforeRender() {
         super.updateBeforeRender();
+        // GuiSync 值回读：点击后服务端切换模式，图标/tooltip 随之刷新（与样板转存器同款做法）
         this.batchModeButton.setState(getMenu().isFastBatchMode());
-    }
-
-    @Override
-    public void drawFG(GuiGraphics guiGraphics, int offsetX, int offsetY, int mouseX, int mouseY) {
-        guiGraphics.drawString(
-                getMinecraft().font,
-                Component.translatable("gui.ae2_pattern_disk.batch_assembler.buffer"),
-                8,
-                18,
-                style.getColor(appeng.client.gui.style.PaletteColor.DEFAULT_TEXT_COLOR).toARGB(),
-                false);
     }
 }

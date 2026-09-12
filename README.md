@@ -35,7 +35,7 @@ Each page also has an optional pattern slot. Inserting an encoded crafting patte
 
 ### Batch Molecular Assembler
 
-Buffers the jobs pushed by AE2 crafting CPUs inside nine private storage-cell slots and executes them in batches once no new material has arrived for a short while. Supports crafting-table, smithing-table and stonecutting recipes. Storage cells inserted here are private to the machine (never exposed to the ME network) and are locked while work is buffered; breaking the block or pressing cancel returns the buffer to the network. Up to **three AE2 Speed Cards** raise the input-concurrency multiplier by one each. Two batch-delay modes can be toggled from the GUI toolbar: standard (wait 20 ticks after the last input) and fast (wait 5 ticks).
+Buffers the jobs pushed by AE2 crafting CPUs inside nine private storage-cell slots and executes them in batches once no new material has arrived for a short while. Supports crafting-table, smithing-table and stonecutting recipes. Storage cells inserted here are private to the machine (never exposed to the ME network) and are locked while work is buffered; breaking the block or pressing cancel returns the buffer to the network. Up to **three AE2 Speed Cards** raise the input-concurrency multiplier by one each. Two batch-delay modes can be toggled from the GUI toolbar: standard (start at 16 queued jobs or 20 idle ticks) and fast (start at 8 queued jobs or 5 idle ticks). Throughput is still capped by the crafting CPU's co-processors.
 
 ## Blocks & Items
 

@@ -27,7 +27,8 @@ import io.github.lounode.ae2pattern.AEPatternRegistries;
  * Block entity for the pattern disk provider: holds up to {@link #DISK_SLOT_COUNT} pattern disks and
  * exposes every encoded pattern on them to the ME autocrafting service.
  */
-public class PatternDiskProviderBlockEntity extends PatternProviderBlockEntity implements InternalInventoryHost {
+public class PatternDiskProviderBlockEntity extends PatternProviderBlockEntity
+        implements InternalInventoryHost, IPatternDiskHost {
 
     public static final int DISK_SLOT_COUNT = 9;
 

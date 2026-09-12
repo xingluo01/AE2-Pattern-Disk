@@ -6,24 +6,24 @@
     "../common/toolbox.json"
   ],
   "background": {
-    "texture": "ae2_pattern_disk:textures/guis/ex_molecular_assembler.png",
+    "texture": "ae2_pattern_disk:textures/guis/batch_molecular_assembler.png",
     "srcRect": [
       0,
       0,
       176,
-      199
+      215
     ]
   },
   "slots": {
-    "ae2_pattern_disk:batch_cell": {
-      "left": 29,
-      "top": 30,
-      "grid": "BREAK_AFTER_3COLS"
-    },
     "ae2_pattern_disk:batch_disk": {
-      "left": 111,
-      "top": 30,
-      "grid": "BREAK_AFTER_3COLS"
+      "left": 8,
+      "top": 45,
+      "grid": "HORIZONTAL"
+    },
+    "ae2_pattern_disk:batch_cell": {
+      "left": 8,
+      "top": 97,
+      "grid": "HORIZONTAL"
     }
   },
   "text": {
@@ -34,6 +34,24 @@
       "position": {
         "left": 8,
         "top": 6
+      }
+    },
+    "disk_label": {
+      "text": {
+        "translate": "gui.ae2_pattern_disk.batch_assembler.disks"
+      },
+      "position": {
+        "left": 8,
+        "top": 34
+      }
+    },
+    "buffer_label": {
+      "text": {
+        "translate": "gui.ae2_pattern_disk.batch_assembler.buffer"
+      },
+      "position": {
+        "left": 8,
+        "top": 86
       }
     }
   }

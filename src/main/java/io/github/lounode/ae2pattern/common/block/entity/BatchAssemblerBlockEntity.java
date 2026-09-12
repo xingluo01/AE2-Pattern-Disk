@@ -18,12 +18,14 @@ import appeng.api.crafting.IPatternDetails;
 import appeng.api.implementations.blockentities.ICraftingMachine;
 import appeng.api.implementations.blockentities.PatternContainerGroup;
 import appeng.api.inventories.InternalInventory;
+import appeng.api.networking.IGrid;
 import appeng.api.networking.IGridNode;
 import appeng.api.networking.crafting.ICraftingProvider;
 import appeng.api.networking.security.IActionSource;
 import appeng.api.networking.ticking.IGridTickable;
 import appeng.api.networking.ticking.TickRateModulation;
 import appeng.api.networking.ticking.TickingRequest;
+import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.KeyCounter;
 import appeng.blockentity.crafting.IMolecularAssemblerSupportedPattern;
@@ -34,10 +36,14 @@ import appeng.api.upgrades.IUpgradeableObject;
 import appeng.api.upgrades.UpgradeInventories;
 import appeng.blockentity.grid.AENetworkedBlockEntity;
 import appeng.blockentity.inventory.AppEngCellInventory;
+import appeng.core.definitions.AEItems;
+import appeng.helpers.patternprovider.PatternContainer;
 import appeng.me.helpers.MachineSource;
 import appeng.util.inv.AppEngInternalInventory;
 import appeng.util.inv.InternalInventoryHost;
 import appeng.util.inv.filter.IAEItemFilter;
+
+import io.github.lounode.ae2pattern.common.pattern.PatternDiskRemoveInventory;
 
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
@@ -56,15 +62,20 @@ import io.github.lounode.ae2pattern.common.logic.BatchRecipePool;
  * {@code IStorageProvider} nor the {@code ME_STORAGE} capability.</p>
  */
 public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
-        implements InternalInventoryHost, IUpgradeableObject, IGridTickable, ICraftingMachine, ICraftingProvider {
+        implements InternalInventoryHost, IUpgradeableObject, IGridTickable, ICraftingMachine, ICraftingProvider,
+        IPatternDiskHost, PatternContainer {
 
     public static final int CELL_SLOTS = 9;
     public static final int DISK_SLOTS = 9;
     public static final int MAX_SPEED_CARDS = 3;
 
-    /** Idle ticks before a buffered batch runs: the standard mode waits longer, the fast mode reacts sooner. */
+    /** Flush window: idle ticks that run the batch even if few jobs are queued. */
     private static final int STANDARD_BATCH_TICKS = 20;
     private static final int FAST_BATCH_TICKS = 5;
+    /** Backlog trigger: queued jobs that run the batch immediately, so steady supply is not
+     * throttled by the idle window (AE2 feeds jobs at (coprocessors+1) per 3 ticks at best). */
+    private static final int STANDARD_BATCH_THRESHOLD = 16;
+    private static final int FAST_BATCH_THRESHOLD = 8;
     /** Upper bound of pattern executions per batch, so one huge order cannot stall the tick loop. */
     private static final int MAX_ASSEMBLIES_PER_BATCH = 512;
     /** Buffered jobs that force a batch even while material keeps arriving. */
@@ -86,7 +97,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
 
     private boolean cellsDirty = true;
     private int idleTicks = 0;
-    /** Fast batch mode reacts after 5 idle ticks instead of the standard 20. */
+    /** Fast batch mode flushes after 5 idle ticks / 8 queued jobs instead of 20 / 16. */
     private boolean fastBatchMode = false;
 
     public BatchAssemblerBlockEntity(BlockPos pos, BlockState blockState) {
@@ -352,7 +363,8 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         // The tick manager reports the whole sleep gap on the first tick after waking, so clamp it: the
         // idle window must measure time since the last pushed input, not time since the last tick.
         idleTicks += Math.min(ticksSinceLastCall, 1);
-        boolean batchReady = idleTicks >= batchIdleTicks() || queuedJobs() >= MAX_QUEUED_JOBS;
+        boolean batchReady = queuedJobs() >= batchThreshold() || idleTicks >= batchIdleTicks()
+                || queuedJobs() >= MAX_QUEUED_JOBS;
         if (!batchReady) {
             return TickRateModulation.FASTER;
         }
@@ -567,9 +579,14 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         this.getMainNode().ifPresent((grid, node) -> grid.getTickManager().alertDevice(node));
     }
 
-    /** Idle ticks that trigger a batch for the currently selected mode. */
+    /** Idle ticks that flush a batch for the currently selected mode. */
     public int batchIdleTicks() {
         return fastBatchMode ? FAST_BATCH_TICKS : STANDARD_BATCH_TICKS;
+    }
+
+    /** Queued jobs that immediately trigger a batch for the currently selected mode. */
+    public int batchThreshold() {
+        return fastBatchMode ? FAST_BATCH_THRESHOLD : STANDARD_BATCH_THRESHOLD;
     }
 
     public boolean isFastBatchMode() {
@@ -593,11 +610,93 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
             // Only disk changes alter the recipe pool; cell content changes on every buffered input and
             // must not trigger a network-wide pattern index refresh.
             refreshRecipePool();
+            cachedTerminalInventory = null; // invalidate the pattern access terminal view
         } else {
             cellsDirty = true;
         }
         saveChanges();
         alertTicker();
+    }
+
+    // ---- pattern access terminal (PatternContainer) -------------------------
+
+    /** Cached terminal view over the disk contents; invalidated whenever the disks change. */
+    private PatternDiskRemoveInventory cachedTerminalInventory;
+
+    @Override
+    public IGrid getGrid() {
+        return getMainNode().getGrid();
+    }
+
+    @Override
+    public InternalInventory getTerminalPatternInventory() {
+        if (cachedTerminalInventory != null) {
+            return cachedTerminalInventory;
+        }
+        cachedTerminalInventory = new PatternDiskRemoveInventory(diskInv,
+                new PatternDiskRemoveInventory.BlankPatternSink() {
+                    @Override
+                    public boolean drawBlankPatterns(int count) {
+                        return tryDrawBlankPattern(count);
+                    }
+
+                    @Override
+                    public boolean hasBlankPatterns(int count) {
+                        return canDrawBlankPattern(count);
+                    }
+
+                    @Override
+                    public boolean returnBlankPatterns(int count) {
+                        return returnBlankPattern(count);
+                    }
+                },
+                this::markTerminalChanged);
+        return cachedTerminalInventory;
+    }
+
+    @Override
+    public PatternContainerGroup getTerminalGroup() {
+        return new PatternContainerGroup(
+                AEItemKey.of(AEPatternRegistries.ITEM_BATCH_ASSEMBLER.get()),
+                getName(),
+                List.of());
+    }
+
+    /** Read-only pre-check: whether the ME network holds at least {@code count} blank patterns. */
+    private boolean canDrawBlankPattern(int count) {
+        var grid = getMainNode().getGrid();
+        if (grid == null || count <= 0) {
+            return false;
+        }
+        var storage = grid.getStorageService().getInventory();
+        var blank = AEItemKey.of(AEItems.BLANK_PATTERN);
+        return storage.extract(blank, count, Actionable.SIMULATE, actionSource) == count;
+    }
+
+    /** Draws {@code count} blank patterns from the ME network, all-or-nothing. */
+    private boolean tryDrawBlankPattern(int count) {
+        if (!canDrawBlankPattern(count)) {
+            return false;
+        }
+        var grid = getMainNode().getGrid();
+        var storage = grid.getStorageService().getInventory();
+        var blank = AEItemKey.of(AEItems.BLANK_PATTERN);
+        return storage.extract(blank, count, Actionable.MODULATE, actionSource) == count;
+    }
+
+    /** Returns {@code count} blank patterns to the ME network (undo of a swap restore). */
+    private boolean returnBlankPattern(int count) {
+        var grid = getMainNode().getGrid();
+        if (grid == null || count <= 0) {
+            return false;
+        }
+        var storage = grid.getStorageService().getInventory();
+        var blank = AEItemKey.of(AEItems.BLANK_PATTERN);
+        return storage.insert(blank, count, Actionable.MODULATE, actionSource) == count;
+    }
+
+    private void markTerminalChanged() {
+        saveChanges();
     }
 
     @Override
