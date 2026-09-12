@@ -72,9 +72,12 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     /** Flush window: idle ticks after the last input that trigger a batch, regardless of queue size. */
     private static final int STANDARD_BATCH_TICKS = 40;
     private static final int FAST_BATCH_TICKS = 10;
-    /** Per-thread per-tick budget while draining a batch (threads come from speed cards). Spreading the
-     * storage IO over multiple ticks keeps the server from hitching on huge orders. */
-    private static final int MAX_ASSEMBLIES_PER_TICK = 128;
+    /** Smooth-return horizon: accumulated outputs are returned to the network over this many ticks
+     * (5% of the accumulated total per tick), so a huge batch never produces one giant IO burst. */
+    private static final int OUTPUT_RETURN_TICKS = 20;
+    /** Per-thread per-tick execution budget while draining a batch (threads come from speed cards).
+     * Regular orders finish within one tick; extreme orders (millions of jobs) still stay bounded. */
+    private static final int MAX_ASSEMBLIES_PER_THREAD = 4096;
     /** AE charged per assembled job (container remainders and parallels do not change this). */
     private static final double ENERGY_PER_RUN = 10.0;
 
@@ -89,6 +92,11 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
 
     /** Pushed jobs still to assemble, keyed by pattern with the remaining execution count. */
     private final Map<IPatternDetails, Long> queue = new LinkedHashMap<>();
+
+    /** Produced outputs waiting for their smooth return to the ME network: AEKey ->
+     * long[]{remainingToReturn, accumulatedTotal}. The per-tick return rate is total/20 (min 1),
+     * so a batch's outputs reach the CPU over roughly {@link #OUTPUT_RETURN_TICKS} ticks. */
+    private final Map<AEKey, long[]> pendingOutputs = new LinkedHashMap<>();
 
     private boolean cellsDirty = true;
     private int idleTicks = 0;
@@ -366,33 +374,52 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
 
     @Override
     public TickRateModulation tickingRequest(IGridNode node, int ticksSinceLastCall) {
-        if (queue.isEmpty()) {
+        if (queue.isEmpty() && pendingOutputs.isEmpty()) {
             return TickRateModulation.SLEEP;
         }
         // The tick manager reports the whole sleep gap on the first tick after waking, so clamp it: the
         // idle window must measure time since the last pushed input, not time since the last tick.
         idleTicks += Math.min(ticksSinceLastCall, 1);
-        boolean batchReady = draining || idleTicks >= batchIdleTicks();
-        if (!batchReady) {
-            return TickRateModulation.FASTER;
+        // The output drain runs every tick, independent of batch scheduling: the smooth-return queue
+        // keeps feeding the crafting CPU while (and after) the batch executes.
+        boolean pendingWork = !pendingOutputs.isEmpty();
+        if (pendingWork) {
+            drainOutputs();
         }
-        boolean worked = runBatch();
-        return worked ? TickRateModulation.IDLE : TickRateModulation.SLOWER;
+        boolean worked = false;
+        if ((draining || idleTicks >= batchIdleTicks()) && !queue.isEmpty()) {
+            worked = runBatch();
+        }
+        draining = !queue.isEmpty();
+        if (queue.isEmpty()) {
+            idleTicks = 0;
+        } else if (worked) {
+            // Keep draining while the queue is not empty: stay batch-ready so the next tick continues
+            // without waiting for another idle window.
+            idleTicks = Math.max(idleTicks, batchIdleTicks());
+        }
+        if (worked || pendingWork) {
+            saveChanges();
+        }
+        if (!queue.isEmpty() || !pendingOutputs.isEmpty()) {
+            return TickRateModulation.IDLE;
+        }
+        return TickRateModulation.SLEEP;
     }
 
     /**
-     * Assembles a batch from the cell buffer. Inputs are consumed only through the cells and each
-     * pattern's outputs are returned to the ME network, so the crafting CPU's waiting list always gets
-     * satisfied and a job is either assembled or left untouched for the next batch.
+     * Assembles the whole queue in one pass (uncapped): inputs are consumed only through the cells,
+     * and produced outputs enter the smooth-return queue instead of hitting the network storage in
+     * one giant burst. Internal chaining is deliberately not performed - see {@link BatchRecipePool}.
      */
     private boolean runBatch() {
         boolean worked = false;
         // Worker threads: 1 by default, x2 per speed card (max 4 cards = 16 threads). Each thread owns
         // one pattern's drain: a single-pattern order stays single-threaded, while chained orders
-        // (multiple patterns queued) advance their layers in parallel. Per-tick totals stay bounded so
-        // the storage IO of one tick cannot hitch the server.
+        // (multiple patterns queued) advance their layers in parallel. The total per-tick budget stays
+        // bounded so the compute + storage IO of one tick cannot hitch the server.
         int threads = 1 << upgrades.getInstalledUpgrades(appeng.core.definitions.AEItems.SPEED_CARD);
-        int budgetPerThread = MAX_ASSEMBLIES_PER_TICK;
+        int budgetPerThread = MAX_ASSEMBLIES_PER_THREAD;
         int totalBudget = budgetPerThread * threads;
 
         var it = queue.entrySet().iterator();
@@ -400,12 +427,6 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
             var entry = it.next();
             var pattern = entry.getKey();
             long remaining = entry.getValue();
-
-            if (!hasInputs(pattern)) {
-                // Nothing to consume for this job yet: skip it before charging power so an unsatisfiable
-                // job cannot drain the grid every tick.
-                continue;
-            }
 
             int patternBudget = budgetPerThread;
             while (remaining > 0 && patternBudget > 0 && totalBudget > 0) {
@@ -480,36 +501,44 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
             }
         }
 
-        // Defer (keeping the inputs in the cell buffer) whenever the network cannot take everything.
-        if (!canNetworkAcceptAll(outputs)) {
-            rollbackInputs(consumed.byKey());
-            return false;
-        }
+        // Defer (keeping the inputs in the cell buffer) when the machine cannot run at all.
         if (!consumePower()) {
             rollbackInputs(consumed.byKey());
             return false;
         }
-        // Commit the output set. The per-key simulation above is optimistic (the network's storage
-        // shares one byte pool across types), so any partial failure rolls the already-pushed part
-        // back out of the network - same tick, exact amounts - and defers the whole run.
-        long leftoverTotal = 0;
-        var pushed = new LinkedHashMap<AEKey, Long>();
+        // Outputs enter the smooth-return queue instead of hitting the network storage in one burst:
+        // drainOutputs() returns 1/20 of the accumulated total per tick.
         for (var entry : outputs.entrySet()) {
-            long leftover = pushToNetwork(entry.getKey(), entry.getValue());
-            pushed.put(entry.getKey(), entry.getValue() - leftover);
-            leftoverTotal += leftover;
-        }
-        if (leftoverTotal > 0) {
-            var storage = getMainNode().getGrid().getStorageService().getInventory();
-            for (var entry : pushed.entrySet()) {
-                if (entry.getValue() > 0) {
-                    storage.extract(entry.getKey(), entry.getValue(), Actionable.MODULATE, actionSource);
-                }
-            }
-            rollbackInputs(consumed.byKey());
-            return false;
+            var slot = pendingOutputs.computeIfAbsent(entry.getKey(), k -> new long[2]);
+            slot[0] += entry.getValue();
+            slot[1] += entry.getValue();
         }
         return true;
+    }
+
+    /**
+     * Smooth-return: every tick, up to 1/20 of each key's accumulated total is inserted into the ME
+     * network, so a huge batch's outputs reach the CPU over roughly {@link #OUTPUT_RETURN_TICKS}
+     * ticks instead of one giant IO burst. Network-full leftovers stay queued for the next tick.
+     */
+    private void drainOutputs() {
+        var node = getMainNode().getNode();
+        if (node == null || node.getGrid() == null) {
+            return;
+        }
+        var storage = node.getGrid().getStorageService().getInventory();
+        var it = pendingOutputs.entrySet().iterator();
+        while (it.hasNext()) {
+            var entry = it.next();
+            var slot = entry.getValue();
+            long rate = Math.max(1, (slot[1] + OUTPUT_RETURN_TICKS - 1) / OUTPUT_RETURN_TICKS);
+            long amount = Math.min(slot[0], rate);
+            long inserted = storage.insert(entry.getKey(), amount, Actionable.MODULATE, actionSource);
+            slot[0] -= inserted;
+            if (slot[0] <= 0) {
+                it.remove();
+            }
+        }
     }
 
     /**
@@ -606,25 +635,8 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         }
     }
 
-    /** Simulates whether the ME network can take the whole output set in one go. */
-    private boolean canNetworkAcceptAll(LinkedHashMap<AEKey, Long> outputs) {
-        var node = getMainNode().getNode();
-        if (node == null || node.getGrid() == null) {
-            return false;
-        }
-        var storage = node.getGrid().getStorageService().getInventory();
-        for (var entry : outputs.entrySet()) {
-            if (storage.insert(entry.getKey(), entry.getValue(), Actionable.SIMULATE,
-                    actionSource) < entry.getValue()) {
-                return false;
-            }
-        }
-        return true;
-    }
-
     /**
-     * Pushes a produced key to the ME network; returns the amount that did not fit (the caller rolls
-     * the whole output set back on any leftover).
+     * Pushes a produced key to the ME network; returns the amount that did not fit.
      */
     private long pushToNetwork(AEKey key, long amount) {
         var node = getMainNode().getNode();
@@ -643,6 +655,15 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         // Reset the drain state: the queue is gone, so the next push must go through a fresh idle window.
         draining = false;
         idleTicks = 0;
+        // Flush the smooth-return queue immediately: after the block is removed (drops path) nothing
+        // would tick anymore, and the crafting CPU is still waiting for these outputs.
+        for (var entry : pendingOutputs.entrySet()) {
+            var slot = entry.getValue();
+            if (slot[0] > 0) {
+                pushToNetwork(entry.getKey(), slot[0]);
+            }
+        }
+        pendingOutputs.clear();
         for (var cell : resolvedCells()) {
             if (cell == null) {
                 continue;
@@ -820,6 +841,17 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         diskInv.writeToNBT(tag, "disks", registries);
         upgrades.writeToNBT(tag, "upgrades", registries);
         tag.putBoolean("fastBatchMode", fastBatchMode);
+        // Persist the smooth-return queue so a save/load cannot lose already-produced outputs.
+        var pendingTag = new CompoundTag();
+        int pendingIndex = 0;
+        for (var entry : pendingOutputs.entrySet()) {
+            var entryTag = new CompoundTag();
+            entryTag.put("key", entry.getKey().toTag(registries));
+            entryTag.putLong("remaining", entry.getValue()[0]);
+            entryTag.putLong("total", entry.getValue()[1]);
+            pendingTag.put("e" + pendingIndex++, entryTag);
+        }
+        tag.put("pendingOutputs", pendingTag);
     }
 
     @Override
@@ -831,6 +863,20 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         diskInv.readFromNBT(tag, "disks", registries);
         upgrades.readFromNBT(tag, "upgrades", registries);
         fastBatchMode = tag.getBoolean("fastBatchMode");
+        pendingOutputs.clear();
+        var pendingTag = tag.getCompound("pendingOutputs");
+        for (var entryKey : pendingTag.getAllKeys()) {
+            var entryTag = pendingTag.getCompound(entryKey);
+            var key = AEKey.fromTagGeneric(registries, entryTag.getCompound("key"));
+            if (key == null) {
+                continue;
+            }
+            long remaining = Math.max(0, entryTag.getLong("remaining"));
+            long total = Math.max(remaining, entryTag.getLong("total"));
+            if (remaining > 0) {
+                pendingOutputs.put(key, new long[]{remaining, total});
+            }
+        }
         cellsDirty = true;
         refreshRecipePool();
     }
@@ -866,6 +912,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     @Override
     public void clearContent() {
         super.clearContent();
+        pendingOutputs.clear();
         for (int i = 0; i < CELL_SLOTS; i++) {
             cellInv.setItemDirect(i, ItemStack.EMPTY);
         }

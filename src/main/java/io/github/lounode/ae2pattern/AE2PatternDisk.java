@@ -149,7 +149,7 @@ public class AE2PatternDisk {
         var batchAssembler = net.minecraft.core.registries.BuiltInRegistries.BLOCK
                 .get(net.minecraft.resources.ResourceLocation.parse("ae2_pattern_disk:batch_molecular_assembler"));
         if (batchAssembler != null && speedCard != null) {
-            appeng.api.upgrades.Upgrades.add(speedCard, batchAssembler, 3);
+            appeng.api.upgrades.Upgrades.add(speedCard, batchAssembler, 4);
         }
     }
 }
