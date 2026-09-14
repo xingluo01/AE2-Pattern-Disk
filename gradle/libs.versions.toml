@@ -8,6 +8,7 @@ jetbrains-annotations = "26.1.0"
 
 ae2 = "19.2.17"
 guideme = "21.1.15"
+jei = "19.56.0.438"
 
 [libraries]
 minecraft = { module = "com.mojang:minecraft", version.ref = "minecraft" }
@@ -19,6 +20,8 @@ ae2 = { module = "org.appliedenergistics:appliedenergistics2", version.ref = "ae
 guideme = { module = "org.appliedenergistics:guideme", version.ref = "guideme" }
 
 emi = { module = "dev.emi:emi-neoforge", version = "1.1.22+1.21.1" }
+jei = { module = "mezz.jei:jei-1.21.1-neoforge-api", version.ref = "jei" }
+jei-runtime = { module = "mezz.jei:jei-1.21.1-neoforge", version.ref = "jei" }
 
 [plugins]
 modDevGradle = { id = "net.neoforged.moddev", version.ref = "modDevGradle" }

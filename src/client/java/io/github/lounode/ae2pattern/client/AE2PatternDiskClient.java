@@ -1,6 +1,7 @@
 package io.github.lounode.ae2pattern.client;
 
 import net.minecraft.client.resources.model.ModelResourceLocation;
+import net.minecraft.util.FastColor;
 
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
@@ -14,7 +15,6 @@ import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import appeng.api.util.AEColor;
 import appeng.client.gui.style.StyleManager;
 import appeng.client.render.StaticItemColor;
-
 import io.github.lounode.ae2pattern.client.render.PatternDiskAssemblerRenderer;
 
 import io.github.lounode.ae2pattern.AE2PatternDisk;
@@ -43,11 +43,20 @@ public class AE2PatternDiskClient {
     /**
      * The encoding terminal is a PartItem whose model relies on tint indices (same as AE2's own part
      * items); without a color handler the front layers render blank/white.
+     *
+     * <p>{@link AEColor} variants carry no alpha channel, and AE2 wraps every item color handler in
+     * {@code FastColor.ARGB32.opaque} for exactly that reason. Without that wrapper the four tinted
+     * layers of {@code ae2:item/display_base} are fully transparent and the icon loses its screen,
+     * leaving only the frame drawn by the untinted {@code front_base} layer.</p>
      */
     private void registerItemColors(RegisterColorHandlersEvent.Item event) {
-        event.register(new StaticItemColor(AEColor.TRANSPARENT),
+        event.register(
+                (stack, tintIndex) -> FastColor.ARGB32.opaque(TERMINAL_COLOR.getColor(stack, tintIndex)),
                 AEPatternRegistries.ITEM_PATTERN_DISK_ENCODING_TERMINAL.get());
     }
+
+    /** Fluix-coloured tint source, matching AE2's own terminals. */
+    private static final StaticItemColor TERMINAL_COLOR = new StaticItemColor(AEColor.TRANSPARENT);
 
     private void clientSetup(FMLClientSetupEvent event) {
         event.enqueueWork(InitPatternDiskProperties::init);

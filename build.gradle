@@ -167,6 +167,10 @@ dependencies {
     // EMI API for recipe-transfer integration (runtime is provided by the modpack).
     clientCompileOnly(libs.emi)
 
+    // JEI API for the recipe-transfer integration. Compile-only: JEI stays an optional runtime mod and
+    // only the @JeiPlugin entry point touches its classes (mirrors how EMI is wired above).
+    clientCompileOnly(libs.jei)
+
     // Client source set: explicit client-side API access.
     clientCompileOnly(libs.ae2)
     clientCompileOnly(libs.guideme)
@@ -232,6 +236,8 @@ dependencies {
     localRuntime 'maven.modrinth:neoecoae:gWMhHBje'
     localRuntime 'dev.vfyjxf:moddevmcp:0.1.6'
     localRuntime(libs.emi)
+    // JEI for the development runtime so the plugin can actually be exercised in runClient.
+    localRuntime(libs.jei.runtime)
 
     // EnderIO + EnderIO Evolution + Conduit Optimizer（开发环境集成测试）
     localRuntime 'maven.modrinth:enderio:Tfs8aJPH'
@@ -281,6 +287,11 @@ repositories {
     maven {
         name = 'ModMaven'
         url = 'https://modmaven.dev'
+    }
+    // JEI (official Maven for the API artifacts).
+    maven {
+        name = 'BlameJared'
+        url = 'https://maven.blamejared.com'
     }
     exclusiveContent {
         forRepository {

@@ -20,6 +20,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 
 import appeng.api.config.Actionable;
+import appeng.api.config.FuzzyMode;
 import appeng.api.config.PowerMultiplier;
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.implementations.blockentities.ICraftingMachine;
@@ -445,6 +446,11 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         // so it is the one part of a run that may leave the server thread.
         preparePlans(queue.keySet());
 
+        // Snapshot of what the buffer holds, built on first use: it is only consulted to discover candidate
+        // variants the pattern never spelled out (a tool that already lost durability). Availability is
+        // re-verified per run, so a stale snapshot can never hand out material that is not there.
+        KeyCounter buffer = null;
+
         boolean worked = false;
         var it = queue.entrySet().iterator();
         while (it.hasNext()) {
@@ -457,7 +463,10 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
             long remaining = entry.getValue();
 
             while (remaining > 0) {
-                if (!assembleOnce(plan)) {
+                if (buffer == null) {
+                    buffer = cellContents();
+                }
+                if (!assembleOnce(plan, buffer)) {
                     break;
                 }
                 remaining--;
@@ -484,11 +493,12 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
      * supply the material - never because the network is full, since outputs queue up instead. Internal
      * chaining is deliberately not performed - see {@link BatchRecipePool}.
      */
-    private boolean assembleOnce(PatternPlan plan) {
-        if (!hasInputs(plan)) {
+    private boolean assembleOnce(PatternPlan plan, KeyCounter buffer) {
+        var resolved = resolveInputs(plan, buffer);
+        if (resolved == null) {
             return false;
         }
-        var consumed = consumeInputs(plan);
+        var consumed = consumeInputs(plan, resolved);
         if (consumed == null) {
             return false;
         }
@@ -508,13 +518,23 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
             if (usedKey == null) {
                 continue;
             }
-            // Buckets, bottles and other containers must be handed back, otherwise they vanish and the
-            // crafting CPU keeps waiting for its expected container items forever.
-            var remaining = input.remainingFor(usedKey);
-            long consumedCount = input.multiplier();
-            if (remaining != null && consumedCount > 0) {
-                // AE2 books one remaining item per consumed template, i.e. one per occupied slot.
-                outputs.merge(remaining, consumedCount, Long::sum);
+            try {
+                // Container remainders are derived from the variant actually consumed - buckets, bottles
+                // and other containers must be handed back, otherwise they vanish and the crafting CPU
+                // keeps waiting for its expected container items forever. The same call is what returns a
+                // worn tool to the network: AE2 derives the remainder by re-running the recipe for the
+                // variant that was actually consumed.
+                var remaining = input.remainingFor(usedKey);
+                long consumedCount = input.multiplier();
+                if (remaining != null && consumedCount > 0) {
+                    // AE2 books one remaining item per occupied slot.
+                    outputs.merge(remaining, consumedCount, Long::sum);
+                }
+            } catch (Exception e) {
+                LOGGER.warn("Failed to compute container remainder for pattern slot {} at {}; rolling back",
+                        i, getBlockPos(), e);
+                rollbackInputs(consumed.byKey());
+                return false;
             }
         }
 
@@ -578,73 +598,108 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         return energy.extractAEPower(ENERGY_PER_RUN, Actionable.MODULATE, PowerMultiplier.CONFIG) > 0;
     }
 
-    private boolean hasInputs(PatternPlan plan) {
-        for (var input : plan.inputs()) {
-            if (input == null) {
-                continue;
-            }
-            long needed = input.multiplier();
-            if (!canSupply(input, needed)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private boolean canSupply(PatternPlan.Input input, long needed) {
-        if (needed < 0) {
-            // Malformed slot: a negative requirement must never reach the cells as a negative extract.
-            return false;
-        }
-        for (var candidate : input.candidates()) {
-            if (extractFromCells(candidate, needed, Actionable.SIMULATE) >= needed) {
-                return true;
+    /**
+     * Snapshot of the keys the cell buffer currently holds. Only used to discover candidate variants;
+     * every candidate is re-verified against the live buffer before it is consumed.
+     */
+    private KeyCounter cellContents() {
+        var contents = new KeyCounter();
+        for (var cell : resolvedCells()) {
+            if (cell != null) {
+                cell.getAvailableStacks(contents);
             }
         }
-        return false;
+        return contents;
     }
 
     /**
-     * Consumes the inputs for one execution from the cell buffer. Returns the per-key totals (for
-     * rollback) plus the variant actually consumed per input index (containers may differ), or
-     * {@code null} when a required input is missing.
+     * Resolves the variant to consume for every input slot, in AE2's own order: the variants the pattern
+     * spells out first, then any same-item variant the pattern accepts. That second step is what lets a
+     * slot take a tool that already lost durability - AE2's crafting patterns accept such a variant through
+     * {@code IInput.isValid} as long as the pattern was encoded with substitution enabled, and a pattern
+     * encoded without it rejects everything that is not an exact match.
+     *
+     * @return the key per input slot ({@code null} for holes), or {@code null} when a slot cannot be filled
      */
-    private Consumption consumeInputs(PatternPlan plan) {
-        var byKey = new LinkedHashMap<AEKey, Long>();
-        var usedByInput = new ArrayList<AEKey>();
-        for (var input : plan.inputs()) {
+    private List<AEKey> resolveInputs(PatternPlan plan, KeyCounter buffer) {
+        var level = getLevel();
+        var inputs = plan.inputs();
+        var resolved = new ArrayList<AEKey>(inputs.size());
+        for (var input : inputs) {
             if (input == null) {
-                usedByInput.add(null);
+                resolved.add(null);
                 continue;
             }
-            var usedKey = consumeOne(input, input.multiplier());
-            if (usedKey == null) {
-                rollbackInputs(byKey);
+            var key = resolveVariant(input, level, buffer);
+            if (key == null) {
                 return null;
             }
-            byKey.merge(usedKey, input.multiplier(), Long::sum);
-            usedByInput.add(usedKey);
+            resolved.add(key);
         }
-        return new Consumption(byKey, usedByInput);
+        return resolved;
     }
 
-    /** Per-run consumption record: {@code byKey} drives rollbacks, {@code usedByInput} drives container remainders. */
-    private record Consumption(LinkedHashMap<AEKey, Long> byKey, List<AEKey> usedByInput) {
-    }
-
-    /** Extracts one input's requirement from the cells; returns the key actually consumed, or null. */
-    private AEKey consumeOne(PatternPlan.Input input, long needed) {
+    private AEKey resolveVariant(PatternPlan.Input input, Level level, KeyCounter buffer) {
+        long needed = input.multiplier();
         if (needed < 0) {
-            // Defensive: hasInputs already rejects negative requirements.
+            // Malformed slot: a negative requirement must never reach the cells as a negative extract.
             return null;
         }
         for (var candidate : input.candidates()) {
             if (extractFromCells(candidate, needed, Actionable.SIMULATE) >= needed) {
-                extractFromCells(candidate, needed, Actionable.MODULATE);
                 return candidate;
             }
         }
+        if (level == null) {
+            return null;
+        }
+        // Nothing the pattern listed is available: look for a same-item variant sitting in the buffer. The
+        // pattern itself decides which variants it accepts, so this cannot widen a pattern's contract.
+        for (var candidate : input.candidates()) {
+            if (!(candidate instanceof AEItemKey itemCandidate)) {
+                continue;
+            }
+            for (var variant : buffer.findFuzzy(itemCandidate, FuzzyMode.IGNORE_ALL)) {
+                var key = variant.getKey();
+                if (key.equals(candidate) || !input.accepts(key, level)) {
+                    continue;
+                }
+                if (extractFromCells(key, needed, Actionable.SIMULATE) >= needed) {
+                    return key;
+                }
+            }
+        }
         return null;
+    }
+
+    /**
+     * Consumes the resolved variants for one run. Returns the per-key totals (for rollback) plus the
+     * variant consumed per input slot, or {@code null} when a slot turned out to be empty in the meantime
+     * - in that case everything this run already took is put back.
+     */
+    private Consumption consumeInputs(PatternPlan plan, List<AEKey> resolved) {
+        var byKey = new LinkedHashMap<AEKey, Long>();
+        var inputs = plan.inputs();
+        for (int i = 0; i < inputs.size(); i++) {
+            var input = inputs.get(i);
+            var usedKey = resolved.get(i);
+            if (input == null || usedKey == null) {
+                continue;
+            }
+            long needed = input.multiplier();
+            if (extractFromCells(usedKey, needed, Actionable.MODULATE) < needed) {
+                // The simulation and the real extraction disagreed (something else emptied the slot in
+                // between): hand back what this run took and leave the job queued.
+                rollbackInputs(byKey);
+                return null;
+            }
+            byKey.merge(usedKey, needed, Long::sum);
+        }
+        return new Consumption(byKey, resolved);
+    }
+
+    /** Per-run consumption record: {@code byKey} drives rollbacks, {@code usedByInput} drives container remainders. */
+    private record Consumption(LinkedHashMap<AEKey, Long> byKey, List<AEKey> usedByInput) {
     }
 
     /** Puts rolled-back inputs (and only those) back into the cell buffer they came from. */

@@ -2,10 +2,13 @@ package io.github.lounode.ae2pattern.common.logic;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+
+import org.jetbrains.annotations.Nullable;
+
+import net.minecraft.world.level.Level;
 
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.stacks.AEKey;
@@ -13,38 +16,47 @@ import appeng.api.stacks.AEKey;
 /**
  * Pre-computed execution plan of one crafting pattern (批处理分子装配室).
  *
- * <p>A plan holds everything that can be derived from the pattern alone: which variants each input slot
- * accepts, how many of them one run consumes, the container remainder every variant leaves behind, and
- * the aggregated main outputs. None of it touches the cell buffer, the grid or the world, which is what
- * makes it safe to build a plan on a worker thread while the server keeps ticking; the storage IO that
- * follows stays on the server thread.</p>
+ * <p>A plan holds the parts of a pattern that never change: which variants each input slot declares, how
+ * much of them one run consumes, and the aggregated main outputs. None of it touches the cell buffer, the
+ * grid or the world, which is what makes it safe to build a plan on a worker thread while the server keeps
+ * ticking; the storage IO that follows stays on the server thread.</p>
  *
- * <p>All fields are immutable, so a plan can be handed from an analysis worker to the tick thread without
- * any further synchronisation. Building one per pattern also keeps the per-run hot path free of repeated
- * {@code getPossibleInputs()} array walks and {@code getRemainingKey()} container lookups.</p>
+ * <p>Container remainders are deliberately <em>not</em> cached: which variant ends up in a slot is only
+ * known at run time (a tool may already have lost durability), and AE2 answers that question by re-running
+ * the recipe for the exact variant. Delegating to {@link Input#remainingFor} keeps that semantics and keeps
+ * recipe code off the worker threads.</p>
  */
 public final class PatternPlan {
 
     /**
      * One input slot of the pattern.
      *
-     * @param multiplier           how much one run consumes from this slot (pattern parallels)
-     * @param candidates           variants that can satisfy the slot, in the pattern's own priority order
-     * @param remainingByCandidate container remainder per variant; a {@code null} value means the variant
-     *                             leaves no container behind
+     * @param multiplier how much one run consumes from this slot (pattern parallels)
+     * @param candidates variants the pattern itself declares, in the pattern's own priority order
+     * @param source     the pattern's own input slot, which owns the validity and remainder rules
      */
-    public record Input(long multiplier, List<AEKey> candidates, Map<AEKey, AEKey> remainingByCandidate) {
+    public record Input(long multiplier, List<AEKey> candidates, IPatternDetails.IInput source) {
 
         /**
          * The container item the given variant leaves behind, or {@code null} when it leaves none.
-         * The key has to be the variant that was actually consumed - substitutes may carry different
-         * containers even though they fill the same slot.
+         *
+         * <p>Asked of the pattern instead of being cached per variant: the variant that was actually
+         * consumed may be one the pattern never listed (a worn tool), and for crafting patterns AE2
+         * derives the remainder by re-running the recipe with that variant in the grid.</p>
          */
-        public AEKey remainingFor(AEKey usedKey) {
-            return remainingByCandidate.get(usedKey);
+        public @Nullable AEKey remainingFor(AEKey usedKey) {
+            return source.getRemainingKey(usedKey);
         }
 
-        /** True when no variant can ever satisfy this slot. */
+        /**
+         * Whether the pattern accepts this variant in the slot. This is AE2's own substitution gate: a
+         * pattern encoded without substitution only accepts the exact variant it was built with.
+         */
+        public boolean accepts(AEKey key, Level level) {
+            return source.isValid(key, level);
+        }
+
+        /** True when the pattern declares no variant at all for this slot. */
         public boolean isEmpty() {
             return candidates.isEmpty();
         }
@@ -72,18 +84,13 @@ public final class PatternPlan {
                 continue;
             }
             var candidates = new ArrayList<AEKey>();
-            var remainders = new HashMap<AEKey, AEKey>();
             for (var possible : input.getPossibleInputs()) {
                 if (possible == null || possible.what() == null) {
                     continue;
                 }
                 candidates.add(possible.what());
-                remainders.put(possible.what(), input.getRemainingKey(possible.what()));
             }
-            inputs.add(new Input(input.getMultiplier(),
-                    List.copyOf(candidates),
-                    // Map.copyOf rejects null values, and "leaves no container" is a legitimate null here.
-                    Collections.unmodifiableMap(remainders)));
+            inputs.add(new Input(input.getMultiplier(), List.copyOf(candidates), input));
         }
 
         var outputs = new LinkedHashMap<AEKey, Long>();

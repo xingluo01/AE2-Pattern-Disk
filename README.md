@@ -107,4 +107,31 @@ The resulting jar is written to `build/libs/`.
 
 ## License
 
-See `LICENSE` if present; review upstream AE2 assets (LGPL/GPL) if you redistribute any copied resource.
+This project is licensed under the **GNU Lesser General Public License v3.0 (LGPL-3.0)**.
+See the [LICENSE](LICENSE) file for the full license text.
+
+### Upstream Attribution
+
+This mod is an addon for **[Applied Energistics 2](https://github.com/AppliedEnergistics/Applied-Energistics-2)** (AE2), which is also licensed under LGPL-3.0.
+
+**The following assets are sourced from AE2 (LGPL-3.0):**
+
+| File | AE2 Source |
+|------|-----------|
+| `assets/ae2_pattern_disk/textures/part/pattern_disk_encoding_terminal_bright.png` | `assets/ae2/textures/part/pattern_encoding_terminal_bright.png` |
+| `assets/ae2_pattern_disk/textures/part/pattern_disk_encoding_terminal_medium.png` | `assets/ae2/textures/part/pattern_encoding_terminal_medium.png` |
+| `assets/ae2_pattern_disk/textures/part/pattern_disk_encoding_terminal_dark.png` | `assets/ae2/textures/part/pattern_encoding_terminal_dark.png` |
+| `assets/ae2_pattern_disk/textures/part/monitor_front.png` | `assets/ae2/textures/part/monitor_front.png` |
+| `assets/ae2_pattern_disk/textures/part/monitor_sides.png` | `assets/ae2/textures/part/monitor_sides.png` |
+| `assets/ae2_pattern_disk/textures/part/monitor_back.png` | `assets/ae2/textures/part/monitor_back.png` |
+| `assets/ae2_pattern_disk/textures/part/monitor_colored.png` | `assets/ae2/textures/part/monitor_colored.png` |
+
+These textures are redistributed under the terms of LGPL-3.0. No modifications have been made.
+
+Model JSON files referencing `ae2:*` parents (`display_base`, `display_off`, `io_port`) are derivative works of AE2's model files and are also covered by LGPL-3.0.
+
+### Third-Party Code
+
+The EMI recipe transfer integration (`integration/emi/`) is modelled after AE2's own `EmiEncodePatternHandler`;
+the JEI transfer handler follows the same design pattern as AE2's JEI handler. Both are independent implementations
+that interact only with the respective recipe-viewer's public API and do not contain code copied from AE2.
