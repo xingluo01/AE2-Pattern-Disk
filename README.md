@@ -4,7 +4,7 @@ An addon for [Applied Energistics 2](https://github.com/AppliedEnergistics/Appli
 
 - **Loader / MC**: NeoForge 1.21.1
 - **NeoForge**: 21.1.241
-- **AE2**: 19.2.8
+- **AE2**: 19.2.17
 - **Java**: 21
 
 ## Features
@@ -24,32 +24,49 @@ Store encoded AE2 patterns in a single disk. A disk is untyped while empty; the 
 A pattern provider backed by physical pattern disks. Insert disks into its slots and it exposes their encoded patterns to the ME autocrafting system. It is a task source (it does not craft itself) and accepts returned products through its return inventory.
 
 ### Pattern Transferer
-Moves encoded patterns between AE2 blank patterns and pattern disks. Input slots accept encoded patterns or populated disks; application slots hold the target disks. Blank patterns produced by extraction are returned to the connected ME network. Supports speed cards.
+Moves encoded patterns between AE2 blank patterns and pattern disks. Input slots accept encoded patterns or populated disks; destination slots hold the target disks. Blank patterns produced by extraction are returned to the connected ME network. Supports speed cards.
 
 ### Efficient Molecular Assembler
 A parallel molecular assembler with **eight independent execution threads**. It accepts crafting jobs pushed by AE2 pattern providers and runs them concurrently. Each thread owns a 3×3 molecular assembler grid, an output slot, and independent progress.
 
-The GUI exposes one page per thread (mirroring EAE's extension molecular assembler) with vertical progress only for the selected page. Accepts up to **five AE2 Speed Cards** with multipliers `1.0x / 1.3x / 1.7x / 2.0x / 2.5x / 5.0x`.
+The GUI exposes one page per thread (mirroring ExtendedAE's (EAE) extension molecular assembler) with vertical progress only for the selected page. Accepts up to **five AE2 Speed Cards** with multipliers `1.0x / 1.3x / 1.7x / 2.0x / 2.5x / 5.0x`.
 
 Each page also has an optional pattern slot. Inserting an encoded crafting pattern there turns that page into a self-executing unit: it pulls its own inputs from the ME network, crafts continuously while materials last, and pushes products plus container remainders to adjacent inventories or back into the network. A page running a manual pattern does not accept provider-pushed jobs, so the machine only takes pushed jobs while at least one page is idle.
 
 ### Batch Molecular Assembler
 
-Buffers the jobs pushed by AE2 crafting CPUs inside nine private storage-cell slots and executes them once the input material has actually stopped arriving. The window is measured in game time since the last accepted push (two modes: standard 40 ticks, fast 10 ticks), so material that keeps coming simply keeps the batch waiting; the buffer adds no limit of its own beyond the capacity of the inserted cells, and a started batch runs to the end of the queue without a per-tick ceiling. Supports crafting-table, smithing-table and stonecutting recipes. Produced outputs (including container remainders) enter a smooth-return queue and reach the network over ~20 ticks at ~5% of the accumulated total per tick; when the network cannot take them they stay queued and are retried, and the inputs are not rolled back for that reason - inputs roll back only when the cells cannot hold a push, when material is missing, or when the grid is out of power. Storage cells inserted here are private to the machine (never exposed to the ME network) and are locked while work is buffered; breaking the block or pressing cancel returns the buffer to the network. Up to **four AE2 Speed Cards** add worker threads (2 / 4 / 8 / 16): those threads analyse newly queued patterns in parallel, while every cell and network access stays on the server thread because AE2 storage is not thread-safe. Total output always matches the ordered amount.
+Buffers the jobs pushed by AE2 crafting CPUs inside nine private storage cell slots and executes them once the input material has actually stopped arriving.
+
+#### Batch Window
+
+The window is measured in game time since the last accepted push (two modes: standard 40 ticks, fast 10 ticks), so material that keeps coming simply keeps the batch waiting; the buffer adds no limit of its own beyond the capacity of the inserted cells, and a started batch runs to the end of the queue without a per-tick ceiling. Supports crafting-table, smithing-table and stonecutting recipes.
+
+#### Output Queue
+
+Produced outputs (including container remainders) enter a smooth-return queue and reach the network over ~20 ticks at ~5% of the accumulated total per tick; when the network cannot take them they stay queued and are retried, and the inputs are not rolled back for that reason - inputs roll back only when the cells cannot hold a push, when material is missing, or when the grid is out of power.
+
+#### Cell Slots
+
+Storage cells inserted here are private to the machine (never exposed to the ME network) and are locked while work is buffered; breaking the block or pressing cancel returns the buffer to the network.
+
+#### Speed Cards
+
+Up to **four AE2 Speed Cards** add worker threads (2 / 4 / 8 / 16): those threads analyse newly queued patterns in parallel, while every cell and network access stays on the server thread because AE2 storage is not thread-safe. Total output always matches the ordered amount.
 
 ## Blocks & Items
 
-| ID | Type |
-| --- | --- |
-| `ae2_pattern_disk:pattern_disk_1k` | Item |
-| `ae2_pattern_disk:pattern_disk_4k` | Item |
-| `ae2_pattern_disk:pattern_disk_16k` | Item |
-| `ae2_pattern_disk:pattern_disk_64k` | Item |
-| `ae2_pattern_disk:pattern_disk_256k` | Item |
-| `ae2_pattern_disk:pattern_transferer` | Block |
-| `ae2_pattern_disk:pattern_disk_provider` | Block |
-| `ae2_pattern_disk:pattern_disk_assembler` | Block |
-| `ae2_pattern_disk:batch_molecular_assembler` | Block |
+| ID | Display Name | Type |
+| --- | --- | --- |
+| `ae2_pattern_disk:pattern_disk_1k` | 1k Pattern Disk | Item |
+| `ae2_pattern_disk:pattern_disk_4k` | 4k Pattern Disk | Item |
+| `ae2_pattern_disk:pattern_disk_16k` | 16k Pattern Disk | Item |
+| `ae2_pattern_disk:pattern_disk_64k` | 64k Pattern Disk | Item |
+| `ae2_pattern_disk:pattern_disk_256k` | 256k Pattern Disk | Item |
+| `ae2_pattern_disk:pattern_disk_encoding_terminal` | ME Pattern Disk Encoding Terminal | Item (part) |
+| `ae2_pattern_disk:pattern_transferer` | Pattern Transferer | Block |
+| `ae2_pattern_disk:pattern_disk_provider` | Pattern Disk Provider | Block |
+| `ae2_pattern_disk:pattern_disk_assembler` | Efficient Molecular Assembler | Block |
+| `ae2_pattern_disk:batch_molecular_assembler` | Batch Molecular Assembler | Block |
 
 All items are available in the dedicated creative tab **AE2 Pattern Disk**.
 
@@ -86,7 +103,7 @@ All items are available in the dedicated creative tab **AE2 Pattern Disk**.
 
 ## Guide
 
-The mod ships an AE2 / GuideME guide (in `assets/ae2_pattern_disk/ae2guide/`) covering the pattern disks (all five tiers on one page), the pattern disk provider, the pattern transferer, and the efficient molecular assembler. The three machine GUIs link to their guide page.
+The mod ships a GuideME guide (in `assets/ae2_pattern_disk/ae2guide/`) covering the pattern disks (all five tiers on one page), the pattern disk provider, the pattern transferer, and the efficient molecular assembler. The three machine GUIs link to their guide page.
 
 ## Dependencies
 

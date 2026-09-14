@@ -2,7 +2,7 @@
 navigation:
   parent: index.md
   title: ME样板磁盘编码终端
-  position: 50
+  position: 35
 item_ids:
 - ae2_pattern_disk:pattern_disk_encoding_terminal
 categories:
