@@ -1,6 +1,6 @@
 package io.github.lounode.ae2pattern.common.block.entity;
 
-import appeng.util.inv.AppEngInternalInventory;
+import appeng.api.inventories.InternalInventory;
 
 import net.minecraft.core.BlockPos;
 
@@ -12,7 +12,7 @@ import net.minecraft.core.BlockPos;
 public interface IPatternDiskHost {
 
     /** @return The inventory whose slots may contain {@code PatternDiskItem} stacks. */
-    AppEngInternalInventory getDiskInventory();
+    InternalInventory getDiskInventory();
 
     /** @return The host's position, used as a stable identity for terminal-side fingerprinting. */
     BlockPos getBlockPos();

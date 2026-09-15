@@ -100,7 +100,10 @@ public class PatternDiskRemoveInventory implements InternalInventory {
             }
             var contents = disk.contents(stack);
             for (int idx = 0; idx < contents.patterns().size(); idx++) {
-                list.add(new DiskRef(slot, idx));
+                // A copy, not the live element: PatternDiskContents shares its ItemStack elements and its own
+                // javadoc warns they are mutable - a snapshot taken as a live reference would silently follow any
+                // in-place rewrite and could then never tell a rewritten recipe from the one this row was built for.
+                list.add(new DiskRef(slot, idx, contents.patterns().get(idx).copy()));
             }
         }
         refs = list.toArray(new DiskRef[0]);
@@ -162,7 +165,17 @@ public class PatternDiskRemoveInventory implements InternalInventory {
             return ItemStack.EMPTY;
         }
         var patterns = disk.contents(stack).patterns();
-        return ref.patternIndex < patterns.size() ? patterns.get(ref.patternIndex) : ItemStack.EMPTY;
+        if (ref.patternIndex >= patterns.size()) {
+            return ItemStack.EMPTY;
+        }
+        // The row is only what it was built for. Removing a recipe moves everything behind it up one, and this
+        // view's own removals shift its refs to follow; a removal from outside it - the pattern management screens
+        // take recipes out through the store - does not, and the row would then show, take, or charge for the
+        // neighbour the player never picked. A snapshot that no longer matches what sits there makes the row
+        // empty instead, which every caller already handles: nothing is displayed, nothing is handed out, and
+        // nothing is emptied. The next view a terminal opens is scanned fresh.
+        var current = patterns.get(ref.patternIndex);
+        return ItemStack.isSameItemSameComponents(current, ref.expected()) ? current : ItemStack.EMPTY;
     }
 
     private void setItemDirectImpl(DiskRef ref, ItemStack stack) {
@@ -170,7 +183,7 @@ public class PatternDiskRemoveInventory implements InternalInventory {
         // （lastRemoved 命中），把原样板原位插回并返还空白——swap 整体无效果；其余非空写入（如
         // 恶意携带物、非恢复写回）一律拒绝，磁盘不接受终端写入。
         if (!stack.isEmpty()) {
-            if (restoreLastRemoval(ref)) {
+            if (restoreLastRemoval(ref, stack)) {
                 return; // swap 回滚成功：磁盘与视图均恢复原状
             }
             return; // 非恢复写回：拒绝
@@ -192,9 +205,15 @@ public class PatternDiskRemoveInventory implements InternalInventory {
      * original pattern at its original position, returns the drawn blank pattern and re-links the row.
      * Returns true when a matching take existed and was rolled back.
      */
-    private boolean restoreLastRemoval(DiskRef ref) {
+    private boolean restoreLastRemoval(DiskRef ref, ItemStack stack) {
         var removed = lastRemoved.get(ref);
         if (removed == null || removed.stack().isEmpty()) {
+            return false;
+        }
+        // Only a write-back of the very stack this row just gave up is a swap restore. Anything else - an entry
+        // left behind by a path that never restores, or a row that merely happens to share the address after a
+        // reindex - must not put a recipe back that was already taken.
+        if (!ItemStack.matches(removed.stack(), stack)) {
             return false;
         }
         var diskStack = diskInventory.getStackInSlot(ref.diskSlot);
@@ -213,6 +232,17 @@ public class PatternDiskRemoveInventory implements InternalInventory {
         }
         diskStack.set(AEPatternRegistries.DISK_CONTENTS.get(), restored);
         diskInventory.setItemDirect(ref.diskSlot, diskStack);
+        // Taking the entry shifted this disk's later rows down by one; putting it back at its original position
+        // undoes that, so the rows have to come back too. This row is still null here, which is what keeps it
+        // from shifting itself.
+        for (int i = 0; i < refs.length; i++) {
+            DiskRef other = refs[i];
+            if (other != null && other.diskSlot == ref.diskSlot && other.patternIndex >= ref.patternIndex) {
+                // Same instance as before, for the reason given in reindexAfterRemoval: DiskRef equality and the
+                // lastRemoved lookup are built from it.
+                refs[i] = new DiskRef(ref.diskSlot, other.patternIndex + 1, other.expected());
+            }
+        }
         // 精确填回该行原 flat 位置（磁盘已原位恢复，其它行未动）。
         if (removed.flatIndex() >= 0 && removed.flatIndex() < refs.length && refs[removed.flatIndex()] == null) {
             refs[removed.flatIndex()] = ref;
@@ -256,6 +286,10 @@ public class PatternDiskRemoveInventory implements InternalInventory {
         // SPLIT/半取路径无 swap 恢复写回；removePatternAt 仍会缓存 lastRemoved（无害残留，
         // 该行已占位置空、rebuild 时清理），磁盘即刻真删。
         removePatternAt(ref);
+        // The SPLIT path never writes back, so it must not leave behind a restore entry: a later write aimed at
+        // whatever row ends up at this address would otherwise resurrect this recipe and hand out a blank for a
+        // take that already happened.
+        lastRemoved.remove(ref);
         return result;
     }
 
@@ -269,6 +303,11 @@ public class PatternDiskRemoveInventory implements InternalInventory {
             return; // 越界保护：外部已改动该盘布局
         }
         var original = contents.patterns().get(ref.patternIndex).copy();
+        // Checked again here even though every caller just did: the blank this removal costs is drawn in between,
+        // and a disk that moved under that call would otherwise have an entry deleted from the wrong address.
+        if (!ItemStack.isSameItemSameComponents(contents.patterns().get(ref.patternIndex), ref.expected())) {
+            return;
+        }
         var next = contents.remove(ref.patternIndex);
         stack.set(AEPatternRegistries.DISK_CONTENTS.get(), next);
         diskInventory.setItemDirect(ref.diskSlot, stack);
@@ -276,6 +315,11 @@ public class PatternDiskRemoveInventory implements InternalInventory {
         // 会使已打开终端与服务端失同步（末尾残留幽灵行）。磁盘内容已真删并自动退行补位，
         // 下一次重建视图（重开 PAT / 新会话 rebuild 扫盘）即呈现紧凑补位布局。
         int flat = markRowEmptied(ref);
+        // The entry is gone from the disk, so every later index on that same disk now addresses the next
+        // recipe. Leaving the rows alone made them show - and extract - something other than the recipe the
+        // row was built for, which is the worst possible failure here: the row the player sees is not the
+        // row the delete lands on.
+        reindexAfterRemoval(ref.diskSlot, ref.patternIndex);
         if (flat >= 0) {
             // 记录原样板与原位置，供 AE2 swap 恢复原位插回。真实取走（无恢复写回到达）时该记录
             // 是仅占内存的无害残留，rebuild（新建视图）时统一清理。
@@ -294,6 +338,26 @@ public class PatternDiskRemoveInventory implements InternalInventory {
             }
         }
         return -1;
+    }
+
+    /**
+     * Shifts the rows of {@code diskSlot} that sat after {@code removedIndex} down one.
+     *
+     * <p>Rows are addressed by their position inside the disk, and removing an entry moves everything behind it
+     * up one. The row count itself stays frozen - the terminal needs that - so only the addresses change. The
+     * taken row is already nulled by the caller and is skipped by that.</p>
+     */
+    private void reindexAfterRemoval(int diskSlot, int removedIndex) {
+        for (int i = 0; i < refs.length; i++) {
+            DiskRef other = refs[i];
+            if (other != null && other.diskSlot == diskSlot && other.patternIndex > removedIndex) {
+                // The snapshot travels with the address: the pattern behind the removed one is the same pattern,
+                // it just sits one place earlier now.
+                // expected stays the same instance: DiskRef equality - and with it the lastRemoved key a later
+                // swap restore looks up - is built from it, so copying here would silently break that lookup.
+                refs[i] = new DiskRef(diskSlot, other.patternIndex - 1, other.expected());
+            }
+        }
     }
 
     /**
@@ -366,6 +430,6 @@ public class PatternDiskRemoveInventory implements InternalInventory {
     private record RemovedRow(ItemStack stack, int flatIndex) {
     }
 
-    private record DiskRef(int diskSlot, int patternIndex) {
+    private record DiskRef(int diskSlot, int patternIndex, ItemStack expected) {
     }
 }

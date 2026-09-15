@@ -7,7 +7,12 @@ import java.util.Objects;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 
+import appeng.api.config.Actionable;
 import appeng.api.inventories.InternalInventory;
+import appeng.api.networking.IGrid;
+import appeng.api.networking.security.IActionSource;
+import appeng.core.definitions.AEItems;
+import appeng.api.stacks.AEItemKey;
 
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
 
@@ -74,7 +79,7 @@ final class NeoECOBusDisks {
         if (level == null || inventory == null) {
             return false;
         }
-        for (BusDisk disk : disksIn(inventory)) {
+        for (BusDisk disk : disksThatAccept(inventory, pattern, level)) {
             // tryInsert mutates the stack's contents component rather than returning a new stack.
             if (!disk.item().tryInsert(disk.stack(), pattern, level)) {
                 continue;
@@ -83,6 +88,33 @@ final class NeoECOBusDisks {
             return true;
         }
         return false;
+    }
+
+    /**
+     * Every disk that would take {@code pattern}, with the already-claimed ones first.
+     *
+     * <p>An empty disk locks to whatever class reaches it first, so handing every new class to the first
+     * free disk spreads one class per disk and leaves nothing for the classes that arrive later, even
+     * though room remains. Filling a disk that already holds the class first keeps the free disks free for
+     * classes that have not shown up yet. Disks locked to another class are left out entirely.</p>
+     */
+    private static List<BusDisk> disksThatAccept(InternalInventory inventory, ItemStack pattern, Level level) {
+        List<BusDisk> claimed = new ArrayList<>();
+        List<BusDisk> empty = new ArrayList<>();
+        for (BusDisk disk : disksIn(inventory)) {
+            // Room, locked type and same-result exclusion all live in canInsert, so this probe cannot
+            // disagree with what tryInsert would actually do.
+            if (!disk.item().canInsert(disk.stack(), pattern, level)) {
+                continue;
+            }
+            if (disk.item().contents(disk.stack()).type() == null) {
+                empty.add(disk);
+            } else {
+                claimed.add(disk);
+            }
+        }
+        claimed.addAll(empty);
+        return claimed;
     }
 
     /** @return every pattern stored on the bus's disks, still encoded. */
@@ -128,6 +160,58 @@ final class NeoECOBusDisks {
             hash = hash * 31L + Objects.hashCode(contents.type());
         }
         return hash;
+    }
+
+    /** Draws blanks from {@code grid}, all or nothing. */
+    static boolean drawBlankPatterns(IGrid grid, int count) {
+        if (grid == null || count <= 0) {
+            return false;
+        }
+        // An empty source rather than one naming the bus: the bus comes from another mod and is not statically
+        // an action host here. The failure direction is the safe one - a network that refuses an unattributed
+        // extraction leaves the recipe where it is instead of paying for it.
+        return grid.getStorageService().getInventory()
+                .extract(AEItemKey.of(AEItems.BLANK_PATTERN), count, Actionable.MODULATE, IActionSource.empty())
+                == count;
+    }
+
+    /**
+     * Takes one pattern back off a disk, paying for it first.
+     *
+     * <p>The order is the contract. A pattern that reached the network's index came out of a blank, so the blank
+     * is drawn before anything is removed; if it cannot be drawn the disk is left exactly as it was, since a
+     * removal that half happened would lose both the pattern and the blank.</p>
+     *
+     * @param diskSlot which of the bus's slots holds the disk - the same pattern can sit on more than one
+     * @param pattern the encoded pattern to take off, matched by item and components
+     * @return whether the pattern was taken off
+     */
+    static boolean removeFromDisk(NeoECOBusAccess.BusHandles handles, Object bus, int diskSlot, ItemStack pattern,
+            IGrid grid) {
+        InternalInventory inventory = NeoECOBusAccess.patternInventory(handles, bus);
+        if (inventory == null || pattern == null || pattern.isEmpty() || diskSlot < 0
+                || diskSlot >= inventory.size()) {
+            return false;
+        }
+        ItemStack stack = inventory.getStackInSlot(diskSlot);
+        if (stack.isEmpty() || !(stack.getItem() instanceof PatternDiskItem disk)) {
+            return false;
+        }
+        var contents = disk.contents(stack);
+        for (int index = 0; index < contents.patterns().size(); index++) {
+            if (!ItemStack.isSameItemSameComponents(contents.patterns().get(index), pattern)) {
+                continue;
+            }
+            if (!drawBlankPatterns(grid, 1)) {
+                return false;
+            }
+            // removeAt edits the stack's contents component in place, the way tryInsert does, so the stack has to
+            // go back into the slot for the change to be visible there.
+            disk.removeAt(stack, index);
+            inventory.setItemDirect(diskSlot, stack);
+            return true;
+        }
+        return false;
     }
 
     private static List<BusDisk> disksIn(InternalInventory inventory) {

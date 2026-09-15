@@ -95,6 +95,92 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     /** AE charged per assembled job (container remainders and parallels do not change this). */
     private static final double ENERGY_PER_RUN = 10.0;
 
+    /**
+     * What the machine is doing, or why it is not doing it.
+     *
+     * <p>Three different situations all leave {@link #assembleOnce} returning {@code false} without saying
+     * which: the pattern could not be resolved against the buffer, the buffer could not supply the material,
+     * or the grid could not pay for the run. From outside the machine they were indistinguishable, so a
+     * machine that refuses to work looked exactly like one waiting on a delivery - and no display could tell
+     * the player which was in front of them.</p>
+     */
+    public enum WorkState {
+        /** The machine is not on the grid, so nothing it reports about itself is current. */
+        OFFLINE,
+        /** No storage cell to work out of, so the crafting CPU never hands it anything. */
+        NO_BUFFER,
+        /** The disks hold no pattern this machine can run, so a job could never be matched to one. */
+        NO_PATTERN,
+        /** Nothing queued and nothing left to return. */
+        IDLE,
+        /** Jobs are queued, still inside the quiet window that closes before a batch runs. */
+        WAITING_FOR_MATERIAL,
+        /** A queued pattern produced no execution plan, so its job can never run. */
+        UNRESOLVABLE_PATTERN,
+        /** The cell buffer could not supply the inputs for the pattern being run. */
+        INPUTS_UNAVAILABLE,
+        /** The grid could not pay for the run. */
+        NO_POWER,
+        /** A container remainder could not be worked out, so the run was rolled back before producing anything. */
+        REMAINDER_FAILED,
+        /** The queue is done; produced outputs are still returning to the network. */
+        RETURNING_OUTPUTS,
+        /** Outputs are waiting but the network is taking none of them, so they will not drain on their own. */
+        OUTPUT_BLOCKED,
+        /** A run completed on the last attempt. */
+        WORKING
+    }
+
+    private WorkState workState = WorkState.IDLE;
+
+    /** Set when a return attempt found the network unwilling to take what was waiting. */
+    private boolean returnStalled;
+
+    /** @return how many assembly jobs are still queued. */
+    public long getQueuedJobCount() {
+        long total = 0;
+        for (long remaining : queue.values()) {
+            total += remaining;
+        }
+        return total;
+    }
+
+    /** @return the quiet ticks still needed before a batch runs, or 0 when one is free to run now. */
+    public int getTicksUntilBatch() {
+        if (queue.isEmpty()) {
+            return 0;
+        }
+        return (int) Math.max(0, batchIdleTicks() - inputGapTicks());
+    }
+
+    /** @return what the machine is doing, or why it is not doing it. */
+    public WorkState getWorkState() {
+        // The structural reasons are worked out here rather than recorded while ticking, because ticking only
+        // runs while the machine is active: a machine that is offline, has no cell to work from, or has
+        // nothing executable on its disks would otherwise keep reporting whatever it was last doing. That
+        // staleness is also what made an offline machine come out as "no power" - the same node check feeds
+        // both, so it has to be asked here first.
+        var node = getMainNode().getNode();
+        if (node == null || node.getGrid() == null) {
+            return WorkState.OFFLINE;
+        }
+        if (!acceptsPlans()) {
+            return WorkState.NO_BUFFER;
+        }
+        if (exposedPatterns.isEmpty()) {
+            return WorkState.NO_PATTERN;
+        }
+        if (!pendingOutputs.isEmpty() && queue.isEmpty()) {
+            // Distinguished from a return in progress because only one of the two has anything its owner can act
+            // on, and from the outside the queue draining and the queue stuck look exactly alike.
+            return returnStalled ? WorkState.OUTPUT_BLOCKED : WorkState.RETURNING_OUTPUTS;
+        }
+        if (queue.isEmpty() && pendingOutputs.isEmpty()) {
+            return WorkState.IDLE;
+        }
+        return workState;
+    }
+
     private final AppEngCellInventory cellInv = new AppEngCellInventory(this, CELL_SLOTS);
     private final StorageCell[] cells = new StorageCell[CELL_SLOTS];
     private final AppEngInternalInventory diskInv = new AppEngInternalInventory(this, DISK_SLOTS);
@@ -419,6 +505,13 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         if (pendingWork) {
             drainOutputs();
         }
+        // Restated every evaluation so a reason cannot outlive the situation that produced it; a run below
+        // overwrites it with whatever it ran into.
+        if (queue.isEmpty()) {
+            workState = pendingWork ? WorkState.RETURNING_OUTPUTS : WorkState.IDLE;
+        } else if (inputGapTicks() < batchIdleTicks()) {
+            workState = WorkState.WAITING_FOR_MATERIAL;
+        }
         // A batch starts only while the material is genuinely quiet: the window is the gap since the last
         // accepted push, so as long as material keeps arriving the machine keeps waiting. Nothing forces
         // a batch through on a timer.
@@ -452,12 +545,15 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         KeyCounter buffer = null;
 
         boolean worked = false;
+        // Set when a run stops for a reason of its own, so that a later pattern which does run cannot erase it.
+        boolean stopped = false;
         var it = queue.entrySet().iterator();
         while (it.hasNext()) {
             var entry = it.next();
             var plan = planFor(entry.getKey());
             if (plan == null) {
                 // Unanalysable pattern: keep its job queued instead of aborting the rest of the batch.
+                workState = WorkState.UNRESOLVABLE_PATTERN;
                 continue;
             }
             long remaining = entry.getValue();
@@ -467,7 +563,13 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
                     buffer = cellContents();
                 }
                 if (!assembleOnce(plan, buffer)) {
+                    stopped = true;
                     break;
+                }
+                if (!stopped) {
+                    // Only the ticks where nothing stopped report work: a machine that ran one pattern and was
+                    // refused the next is better described by the refusal, which is what its owner has to act on.
+                    workState = WorkState.WORKING;
                 }
                 remaining--;
                 worked = true;
@@ -496,10 +598,12 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     private boolean assembleOnce(PatternPlan plan, KeyCounter buffer) {
         var resolved = resolveInputs(plan, buffer);
         if (resolved == null) {
+            workState = WorkState.INPUTS_UNAVAILABLE;
             return false;
         }
         var consumed = consumeInputs(plan, resolved);
         if (consumed == null) {
+            workState = WorkState.INPUTS_UNAVAILABLE;
             return false;
         }
 
@@ -534,6 +638,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
                 LOGGER.warn("Failed to compute container remainder for pattern slot {} at {}; rolling back",
                         i, getBlockPos(), e);
                 rollbackInputs(consumed.byKey());
+                workState = WorkState.REMAINDER_FAILED;
                 return false;
             }
         }
@@ -541,6 +646,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         // Defer (keeping the inputs in the cell buffer) when the machine cannot run at all.
         if (!consumePower()) {
             rollbackInputs(consumed.byKey());
+            workState = WorkState.NO_POWER;
             return false;
         }
         // Outputs enter the smooth-return queue instead of hitting the network storage in one burst:
@@ -563,6 +669,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         if (node == null || node.getGrid() == null) {
             return;
         }
+        returnStalled = false;
         var storage = node.getGrid().getStorageService().getInventory();
         var it = pendingOutputs.entrySet().iterator();
         while (it.hasNext()) {
@@ -572,6 +679,9 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
             long amount = Math.min(slot[0], rate);
             long inserted = storage.insert(entry.getKey(), amount, Actionable.MODULATE, actionSource);
             slot[0] -= inserted;
+            if (inserted == 0) {
+                returnStalled = true;
+            }
             if (slot[0] <= 0) {
                 it.remove();
             }
@@ -1050,6 +1160,10 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     }
 
     private void markTerminalChanged() {
+        // This is reached from paths that write the disks directly, so dropping the view here is what keeps
+        // the terminal honest; leaving it to the inventory's own notification makes correctness depend on
+        // every write path raising one.
+        cachedTerminalInventory = null; // invalidate the pattern access terminal view
         saveChanges();
     }
 
@@ -1106,6 +1220,10 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
             cellInv.setItemDirect(i, ItemStack.parseOptional(registries, tag.getCompound("cell" + i)));
         }
         diskInv.readFromNBT(tag, "disks", registries);
+        // readFromNBT writes the slots straight in and raises no change notification, so a terminal view built
+        // before this load would keep serving the pre-load contents - an empty list, with nothing left to
+        // trigger a rebuild. Invalidating keeps loading symmetric with a slot change.
+        cachedTerminalInventory = null; // invalidate the pattern access terminal view
         upgrades.readFromNBT(tag, "upgrades", registries);
         fastBatchMode = tag.getBoolean("fastBatchMode");
         pendingOutputs.clear();

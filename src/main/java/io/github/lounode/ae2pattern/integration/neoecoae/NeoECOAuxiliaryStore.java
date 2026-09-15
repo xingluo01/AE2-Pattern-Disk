@@ -83,6 +83,9 @@ final class NeoECOAuxiliaryStore {
             case "insert" -> insert(objectAt(args, 0), objectAt(args, 1));
             case "encodedPatterns" -> NeoECOBusDisks.collectEncodedPatterns(handles, objectAt(args, 0));
             case "revision" -> NeoECOBusDisks.diskRevision(handles, objectAt(args, 0));
+            // Asked for by the pattern management screens when a container's recipe is taken back out: the
+            // store removes it and settles the cost in one step, which is the only place that can.
+            case "remove" -> remove(objectAt(args, 0), intAt(args, 1), itemAt(args, 2));
             default -> typeDefault(method.getReturnType());
         };
     }
@@ -100,6 +103,14 @@ final class NeoECOAuxiliaryStore {
         return NeoECOBusAccess.insertionResult(outcome);
     }
 
+    /** @return whether a container gave the pattern back, having settled what that cost */
+    private boolean remove(@Nullable Object bus, int diskSlot, ItemStack pattern) {
+        if (bus == null || diskSlot < 0 || pattern.isEmpty()) {
+            return false;
+        }
+        return NeoECOBusDisks.removeFromDisk(handles, bus, diskSlot, pattern, NeoECOBusTerminalHook.gridOf(bus));
+    }
+
     @Nullable
     private static Object objectAt(@Nullable Object[] args, int index) {
         return args != null && index >= 0 && index < args.length ? args[index] : null;
@@ -107,6 +118,10 @@ final class NeoECOAuxiliaryStore {
 
     private static ItemStack itemAt(@Nullable Object[] args, int index) {
         return objectAt(args, index) instanceof ItemStack stack ? stack : ItemStack.EMPTY;
+    }
+
+    private static int intAt(@Nullable Object[] args, int index) {
+        return objectAt(args, index) instanceof Integer value ? value : -1;
     }
 
     private static Object typeDefault(Class<?> returnType) {

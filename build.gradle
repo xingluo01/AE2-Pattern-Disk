@@ -215,6 +215,9 @@ dependencies {
     // Runtime environment mods used for integration testing.
     localRuntime 'maven.modrinth:modern-ui:3.13.0.1'
     localRuntime 'maven.modrinth:jade:15.10.6+neoforge'
+    // The provider classes compile against Jade, and the plugin's client registration is client-side API, so the
+    // dependency has to sit on the main compile classpath rather than only in the runtime block above.
+    compileOnly 'maven.modrinth:jade:15.10.6+neoforge'
     localRuntime 'curse.maven:integrated-dynamics-236307:8679254'
     localRuntime 'curse.maven:cyclops-core-232758:8527422'
     localRuntime 'curse.maven:integrated-tunnels-251389:8649383'

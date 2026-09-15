@@ -56,5 +56,19 @@
   "gui.ae2_pattern_disk.batch_assembler.buffer": "缓存栏",
   "gui.ae2_pattern_disk.batch_assembler.disks": "样板磁盘",
   "gui.ae2_pattern_disk.batch_assembler.batch_mode.standard": "标准：静默 40 tick 后开做",
-  "gui.ae2_pattern_disk.batch_assembler.batch_mode.fast": "极速：静默 10 tick 后开做"
+  "gui.ae2_pattern_disk.batch_assembler.batch_mode.fast": "极速：静默 10 tick 后开做",
+  "jade.ae2_pattern_disk.batch_assembler.state.offline": "未接入网络",
+  "jade.ae2_pattern_disk.batch_assembler.state.no_buffer": "无可用存储元件",
+  "jade.ae2_pattern_disk.batch_assembler.state.no_pattern": "磁盘中没有可执行的样板",
+  "jade.ae2_pattern_disk.batch_assembler.state.idle": "空闲",
+  "jade.ae2_pattern_disk.batch_assembler.state.waiting_for_material": "等待材料安静（攒批中）",
+  "jade.ae2_pattern_disk.batch_assembler.state.inputs_unavailable": "单元缓存缺材料",
+  "jade.ae2_pattern_disk.batch_assembler.state.no_power": "能量不足",
+  "jade.ae2_pattern_disk.batch_assembler.state.unresolvable_pattern": "队列中有无法解析的样板",
+  "jade.ae2_pattern_disk.batch_assembler.state.working": "批处理合成中",
+  "jade.ae2_pattern_disk.batch_assembler.state.returning_outputs": "产物回送网络中",
+  "jade.ae2_pattern_disk.batch_assembler.state.output_blocked": "产物回送受阻（网络不收）",
+  "jade.ae2_pattern_disk.batch_assembler.state.remainder_failed": "余料计算失败，已回滚",
+  "jade.ae2_pattern_disk.batch_assembler.queued": "排队：%s 个",
+  "jade.ae2_pattern_disk.batch_assembler.waiting": "距开做：%s tick"
 }

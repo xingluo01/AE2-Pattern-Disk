@@ -56,5 +56,19 @@
   "gui.ae2_pattern_disk.batch_assembler.buffer": "Buffer",
   "gui.ae2_pattern_disk.batch_assembler.disks": "Pattern Disks",
   "gui.ae2_pattern_disk.batch_assembler.batch_mode.standard": "Standard: start after 40 idle ticks",
-  "gui.ae2_pattern_disk.batch_assembler.batch_mode.fast": "Fast: start after 10 idle ticks"
+  "gui.ae2_pattern_disk.batch_assembler.batch_mode.fast": "Fast: start after 10 idle ticks",
+  "jade.ae2_pattern_disk.batch_assembler.state.offline": "Not connected to the network",
+  "jade.ae2_pattern_disk.batch_assembler.state.no_buffer": "No storage cell to work from",
+  "jade.ae2_pattern_disk.batch_assembler.state.no_pattern": "No runnable pattern on the disks",
+  "jade.ae2_pattern_disk.batch_assembler.state.idle": "Idle",
+  "jade.ae2_pattern_disk.batch_assembler.state.waiting_for_material": "Waiting for material to settle",
+  "jade.ae2_pattern_disk.batch_assembler.state.inputs_unavailable": "Cell buffer is short of material",
+  "jade.ae2_pattern_disk.batch_assembler.state.no_power": "Not enough power",
+  "jade.ae2_pattern_disk.batch_assembler.state.unresolvable_pattern": "A queued pattern could not be resolved",
+  "jade.ae2_pattern_disk.batch_assembler.state.working": "Assembling a batch",
+  "jade.ae2_pattern_disk.batch_assembler.state.returning_outputs": "Returning outputs to the network",
+  "jade.ae2_pattern_disk.batch_assembler.state.output_blocked": "Outputs are stuck: the network takes none",
+  "jade.ae2_pattern_disk.batch_assembler.state.remainder_failed": "Remainder failed, run rolled back",
+  "jade.ae2_pattern_disk.batch_assembler.queued": "Queued: %s",
+  "jade.ae2_pattern_disk.batch_assembler.waiting": "Starts in: %s ticks"
 }
