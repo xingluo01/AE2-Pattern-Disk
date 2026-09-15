@@ -22,6 +22,12 @@ import net.minecraft.world.item.ItemStack;
  * (e.g. {@code ae2:crafting_pattern}). An empty disk has {@code null} type until the first pattern
  * is added, at which point it locks to that pattern's type.</p>
  *
+ * <p>The {@code patterns} list is copied on construction, so the record itself never changes - but its
+ * elements are {@link ItemStack}s, which are mutable. Every write path replaces the whole record rather
+ * than editing an element, and consumers that hand these stacks to something that could modify them
+ * must copy. Code that memoizes anything against a record instance depends on that: an element edited
+ * in place would leave a memo matching its own key while describing different contents.</p>
+ *
  * @param type     the locked encoded-pattern item id, or {@code null} while the disk is untyped
  * @param patterns the encoded pattern stacks currently stored
  */
@@ -67,6 +73,21 @@ public record PatternDiskContents(
         return patterns.size() >= capacity;
     }
 
+    /**
+     * Whether a pattern of {@code patternType} could be added at all, ignoring the same-output exclusion.
+     *
+     * <p>A pure short-circuit, deliberately mirroring the two conditions {@link #add} rejects on. Callers
+     * that have a more expensive acceptance test to run afterwards - decoding every stored pattern to check
+     * for a matching primary output, say - should ask this first: a disk that is full or locked to another
+     * type cannot take the pattern no matter what it already holds, and the cheap answer saves the scan.</p>
+     *
+     * <p>Keep the conditions here and in {@link #add} in step: if they drift, this stops being a
+     * short-circuit and starts accepting patterns the write path then refuses.</p>
+     */
+    public boolean acceptsType(String patternType) {
+        return !isFull() && (type == null || type.equals(patternType));
+    }
+
     public boolean isEmpty() {
         return patterns.isEmpty();
     }
@@ -80,10 +101,7 @@ public record PatternDiskContents(
      * or null if the disk is full or the pattern type does not match.
      */
     public PatternDiskContents add(ItemStack pattern, String patternType) {
-        if (isFull()) {
-            return null;
-        }
-        if (type != null && !type.equals(patternType)) {
+        if (!acceptsType(patternType)) {
             return null;
         }
         var newPatterns = new ArrayList<>(patterns);
@@ -98,10 +116,7 @@ public record PatternDiskContents(
      * the new contents on success, or null if the disk is full or the pattern type does not match.
      */
     public PatternDiskContents insert(int index, ItemStack pattern, String patternType) {
-        if (isFull()) {
-            return null;
-        }
-        if (type != null && !type.equals(patternType)) {
+        if (!acceptsType(patternType)) {
             return null;
         }
         if (index < 0 || index > patterns.size()) {

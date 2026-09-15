@@ -3,8 +3,12 @@ package io.github.lounode.ae2pattern.integration.neoecoae;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import net.minecraft.world.item.ItemStack;
 
@@ -22,6 +26,12 @@ import net.minecraft.world.item.ItemStack;
  * unrecognised method means a NEO ECO newer than this integration.</p>
  */
 final class NeoECOAuxiliaryStore {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger("ae2_pattern_disk.integration.neoecoae");
+
+    /** Callbacks already reported as failing, keyed by callback and cause, so a per-tick callback cannot
+     * flood the log while a distinct second fault still shows up. */
+    private static final Set<String> REPORTED_FAILURES = ConcurrentHashMap.newKeySet();
 
     private final NeoECOBusAccess.BusHandles handles;
 
@@ -51,7 +61,16 @@ final class NeoECOAuxiliaryStore {
             }
             return dispatch(method, args);
         } catch (RuntimeException e) {
-            // Includes the argument-shape failures a newer NEO ECO could hand us; see the class doc.
+            // Answering a default silently here hides a whole class of wiring breakage: the bus asks, gets
+            // a default back, and quietly changes behaviour. Report the first failure of each
+            // (callback, cause) pair, so a second, unrelated fault stays visible; repeats stay out of the
+            // log because the bus polls some callbacks every tick. The set lives per JVM, so the next game
+            // launch reports again.
+            if (REPORTED_FAILURES.add(method.getName() + ":" + e.getClass().getSimpleName())) {
+                LOGGER.warn("[AE2-Pattern-Disk] auxiliary store callback {} threw; it answers with a default "
+                        + "for this call, so NEO ECO degrades along that callback's own fallback path",
+                        method.getName(), e);
+            }
             return typeDefault(method.getReturnType());
         }
     }

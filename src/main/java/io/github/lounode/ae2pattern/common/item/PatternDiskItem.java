@@ -11,6 +11,8 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.level.Level;
 
+import appeng.api.crafting.IPatternDetails;
+
 import io.github.lounode.ae2pattern.common.pattern.PatternClassifier;
 import io.github.lounode.ae2pattern.common.pattern.PatternDiskContents;
 import io.github.lounode.ae2pattern.common.pattern.PatternDiskTier;
@@ -86,8 +88,9 @@ public class PatternDiskItem extends Item {
      * {@link PatternDiskContents} directly.</p>
      */
     public boolean canInsert(ItemStack disk, ItemStack pattern, Level level) {
-        String patternType = PatternClassifier.typeOf(pattern, level);
-        return patternType != null && canInsertAs(contents(disk), pattern, patternType, level);
+        IPatternDetails details = PatternClassifier.decode(pattern, level);
+        String patternType = details == null ? null : PatternClassifier.typeOf(details);
+        return patternType != null && canInsertAs(contents(disk), patternType, level, details);
     }
 
     /**
@@ -102,12 +105,15 @@ public class PatternDiskItem extends Item {
      *         pattern already produces the same primary output
      */
     public boolean tryInsert(ItemStack disk, ItemStack pattern, Level level) {
-        String patternType = PatternClassifier.typeOf(pattern, level);
+        // Decoded once and reused for both the type key and the primary-output check: asking each of them
+        // separately would decode the same candidate pattern twice.
+        IPatternDetails details = PatternClassifier.decode(pattern, level);
+        String patternType = details == null ? null : PatternClassifier.typeOf(details);
         if (patternType == null) {
             return false;
         }
         var contents = contents(disk);
-        if (!canInsertAs(contents, pattern, patternType, level)) {
+        if (!canInsertAs(contents, patternType, level, details)) {
             return false;
         }
         var updated = contents.add(pattern, patternType);
@@ -119,12 +125,16 @@ public class PatternDiskItem extends Item {
     }
 
     /** Shared acceptance rule used by both the pure check and the write path. */
-    private static boolean canInsertAs(PatternDiskContents contents, ItemStack pattern, String patternType,
-            Level level) {
-        if (PatternClassifier.hasSamePrimaryOutput(contents.patterns(), pattern, level)) {
+    private static boolean canInsertAs(PatternDiskContents contents, String patternType, Level level,
+            IPatternDetails candidate) {
+        // Capacity and type lock first. A full disk, or one locked to another type, cannot take the pattern
+        // whatever it already stores, so the expensive half - checking every stored pattern for a matching
+        // primary output - is skipped entirely. Both conditions are exactly the ones
+        // PatternDiskContents.add rejects on, so this stays a pure short-circuit.
+        if (!contents.acceptsType(patternType)) {
             return false;
         }
-        return contents.add(pattern, patternType) != null;
+        return !PatternClassifier.hasSamePrimaryOutput(contents, candidate, level);
     }
 
     /**

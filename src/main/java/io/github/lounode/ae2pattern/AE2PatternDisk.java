@@ -31,6 +31,13 @@ public class AE2PatternDisk {
         modBus.addListener(this::commonSetup);
         modBus.addListener(this::registerCapabilities);
         modBus.addListener(this::registerPayloads);
+
+        // A reload can change what a stored pattern decodes to without the items changing, so the
+        // item-keyed decode memo has to be dropped. Nothing else observes reloads, and the bus's own
+        // decode caches are rebuilt from slots on the next change.
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
+                (net.neoforged.neoforge.event.AddReloadListenerEvent event) ->
+                        io.github.lounode.ae2pattern.common.pattern.PatternClassifier.invalidateDecodedCache());
     }
 
     /**

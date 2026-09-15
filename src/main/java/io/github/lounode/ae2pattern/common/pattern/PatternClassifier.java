@@ -2,7 +2,12 @@ package io.github.lounode.ae2pattern.common.pattern;
 
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.WeakHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -83,36 +88,79 @@ public final class PatternClassifier {
     }
 
     /**
+     * Decoded stored patterns per (contents snapshot, level) pair.
+     *
+     * <p>The contents are a record that is replaced on every write, so an entry normally cannot go
+     * stale. Two caveats keep {@link #GENERATION} around: a record is only shallowly immutable, so an
+     * element modified in place would leave an entry that still matches its key; and a data reload can
+     * change what a stored pattern decodes to without any item changing at all. Without this cache,
+     * every probe and every write re-decodes each pattern already on the disk, which on a large disk is
+     * most of the cost of the check.</p>
+     */
+    private static final Map<PatternDiskContents, DecodedPatterns> DECODED_STORED =
+            Collections.synchronizedMap(new WeakHashMap<>());
+
+    /** Incremented on server data reload; an entry from an earlier generation is not reused. */
+    private static final AtomicLong GENERATION = new AtomicLong();
+
+    private record DecodedPatterns(Level level, long generation, List<IPatternDetails> details) {
+    }
+
+    /**
+     * Drops every memoized decode. Called when server data reloads: a pattern that decoded to one thing
+     * can decode to another afterwards, and the cache is keyed by items that did not change.
+     */
+    public static void invalidateDecodedCache() {
+        GENERATION.incrementAndGet();
+        DECODED_STORED.clear();
+    }
+
+    /**
      * 判断待加入的候选配方是否与磁盘上已有配方产生相同主产物（主产物互斥）。
      * 同主产物仅允许存一条配方，避免同一产出被多条相似配方重复覆盖。
      *
-     * @param existingPatterns 磁盘上已存储的编码样板列表
-     * @param candidate        待加入的编码样板
+     * @param contents  磁盘当前内容
+     * @param candidate 已解码的待加入样板
      * @return 存在同主产物冲突时返回 true
      */
-    public static boolean hasSamePrimaryOutput(List<ItemStack> existingPatterns, ItemStack candidate, Level level) {
-        if (existingPatterns == null || existingPatterns.isEmpty()) {
+    public static boolean hasSamePrimaryOutput(PatternDiskContents contents, IPatternDetails candidate,
+            Level level) {
+        if (contents == null || candidate == null) {
             return false;
         }
-        var candidateDetails = decode(candidate, level);
-        if (candidateDetails == null) {
-            return false;
-        }
-        var candidateOutput = candidateDetails.getPrimaryOutput();
+        var candidateOutput = candidate.getPrimaryOutput();
         if (candidateOutput == null) {
             return false;
         }
-        for (var existing : existingPatterns) {
-            var details = decode(existing, level);
-            if (details == null) {
-                continue;
-            }
+        for (var details : decodedStored(contents, level)) {
             var existingOutput = details.getPrimaryOutput();
             if (existingOutput != null && existingOutput.what().equals(candidateOutput.what())) {
                 return true;
             }
         }
         return false;
+    }
+
+    private static List<IPatternDetails> decodedStored(PatternDiskContents contents, Level level) {
+        var patterns = contents.patterns();
+        if (patterns.isEmpty() || level == null) {
+            return List.of();
+        }
+        long generation = GENERATION.get();
+        var cached = DECODED_STORED.get(contents);
+        if (cached != null && cached.level() == level && cached.generation() == generation) {
+            return cached.details();
+        }
+        var decoded = new ArrayList<IPatternDetails>(patterns.size());
+        for (var stored : patterns) {
+            var details = decode(stored, level);
+            if (details != null) {
+                decoded.add(details);
+            }
+        }
+        var result = List.copyOf(decoded);
+        DECODED_STORED.put(contents, new DecodedPatterns(level, generation, result));
+        return result;
     }
 
     private static String patternTypeId(IPatternDetails details) {

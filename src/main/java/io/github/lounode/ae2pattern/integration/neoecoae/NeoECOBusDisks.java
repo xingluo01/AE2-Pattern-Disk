@@ -2,6 +2,7 @@ package io.github.lounode.ae2pattern.integration.neoecoae;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -100,12 +101,15 @@ final class NeoECOBusDisks {
     /**
      * A change token for the bus's disk contents.
      *
-     * <p>Every mutation replaces the disk's {@code PatternDiskContents} record with a new instance, so
-     * the <em>identity</em> of that record changes on every write. Fingerprinting identities keeps this
-     * O(slots) instead of hashing every stored pattern, which matters because the bus polls it from its
-     * pattern-content revision getter. Disks with no patterns are skipped: they contribute nothing, and
-     * a blank disk's contents are freshly built on each read and would otherwise invalidate on every
-     * poll.</p>
+     * <p>Every mutation replaces the disk's {@code PatternDiskContents} record, so the <em>identity</em> of
+     * that record changes on every write. Fingerprinting identities keeps this O(slots) instead of hashing
+     * every stored pattern, which matters because the bus polls it whenever it is asked for a content
+     * revision. Disks with no patterns are skipped: they contribute nothing, and a blank disk's contents
+     * are freshly built on each read, so including one would invalidate on every poll.</p>
+     *
+     * <p>Identities are 32 bits, so the pattern count and the locked type are added as cheap
+     * discriminators: an unnoticed change would have to collide on the identity hash <em>and</em> leave the
+     * count and the type untouched.</p>
      */
     static long diskRevision(NeoECOBusAccess.BusHandles handles, Object bus) {
         InternalInventory inventory = NeoECOBusAccess.patternInventory(handles, bus);
@@ -120,6 +124,8 @@ final class NeoECOBusDisks {
             }
             hash = hash * 31L + disk.slot();
             hash = hash * 31L + System.identityHashCode(contents);
+            hash = hash * 31L + contents.used();
+            hash = hash * 31L + Objects.hashCode(contents.type());
         }
         return hash;
     }
