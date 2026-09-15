@@ -171,15 +171,14 @@ dependencies {
     // only the @JeiPlugin entry point touches its classes (mirrors how EMI is wired above).
     clientCompileOnly(libs.jei)
 
-    // NEO ECO AE Extension: dev reference for the FD Smart Pattern Bus integration (upload-to-ECO
-    // button, disk-aware insertion, pattern access terminal view). Compile and runtime both resolve
-    // libs/neoecoae-21.1.1.jar, which is NOT tracked in git: build it from the sibling checkout at
-    // https://github.com/xingluo01/NeoECOAEExtension (upstream PR: DancingSnow0517/NeoECOAEExtension
-    // #100) and copy build/libs/neoecoae-21.1.1.jar into libs/. The integration degrades to a no-op
-    // when the jar is absent-but-present-in-classpath or the hooks are missing, so the mod still runs
-    // against a stock NEO ECO build without the disk features.
-    compileOnly files('libs/neoecoae-21.1.1.jar')
-    clientCompileOnly files('libs/neoecoae-21.1.1.jar')
+    // NEO ECO AE Extension: dev reference for the pattern-disk integration (upload-to-ECO button,
+    // disk-aware storage, autocrafting from disk-held patterns). Compile and runtime both resolve
+    // libs/neoecoae-21.2.0-beta3.jar, which is NOT tracked in git: build it from the sibling checkout
+    // at https://github.com/xingluo01/NeoECOAEExtension (branch feature/pattern-disk-v21.1.2), then
+    // copy build/libs/neoecoae-21.2.0-beta3.jar into libs/. The integration stays inert when the
+    // auxiliary-pattern-store API is absent, so the mod still runs against a stock NEO ECO build.
+    compileOnly files('libs/neoecoae-21.2.0-beta3.jar')
+    clientCompileOnly files('libs/neoecoae-21.2.0-beta3.jar')
 
     // Client source set: explicit client-side API access.
     clientCompileOnly(libs.ae2)
@@ -235,7 +234,7 @@ dependencies {
     // Pattern-Disk <-> FD Smart Pattern Bus integration.
     // Runtime must use the locally built dev jar (not the published Modrinth artifact), otherwise the
     // disk-acceptance hooks are missing and pattern disks cannot be inserted into the bus.
-    localRuntime files('libs/neoecoae-21.1.1.jar')
+    localRuntime files('libs/neoecoae-21.2.0-beta3.jar')
     // LDLib: mandatory runtime dependency of Neo ECO AE Extension (its GUI library). Pin the exact
     // version Neo ECO itself depends on (2.2.39.a) instead of the plain 2.2.39 release, so Gradle
     // cannot downgrade the transitive requirement.
