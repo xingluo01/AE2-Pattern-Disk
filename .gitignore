@@ -17,5 +17,10 @@ Thumbs.db
 logs/
 *.log
 
+# Local development dependency jars.
+# libs/ holds the Neo ECO AE Extension dev build referenced by build.gradle; it is a build
+# artifact of a sibling checkout, not a source file. See the README for how to produce it.
+libs/*.jar
+
 # Pi workflow metadata
 plans/

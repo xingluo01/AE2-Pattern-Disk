@@ -122,6 +122,24 @@ Requires **JDK 21** and a Gradle 9 wrapper.
 
 The resulting jar is written to `build/libs/`.
 
+### Development dependency: Neo ECO AE Extension
+
+The source compiles against a locally built **Neo ECO AE Extension** jar, referenced from `libs/`.
+That jar is not tracked in git. To produce it, check out the fork carrying the integration hooks
+([xingluo01/NeoECOAEExtension](https://github.com/xingluo01/NeoECOAEExtension), upstream PR
+[DancingSnow0517/NeoECOAEExtension#100](https://github.com/DancingSnow0517/NeoECOAEExtension/pull/100)),
+build it, then copy the result in:
+
+```bash
+cd ../NeoECOAEExtension
+./gradlew build -x test
+cp build/libs/neoecoae-21.1.1.jar ../AE2-Pattern-Disk/libs/
+```
+
+The FD Smart Pattern Bus integration (upload-to-ECO button, disk-aware insertion, pattern access
+terminal view, encoding-terminal disk list) needs the hooks added by that PR. Against a stock NEO ECO
+build the hooks are absent, the integration logs a warning and the rest of the mod behaves normally.
+
 ## License
 
 This project is licensed under the **GNU Lesser General Public License v3.0 (LGPL-3.0)**.

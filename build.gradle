@@ -171,6 +171,16 @@ dependencies {
     // only the @JeiPlugin entry point touches its classes (mirrors how EMI is wired above).
     clientCompileOnly(libs.jei)
 
+    // NEO ECO AE Extension: dev reference for the FD Smart Pattern Bus integration (upload-to-ECO
+    // button, disk-aware insertion, pattern access terminal view). Compile and runtime both resolve
+    // libs/neoecoae-21.1.1.jar, which is NOT tracked in git: build it from the sibling checkout at
+    // https://github.com/xingluo01/NeoECOAEExtension (upstream PR: DancingSnow0517/NeoECOAEExtension
+    // #100) and copy build/libs/neoecoae-21.1.1.jar into libs/. The integration degrades to a no-op
+    // when the jar is absent-but-present-in-classpath or the hooks are missing, so the mod still runs
+    // against a stock NEO ECO build without the disk features.
+    compileOnly files('libs/neoecoae-21.1.1.jar')
+    clientCompileOnly files('libs/neoecoae-21.1.1.jar')
+
     // Client source set: explicit client-side API access.
     clientCompileOnly(libs.ae2)
     clientCompileOnly(libs.guideme)
@@ -221,19 +231,16 @@ dependencies {
     localRuntime 'maven.modrinth:ae2-omni-cells:k444ySGT'
     // Neo ECO AE Extension: separates crafting/storage/computation into multiblock structures whose
     // computation cluster supplies a huge crafting-dispatch budget (thousands of parallel ops) through
-    // its own CraftingService mixin. Dev-only; used to test large-order throughput.
-    // Modrinth version id gWMhHBje = Neo ECO AE Extension 21.1.1 for 1.21.1 neoforge.
-    localRuntime 'maven.modrinth:neoecoae:gWMhHBje'
+    // its own CraftingService mixin. Dev-only; used to test large-order throughput and the
+    // Pattern-Disk <-> FD Smart Pattern Bus integration.
+    // Runtime must use the locally built dev jar (not the published Modrinth artifact), otherwise the
+    // disk-acceptance hooks are missing and pattern disks cannot be inserted into the bus.
+    localRuntime files('libs/neoecoae-21.1.1.jar')
     // LDLib: mandatory runtime dependency of Neo ECO AE Extension (its GUI library). Pin the exact
     // version Neo ECO itself depends on (2.2.39.a) instead of the plain 2.2.39 release, so Gradle
     // cannot downgrade the transitive requirement.
     // Modrinth version id ZjqqrcWk = ldlib2 1.21.1-2.2.39.a neoforge.
     localRuntime 'maven.modrinth:ldlib:ZjqqrcWk'
-    // Neo ECO AE Extension + LDLib2: multiblock computing cluster (user test target: 3744 parallel /
-    // 7G computation capacity) to verify the batch assembler against a non-bottleneck dispatch budget.
-    // Dev-only (localRuntime). Version ids from Modrinth (ldlib 2.2.39.a-neoforge / neoecoae 21.1.1).
-    localRuntime 'maven.modrinth:ldlib:ZjqqrcWk'
-    localRuntime 'maven.modrinth:neoecoae:gWMhHBje'
     localRuntime 'dev.vfyjxf:moddevmcp:0.1.6'
     localRuntime(libs.emi)
     // JEI for the development runtime so the plugin can actually be exercised in runClient.

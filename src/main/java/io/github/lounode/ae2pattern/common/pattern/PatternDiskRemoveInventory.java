@@ -334,7 +334,7 @@ public class PatternDiskRemoveInventory implements InternalInventory {
                 return ItemStack.EMPTY;
             }
             // 取走路径预检：网络无空白样板时，不发物（PAT 服务端 setCarried 到空栈后自然短路）
-            if (!blankPatternSink.hasBlankPatterns(1)) {
+            if (blankPatternSink == null || !blankPatternSink.hasBlankPatterns(1)) {
                 return ItemStack.EMPTY;
             }
             // 返回副本，防止调用方 mutate 磁盘内容活引用。

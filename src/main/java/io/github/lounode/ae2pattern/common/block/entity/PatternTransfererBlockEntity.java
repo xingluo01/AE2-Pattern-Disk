@@ -294,21 +294,10 @@ public class PatternTransfererBlockEntity extends AENetworkedBlockEntity
                     if (appDisk.isEmpty() || !(appDisk.getItem() instanceof PatternDiskItem app)) {
                         continue;
                     }
-                    var appContents = app.contents(appDisk);
-                    if (appContents.isFull()) {
+                    // 容量/锁定类型/同主产物互斥均由 PatternDiskItem.tryInsert 统一把关
+                    if (!app.tryInsert(appDisk, candidate, this.level)) {
                         continue;
                     }
-                    if (appContents.isTyped() && !appContents.type().equals(sourceType)) {
-                        continue; // 类型不匹配的目标盘
-                    }
-                    if (hasConflictingOutput(appContents, candidate, this.level)) {
-                        continue; // 同主产物互斥
-                    }
-                    var updated = appContents.add(candidate, sourceType);
-                    if (updated == null) {
-                        continue;
-                    }
-                    appDisk.set(AEPatternRegistries.DISK_CONTENTS.get(), updated);
                     moved++;
                     changed = true;
                     placed = true;
@@ -356,22 +345,10 @@ public class PatternTransfererBlockEntity extends AENetworkedBlockEntity
                 if (appDisk.isEmpty() || !(appDisk.getItem() instanceof PatternDiskItem app)) {
                     continue;
                 }
-                var appContents = app.contents(appDisk);
-                if (appContents.isFull()) {
+                // 容量/锁定类型/同主产物互斥均由 PatternDiskItem.tryInsert 统一把关
+                if (!app.tryInsert(appDisk, candidate, this.level)) {
                     continue;
                 }
-                if (appContents.isTyped() && !appContents.type().equals(sourceContents.type())) {
-                    continue; // 类型不匹配的目标盘
-                }
-                // 目标盘已含同输出配方（此前已复制或已存在）则跳过该盘
-                if (hasConflictingOutput(appContents, candidate, this.level)) {
-                    continue;
-                }
-                var updated = appContents.add(candidate, sourceContents.type());
-                if (updated == null) {
-                    continue;
-                }
-                appDisk.set(AEPatternRegistries.DISK_CONTENTS.get(), updated);
                 copied++;
                 break; // 该配方已复制，处理下一个配方
             }
@@ -416,19 +393,11 @@ public class PatternTransfererBlockEntity extends AENetworkedBlockEntity
             return false;
         }
 
-        // Same-result exclusivity: reject if any existing pattern on the target disk produces the
-        // same output as the incoming pattern (mutual exclusion among different crafting routes).
-        if (hasConflictingOutput(targetContents, input, level)) {
-            return false;
-        }
-
-        var updated = targetContents.add(input, type);
-        if (updated == null) {
-            return false;
-        }
-
+        // Room, locked type and same-result exclusivity are enforced by PatternDiskItem.tryInsert.
         ItemStack appDisk = inventory.getStackInSlot(applicationSlot(targetSlot));
-        appDisk.set(AEPatternRegistries.DISK_CONTENTS.get(), updated);
+        if (!targetDisk.tryInsert(appDisk, input, level)) {
+            return false;
+        }
         inventory.setItemDirect(inputSlotOf(input), ItemStack.EMPTY);
 
         // Produce a blank pattern into the output slot.
@@ -449,14 +418,6 @@ public class PatternTransfererBlockEntity extends AENetworkedBlockEntity
             }
         }
         return INPUT_START;
-    }
-
-    /**
-     * Returns true if any pattern already on the disk produces the same primary output as {@code candidate}.
-     * Used to enforce same-result mutual exclusion (only one crafting route per output may be stored).
-     */
-    private boolean hasConflictingOutput(PatternDiskContents contents, ItemStack candidate, Level level) {
-        return PatternClassifier.hasSamePrimaryOutput(contents.patterns(), candidate, level);
     }
 
     @Override

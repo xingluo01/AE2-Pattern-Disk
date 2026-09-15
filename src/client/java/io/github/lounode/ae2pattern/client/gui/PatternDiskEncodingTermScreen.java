@@ -26,6 +26,10 @@ import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
 import io.github.lounode.ae2pattern.client.gui.DiskListPanel.DiskEntry;
 
+// NEO ECO AE Extension integration
+import cn.dancingsnow.neoecoae.api.PatternEncodingTermMenuExtension;
+import cn.dancingsnow.neoecoae.gui.widget.UploadButton;
+
 /**
  * 样板磁盘编码终端屏幕。布局：
  * <ul>
@@ -118,6 +122,18 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         // 编码/保存按钮
         var encodeBtn = new ActionButton(appeng.api.config.ActionItems.ENCODE, act -> menu.encode());
         widgets.add("encodePattern", encodeBtn);
+    }
+
+    @Override
+    public void init() {
+        super.init();
+        int left = (this.width - imageWidth) / 2 + imageWidth;
+        int top = (this.height - imageHeight) / 2 + imageHeight - 173;
+        addRenderableWidget(new UploadButton(
+            left,
+            top,
+            b -> ((PatternEncodingTermMenuExtension) getMenu()).neoecoae$uploadPattern()
+        ));
     }
 
     private void cycleMode() {

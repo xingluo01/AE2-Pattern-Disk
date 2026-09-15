@@ -56,7 +56,12 @@ import io.github.lounode.ae2pattern.common.pattern.PatternClassifier;
 import io.github.lounode.ae2pattern.common.pattern.PatternDiskContents;
 import io.github.lounode.ae2pattern.common.part.PatternDiskEncodingTerminalPart;
 import io.github.lounode.ae2pattern.common.block.entity.IPatternDiskHost;
+import io.github.lounode.ae2pattern.common.block.entity.PatternDiskHostRegistry;
 import io.github.lounode.ae2pattern.network.DiskListPayload;
+
+// NEO ECO AE Extension integration
+import cn.dancingsnow.neoecoae.api.PatternEncodingTermMenuExtension;
+import cn.dancingsnow.neoecoae.api.IECOPatternStorageService;
 
 /**
  * Menu for the pattern disk encoding terminal. Extends {@link MEStorageMenu} to inherit network
@@ -68,7 +73,7 @@ import io.github.lounode.ae2pattern.network.DiskListPayload;
  * list: click a disk to write the currently encoded pattern into it, shift-right-click to bind the
  * pattern's prefix to the disk (renaming it), middle-click to rename, and a mini search bar.</p>
  */
-public class PatternDiskEncodingTermMenu extends MEStorageMenu {
+public class PatternDiskEncodingTermMenu extends MEStorageMenu implements PatternEncodingTermMenuExtension {
 
     private static final int CRAFTING_GRID_WIDTH = 3;
     private static final int CRAFTING_GRID_HEIGHT = 3;
@@ -83,6 +88,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
     private static final String ACTION_TRANSFER_TO_DISK = "transferToDisk";
     private static final String ACTION_BIND_PREFIX = "bindPrefix";
     private static final String ACTION_RENAME_DISK = "renameDisk";
+    private static final String ACTION_UPLOAD_PATTERN = "neoecoae:uploadPattern";
 
     // 不可用 build()：会将实例推入 AE2 的 InitMenuTypes 注册队列，与下方 MENUS DeferredRegister 形成同实例双通道注册，
     // 注册冲突即触发 NeoForge MappedRegistry 的 duplicate value 崩溃；其余三个菜单均用 buildUnregistered 单通道。
@@ -214,6 +220,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
         registerClientAction(ACTION_BIND_PREFIX, Long.class, this::bindPrefix);
         registerClientAction(ACTION_RENAME_DISK, Long.class, this::renameDisk);
         registerClientAction("setMergeSameItems", Boolean.class, this::setMergeSameItems);
+        registerClientAction(ACTION_UPLOAD_PATTERN, this::neoecoae$uploadPattern);
 
         updateStonecuttingRecipes();
     }
@@ -425,13 +432,8 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
         var stack = inv.getStackInSlot(ref.slot());
         if (stack.isEmpty() || !(stack.getItem() instanceof PatternDiskItem disk)) return;
 
-        // 主产物互斥：目标磁盘已存同主产物配方时拒绝写入，避免大量重合配方堆积
+        // 接收判据（容量/锁定类型/主产物互斥）统一由 PatternDiskItem.canInsert/tryInsert 负责
         var level = getPlayer().level();
-        var existing = disk.contents(stack);
-        if (PatternClassifier.hasSamePrimaryOutput(existing.patterns(), encoded, level)) {
-            return;
-        }
-
         var updated = stack.copy();
         if (disk.tryInsert(updated, encoded, level)) {
             inv.setItemDirect(ref.slot(), updated); // triggers host refresh
@@ -531,6 +533,36 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
         broadcastChanges();
     }
 
+    // ---- NEO ECO AE Extension upload ----------------------------------------
+
+    /**
+     * Uploads the currently encoded pattern to the NEO ECO computation cluster's IECOPatternStorageService.
+     * Mirrors the behaviour of NEO ECO's own {@code PatternEncodingTermMenuMixin.neoecoae()}:
+     * reads the encoded pattern slot, inserts it via the grid service, and on success clears the slot
+     * and returns a blank pattern to storage/network.
+     */
+    @Override
+    public void neoecoae$uploadPattern() {
+        if (isClientSide()) {
+            sendClientAction(ACTION_UPLOAD_PATTERN);
+            return;
+        }
+        var node = getGridNode();
+        if (node == null || !node.isActive()) return;
+        var grid = node.getGrid();
+        if (grid == null) return;
+
+        var encoded = encodedPatternSlot.getItem();
+        if (encoded.isEmpty() || !PatternDetailsHelper.isEncodedPattern(encoded)) return;
+
+        var service = grid.getService(IECOPatternStorageService.class);
+        if (service != null && service.getPatternStorage().insertPattern(encoded.copy())) {
+            // Upload succeeded: clear the encoded slot, return a blank pattern
+            this.encodedPatternSlot.set(ItemStack.EMPTY);
+            returnBlankPatternToStorage();
+        }
+    }
+
     // ---- 磁盘列表同步（服务端扫描 <-> 客户端渲染） ----
 
     /**
@@ -549,13 +581,14 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
                 }
                 for (var machine : grid.getActiveMachines(machineClass)) {
                     if (!(machine instanceof IPatternDiskHost host)) continue;
-                    var inv = host.getDiskInventory();
-                    for (int i = 0; i < inv.size(); i++) {
-                        var stack = inv.getStackInSlot(i);
-                        if (stack.isEmpty() || !(stack.getItem() instanceof PatternDiskItem)) continue;
-                        slots.add(new DiskRef(host, i));
-                    }
+                    collectHostDisks(host, slots);
                 }
+            }
+
+            // Hosts contributed by integrations: machines from other mods cannot implement
+            // IPatternDiskHost at compile time, so they register a collector instead.
+            for (var host : PatternDiskHostRegistry.collectExtra(grid)) {
+                collectHostDisks(host, slots);
             }
         }
 
@@ -576,6 +609,16 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
             entries.add(new DiskListPayload.DiskEntry(serial, stack.copy()));
         }
         sendPacketToClient(new DiskListPayload(entries));
+    }
+
+    /** Appends every pattern disk currently sitting in {@code host}'s disk inventory. */
+    private static void collectHostDisks(IPatternDiskHost host, List<DiskRef> slots) {
+        var inv = host.getDiskInventory();
+        for (int i = 0; i < inv.size(); i++) {
+            var stack = inv.getStackInSlot(i);
+            if (stack.isEmpty() || !(stack.getItem() instanceof PatternDiskItem)) continue;
+            slots.add(new DiskRef(host, i));
+        }
     }
 
     /**
