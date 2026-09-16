@@ -32,7 +32,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        # v7 相对 v4 的破坏性变更（凭据改存 $RUNNER_TEMP、禁止在 pull_request_target/workflow_run
+        # 下检出 fork PR）对“tag push”工作流无影响；fetch-depth 语义未变。
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0 # 需要完整历史来生成 changelog
 
@@ -41,13 +43,18 @@ jobs:
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        # v6 移除了 legacy Adopt 发行版、改了部分输入名；本处用到的 distribution/java-version 不受影响。
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        # v6 起官方缓存逻辑改为专有组件（升级即视为接受其 ToU），cache-provider: basic
+        # 指回 MIT 的 @actions/cache 实现，避开许可变更。
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
 
       # build.gradle 把 libs/neoecoae-<version>.jar 当作 compileOnly 依赖，而该 jar 不入 git（第三方
       # 构建产物，见 README）。把 fork（xingluo01/NeoECOAEExtension，分支 feature/pattern-disk-v21.1.2）
@@ -154,3 +161,5 @@ jobs:
           # v3 的运行时是 Node 24（v2 的 Node 20 已被 GitHub 弃用）。
           body: ${{ steps.changelog.outputs.body }}
           files: build/libs/ae2_pattern_disk-${{ steps.ver.outputs.version }}.jar
+          # 产物路径写错时硬失败，而不是静默生成一个没有附件的 release
+          fail_on_unmatched_files: true

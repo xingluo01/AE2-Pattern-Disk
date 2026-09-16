@@ -124,6 +124,14 @@
 - **ModDevMCP 供给方式待清理（不影响发版）**：`build.gradle` 里 `localRuntime 'dev.vfyjxf:moddevmcp:0.1.6'` 仍在，
   而本机 mavenLocal 并无 `0.1.6`（靠 composite-build 替换），与新增的 `files()` 可能让 dev 运行时出现两份副本；
   建议单独一轮处理，并在本地跑一次 `runClient` 确认无重复 mod 载入。
+- **CI action 运行时（2026-09）**：Node20 于 **2026-09-23** 从 runner 移除，已把四个声明 node20 的 action 全部升到 node24：
+  `actions/checkout@v4→v7`、`actions/setup-java@v4→v6`、`gradle/actions/setup-gradle@v4→v6`（并加 `cache-provider: basic`
+  指回 MIT 缓存实现，避开 v6 默认的专有缓存 ToU）、`softprops/action-gh-release@v2→v3`；另给 release 步骤加了
+  `fail_on_unmatched_files: true`（产物路径写错时硬失败，而不是静默生成没有附件的 release）。
+  - **遗留**：`itsmeow/curseforge-upload@v3.1.2` 仍是 node20，上游最后提交 2024-04、无更高版本可升。预案（推荐序）：
+    ① 给上游提只改 `runs.using: node24` 的 PR；② fork 后改并 pin commit SHA；③ 换 `Kir-Antipov/mc-publish`
+    （走 Eternal API，用前须核凭据类型与版本参数）；④ 自写 curl 直连 CF 传统上传接口（最彻底）。
+    **9/23 之后的下一次发版要重点看这一步是否仍正常。**
 - 网页侧待办（API 改不了，需人工）：项目 Dependencies 标 AE2 为 required、Client/Server 环境标记（现为 unknown）、gallery 截图
 - 依赖项对照：AE2 = `ae2`（id `XxWD5pD3`）、GuideME = `guideme`（id `Ck4E7v7R`）
 - 发版注意：首次建议先开 `build.gradle` 的 `debugMode = true` 干跑 Modrinth 再发正式版；重跑同一 tag 时 Modrinth 会因版本号已存在失败、CurseForge 不去重会再传一份，中断后优先改版本号重发
