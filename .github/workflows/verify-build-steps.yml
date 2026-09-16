@@ -33,7 +33,9 @@ jobs:
 
       - name: Gradle smoke check
         run: |
-          # gradle.properties 里的 org.gradle.java.home 是 Windows 本地路径，CI 上用 JAVA_HOME 覆盖
-          # （release.yml 的构建步骤同样这么覆盖）
+          # gradle.properties 里 org.gradle.java.home 是 Windows 路径、jvmargs 里是 Windows-ROOT 信任库，
+          # 都只在 Windows 本地成立；release.yml 用 -D 覆盖，这里改成直接把该行替换掉（效果等价）
+          sed -i "s|^org.gradle.java.home=.*|org.gradle.java.home=$JAVA_HOME|" gradle.properties
+          sed -i "s|trustStoreType=Windows-ROOT|trustStoreType=JKS|" gradle.properties
           ./gradlew --version
-          ./gradlew -Dorg.gradle.java.home="$JAVA_HOME" tasks --no-daemon -q | head -20
+          ./gradlew tasks --no-daemon -q | head -20
