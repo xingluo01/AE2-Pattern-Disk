@@ -33,5 +33,7 @@ jobs:
 
       - name: Gradle smoke check
         run: |
+          # gradle.properties 里的 org.gradle.java.home 是 Windows 本地路径，CI 上用 JAVA_HOME 覆盖
+          # （release.yml 的构建步骤同样这么覆盖）
           ./gradlew --version
-          ./gradlew tasks --no-daemon -q | head -20
+          ./gradlew -Dorg.gradle.java.home="$JAVA_HOME" tasks --no-daemon -q | head -20
