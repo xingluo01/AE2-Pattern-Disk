@@ -1,0 +1,127 @@
+name: Release
+
+# 推 tag（如 v0.2.0）即发布：构建 → Modrinth → CurseForge → GitHub Release。
+#
+# 需要在仓库里预先配置（Settings → Secrets and variables → Actions）：
+#   Secrets   MODRINTH_TOKEN         Modrinth PAT。发版至少要 VERSION_CREATE（上传新版本）；
+#                                   标准更新流程再勾 VERSION_WRITE（改已发布版本的元数据/文件）与
+#                                   PROJECT_WRITE（改项目元数据，minotaur 的 syncBodyFrom 同步正文也要它）。
+#                                   删除类、支付类、用户认证类、组织/收藏/通知类都不用勾。
+#                                   scope 名以 VERSION_CREATE 为准（minotaur README 写作
+#                                   CREATE_VERSION 是它的笔误）。
+#             CURSEFORGE_TOKEN       https://www.curseforge.com/account/api-tokens 生成
+#   Variables MODRINTH_PROJECT_ID    Modrinth 项目 id 或 slug
+#             CURSEFORGE_PROJECT_ID  CurseForge 数字项目 id（不是 slug）
+#             NEOECOAE_JAR_URL       libs/neoecoae-21.2.0-beta3.jar 的下载地址（见下方说明）
+#
+# 两个平台都要求项目先存在：Modrinth 项目要已创建；CurseForge 项目必须人工在站点创建（自动化只能传文件，
+# 建不了项目），且首个文件要过人工审核才对玩家可见。
+#
+# 重跑同一个 tag：Modrinth 会因版本号已存在而失败，CurseForge 不去重、会再传一份。发布中断后优先改
+# 版本号重发，不要直接重跑（否则 CF 会多出一份重复文件）。
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 需要完整历史来生成 changelog
+
+      - name: Resolve version from tag
+        id: ver
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # build.gradle 把 libs/neoecoae-<version>.jar 当作 compileOnly 依赖，而该 jar 不入 git（第三方
+      # 构建产物，见 README）。把 fork（xingluo01/NeoECOAEExtension，分支 feature/pattern-disk-v21.1.2）
+      # 构建出的 jar 传到一个 release asset / 可直链，再把地址填进仓库变量 NEOECOAE_JAR_URL。
+      # 版本号变化时这里的文件名要跟 build.gradle 一起改。
+      - name: Fetch compileOnly integration jar
+        env:
+          JAR_URL: ${{ vars.NEOECOAE_JAR_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${JAR_URL}" ]; then
+            echo "::error title=缺少仓库变量::NEOECOAE_JAR_URL 未设置，compileOnly 依赖无法解析，构建必然失败。"
+            exit 1
+          fi
+          mkdir -p libs
+          curl -fL --retry 3 --retry-delay 5 -o libs/neoecoae-21.2.0-beta3.jar "$JAR_URL"
+          ls -l libs
+
+      # gradle.properties 里的 org.gradle.java.home=C:/Java/jdk-21 与 jvmargs 里的 Windows-ROOT 信任库
+      # 都只在 Windows 本地成立（Linux runner 上没有 Windows-ROOT 这种 keystore 类型）。前者用
+      # -Dorg.gradle.java.home 覆盖，后者整体覆盖 org.gradle.jvmargs。
+      # 命令行属性优先级高于 gradle.properties，见 Gradle 文档 Build Environment。
+      - name: Build
+        run: |
+          chmod +x gradlew
+          ./gradlew build \
+            -Pmod_version=${{ steps.ver.outputs.version }} \
+            -Dorg.gradle.java.home="$JAVA_HOME" \
+            -Dorg.gradle.jvmargs="-Xmx3G -Dhttps.protocols=TLSv1.2,TLSv1.3 -Djavax.net.ssl.trustStoreType=JKS"
+
+      - name: Collect changelog from commits since last tag
+        id: changelog
+        run: |
+          set -euo pipefail
+          PREVIOUS=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+          {
+            echo "body<<CHANGELOG_EOF"
+            if [ -n "$PREVIOUS" ]; then
+              git log --no-merges --pretty=format:'- %s (%h)' "${PREVIOUS}..${GITHUB_REF_NAME}"
+            else
+              git log --no-merges --pretty=format:'- %s (%h)' "${GITHUB_REF_NAME}"
+            fi
+            echo
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Publish to Modrinth
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+          MODRINTH_PROJECT_ID: ${{ vars.MODRINTH_PROJECT_ID }}
+          MODRINTH_CHANGELOG: ${{ steps.changelog.outputs.body }}
+        run: >
+          ./gradlew modrinth
+          -Pmod_version=${{ steps.ver.outputs.version }}
+          -Dorg.gradle.java.home="$JAVA_HOME"
+          -Dorg.gradle.jvmargs="-Xmx3G -Dhttps.protocols=TLSv1.2,TLSv1.3 -Djavax.net.ssl.trustStoreType=JKS"
+
+      - name: Publish to CurseForge
+        uses: itsmeow/curseforge-upload@v3.1.2
+        with:
+          token: ${{ secrets.CURSEFORGE_TOKEN }}
+          project_id: ${{ vars.CURSEFORGE_PROJECT_ID }}
+          game_endpoint: minecraft
+          file_path: build/libs/ae2_pattern_disk-${{ steps.ver.outputs.version }}.jar
+          display_name: AE2 Pattern Disk ${{ steps.ver.outputs.version }} [NeoForge 1.21.1]
+          release_type: release
+          changelog: ${{ steps.changelog.outputs.body }}
+          changelog_type: markdown
+          # 这里必须用 CF 的版本名/别名：写成 "Minecraft 1.21.1" 匹配不到会被静默丢弃，文件就会少
+          # 掉 1.21.1 这个标签。
+          game_versions: '1.21.1,NeoForge,Java 21'
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: build/libs/ae2_pattern_disk-${{ steps.ver.outputs.version }}.jar

@@ -3,6 +3,8 @@ plugins {
     id 'idea'
     id 'maven-publish'
     id 'dev.vfyjxf.modaccessor' version '1.2.1'
+    // Modrinth 发布。日常构建不受影响，只有带 MODRINTH_TOKEN 的环境（CI 的 release job）才跑 modrinth 任务。
+    id 'com.modrinth.minotaur' version '2.9.0'
     alias libs.plugins.modDevGradle
 }
 
@@ -322,5 +324,22 @@ repositories {
         }
         filter { includeGroup 'curse.maven' }
     }
+}
+
+// ---- Modrinth 发布 ---------------------------------------------------------
+// 由 CI 驱动：推 tag 后 release workflow 注入 MODRINTH_TOKEN / MODRINTH_PROJECT_ID /
+// MODRINTH_CHANGELOG，再执行 `./gradlew modrinth`。本地没有这些变量也能正常构建（占位值），
+// 只是不要执行 modrinth 任务。首次上线前可临时打开 debugMode 干跑，确认待上传内容无误。
+modrinth {
+    token = System.getenv('MODRINTH_TOKEN')
+    projectId = System.getenv('MODRINTH_PROJECT_ID') ?: 'unset'
+    versionNumber = mod_version
+    versionName = "AE2 Pattern Disk ${mod_version}"
+    versionType = 'release'
+    uploadFile = tasks.named('jar')
+    gameVersions = ['1.21.1']
+    loaders = ['neoforge']
+    changelog = System.getenv('MODRINTH_CHANGELOG') ?: 'See the GitHub release notes.'
+    // debugMode = true
 }
 
