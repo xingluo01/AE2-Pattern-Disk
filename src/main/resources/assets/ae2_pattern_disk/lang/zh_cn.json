@@ -58,6 +58,7 @@
   "gui.ae2_pattern_disk.batch_assembler.disks": "样板磁盘",
   "gui.ae2_pattern_disk.batch_assembler.batch_mode.standard": "标准：静默 40 tick 后开做",
   "gui.ae2_pattern_disk.batch_assembler.batch_mode.fast": "极速：静默 10 tick 后开做",
+  "config.jade.plugin_ae2_pattern_disk.batch_assembler": "批处理装配室",
   "jade.ae2_pattern_disk.batch_assembler.state.offline": "未接入网络",
   "jade.ae2_pattern_disk.batch_assembler.state.no_buffer": "无可用存储元件",
   "jade.ae2_pattern_disk.batch_assembler.state.no_pattern": "磁盘中没有可执行的样板",

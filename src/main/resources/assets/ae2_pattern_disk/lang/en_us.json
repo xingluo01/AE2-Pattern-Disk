@@ -58,6 +58,7 @@
   "gui.ae2_pattern_disk.batch_assembler.disks": "Pattern Disks",
   "gui.ae2_pattern_disk.batch_assembler.batch_mode.standard": "Standard: start after 40 idle ticks",
   "gui.ae2_pattern_disk.batch_assembler.batch_mode.fast": "Fast: start after 10 idle ticks",
+  "config.jade.plugin_ae2_pattern_disk.batch_assembler": "Batch Assembler",
   "jade.ae2_pattern_disk.batch_assembler.state.offline": "Not connected to the network",
   "jade.ae2_pattern_disk.batch_assembler.state.no_buffer": "No storage cell to work from",
   "jade.ae2_pattern_disk.batch_assembler.state.no_pattern": "No runnable pattern on the disks",
