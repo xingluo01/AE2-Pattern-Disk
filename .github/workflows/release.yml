@@ -13,6 +13,7 @@ name: Release
 #   Variables MODRINTH_PROJECT_ID    Modrinth 项目 id 或 slug
 #             CURSEFORGE_PROJECT_ID  CurseForge 数字项目 id（不是 slug）
 #             NEOECOAE_JAR_URL       libs/neoecoae-21.2.0-beta3.jar 的下载地址（见下方说明）
+#             MODDEVMCP_JAR_URL     libs/moddevmcp-0.3.jar 的下载地址（同为本地专属依赖，见下方说明）
 #
 # 两个平台都要求项目先存在：Modrinth 项目要已创建；CurseForge 项目必须人工在站点创建（自动化只能传文件，
 # 建不了项目），且首个文件要过人工审核才对玩家可见。
@@ -72,6 +73,9 @@ jobs:
           mkdir -p libs
           curl -fL --retry 3 --retry-delay 5 -o libs/neoecoae-21.2.0-beta3.jar "$JAR_URL"
           curl -fL --retry 3 --retry-delay 5 -o libs/moddevmcp-0.3.jar "$MCP_JAR_URL"
+          # 校验下载内容：Gradle 对 files() 里不存在的文件是静默跳过，靠这里把“下错文件”挡在构建前。
+          echo "7749d2c9ecf4ce2cb73f070fc180da17d2438340472f0f4f0f278268a9db0bec  libs/neoecoae-21.2.0-beta3.jar" | sha256sum -c -
+          echo "ce22ff7266a8462e1ae7062d17df1fdbdd06bdf29e5501c2f6d6ded6daf33789  libs/moddevmcp-0.3.jar" | sha256sum -c -
           ls -l libs
 
       # gradle.properties 里的 org.gradle.java.home=C:/Java/jdk-21 与 jvmargs 里的 Windows-ROOT 信任库
@@ -90,7 +94,9 @@ jobs:
         id: changelog
         run: |
           set -euo pipefail
-          PREVIOUS=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+          # 只认版本 tag（v 开头）。否则别的 tag——例如托管构建依赖用的 deps-v1——会被当成
+          # 上一个版本，把首发发布说明截成一行。
+          PREVIOUS=$(git describe --tags --match 'v[0-9]*' --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
           {
             echo "body<<CHANGELOG_EOF"
             if [ -n "$PREVIOUS" ]; then

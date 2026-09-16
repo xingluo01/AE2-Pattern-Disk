@@ -102,10 +102,23 @@
       Eternal 那边的 1.21.1 是 89/12735 等，传进去会被拒为 invalid dependency）
 - **itsmeow/curseforge-upload（CI 用的 Action）行为**：`game_versions` 接受名称/slug，但只查表转 id，
   **不会自动补环境组**、**匹配不到会静默丢弃** → CI 里已改为直接写数字 id（`release.yml`）。
-  另已加 `relations: '223794:requiredDependency'`（223794 = CF 侧的 AE2），让 CF 页也标出“需要 AE2”；
+  另已加 `relations: 'applied-energistics-2:requiredDependency'`（用 CF 的项目 slug：该 Action 只发 slug，
+  CF 文档里数字 id 属可选的 projectID 字段），让 CF 页也标出“需要 AE2”；
   0.2.0 那份手工上传的文件没有这条，下一个版本的 CI 会带上。
-- 待配置：`NEOECOAE_JAR_URL`（其余均已配齐——vars `MODRINTH_PROJECT_ID=ae2-pattern-disk`、`CURSEFORGE_PROJECT_ID=1698612`；secrets `MODRINTH_TOKEN`、`CURSEFORGE_TOKEN`）
-- **CI 待验证**：`mod_version` 已上调 `0.2.1`（0.2.0 在两个平台都已存在，重推旧 tag 会失败）；配好 `NEOECOAE_JAR_URL` 后推 `v0.2.1` 即可整链路验证
+- 变量/密钥已全部配齐：vars `MODRINTH_PROJECT_ID` / `CURSEFORGE_PROJECT_ID` / `NEOECOAE_JAR_URL` / `MODDEVMCP_JAR_URL`；
+  secrets `MODRINTH_TOKEN` / `CURSEFORGE_TOKEN`
+- **CI 待验证**：`mod_version` 已上调 `0.2.1`（0.2.0 在两平台都已存在，重推旧 tag 会失败）；推 `v0.2.1` 即可整链路验证
+- **CI 构建前置（已解决）**：`build.gradle` 的 `implementation('dev.vfyjxf:moddevmcp:0.3')` 属 compileClasspath，
+  但该构件只在本机可解析（`settings.gradle:18-39` 的 composite-build 替换 / mavenLocal 里的 `0.3`），
+  Central / NeoForged / modmaven / BlameJared 均无此构件 → CI 上 `compileJava` 必然失败。
+  现已改为 `implementation files('libs/moddevmcp-0.3.jar')`，由 CI 按变量 `MODDEVMCP_JAR_URL` 下载（`libs/*.jar` 被 gitignore）。
+- **私有 jar 供给（已解决）**：两个 maven 取不到的 jar——`neoecoae-21.2.0-beta3.jar`（4,576,253 B，sha256 `7749d2c9…`）
+  与 `moddevmcp-0.3.jar`（583,588 B，sha256 `ce22ff72…`）——托管于本仓库 release `deps-v1`，对应
+  `NEOECOAE_JAR_URL` / `MODDEVMCP_JAR_URL`。注意该 release 的 tag 落在 `v0.2.1^` 上，故 changelog 步骤已加
+  `--match 'v[0-9]*'`，避开它被 `git describe` 当成上一个版本而把发布说明截成一行。
+- **ModDevMCP 供给方式待清理（不影响发版）**：`build.gradle` 里 `localRuntime 'dev.vfyjxf:moddevmcp:0.1.6'` 仍在，
+  而本机 mavenLocal 并无 `0.1.6`（靠 composite-build 替换），与新增的 `files()` 可能让 dev 运行时出现两份副本；
+  建议单独一轮处理，并在本地跑一次 `runClient` 确认无重复 mod 载入。
 - 网页侧待办（API 改不了，需人工）：项目 Dependencies 标 AE2 为 required、Client/Server 环境标记（现为 unknown）、gallery 截图
 - 依赖项对照：AE2 = `ae2`（id `XxWD5pD3`）、GuideME = `guideme`（id `Ck4E7v7R`）
 - 发版注意：首次建议先开 `build.gradle` 的 `debugMode = true` 干跑 Modrinth 再发正式版；重跑同一 tag 时 Modrinth 会因版本号已存在失败、CurseForge 不去重会再传一份，中断后优先改版本号重发
