@@ -100,7 +100,12 @@
     `1.21.1=11779`、`NeoForge=10150`、`Client=9638`、`Server=9639`
     （少环境组会报 `must select at least one version from the environment group of versions`；
       Eternal 那边的 1.21.1 是 89/12735 等，传进去会被拒为 invalid dependency）
-- 待配置（缺一不可）：`CURSEFORGE_PROJECT_ID`、`NEOECOAE_JAR_URL`、`CURSEFORGE_TOKEN`（`MODRINTH_PROJECT_ID` 已配）
+- **itsmeow/curseforge-upload（CI 用的 Action）行为**：`game_versions` 接受名称/slug，但只查表转 id，
+  **不会自动补环境组**、**匹配不到会静默丢弃** → CI 里已改为直接写数字 id（`release.yml`）。
+  另已加 `relations: '223794:requiredDependency'`（223794 = CF 侧的 AE2），让 CF 页也标出“需要 AE2”；
+  0.2.0 那份手工上传的文件没有这条，下一个版本的 CI 会带上。
+- 待配置：`NEOECOAE_JAR_URL`（其余均已配齐——vars `MODRINTH_PROJECT_ID=ae2-pattern-disk`、`CURSEFORGE_PROJECT_ID=1698612`；secrets `MODRINTH_TOKEN`、`CURSEFORGE_TOKEN`）
+- **CI 待验证**：`mod_version` 已上调 `0.2.1`（0.2.0 在两个平台都已存在，重推旧 tag 会失败）；配好 `NEOECOAE_JAR_URL` 后推 `v0.2.1` 即可整链路验证
 - 网页侧待办（API 改不了，需人工）：项目 Dependencies 标 AE2 为 required、Client/Server 环境标记（现为 unknown）、gallery 截图
 - 依赖项对照：AE2 = `ae2`（id `XxWD5pD3`）、GuideME = `guideme`（id `Ck4E7v7R`）
 - 发版注意：首次建议先开 `build.gradle` 的 `debugMode = true` 干跑 Modrinth 再发正式版；重跑同一 tag 时 Modrinth 会因版本号已存在失败、CurseForge 不去重会再传一份，中断后优先改版本号重发

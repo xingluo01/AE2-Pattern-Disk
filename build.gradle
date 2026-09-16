@@ -340,6 +340,11 @@ modrinth {
     gameVersions = ['1.21.1']
     loaders = ['neoforge']
     changelog = System.getenv('MODRINTH_CHANGELOG') ?: 'See the GitHub release notes.'
+    // minotaur 不会从 mod 元数据推断依赖，必须显式声明，否则 CI 发布的版本会丢掉这条；
+    // 手工发布时是单独 PATCH 上去的。
+    dependencies {
+        required.project 'ae2'
+    }
     // debugMode = true
 }
 

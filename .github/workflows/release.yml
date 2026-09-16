@@ -115,9 +115,17 @@ jobs:
           release_type: release
           changelog: ${{ steps.changelog.outputs.body }}
           changelog_type: markdown
-          # 这里必须用 CF 的版本名/别名：写成 "Minecraft 1.21.1" 匹配不到会被静默丢弃，文件就会少
-          # 掉 1.21.1 这个标签。
-          game_versions: '1.21.1,NeoForge,Java 21'
+          # CF 的 gameVersions 必须包含「环境组」（Client/Server），否则会报
+          #   You must select at least one version from the environment group of versions
+          # 该 Action 只会把名称/slug 查表转成 id，既不会自动补环境组，匹配不到还会静默丢弃，
+          # 所以这里直接写传统接口 GET /api/game/versions 的数字 id：
+          #   1.21.1=11779  NeoForge=10150  Client=9638  Server=9639
+          # 注意 Eternal API（api.curseforge.com）的编号是另一套（1.21.1 = 89/12735），
+          # 用错会报 invalid dependency。
+          game_versions: '11779,10150,9638,9639'
+          # CF 侧的依赖关系：223794 = Applied Energistics 2（requiredDependency）。
+          # 不在 CI 里声明的话，玩家在 CF 页看不到“需要 AE2”。
+          relations: '223794:requiredDependency'
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
