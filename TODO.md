@@ -82,3 +82,13 @@
 ## 四、执行约束
 - 目标：NeoForge 21.1.241 / MC 1.21.1 / JDK 21 / AE2 19.2.17（编译依赖口径；`gradle.properties` 中的 `ae2_version=19.2.8` 为未使用的历史键）
 - 只用 AE2 公共 API；机器美术资源统一放本项目 `assets/ae2_pattern_disk/textures/`，不直接引用 `ae2:` 纹理（借用的复制件见 README 授权表；零件/物品显示模型仍继承 `ae2:item/display_base`、`ae2:part/display_off`、`ae2:item/cable_interface`）
+
+## 五、发布配置（CI，2026-09 记录）
+- 已就绪：`.github/workflows/release.yml`（推 `v*` tag → 构建 → Modrinth → CurseForge → GitHub Release）、`build.gradle` 接入 `com.modrinth.minotaur` 2.9.0、仓库 secret `MODRINTH_TOKEN`（PAT，勾 `VERSION_CREATE` + `VERSION_WRITE` + `PROJECT_WRITE`）
+- 待配置（缺一不可，配齐后即可用测试 tag 跑全链路）：
+  - Variable `MODRINTH_PROJECT_ID` —— Modrinth 项目建成后的 slug 或 8 位 id（预检 `ae2-pattern-disk` / `ae2_pattern_disk` 均未被占用）
+  - Variable `CURSEFORGE_PROJECT_ID` —— CurseForge **数字**项目 id（项目须先在站点人工创建；首个文件要过人工审核才对玩家可见）
+  - Variable `NEOECOAE_JAR_URL` —— `libs/neoecoae-21.2.0-beta3.jar` 的直链（CI 构建取用；建议挂成 GitHub Release asset）
+  - Secret `CURSEFORGE_TOKEN` —— CurseForge 账号 API token
+- 依赖项对照：AE2 = `ae2`（id `XxWD5pD3`）、GuideME = `guideme`（id `Ck4E7v7R`）
+- 发版注意：首次建议先开 `build.gradle` 的 `debugMode = true` 干跑 Modrinth 再发正式版；重跑同一 tag 时 Modrinth 会因版本号已存在失败、CurseForge 不去重会再传一份，中断后优先改版本号重发
