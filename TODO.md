@@ -89,6 +89,11 @@
   - **0.2.0** 已发布：version id `he2tuTEn`，357,560 bytes，loaders `neoforge` / game version `1.21.1` / release，已声明 required 依赖 AE2（`XxWD5pD3`）
   - 发布方式：本地 `MODRINTH_TOKEN=... MODRINTH_PROJECT_ID=ae2-pattern-disk ./gradlew modrinth`（CI 未就绪时的可用后备路径）
   - **CurseForge 0.2.0** 已上传：fileId `8896981`，357,560 bytes，`isAvailable=False`（CF 新项目首个文件强制人工审核）
+- **0.2.1（CI 首发验证）** ✅ 2026-09-16：推 `v0.2.1` 后 workflow **一次跑通**（15/15 步骤 success，零重试）
+  - Modrinth：version id `2yxVhpjq`，357,441 B，已带 required 依赖 AE2（`XxWD5pD3`）——证明 `modrinth { dependencies }` 生效（0.2.0 那条是手工 PATCH 的）
+  - CurseForge：上传步骤绿（该 Action 失败会 setFailed），文件进入人工审核（`latestFiles` 暂为空，与 0.2.0 同）
+  - GitHub Release：`v0.2.1`，附件 `ae2_pattern_disk-0.2.1.jar`，正文为完整 47 行 changelog——证明 `--match 'v[0-9]*'` 与 `body:` 两处修复生效（否则会只剩 1 行）
+  - 结论：**发版流程定型** —— `git tag vX.Y.Z && git push origin vX.Y.Z`，Modrinth/CF/GitHub 三平台全自动
 - **CF 双 API 混用（踩坑记录，缺一不可）**：
   - **上传**走传统接口 `POST https://minecraft.curseforge.com/api/projects/{数字id}/upload-file`，header `X-Api-Token`
     - token 是**网站账户 token**（UUID 形式，在 `curseforge.com/account/api-tokens` 生成）——不是 console 的 API key
