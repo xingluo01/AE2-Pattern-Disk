@@ -1,6 +1,6 @@
 name: Release
 
-# 推 tag（如 v0.2.0）即发布：构建 → Modrinth → CurseForge → GitHub Release。
+# 推 tag（如 v0.2.1）即发布：构建 → Modrinth → CurseForge → GitHub Release。
 #
 # 需要在仓库里预先配置（Settings → Secrets and variables → Actions）：
 #   Secrets   MODRINTH_TOKEN         Modrinth PAT。发版至少要 VERSION_CREATE（上传新版本）；
@@ -51,18 +51,27 @@ jobs:
       # build.gradle 把 libs/neoecoae-<version>.jar 当作 compileOnly 依赖，而该 jar 不入 git（第三方
       # 构建产物，见 README）。把 fork（xingluo01/NeoECOAEExtension，分支 feature/pattern-disk-v21.1.2）
       # 构建出的 jar 传到一个 release asset / 可直链，再把地址填进仓库变量 NEOECOAE_JAR_URL。
+      # 第二个 jar（ModDevMCP 0.3）同样未发布到公共 maven，由变量 MODDEVMCP_JAR_URL 提供，
+      # 对应 build.gradle 里的 implementation files('libs/moddevmcp-0.3.jar')。
+      # 两者现均托管在 release `deps-v1`（tag 不以 v 开头，不会触发本 workflow）。
       # 版本号变化时这里的文件名要跟 build.gradle 一起改。
-      - name: Fetch compileOnly integration jar
+      - name: Fetch local-only dependency jars
         env:
           JAR_URL: ${{ vars.NEOECOAE_JAR_URL }}
+          MCP_JAR_URL: ${{ vars.MODDEVMCP_JAR_URL }}
         run: |
           set -euo pipefail
           if [ -z "${JAR_URL}" ]; then
             echo "::error title=缺少仓库变量::NEOECOAE_JAR_URL 未设置，compileOnly 依赖无法解析，构建必然失败。"
             exit 1
           fi
+          if [ -z "${MCP_JAR_URL}" ]; then
+            echo "::error title=缺少仓库变量::MODDEVMCP_JAR_URL 未设置，compileClasspath 上的 moddevmcp 无法解析，构建必然失败。"
+            exit 1
+          fi
           mkdir -p libs
           curl -fL --retry 3 --retry-delay 5 -o libs/neoecoae-21.2.0-beta3.jar "$JAR_URL"
+          curl -fL --retry 3 --retry-delay 5 -o libs/moddevmcp-0.3.jar "$MCP_JAR_URL"
           ls -l libs
 
       # gradle.properties 里的 org.gradle.java.home=C:/Java/jdk-21 与 jvmargs 里的 Windows-ROOT 信任库
@@ -123,9 +132,9 @@ jobs:
           # 注意 Eternal API（api.curseforge.com）的编号是另一套（1.21.1 = 89/12735），
           # 用错会报 invalid dependency。
           game_versions: '11779,10150,9638,9639'
-          # CF 侧的依赖关系：223794 = Applied Energistics 2（requiredDependency）。
-          # 不在 CI 里声明的话，玩家在 CF 页看不到“需要 AE2”。
-          relations: '223794:requiredDependency'
+          # CF 侧的依赖关系：AE2 在 CF 的 slug（该 Action 只发 slug；CF 文档里数字 id 属可选
+          # 的 projectID 字段，写进 slug 位可能解析不到）。不在 CI 里声明的话，玩家在 CF 页看不到“需要 AE2”。
+          relations: 'applied-energistics-2:requiredDependency'
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2

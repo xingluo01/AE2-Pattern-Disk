@@ -257,9 +257,11 @@ dependencies {
     localRuntime 'maven.modrinth:enderio_evolution:29EVRQ7y'
     localRuntime 'maven.modrinth:ender-io-conduit-optimizer:lIFulFB9'
 
-    implementation('dev.vfyjxf:moddevmcp:0.3') {
-        transitive = false
-    }
+    // ModDevMCP 0.3 没有发布到任何公共 maven（Central / NeoForged / modmaven / BlameJared 都没有）。
+    // 原先靠 settings.gradle 的 composite-build 替换或 mavenLocal 解析，CI 上两者都没有，
+    // 所以改成显式指向 libs/ 下的 jar：本地从 mavenLocal 复制，CI 由 release workflow 按
+    // 仓库变量 MODDEVMCP_JAR_URL 下载。
+    implementation files('libs/moddevmcp-0.3.jar')
 }
 
 tasks.withType(JavaCompile).configureEach {
