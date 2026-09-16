@@ -144,11 +144,13 @@ jobs:
           relations: 'applied-energistics-2:requiredDependency'
 
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           # 直接用上面收集的 changelog，与 Modrinth/CF 口径一致。
-          # 不要同时给 generate_release_notes：两者会互相覆盖；而且 GitHub 生成 notes 是以
-          # “最近一次 release”为基线，会拿托管构建依赖的 deps-v1 当基线，导致说明只剩一条。
+          # 不给 generate_release_notes：GitHub 生成 notes 以“上一个 tag / 上一次 release”为基线，
+          # 会拿托管构建依赖的 deps-v1 当基线，导致说明只剩一条；若两者同时给，body 会被
+          # “前置”到自动 notes 之上（不是覆盖）。
+          # v3 的运行时是 Node 24（v2 的 Node 20 已被 GitHub 弃用）。
           body: ${{ steps.changelog.outputs.body }}
           files: build/libs/ae2_pattern_disk-${{ steps.ver.outputs.version }}.jar
