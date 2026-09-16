@@ -130,6 +130,10 @@
   恒为 true，而本仓库只有 tag 触发的 workflow ⇒ 这项配置**没有实际缓存收益**，纯属许可/兼容考虑）、
   `softprops/action-gh-release@v2→v3`；另给 release 步骤加了
   `fail_on_unmatched_files: true`（产物路径写错时硬失败，而不是静默生成没有附件的 release）。
+  - **实跑验证**（临时 workflow_dispatch，run 35134483389）：10/10 步骤 success；升级前每次运行都出现的
+    “Node 20 is being deprecated” 警告**从日志中彻底消失**；`cache-provider: basic` 生效
+    （日志 “Basic Caching: This build uses the basic open-source caching provider”）；Gradle 正常执行（9.5.0）。
+    验证用 workflow 已删除，不进发布链路。
   - **遗留**：`itsmeow/curseforge-upload@v3.1.2` 仍是 node20，上游最后提交 2024-04、无更高版本可升。预案（推荐序）：
     ① **fork 后改 `runs.using: node24` 并 pin commit SHA**（首选：上游自 2024-04 起零活动，等不到合并）；
     ② 自写 curl 直连 CF 传统上传接口（最彻底解耦，该接口与数字 id 本项目已在用，见上方记录）；
