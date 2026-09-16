@@ -1,6 +1,6 @@
 # AE2 Pattern Disk
 
-An addon for [Applied Energistics 2](https://github.com/AppliedEnergistics/Applied-Energistics-2) that adds high-capacity pattern disks, a disk-backed pattern provider, a pattern transferer, and an efficient parallel molecular assembler.
+An addon for [Applied Energistics 2](https://github.com/AppliedEnergistics/Applied-Energistics-2) that adds high-capacity pattern disks, a disk-backed pattern provider (block and cable-panel forms), a pattern transferer, an efficient parallel molecular assembler, a batch assembler and a pattern disk encoding terminal.
 
 - **Loader / MC**: NeoForge 1.21.1
 - **NeoForge**: 21.1.241
@@ -20,10 +20,14 @@ Store encoded AE2 patterns in a single disk. A disk is untyped while empty; the 
 | 64k | 256 |
 | 256k | 1024 |
 
-### Pattern Disk Provider
+### ME Pattern Disk Provider
 A pattern provider backed by physical pattern disks. Insert disks into its slots and it exposes their encoded patterns to the ME autocrafting system. It is a task source (it does not craft itself) and accepts returned products through its return inventory.
 
-### Pattern Transferer
+It comes in two forms sharing one implementation: the in-world **block**, and a **panel part**
+(`cable_pattern_disk_provider`) that attaches to a cable like AE2's own cable pattern provider. The panel
+form keeps the same nine disk slots and the same return inventory, just in a thinner footprint.
+
+### ME Pattern Transferer
 Moves encoded patterns between AE2 blank patterns and pattern disks. Input slots accept encoded patterns or populated disks; destination slots hold the target disks. Blank patterns produced by extraction are returned to the connected ME network. Supports speed cards.
 
 ### Efficient Molecular Assembler
@@ -33,13 +37,13 @@ The GUI exposes one page per thread (mirroring ExtendedAE's (EAE) extension mole
 
 Each page also has an optional pattern slot. Inserting an encoded crafting pattern there turns that page into a self-executing unit: it pulls its own inputs from the ME network, crafts continuously while materials last, and pushes products plus container remainders to adjacent inventories or back into the network. A page running a manual pattern does not accept provider-pushed jobs, so the machine only takes pushed jobs while at least one page is idle.
 
-### Batch Molecular Assembler
+### Batch Assembler
 
 Buffers the jobs pushed by AE2 crafting CPUs inside nine private storage cell slots and executes them once the input material has actually stopped arriving.
 
 #### Batch Window
 
-The window is measured in game time since the last accepted push (two modes: standard 40 ticks, fast 10 ticks), so material that keeps coming simply keeps the batch waiting; the buffer adds no limit of its own beyond the capacity of the inserted cells, and a started batch runs to the end of the queue without a per-tick ceiling. Supports crafting-table, smithing-table and stonecutting recipes.
+The window is measured in game time since the last accepted push (two modes: standard 40 ticks, fast 10 ticks), so material that keeps coming simply keeps the batch waiting; the buffer adds no limit of its own beyond the capacity of the inserted cells (plan analysis keeps its own separate 1024-entry cache), and a started batch runs to the end of the queue without a per-tick ceiling. Supports crafting-table, smithing-table and stonecutting recipes.
 
 #### Output Queue
 
@@ -63,10 +67,11 @@ Up to **four AE2 Speed Cards** add worker threads (2 / 4 / 8 / 16): those thread
 | `ae2_pattern_disk:pattern_disk_64k` | 64k Pattern Disk | Item |
 | `ae2_pattern_disk:pattern_disk_256k` | 256k Pattern Disk | Item |
 | `ae2_pattern_disk:pattern_disk_encoding_terminal` | ME Pattern Disk Encoding Terminal | Item (part) |
-| `ae2_pattern_disk:pattern_transferer` | Pattern Transferer | Block |
-| `ae2_pattern_disk:pattern_disk_provider` | Pattern Disk Provider | Block |
+| `ae2_pattern_disk:pattern_transferer` | ME Pattern Transferer | Block |
+| `ae2_pattern_disk:pattern_disk_provider` | ME Pattern Disk Provider | Block |
+| `ae2_pattern_disk:cable_pattern_disk_provider` | ME Pattern Disk Provider | Item (part) |
 | `ae2_pattern_disk:pattern_disk_assembler` | Efficient Molecular Assembler | Block |
-| `ae2_pattern_disk:batch_molecular_assembler` | Batch Molecular Assembler | Block |
+| `ae2_pattern_disk:batch_molecular_assembler` | Batch Assembler | Block |
 
 All items are available in the dedicated creative tab **AE2 Pattern Disk**.
 
@@ -90,8 +95,10 @@ All items are available in the dedicated creative tab **AE2 Pattern Disk**.
     ```
     `B=ae2:calculation_processor` `C=lower-tier disk` `D=ae2:quartz_glass`
     `A=minecraft:redstone` (4k) / `minecraft:glowstone_dust` (16k, 64k) / `ae2:sky_dust` (256k)
-- **Pattern Disk Provider**
+- **ME Pattern Disk Provider**
   - Shapeless: `ae2:pattern_provider` + `ae2:capacity_card`
+  - Panel form (`ae2_pattern_disk:cable_pattern_disk_provider`): shapeless 1:1 conversion with the block
+    form in both directions, no extra material
 - **Efficient Molecular Assembler**
   - Shaped:
     ```text
@@ -100,10 +107,28 @@ All items are available in the dedicated creative tab **AE2 Pattern Disk**.
     A A A
     ```
     `A=ae2:molecular_assembler` `B=ae2:capacity_card`
+- **ME Pattern Transferer**
+  - Shaped:
+    ```text
+    A B A
+    D C D
+    A E A
+    ```
+    `A=ae2:quartz_glass` `B=ae2_pattern_disk:pattern_disk_1k` `C=ae2:item_cell_housing` `D=ae2:logic_processor` `E=ae2:engineering_processor`
+- **Batch Assembler**
+  - Shaped:
+    ```text
+    A B A
+    D C D
+    A B A
+    ```
+    `A=ae2:quartz_glass` `B=ae2:calculation_processor` `C=ae2_pattern_disk:pattern_disk_assembler` `D=ae2_pattern_disk:pattern_disk_64k`
+- **Pattern Disk Encoding Terminal**
+  - Shapeless: `ae2:pattern_encoding_terminal` + `ae2_pattern_disk:pattern_disk_1k`
 
 ## Guide
 
-The mod ships a GuideME guide (in `assets/ae2_pattern_disk/ae2guide/`) covering the pattern disks (all five tiers on one page), the pattern disk provider, the pattern transferer, and the efficient molecular assembler. The three machine GUIs link to their guide page.
+The mod ships a GuideME guide (in `assets/ae2_pattern_disk/ae2guide/`) covering the pattern disks (all five tiers on one page), the pattern disk provider (block and panel forms), the pattern transferer, the efficient molecular assembler, the batch assembler and the pattern disk encoding terminal. Of the five machine GUIs, only the encoding terminal declares a `helpTopic` in its screen JSON, so it is the only one that links to its guide page.
 
 ## Dependencies
 
@@ -126,14 +151,14 @@ The resulting jar is written to `build/libs/`.
 
 The source compiles against a locally built **Neo ECO AE Extension** jar, referenced from `libs/`.
 That jar is not tracked in git. To produce it, check out the fork carrying the integration hooks
-([xingluo01/NeoECOAEExtension](https://github.com/xingluo01/NeoECOAEExtension), upstream PR
+(branch `feature/pattern-disk-v21.1.2` of [xingluo01/NeoECOAEExtension](https://github.com/xingluo01/NeoECOAEExtension), upstream PR
 [DancingSnow0517/NeoECOAEExtension#100](https://github.com/DancingSnow0517/NeoECOAEExtension/pull/100)),
 build it, then copy the result in:
 
 ```bash
 cd ../NeoECOAEExtension
 ./gradlew build -x test
-cp build/libs/neoecoae-21.1.1.jar ../AE2-Pattern-Disk/libs/
+cp build/libs/neoecoae-21.2.0-beta3.jar ../AE2-Pattern-Disk/libs/
 ```
 
 The FD Smart Pattern Bus integration (upload-to-ECO button, disk-aware insertion, pattern access
@@ -143,7 +168,7 @@ build the hooks are absent, the integration logs a warning and the rest of the m
 ## License
 
 This project is licensed under the **GNU Lesser General Public License v3.0 (LGPL-3.0)**.
-See the [LICENSE](LICENSE) file for the full license text.
+See the [LICENSE](LICENSE) file for the full license text. Source: [github.com/xingluo01/AE2-Pattern-Disk](https://github.com/xingluo01/AE2-Pattern-Disk).
 
 ### Upstream Attribution
 
@@ -160,10 +185,88 @@ This mod is an addon for **[Applied Energistics 2](https://github.com/AppliedEne
 | `assets/ae2_pattern_disk/textures/part/monitor_sides.png` | `assets/ae2/textures/part/monitor_sides.png` |
 | `assets/ae2_pattern_disk/textures/part/monitor_back.png` | `assets/ae2/textures/part/monitor_back.png` |
 | `assets/ae2_pattern_disk/textures/part/monitor_colored.png` | `assets/ae2/textures/part/monitor_colored.png` |
+| `assets/ae2_pattern_disk/textures/part/pattern_disk_provider.png` | `assets/ae2/textures/part/pattern_provider.png` |
+| `assets/ae2_pattern_disk/textures/part/pattern_disk_provider_back.png` | `assets/ae2/textures/part/pattern_provider_back.png` |
+| `assets/ae2_pattern_disk/textures/part/pattern_disk_provider_sides.png` | `assets/ae2/textures/part/pattern_provider_sides.png` |
+| `assets/ae2_pattern_disk/textures/part/pattern_disk_provider_sides_status.png` | `assets/ae2/textures/part/monitor_sides_status.png` |
 
-These textures are redistributed under the terms of LGPL-3.0. No modifications have been made.
+**The following block textures are copied from AE2 or locally reworked from AE2 textures (LGPL-3.0):**
 
-Model JSON files referencing `ae2:*` parents (`display_base`, `display_off`, `io_port`) are derivative works of AE2's model files and are also covered by LGPL-3.0.
+| File | AE2 Source | Relation |
+|------|-----------|----------|
+| `assets/ae2_pattern_disk/textures/block/molecular_assembler.png` | `assets/ae2/textures/block/molecular_assembler.png` | locally edited derivative, 2026-09 (~44% of opaque pixels differ) |
+| `assets/ae2_pattern_disk/textures/block/pattern_provider.png` | `assets/ae2/textures/block/pattern_provider.png` | locally edited derivative, 2026-09 (~39% differ) |
+| `assets/ae2_pattern_disk/textures/block/pattern_provider_alternate.png` | `assets/ae2/textures/block/pattern_provider_alternate.png` | locally edited derivative, 2026-09 (~39% differ) |
+| `assets/ae2_pattern_disk/textures/block/pattern_provider_alternate_arrow.png` | `assets/ae2/textures/block/pattern_provider_alternate_arrow.png` | locally edited derivative, 2026-09 (~39% differ) |
+| `assets/ae2_pattern_disk/textures/block/pattern_provider_alternate_front.png` | `assets/ae2/textures/block/pattern_provider_alternate_front.png` | locally edited derivative, 2026-09 (~33% differ) |
+| `assets/ae2_pattern_disk/textures/block/pattern_transferer_front.png` | `assets/ae2/textures/block/io_port_front_off.png` | locally edited derivative, 2026-09 (~22% differ) |
+| `assets/ae2_pattern_disk/textures/block/pattern_transferer_top.png` | `assets/ae2/textures/block/io_port_top_off.png` | pixel-identical (PNG bytes differ) |
+| `assets/ae2_pattern_disk/textures/block/pattern_transferer_side.png` | `assets/ae2/textures/block/generics/side.png` | byte-identical copy |
+| `assets/ae2_pattern_disk/textures/block/pattern_transferer_back.png` | `assets/ae2/textures/block/generics/back.png` | byte-identical copy |
+| `assets/ae2_pattern_disk/textures/block/pattern_transferer_bottom.png` | `assets/ae2/textures/block/generics/bottom.png` | byte-identical copy |
+| `assets/ae2_pattern_disk/textures/block/pattern_transferer_front_on.png` | `assets/ae2/textures/block/io_port_front.png` | locally edited derivative, 2026-09 (~28% differ) |
+| `assets/ae2_pattern_disk/textures/block/pattern_transferer_top_on.png` | `assets/ae2/textures/block/io_port_top.png` | locally edited derivative, 2026-09 (~3% differ) |
+
+These textures are redistributed under the terms of LGPL-3.0. They began as copies of their AE2
+counterparts and were partially reworked in 2026-09; the relation column records a pixel comparison
+against AE2 19.2.17, which is why the reworked rows remain listed even though they are no longer
+byte-identical.
+
+**The batch assembler's current look comes from a different source: the XingLuo_AE2_1.21_GUIExpansion
+resource pack** (author: XingLuo). The pack is a 1.20.1 resource pack that substitutes its own art for
+AE2-ecosystem assets, including AdvancedAE's quantum crafter; what this mod copies is the pack's
+own work at those paths (its `quantum_crafter_on.json` carries `credit: "Made with Blockbench"`,
+while AdvancedAE's own model at that path is a plain cube - so the glow-shell geometry is the pack
+author's, not AdvancedAE's):
+
+| File | Source |
+|------|--------|
+| `assets/ae2_pattern_disk/textures/block/batch_assembler_grid.png` (+ `.mcmeta`) | `assets/advanced_ae/textures/block/quantum_crafter_grid.png` in that pack |
+| `assets/ae2_pattern_disk/textures/block/batch_assembler_grid_on.png` (+ `.mcmeta`) | `assets/advanced_ae/textures/block/quantum_crafter_grid_on.png` |
+| `assets/ae2_pattern_disk/textures/block/batch_assembler_grid_on_light.png` (+ `.mcmeta`) | `assets/advanced_ae/textures/block/quantum_crafter_grid_on_light.png` |
+| `assets/ae2_pattern_disk/models/block/batch_assembler_on.json` | geometry of the pack's `assets/advanced_ae/models/block/quantum_crafter_on.json` |
+
+The resource pack is the mod author's own work (XingLuo) and is redistributed here under this
+project's LGPL-3.0 license.
+
+An older io_port-style set of seven `textures/block/batch_assembler_*.png` files (byte-identical copies of
+the `pattern_transferer_*` files above) was deleted once the grid set replaced it and nothing referenced it
+any more; those files are no longer part of this distribution.
+
+**The following GUI textures were compared against AE2's GUI sheets (LGPL-3.0), pixel-by-pixel on the same canvas:**
+
+| File | AE2 Source | Relation |
+|------|-----------|----------|
+| `assets/ae2_pattern_disk/textures/guis/pattern_provider.png` | `assets/ae2/textures/guis/pattern_provider.png` | pixel-identical (PNG bytes differ) |
+| `assets/ae2_pattern_disk/textures/guis/ae2_pattern_disk.png` | `assets/ae2/textures/guis/io_port.png` | locally modified derivative, 2026-09 (~1% of opaque pixels differ) |
+| `assets/ae2_pattern_disk/textures/guis/ex_molecular_assembler.png` | `assets/ae2/textures/guis/molecular_assembler.png` | locally modified derivative, 2026-09 (~2% of opaque pixels differ) |
+| `assets/ae2_pattern_disk/textures/guis/pattern.png` | `assets/ae2/textures/guis/pattern.png` | locally modified derivative, 2026-09 (~9% of opaque pixels differ) |
+| `assets/ae2_pattern_disk/textures/guis/batch_molecular_assembler.png` | `assets/ae2/textures/guis/molecular_assembler.png` | locally modified derivative, 2026-09 (~43% of opaque pixels differ) |
+| `assets/ae2_pattern_disk/textures/guis/pattern_modes.png` | `assets/ae2/textures/guis/pattern_modes.png` | same canvas; ~69% of the opaque pixels differ; provenance unconfirmed |
+| `assets/ae2_pattern_disk/textures/guis/states.png` | `assets/ae2/textures/guis/states.png` | same canvas; ~58% of the opaque pixels differ; provenance unconfirmed |
+
+The remaining textures under `textures/` (everything in `textures/item/`, plus
+`textures/block/pattern_disk_assembler_lights.png`) were compared against AE2 19.2.17 both byte-wise
+(against AE2's item and block textures) and pixel-wise (same canvas, same size): the closest same-size
+AE2 match for each item sheet differs in at least 62% of its opaque pixels, and
+`pattern_disk_assembler_lights.png` is a 12-frame emissive overlay built on the already-listed
+`block/molecular_assembler.png` copy. No same-canvas AE2 match reproduces more than 38% of any of
+these files, so none of them is a copy of an AE2 texture.
+
+`models/block/pattern_transferer.json` and `models/block/pattern_transferer_on.json` are derived from
+AE2's `assets/ae2/models/block/io_port.json` / `io_port_on.json` (same element geometry and display
+transforms, textures repointed to the local copies above), and are therefore also covered by
+LGPL-3.0. `models/block/batch_assembler.json` is a plain `cube_all` wrapper, while
+`batch_assembler_on.json` copies the glow-shell geometry the resource pack supplies for
+`quantum_crafter_on` (see above); the item model points at the `_on` variant so the inventory icon
+keeps its display transforms - the same choice AdvancedAE makes for its own item model. Which batch
+model is used is driven by the block's `powered` state, mirroring AE2's IO port: on while the ME node
+is online, so the glow means "connected and powered", not "currently crafting". The remaining model
+JSON files referencing `ae2:*` parents (`display_base`, `display_off`, `cable_interface`) are derivative
+works of AE2's model files as well. `models/part/pattern_disk_provider_base.json` copies the panel
+geometry of AE2's `part/pattern_provider_base` (by Sea_Kerman), and
+`models/item/cable_pattern_disk_provider.json` inherits `ae2:item/cable_interface` - both listed here for
+the same reason.
 
 ### Third-Party Code
 

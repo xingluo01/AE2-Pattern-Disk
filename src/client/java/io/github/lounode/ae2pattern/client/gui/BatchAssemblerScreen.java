@@ -25,7 +25,7 @@ public class BatchAssemblerScreen extends UpgradeableScreen<BatchAssemblerMenu> 
     private static final ResourceLocation STATES = ResourceLocation
             .parse("ae2_pattern_disk:textures/guis/states.png");
 
-    // 空槽覆盖层：states.png (240,16,16,16) 样板磁盘槽（与样板磁盘供应器同款）、(240,48,16,16) 缓存栏槽
+    // 空槽覆盖层：states.png (240,16,16,16) 样板磁盘槽（与ME样板磁盘供应器同款）、(240,48,16,16) 缓存栏槽
     private static final Blitter DISK_SLOT_OVERLAY = Blitter.texture(STATES).src(240, 16, 16, 16);
     private static final Blitter CELL_SLOT_OVERLAY = Blitter.texture(STATES).src(240, 48, 16, 16);
 
@@ -36,7 +36,7 @@ public class BatchAssemblerScreen extends UpgradeableScreen<BatchAssemblerMenu> 
     private static final Blitter MODE_STANDARD = Blitter.texture(STATES).src(32, 32, 16, 16);
     private static final Blitter MODE_FAST = Blitter.texture(STATES).src(48, 32, 16, 16);
 
-    // 与样板转存器同款切换按钮背景：常态 / 光标选中
+    // 与ME样板转存器同款切换按钮背景：常态 / 光标选中
     private static final Blitter BG_MODE_NORMAL = Blitter.texture(STATES).src(208, 224, 18, 20);
     private static final Blitter BG_MODE_HOVER = Blitter.texture(STATES).src(226, 224, 18, 20);
 
@@ -70,7 +70,7 @@ public class BatchAssemblerScreen extends UpgradeableScreen<BatchAssemblerMenu> 
     @Override
     protected void updateBeforeRender() {
         super.updateBeforeRender();
-        // GuiSync 值回读：点击后服务端切换模式，图标/tooltip 随之刷新（与样板转存器同款做法）
+        // GuiSync 值回读：点击后服务端切换模式，图标/tooltip 随之刷新（与ME样板转存器同款做法）
         this.batchModeButton.setState(getMenu().isFastBatchMode());
     }
 

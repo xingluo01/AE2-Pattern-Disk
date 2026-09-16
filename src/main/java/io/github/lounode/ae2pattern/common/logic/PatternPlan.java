@@ -14,7 +14,7 @@ import appeng.api.crafting.IPatternDetails;
 import appeng.api.stacks.AEKey;
 
 /**
- * Pre-computed execution plan of one crafting pattern (批处理分子装配室).
+ * Pre-computed execution plan of one crafting pattern (批处理装配室).
  *
  * <p>A plan holds the parts of a pattern that never change: which variants each input slot declares, how
  * much of them one run consumes, and the aggregated main outputs. None of it touches the cell buffer, the

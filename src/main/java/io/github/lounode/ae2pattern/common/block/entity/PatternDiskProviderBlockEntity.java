@@ -2,23 +2,29 @@ package io.github.lounode.ae2pattern.common.block.entity;
 
 import java.util.List;
 
+import org.jetbrains.annotations.Nullable;
+
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
+import net.minecraft.core.component.DataComponentMap;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.ItemContainerContents;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 
+import appeng.api.ids.AEComponents;
 import appeng.api.inventories.InternalInventory;
-import appeng.api.networking.security.IActionSource;
 import appeng.api.stacks.AEItemKey;
 import appeng.blockentity.crafting.PatternProviderBlockEntity;
 import appeng.helpers.patternprovider.PatternProviderLogic;
+import appeng.util.SettingsFrom;
 import appeng.util.inv.AppEngInternalInventory;
 import appeng.util.inv.InternalInventoryHost;
 
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
-import io.github.lounode.ae2pattern.common.pattern.PatternDiskRemoveInventory;
+import io.github.lounode.ae2pattern.common.pattern.PatternDiskTerminalView;
 
 import io.github.lounode.ae2pattern.common.logic.PatternDiskProviderLogic;
 import io.github.lounode.ae2pattern.AEPatternRegistries;
@@ -28,19 +34,19 @@ import io.github.lounode.ae2pattern.AEPatternRegistries;
  * exposes every encoded pattern on them to the ME autocrafting service.
  */
 public class PatternDiskProviderBlockEntity extends PatternProviderBlockEntity
-        implements InternalInventoryHost, IPatternDiskHost {
+        implements PatternDiskProviderHost, InternalInventoryHost {
 
     public static final int DISK_SLOT_COUNT = 9;
 
     private final AppEngInternalInventory diskInventory = new AppEngInternalInventory(this, DISK_SLOT_COUNT);
 
     /**
-     * Cached terminal view for the next PAT session that opens. AE2's PAT keeps a fixed row count per
-     * open session, so an open PAT keeps using the instance it grabbed at open time (its rows freeze,
-     * removals mark rows empty in place). Any disk change invalidates this cache so the next PAT that
-     * opens re-scans the disks into a fresh, compacted view (re-flowed rows + newly written patterns).
+     * Terminal view shared with the panel part (see {@link PatternDiskTerminalView}). Cached because an
+     * open pattern access terminal keeps using the instance it grabbed at open time (rows frozen), so
+     * any disk change invalidates it and the next terminal that opens re-scans the disks.
      */
-    private PatternDiskRemoveInventory cachedTerminalInventory;
+    private final PatternDiskTerminalView terminalView = new PatternDiskTerminalView(diskInventory,
+            () -> getMainNode().getGrid(), this, this::markTerminalChanged);
 
     public PatternDiskProviderBlockEntity(BlockPos pos, BlockState blockState) {
         super(AEPatternRegistries.BE_PROVIDER.get(), pos, blockState);
@@ -59,76 +65,7 @@ public class PatternDiskProviderBlockEntity extends PatternProviderBlockEntity
 
     @Override
     public appeng.api.inventories.InternalInventory getTerminalPatternInventory() {
-        if (cachedTerminalInventory != null) {
-            return cachedTerminalInventory;
-        }
-        cachedTerminalInventory = new PatternDiskRemoveInventory(diskInventory,
-                new PatternDiskRemoveInventory.BlankPatternSink() {
-                    @Override
-                    public boolean drawBlankPatterns(int count) {
-                        return tryDrawBlankPattern(count);
-                    }
-
-                    @Override
-                    public boolean hasBlankPatterns(int count) {
-                        return canDrawBlankPattern(count);
-                    }
-
-                    @Override
-                    public boolean returnBlankPatterns(int count) {
-                        return returnBlankPattern(count);
-                    }
-                },
-                this::markTerminalChanged);
-        return cachedTerminalInventory;
-    }
-
-    /**
-     * Read-only pre-check: whether the attached ME network currently holds at least {@code count}
-     * blank patterns (SIMULATE, nothing is extracted). Returns false when the machine is not on a
-     * grid yet or the network cannot cover the whole count.
-     */
-    private boolean canDrawBlankPattern(int count) {
-        var grid = getMainNode().getGrid();
-        if (grid == null || count <= 0) {
-            return false;
-        }
-        var storage = grid.getStorageService().getInventory();
-        var blank = AEItemKey.of(appeng.core.definitions.AEItems.BLANK_PATTERN);
-        return storage.extract(blank, count, appeng.api.config.Actionable.SIMULATE,
-                IActionSource.ofMachine(this)) == count;
-    }
-
-    /**
-     * Draws {@code count} blank patterns from the attached ME network, all-or-nothing: first a
-     * simulated check confirms the network can cover count, then a single modulate extract removes them.
-     * Returns {@code false} (drawing nothing) when the network lacks count blank patterns or the machine
-     * is not on a grid yet.
-     */
-    private boolean tryDrawBlankPattern(int count) {
-        if (!canDrawBlankPattern(count)) {
-            return false;
-        }
-        var grid = getMainNode().getGrid();
-        var storage = grid.getStorageService().getInventory();
-        var blank = AEItemKey.of(appeng.core.definitions.AEItems.BLANK_PATTERN);
-        return storage.extract(blank, count, appeng.api.config.Actionable.MODULATE,
-                IActionSource.ofMachine(this)) == count;
-    }
-
-    /**
-     * Returns {@code count} blank patterns to the attached ME network (undo of {@link #tryDrawBlankPattern},
-     * used when an AE2 swap restore re-inserts a just-taken pattern).
-     */
-    private boolean returnBlankPattern(int count) {
-        var grid = getMainNode().getGrid();
-        if (grid == null || count <= 0) {
-            return false;
-        }
-        var storage = grid.getStorageService().getInventory();
-        var blank = AEItemKey.of(appeng.core.definitions.AEItems.BLANK_PATTERN);
-        return storage.insert(blank, count, appeng.api.config.Actionable.MODULATE,
-                IActionSource.ofMachine(this)) == count;
+        return terminalView.view();
     }
 
     /** Rebuilds the provider's pattern list and invalidates the cached terminal view after a real
@@ -155,7 +92,7 @@ public class PatternDiskProviderBlockEntity extends PatternProviderBlockEntity
         if (getLogic() instanceof PatternDiskProviderLogic diskLogic) {
             diskLogic.refreshPatternsFromDisks();
         }
-        cachedTerminalInventory = null; // invalidate: next PAT opening rebuilds a fresh view
+        terminalView.invalidate(); // next terminal opening rebuilds a fresh view
     }
 
     @Override
@@ -201,15 +138,62 @@ public class PatternDiskProviderBlockEntity extends PatternProviderBlockEntity
                 drops.add(diskInventory.getStackInSlot(i));
             }
         }
+        // Dropping has to cover everything the machine really holds: AE2's addDrops does the pending
+        // push list and the return inventory, but it also dumps the pattern inventory - which here is
+        // only a mirror of the disks. Empty the mirror first so the drop is purely the machine's own
+        // contents; super.addAdditionalDrops stays uncalled for the same reason.
+        getLogic().getPatternInv().clear();
+        getLogic().addDrops(drops);
         // Also clear the injected pattern inventory so nothing stale remains on break.
         clearContent();
+    }
+
+    /**
+     * Applies a memory card while keeping the disk mirror intact: AE2's default implementation clears the
+     * provider's pattern inventory and hands those patterns to the player, but ours only mirrors the
+     * disks, so that would duplicate every encoded pattern (the disks keep the originals).
+     */
+    @Override
+    public void importSettings(SettingsFrom mode, DataComponentMap input, @Nullable Player player) {
+        var cleanInput = withoutPatterns(input);
+        if (mode == SettingsFrom.MEMORY_CARD) {
+            getLogic().getPatternInv().clear(); // mirror, rebuilt below from the disks
+        }
+        super.importSettings(mode, cleanInput, player);
+        if (mode == SettingsFrom.MEMORY_CARD) {
+            refreshFromDisks();
+        }
+    }
+
+    /**
+     * Strips the pattern section from a memory card before anyone reads it. A card written by an older
+     * build - or by an AE2 pattern provider - still carries patterns, and importing those charges blank
+     * patterns for copies of what the disks already hold, only for the next refresh to discard them.
+     */
+    private static DataComponentMap withoutPatterns(DataComponentMap input) {
+        var sanitized = DataComponentMap.builder().addAll(input);
+        sanitized.set(AEComponents.EXPORTED_PATTERNS, ItemContainerContents.EMPTY);
+        return sanitized.build();
+    }
+
+    /**
+     * Writes the settings into a memory card, minus the pattern inventory: AE2's provider puts its own
+     * patterns in the card, but the card would then carry copies of what the disks already hold, and
+     * importing them elsewhere charges blank patterns for those copies.
+     */
+    @Override
+    public void exportSettings(SettingsFrom mode, DataComponentMap.Builder builder, @Nullable Player player) {
+        super.exportSettings(mode, builder, player);
+        if (mode == SettingsFrom.MEMORY_CARD) {
+            builder.set(AEComponents.EXPORTED_PATTERNS, ItemContainerContents.EMPTY);
+        }
     }
 
     @Override
     public void clearContent() {
         super.clearContent();
         diskInventory.clear();
-        cachedTerminalInventory = null;
+        terminalView.invalidate();
     }
 
     @Override

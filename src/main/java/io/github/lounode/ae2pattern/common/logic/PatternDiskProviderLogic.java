@@ -78,7 +78,9 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
 
         patternInv.clear();
         for (int i = 0; i < all.size() && i < patternInv.size(); i++) {
-            patternInv.setItemDirect(i, all.get(i));
+            // copy(): the stacks come straight out of the disks' components, and a holder of the mirror
+            // must not be able to mutate what the disk shows.
+            patternInv.setItemDirect(i, all.get(i).copy());
         }
 
         // Parent decodes patternInventory into its patterns list and requests a grid update.

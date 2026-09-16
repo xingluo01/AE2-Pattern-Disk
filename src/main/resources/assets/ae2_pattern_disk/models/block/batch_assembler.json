@@ -1,0 +1,7 @@
+{
+  "credit": "Textures from the XingLuo_AE2_1.21_GUIExpansion resource pack (its replacement for advanced_ae:block/quantum_crafter_grid, pack author: XingLuo).",
+  "parent": "minecraft:block/cube_all",
+  "textures": {
+    "all": "ae2_pattern_disk:block/batch_assembler_grid"
+  }
+}

@@ -45,6 +45,17 @@ public class PatternDiskProviderBlock extends AEBaseEntityBlock<PatternDiskProvi
     }
 
     @Override
+    protected void neighborChanged(BlockState state, Level level, BlockPos pos, Block neighborBlock,
+            BlockPos fromPos, boolean movedByPiston) {
+        var be = getBlockEntity(level, pos);
+        if (be != null) {
+            // Same wiring as AE2's own block pattern provider: without it a provider locked until a
+            // redstone pulse never unlocks, and the while-low/high modes keep a stale signal value.
+            be.getLogic().updateRedstoneState();
+        }
+    }
+
+    @Override
     protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player,
             BlockHitResult hit) {
         if (InteractionUtil.isInAlternateUseMode(player)) {

@@ -54,7 +54,7 @@ import appeng.util.inv.filter.IAEItemFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.github.lounode.ae2pattern.common.pattern.PatternDiskRemoveInventory;
+import io.github.lounode.ae2pattern.common.pattern.PatternDiskTerminalView;
 
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
@@ -62,7 +62,7 @@ import io.github.lounode.ae2pattern.common.logic.BatchRecipePool;
 import io.github.lounode.ae2pattern.common.logic.PatternPlan;
 
 /**
- * Block entity of the batch molecular assembler (批处理分子装配室).
+ * Block entity of the batch assembler (批处理装配室).
  *
  * <p>It consumes crafting jobs pushed by AE2 crafting CPUs (via {@link ICraftingMachine}) and buffers
  * the pushed materials inside private storage-cell slots instead of executing immediately. Once no new
@@ -133,6 +133,9 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
 
     private WorkState workState = WorkState.IDLE;
 
+    /** Client-side mirror of the ME node state; synced through the block entity stream. */
+    private boolean isActive = false;
+
     /** Set when a return attempt found the network unwilling to take what was waiting. */
     private boolean returnStalled;
 
@@ -179,6 +182,46 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
             return WorkState.IDLE;
         }
         return workState;
+    }
+
+    /**
+     * Whether the ME node is online, which drives the block's powered state (off/on model).
+     *
+     * <p>The server reads the live node state; the client uses the value pushed through
+     * {@link #writeToStream}/{@link #readFromStream}. Same wiring as
+     * {@code PatternTransfererBlockEntity} and AE2's IO port.</p>
+     */
+    public boolean isActive() {
+        if (level != null && !level.isClientSide()) {
+            return this.getMainNode().isOnline();
+        }
+        return this.isActive;
+    }
+
+    @Override
+    public void onMainNodeStateChanged(appeng.api.networking.IGridNodeListener.State state) {
+        // Grid boot is skipped like AE2's IO port: the node state is not settled yet, and
+        // AENetworkedBlockEntity.onReady() aligns the block state once the node exists.
+        if (state != appeng.api.networking.IGridNodeListener.State.GRID_BOOT) {
+            markForUpdate();
+        }
+    }
+
+    @Override
+    protected void writeToStream(net.minecraft.network.RegistryFriendlyByteBuf data) {
+        super.writeToStream(data);
+        data.writeBoolean(this.isActive());
+    }
+
+    @Override
+    protected boolean readFromStream(net.minecraft.network.RegistryFriendlyByteBuf data) {
+        boolean changed = super.readFromStream(data);
+
+        boolean active = data.readBoolean();
+        changed = active != this.isActive || changed;
+        this.isActive = active;
+
+        return changed;
     }
 
     private final AppEngCellInventory cellInv = new AppEngCellInventory(this, CELL_SLOTS);
@@ -1070,7 +1113,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
             // Only disk changes alter the recipe pool; cell content changes on every buffered input and
             // must not trigger a network-wide pattern index refresh.
             refreshRecipePool();
-            cachedTerminalInventory = null; // invalidate the pattern access terminal view
+            terminalView.invalidate(); // invalidate the pattern access terminal view
         } else {
             cellsDirty = true;
         }
@@ -1080,8 +1123,12 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
 
     // ---- pattern access terminal (PatternContainer) -------------------------
 
-    /** Cached terminal view over the disk contents; invalidated whenever the disks change. */
-    private PatternDiskRemoveInventory cachedTerminalInventory;
+    /**
+     * Terminal view shared with the provider (see {@link PatternDiskTerminalView}): the pattern access
+     * terminal has to read the disks, never this machine's derived recipe pool.
+     */
+    private final PatternDiskTerminalView terminalView = new PatternDiskTerminalView(diskInv,
+            this::getGrid, this, this::markTerminalChanged);
 
     @Override
     public IGrid getGrid() {
@@ -1090,28 +1137,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
 
     @Override
     public InternalInventory getTerminalPatternInventory() {
-        if (cachedTerminalInventory != null) {
-            return cachedTerminalInventory;
-        }
-        cachedTerminalInventory = new PatternDiskRemoveInventory(diskInv,
-                new PatternDiskRemoveInventory.BlankPatternSink() {
-                    @Override
-                    public boolean drawBlankPatterns(int count) {
-                        return tryDrawBlankPattern(count);
-                    }
-
-                    @Override
-                    public boolean hasBlankPatterns(int count) {
-                        return canDrawBlankPattern(count);
-                    }
-
-                    @Override
-                    public boolean returnBlankPatterns(int count) {
-                        return returnBlankPattern(count);
-                    }
-                },
-                this::markTerminalChanged);
-        return cachedTerminalInventory;
+        return terminalView.view();
     }
 
     @Override
@@ -1126,44 +1152,11 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
                 List.of());
     }
 
-    /** Read-only pre-check: whether the ME network holds at least {@code count} blank patterns. */
-    private boolean canDrawBlankPattern(int count) {
-        var grid = getMainNode().getGrid();
-        if (grid == null || count <= 0) {
-            return false;
-        }
-        var storage = grid.getStorageService().getInventory();
-        var blank = AEItemKey.of(AEItems.BLANK_PATTERN);
-        return storage.extract(blank, count, Actionable.SIMULATE, actionSource) == count;
-    }
-
-    /** Draws {@code count} blank patterns from the ME network, all-or-nothing. */
-    private boolean tryDrawBlankPattern(int count) {
-        if (!canDrawBlankPattern(count)) {
-            return false;
-        }
-        var grid = getMainNode().getGrid();
-        var storage = grid.getStorageService().getInventory();
-        var blank = AEItemKey.of(AEItems.BLANK_PATTERN);
-        return storage.extract(blank, count, Actionable.MODULATE, actionSource) == count;
-    }
-
-    /** Returns {@code count} blank patterns to the ME network (undo of a swap restore). */
-    private boolean returnBlankPattern(int count) {
-        var grid = getMainNode().getGrid();
-        if (grid == null || count <= 0) {
-            return false;
-        }
-        var storage = grid.getStorageService().getInventory();
-        var blank = AEItemKey.of(AEItems.BLANK_PATTERN);
-        return storage.insert(blank, count, Actionable.MODULATE, actionSource) == count;
-    }
-
     private void markTerminalChanged() {
         // This is reached from paths that write the disks directly, so dropping the view here is what keeps
         // the terminal honest; leaving it to the inventory's own notification makes correctness depend on
         // every write path raising one.
-        cachedTerminalInventory = null; // invalidate the pattern access terminal view
+        terminalView.invalidate(); // invalidate the pattern access terminal view
         saveChanges();
     }
 
@@ -1223,7 +1216,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         // readFromNBT writes the slots straight in and raises no change notification, so a terminal view built
         // before this load would keep serving the pre-load contents - an empty list, with nothing left to
         // trigger a rebuild. Invalidating keeps loading symmetric with a slot change.
-        cachedTerminalInventory = null; // invalidate the pattern access terminal view
+        terminalView.invalidate(); // invalidate the pattern access terminal view
         upgrades.readFromNBT(tag, "upgrades", registries);
         fastBatchMode = tag.getBoolean("fastBatchMode");
         pendingOutputs.clear();
@@ -1280,6 +1273,9 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
             cellInv.setItemDirect(i, ItemStack.EMPTY);
         }
         diskInv.clear();
+        // Clearing the slots notifies per slot, but the view is dropped explicitly as well so
+        // correctness does not hinge on that notification surviving future changes.
+        terminalView.invalidate();
         upgrades.clear();
         queue.clear();
         cellsDirty = true;

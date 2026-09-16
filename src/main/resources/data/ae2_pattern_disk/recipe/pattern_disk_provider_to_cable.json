@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "group": "pattern_disk_provider_form",
+  "ingredients": [
+    { "item": "ae2_pattern_disk:pattern_disk_provider" }
+  ],
+  "result": {
+    "count": 1,
+    "id": "ae2_pattern_disk:cable_pattern_disk_provider"
+  }
+}

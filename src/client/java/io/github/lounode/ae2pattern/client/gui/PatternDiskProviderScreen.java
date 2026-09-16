@@ -35,8 +35,8 @@ import java.util.List;
 /**
  * Client screen for the pattern disk provider. Re-implements the three toolbar toggles of the original
  * pattern provider (blocking mode, lock crafting, show in sample access terminal) directly, mirroring
- * AE2 Crystal Science's {@code UpgradeablePatternProviderGUI} — the menu extends {@link AEBaseScreen}
- * with a deterministic slot layout, so this screen never introduces server/client drift. Layout driven
+ * AE2 Crystal Science's {@code UpgradeablePatternProviderGUI} — the screen extends {@link AEBaseScreen}
+ * over a menu with a deterministic slot layout, so it never introduces server/client drift. Layout driven
  * by {@code assets/ae2/screens/ae2_pattern_disk/pattern_disk_provider.json}.
  */
 public class PatternDiskProviderScreen extends AEBaseScreen<PatternDiskProviderMenu> {
@@ -44,6 +44,7 @@ public class PatternDiskProviderScreen extends AEBaseScreen<PatternDiskProviderM
     private final SettingToggleButton<YesNo> blockingModeButton;
     private final SettingToggleButton<LockCraftingMode> lockCraftingModeButton;
     private final ToggleButton showInPatternAccessTerminalButton;
+    private final LockReasonWidget lockReason;
 
     /** 磁盘槽空槽覆盖层：states.png (240,16,16,16)。 */
     private static final Blitter DISK_SLOT_OVERLAY = Blitter
@@ -68,6 +69,13 @@ public class PatternDiskProviderScreen extends AEBaseScreen<PatternDiskProviderM
                 GuiText.PatternAccessTerminalHint.text(),
                 btn -> selectNextPatternProviderMode());
         this.addToLeftToolbar(this.showInPatternAccessTerminalButton);
+
+        // Opens AE2's priority submenu for this host. The host satisfies IPriorityHost through
+        // PatternProviderLogicHost's default methods, so the forwarded value is the provider's own.
+        this.widgets.addOpenPriorityButton();
+
+        this.lockReason = new LockReasonWidget(menu);
+        this.widgets.add("lockReason", this.lockReason);
     }
 
     @Override
@@ -92,6 +100,7 @@ public class PatternDiskProviderScreen extends AEBaseScreen<PatternDiskProviderM
         this.blockingModeButton.set(this.menu.getBlockingMode());
         this.lockCraftingModeButton.set(this.menu.getLockCraftingMode());
         this.showInPatternAccessTerminalButton.setState(this.menu.getShowInAccessTerminal() == YesNo.YES);
+        this.lockReason.setVisible(this.menu.getLockCraftingMode() != LockCraftingMode.NONE);
     }
 
     private void selectNextPatternProviderMode() {

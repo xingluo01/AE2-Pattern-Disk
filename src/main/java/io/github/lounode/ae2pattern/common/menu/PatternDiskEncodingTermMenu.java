@@ -566,7 +566,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
     // ---- 磁盘列表同步（服务端扫描 <-> 客户端渲染） ----
 
     /**
-     * 服务端：扫描网格中所有样板磁盘宿主（样板磁盘供应器、批处理分子装配室等）的磁盘槽，
+     * 服务端：扫描网格中所有样板磁盘宿主（ME样板磁盘供应器、批处理装配室等）的磁盘槽，
      * 指纹变化时重建 serial 映射并推送全量列表到客户端。serial 在本菜单生命周期内稳定
      * 映射到 (磁盘宿主, 槽位)。
      */
@@ -622,7 +622,8 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
     }
 
     /**
-     * Fingerprint over the set of disk slots: item id, slot index and host position.
+     * Fingerprint over the set of disk slots: item id, slot index, host position and the host's own
+     * identity salt (two panels on one cable share a position).
      */
     private static int computeDiskFingerprint(List<DiskRef> slots) {
         int hash = 1;
@@ -631,6 +632,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
             hash = 31 * hash + net.minecraft.core.registries.BuiltInRegistries.ITEM.getId(stack.getItem());
             hash = 31 * hash + stack.getComponentsPatch().hashCode();
             hash = 31 * hash + ref.host().getBlockPos().hashCode();
+            hash = 31 * hash + ref.host().getIdentitySalt();
             hash = 31 * hash + ref.slot();
         }
         return hash;

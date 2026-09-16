@@ -1,17 +1,18 @@
 ---
 navigation:
   parent: index.md
-  title: 样板磁盘供应器
+  title: ME样板磁盘供应器
   position: 20
 item_ids:
 - ae2_pattern_disk:pattern_disk_provider
+- ae2_pattern_disk:cable_pattern_disk_provider
 categories:
 - devices
 ---
 
-# 样板磁盘供应器
+# ME样板磁盘供应器
 
-样板磁盘供应器是一款直接使用实体样板磁盘的样板供应器。把装满样板的磁盘插进它的磁盘槽里，它就会把磁盘里的编码样板提供给 ME 自动合成系统。
+ME样板磁盘供应器是一款直接使用实体样板磁盘的样板供应器。把装满样板的磁盘插进它的磁盘槽里，它就会把磁盘里的编码样板提供给 ME 自动合成系统。
 
 它只负责送任务，不负责合成。它会向旁边兼容的机器推送样板和材料，比如高效分子装配室。
 
@@ -22,8 +23,16 @@ categories:
 1. 把供应器连上 ME 网络。
 2. 插入一张或多张样板磁盘。
 3. 在旁边放一台高效分子装配室或其它兼容机器。
-4. 先用样板转存器把样板写进磁盘，再把磁盘插进去。
+4. 先用ME样板转存器把样板写进磁盘，再把磁盘插进去。
+
+## 面板形态
+
+贴着 ME 线缆安装时，它是面板形态：磁盘槽、界面、样板逻辑和返还栏接口都与方块形态相同，区别是它只向所贴的那一面推送样板，更适合紧凑布线。
+
+两种形态可以互相转换：在工作台里无序合成，一个换一个，不额外消耗材料。
 
 ## 合成配方
 
-<RecipeFor id="ae2_pattern_disk:pattern_disk_provider" />
+<RecipesFor id="ae2_pattern_disk:pattern_disk_provider" />
+
+<RecipeFor id="ae2_pattern_disk:cable_pattern_disk_provider" />

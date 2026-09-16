@@ -39,6 +39,7 @@ import io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternTransfererMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
 import io.github.lounode.ae2pattern.common.part.PatternDiskEncodingTerminalPart;
+import io.github.lounode.ae2pattern.common.part.PatternDiskProviderPart;
 import io.github.lounode.ae2pattern.common.pattern.PatternDiskContents;
 import io.github.lounode.ae2pattern.common.pattern.PatternDiskTier;
 
@@ -75,6 +76,20 @@ public final class AEPatternRegistries {
         return ITEMS.registerItem("pattern_disk_encoding_terminal",
                 props -> new PartItem<>(props, PatternDiskEncodingTerminalPart.class,
                         PatternDiskEncodingTerminalPart::new));
+    }
+
+    /**
+     * Panel (cable-attached) form of the ME pattern disk provider. Same provider logic as the block,
+     * sharing {@code PatternDiskProviderMenu}, but mounted on a cable like AE2's own cable pattern
+     * provider.
+     */
+    public static final DeferredItem<PartItem<PatternDiskProviderPart>> ITEM_CABLE_PATTERN_DISK_PROVIDER = createPanelProvider();
+
+    private static DeferredItem<PartItem<PatternDiskProviderPart>> createPanelProvider() {
+        PartModels.registerModels(PatternDiskProviderPart.MODEL);
+        return ITEMS.registerItem("cable_pattern_disk_provider",
+                props -> new PartItem<>(props, PatternDiskProviderPart.class,
+                        PatternDiskProviderPart::new));
     }
 
     /** Reference to AE2's blank pattern, exposed for the transferer's network return. */
@@ -226,6 +241,7 @@ public final class AEPatternRegistries {
                         output.accept(ITEM_ASSEMBLER.get());
                         output.accept(ITEM_BATCH_ASSEMBLER.get());
                         output.accept(ITEM_PATTERN_DISK_ENCODING_TERMINAL.get());
+                        output.accept(ITEM_CABLE_PATTERN_DISK_PROVIDER.get());
                     })
                     .build());
 

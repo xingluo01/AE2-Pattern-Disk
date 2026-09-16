@@ -1,7 +1,7 @@
 package io.github.lounode.ae2pattern.common.pattern;
 
 /**
- * 样板转存器的工作模式。
+ * ME样板转存器的工作模式。
  *
  * <p>两种模式决定输入槽的处理方式：</p>
  * <ul>

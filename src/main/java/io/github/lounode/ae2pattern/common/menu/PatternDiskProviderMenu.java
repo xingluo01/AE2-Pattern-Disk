@@ -18,25 +18,28 @@ import appeng.menu.guisync.GuiSync;
 import appeng.menu.implementations.MenuTypeBuilder;
 import appeng.menu.slot.AppEngSlot;
 
-import io.github.lounode.ae2pattern.common.block.entity.PatternDiskProviderBlockEntity;
+import io.github.lounode.ae2pattern.common.block.entity.PatternDiskProviderHost;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 
 /**
- * Menu for the pattern disk provider: shows the disk slots plus the three toolbar toggles shared with
+ * Menu for the ME pattern disk provider: shows the disk slots plus the three toolbar toggles shared with
  * the original pattern provider (blocking mode, lock crafting, show in sample access terminal). These
  * are re-implemented as plain {@link GuiSync} fields read from the logic's config manager, mirroring
  * how AE2 Crystal Science does it in {@code UpgradeablePatternProviderMenu}. Slot layout stays fully
  * deterministic (disk slots + storage + player) so the server/client never drift.
+ *
+ * <p>The host is typed as {@link PatternDiskProviderHost} - the interface both the in-world block and
+ * the panel part implement - so this single menu serves both forms.</p>
  */
 public class PatternDiskProviderMenu extends AEBaseMenu {
 
     public static final MenuType<PatternDiskProviderMenu> TYPE = MenuTypeBuilder
-            .create(PatternDiskProviderMenu::new, PatternDiskProviderBlockEntity.class)
+            .create(PatternDiskProviderMenu::new, PatternDiskProviderHost.class)
             .buildUnregistered(
                     net.minecraft.resources.ResourceLocation.parse("ae2_pattern_disk:pattern_disk_provider"));
 
-    private final PatternDiskProviderBlockEntity host;
+    private final PatternDiskProviderHost host;
 
     @GuiSync(3)
     public YesNo blockingMode = YesNo.NO;
@@ -49,7 +52,7 @@ public class PatternDiskProviderMenu extends AEBaseMenu {
     @GuiSync(7)
     public GenericStack unlockStack = null;
 
-    public PatternDiskProviderMenu(int id, Inventory playerInv, PatternDiskProviderBlockEntity host) {
+    public PatternDiskProviderMenu(int id, Inventory playerInv, PatternDiskProviderHost host) {
         super(TYPE, id, playerInv, host);
         this.host = host;
 
@@ -57,7 +60,7 @@ public class PatternDiskProviderMenu extends AEBaseMenu {
 
         // Disk slots (our own): the source of patterns for this provider.
         var inv = host.getDiskInventory();
-        for (int i = 0; i < PatternDiskProviderBlockEntity.DISK_SLOT_COUNT; i++) {
+        for (int i = 0; i < inv.size(); i++) {
             this.addSlot(new DiskSlot(inv, i), AEPatternRegistries.PROVIDER_DISK);
         }
 
@@ -111,7 +114,7 @@ public class PatternDiskProviderMenu extends AEBaseMenu {
         return unlockStack;
     }
 
-    public PatternDiskProviderBlockEntity getProvider() {
+    public PatternDiskProviderHost getProvider() {
         return host;
     }
 

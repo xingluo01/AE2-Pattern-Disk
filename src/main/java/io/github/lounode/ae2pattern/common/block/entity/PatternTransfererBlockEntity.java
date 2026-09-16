@@ -84,6 +84,9 @@ public class PatternTransfererBlockEntity extends AENetworkedBlockEntity
     /** Accumulated fractional patterns to transfer (for smooth per-tick rate). */
     private double patternAccumulator = 0;
 
+    /** Client-side mirror of the ME node state; synced through the block entity stream. */
+    private boolean isActive = false;
+
     private final AppEngInternalInventory inventory = new AppEngInternalInventory(this, TOTAL_SLOTS);
     private final IActionSource actionSource = new MachineSource(this);
     private final IUpgradeInventory upgrades;
@@ -130,7 +133,42 @@ public class PatternTransfererBlockEntity extends AENetworkedBlockEntity
     @Override
     public void onMainNodeStateChanged(appeng.api.networking.IGridNodeListener.State state) {
         // Mark for client update on grid changes so the (re)connected state is reflected.
-        markForUpdate();
+        // GRID_BOOT is skipped like AE2's IO port: the node state is not settled yet, and
+        // AENetworkedBlockEntity.onReady() aligns the block state once the node exists.
+        if (state != appeng.api.networking.IGridNodeListener.State.GRID_BOOT) {
+            markForUpdate();
+        }
+    }
+
+    /**
+     * Whether the ME node is online, which drives the block's powered state (off/on model).
+     *
+     * <p>The server reads the live node state; the client uses the value pushed through
+     * {@link #writeToStream}/{@link #readFromStream}, because a client-side grid node is not
+     * authoritative. Same approach as AE2's IO port.</p>
+     */
+    public boolean isActive() {
+        if (level != null && !level.isClientSide()) {
+            return this.getMainNode().isOnline();
+        }
+        return this.isActive;
+    }
+
+    @Override
+    protected void writeToStream(net.minecraft.network.RegistryFriendlyByteBuf data) {
+        super.writeToStream(data);
+        data.writeBoolean(this.isActive());
+    }
+
+    @Override
+    protected boolean readFromStream(net.minecraft.network.RegistryFriendlyByteBuf data) {
+        boolean changed = super.readFromStream(data);
+
+        boolean active = data.readBoolean();
+        changed = active != this.isActive || changed;
+        this.isActive = active;
+
+        return changed;
     }
 
     public AppEngInternalInventory getInventory() {

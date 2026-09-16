@@ -41,4 +41,11 @@ final class NeoECODiskHost implements IPatternDiskHost {
         // reshuffle the identity of every other disk in the list.
         return bus instanceof BlockEntity entity ? entity.getBlockPos() : BlockPos.ZERO;
     }
+
+    @Override
+    public int getIdentitySalt() {
+        // The origin fallback above is shared by every bus that is not a block entity, so identity has
+        // to come from the bus instance itself.
+        return System.identityHashCode(bus);
+    }
 }

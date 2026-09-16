@@ -30,6 +30,7 @@ public class AE2PatternDisk {
         modBus.addListener(this::associateBlockEntities);
         modBus.addListener(this::commonSetup);
         modBus.addListener(this::registerCapabilities);
+        modBus.addListener(this::registerPartCapabilities);
         modBus.addListener(this::registerPayloads);
 
         // A reload can change what a stored pattern decodes to without the items changing, so the
@@ -87,6 +88,20 @@ public class AE2PatternDisk {
                 appeng.api.AECapabilities.CRAFTING_MACHINE,
                 AEPatternRegistries.BE_BATCH_ASSEMBLER.get(),
                 (be, dir) -> (appeng.api.implementations.blockentities.ICraftingMachine) be);
+    }
+
+    /**
+     * Parts are not covered by {@link RegisterCapabilitiesEvent}: AE2 uses a separate event for them, so
+     * the panel form of the provider has to register its return inventory here, exactly like the block
+     * form does above (that is the channel a molecular assembler pushes crafted results back through).
+     */
+    private void registerPartCapabilities(appeng.api.parts.RegisterPartCapabilitiesEvent event) {
+        event.addHostType(appeng.core.definitions.AEBlockEntities.CABLE_BUS.get());
+        event.register(
+                appeng.api.AECapabilities.GENERIC_INTERNAL_INV,
+                (part, context) -> ((io.github.lounode.ae2pattern.common.part.PatternDiskProviderPart) part)
+                        .getLogic().getReturnInv(),
+                io.github.lounode.ae2pattern.common.part.PatternDiskProviderPart.class);
     }
 
     private void associateBlockEntities(RegisterEvent event) {

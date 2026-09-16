@@ -123,6 +123,8 @@ neoForge {
 tasks.named('jar', Jar) {
     dependsOn sourceSets.client.classesTaskName
     from sourceSets.client.output
+    // LGPL-3.0 requires the license text to travel with the distribution.
+    from('LICENSE') { into 'META-INF' }
 }
 
 tasks.matching { it.name == 'remapJar' }.configureEach {

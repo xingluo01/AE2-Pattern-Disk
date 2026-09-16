@@ -25,7 +25,7 @@ item_ids:
 | 64k | 256 |
 | 256k | 1024 |
 
-使用样板转存器插入或取出样板。装满样板的磁盘可以放进样板磁盘供应器，供应器会把这些样板提供给 ME 自动合成系统。
+使用ME样板转存器插入或取出样板。装满样板的磁盘可以放进ME样板磁盘供应器，供应器会把这些样板提供给 ME 自动合成系统。
 
 ## 样板类型
 
@@ -37,7 +37,7 @@ item_ids:
 
 ## 合成配方
 
-<RecipeFor id="ae2_pattern_disk:pattern_disk_1k" />
+<RecipesFor id="ae2_pattern_disk:pattern_disk_1k" />
 <RecipeFor id="ae2_pattern_disk:pattern_disk_4k" />
 <RecipeFor id="ae2_pattern_disk:pattern_disk_16k" />
 <RecipeFor id="ae2_pattern_disk:pattern_disk_64k" />
