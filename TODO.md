@@ -126,12 +126,19 @@
   建议单独一轮处理，并在本地跑一次 `runClient` 确认无重复 mod 载入。
 - **CI action 运行时（2026-09）**：Node20 于 **2026-09-23** 从 runner 移除，已把四个声明 node20 的 action 全部升到 node24：
   `actions/checkout@v4→v7`、`actions/setup-java@v4→v6`、`gradle/actions/setup-gradle@v4→v6`（并加 `cache-provider: basic`
-  指回 MIT 缓存实现，避开 v6 默认的专有缓存 ToU）、`softprops/action-gh-release@v2→v3`；另给 release 步骤加了
+  指回“基于 GitHub Actions cache 的开源实现”，避开 v6 默认的专有缓存组件 ToU；**注**：v6 的 `cache-read-only` 在非默认分支下
+  恒为 true，而本仓库只有 tag 触发的 workflow ⇒ 这项配置**没有实际缓存收益**，纯属许可/兼容考虑）、
+  `softprops/action-gh-release@v2→v3`；另给 release 步骤加了
   `fail_on_unmatched_files: true`（产物路径写错时硬失败，而不是静默生成没有附件的 release）。
   - **遗留**：`itsmeow/curseforge-upload@v3.1.2` 仍是 node20，上游最后提交 2024-04、无更高版本可升。预案（推荐序）：
-    ① 给上游提只改 `runs.using: node24` 的 PR；② fork 后改并 pin commit SHA；③ 换 `Kir-Antipov/mc-publish`
-    （走 Eternal API，用前须核凭据类型与版本参数）；④ 自写 curl 直连 CF 传统上传接口（最彻底）。
-    **9/23 之后的下一次发版要重点看这一步是否仍正常。**
+    ① **fork 后改 `runs.using: node24` 并 pin commit SHA**（首选：上游自 2024-04 起零活动，等不到合并）；
+    ② 自写 curl 直连 CF 传统上传接口（最彻底解耦，该接口与数字 id 本项目已在用，见上方记录）；
+    ③ 换 `Kir-Antipov/mc-publish`（**用前必须核凭据类型**：它走 Eternal API 的 `x-api-key`，
+    与我们现在的站点 UUID token 不是同一种，另需核版本参数语义）；
+    ④ 给上游提只改 `runs.using: node24` 的 PR（礼节性动作，不作为阻塞路径，合并概率极低）。
+  - **时间线基线**：GitHub 自 **2026-06-16** 起让 runner 默认跑 Node24（node20 声明被自动迁移执行），
+    **2026-09-23** 才是“移除 Node20 / opt-out 失效”。v0.2.1（9/16）已带着该 action 成功跑过一次
+    ⇒ 它在 Node24 下**已实测可用**；9/23 的风险是“声明不受支持”而非“首次不可用”，下次发版核对即可。
 - 网页侧待办（API 改不了，需人工）：项目 Dependencies 标 AE2 为 required、Client/Server 环境标记（现为 unknown）、gallery 截图
 - 依赖项对照：AE2 = `ae2`（id `XxWD5pD3`）、GuideME = `guideme`（id `Ck4E7v7R`）
 - 发版注意：首次建议先开 `build.gradle` 的 `debugMode = true` 干跑 Modrinth 再发正式版；重跑同一 tag 时 Modrinth 会因版本号已存在失败、CurseForge 不去重会再传一份，中断后优先改版本号重发

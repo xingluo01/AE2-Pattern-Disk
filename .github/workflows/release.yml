@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        # v7 相对 v4 的破坏性变更（凭据改存 $RUNNER_TEMP、禁止在 pull_request_target/workflow_run
+        # v7 相对 v4 的破坏性变更（凭据持久化改为独立文件、禁止在 pull_request_target/workflow_run
         # 下检出 fork PR）对“tag push”工作流无影响；fetch-depth 语义未变。
         uses: actions/checkout@v7
         with:
