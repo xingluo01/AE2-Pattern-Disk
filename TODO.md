@@ -85,10 +85,10 @@
 
 ## 五、发布配置（CI，2026-09 记录）
 - 已就绪：`.github/workflows/release.yml`（推 `v*` tag → 构建 → Modrinth → CurseForge → GitHub Release）、`build.gradle` 接入 `com.modrinth.minotaur` 2.9.0、仓库 secret `MODRINTH_TOKEN`（PAT，勾 `VERSION_CREATE` + `VERSION_WRITE` + `PROJECT_WRITE`）
-- 待配置（缺一不可，配齐后即可用测试 tag 跑全链路）：
-  - Variable `MODRINTH_PROJECT_ID` —— Modrinth 项目建成后的 slug 或 8 位 id（预检 `ae2-pattern-disk` / `ae2_pattern_disk` 均未被占用）
-  - Variable `CURSEFORGE_PROJECT_ID` —— CurseForge **数字**项目 id（项目须先在站点人工创建；首个文件要过人工审核才对玩家可见）
-  - Variable `NEOECOAE_JAR_URL` —— `libs/neoecoae-21.2.0-beta3.jar` 的直链（CI 构建取用；建议挂成 GitHub Release asset）
-  - Secret `CURSEFORGE_TOKEN` —— CurseForge 账号 API token
+- 发布记录 **2026-09-16**：项目 `ae2-pattern-disk`（id `rtvtr6bT`）已提交审核（`requested_status=approved`，通过前仍为 draft）
+  - **0.2.0** 已发布：version id `he2tuTEn`，357,560 bytes，loaders `neoforge` / game version `1.21.1` / release，已声明 required 依赖 AE2（`XxWD5pD3`）
+  - 发布方式：本地 `MODRINTH_TOKEN=... MODRINTH_PROJECT_ID=ae2-pattern-disk ./gradlew modrinth`（CI 未就绪时的可用后备路径）
+- 待配置（缺一不可）：`CURSEFORGE_PROJECT_ID`、`NEOECOAE_JAR_URL`、`CURSEFORGE_TOKEN`（`MODRINTH_PROJECT_ID` 已配）
+- 网页侧待办（API 改不了，需人工）：项目 Dependencies 标 AE2 为 required、Client/Server 环境标记（现为 unknown）、gallery 截图
 - 依赖项对照：AE2 = `ae2`（id `XxWD5pD3`）、GuideME = `guideme`（id `Ck4E7v7R`）
 - 发版注意：首次建议先开 `build.gradle` 的 `debugMode = true` 干跑 Modrinth 再发正式版；重跑同一 tag 时 Modrinth 会因版本号已存在失败、CurseForge 不去重会再传一份，中断后优先改版本号重发
