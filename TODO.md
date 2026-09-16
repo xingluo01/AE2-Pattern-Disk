@@ -130,10 +130,19 @@
   恒为 true，而本仓库只有 tag 触发的 workflow ⇒ 这项配置**没有实际缓存收益**，纯属许可/兼容考虑）、
   `softprops/action-gh-release@v2→v3`；另给 release 步骤加了
   `fail_on_unmatched_files: true`（产物路径写错时硬失败，而不是静默生成没有附件的 release）。
-  - **实跑验证**（临时 workflow_dispatch，run 35134483389）：10/10 步骤 success；升级前每次运行都出现的
-    “Node 20 is being deprecated” 警告**从日志中彻底消失**；`cache-provider: basic` 生效
+  - **实跑验证**（临时 workflow_dispatch，`github.ref_name=main`，run `35134483389`）：10/10 步骤 success；
+    这三条已升级 action 上的 “Node 20 is being deprecated” 警告**消失**（`itsmeow` 步骤仍为 node20，
+    真实发版时仍会输出该警告，直到 9/23）；`cache-provider: basic` 生效
     （日志 “Basic Caching: This build uses the basic open-source caching provider”）；Gradle 正常执行（9.5.0）。
     验证用 workflow 已删除，不进发布链路。
+  - **注意该 run 的路径与发版不同**：它从默认分支触发 ⇒ `cache-read-only=false`（**可写**缓存），
+    而真实 tag 发版走 `true`（**只读**、不写缓存、无收益也无失败）。
+  - **备选方案（仅在 `-D` 覆盖失效时启用）**：临时验证中发现 `-Dorg.gradle.java.home=...` 在某上下文未生效
+    （`--version` 通过、`tasks` 报 `invalid org.gradle.java.home: C:/Java/jdk-21`），而用
+    `sed -i "s|^org.gradle.java.home=.*|org.gradle.java.home=$JAVA_HOME|" gradle.properties` 直接替换可通。
+    但 `release.yml` 现用的 `-D` 写法已被 v0.2.1 真实发版证明有效（15/15），**不要改动该路径**；
+    若某天失效（表现为硬失败 `invalid org.gradle.java.home`），可切换到 sed 写法。
+  - **下次正式发版后**：把那次 run 链接补进本节，并确认 `fail_on_unmatched_files` 与 itsmeow 步骤的实际表现。
   - **遗留**：`itsmeow/curseforge-upload@v3.1.2` 仍是 node20，上游最后提交 2024-04、无更高版本可升。预案（推荐序）：
     ① **fork 后改 `runs.using: node24` 并 pin commit SHA**（首选：上游自 2024-04 起零活动，等不到合并）；
     ② 自写 curl 直连 CF 传统上传接口（最彻底解耦，该接口与数字 id 本项目已在用，见上方记录）；
