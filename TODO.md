@@ -88,6 +88,18 @@
 - 发布记录 **2026-09-16**：项目 `ae2-pattern-disk`（id `rtvtr6bT`）已提交审核（`requested_status=approved`，通过前仍为 draft）
   - **0.2.0** 已发布：version id `he2tuTEn`，357,560 bytes，loaders `neoforge` / game version `1.21.1` / release，已声明 required 依赖 AE2（`XxWD5pD3`）
   - 发布方式：本地 `MODRINTH_TOKEN=... MODRINTH_PROJECT_ID=ae2-pattern-disk ./gradlew modrinth`（CI 未就绪时的可用后备路径）
+  - **CurseForge 0.2.0** 已上传：fileId `8896981`，357,560 bytes，`isAvailable=False`（CF 新项目首个文件强制人工审核）
+- **CF 双 API 混用（踩坑记录，缺一不可）**：
+  - **上传**走传统接口 `POST https://minecraft.curseforge.com/api/projects/{数字id}/upload-file`，header `X-Api-Token`
+    - token 是**网站账户 token**（UUID 形式，在 `curseforge.com/account/api-tokens` 生成）——不是 console 的 API key
+    - 路径**只认数字 project id**，用 slug 会 302 到错误页
+  - **元数据查询**走 Eternal API `https://api.curseforge.com/v1/...`，header `x-api-key`
+    - key 是 **console 的 API key**（`$2a$10$…` bcrypt 串，在 `console.curseforge.com` 生成）
+  - **两者不通用**：拿 API key 去上传会报 `API token is malformed`；两个接口的版本编号体系也不同
+  - upload-file 的 `gameVersions` 必须是**数字 id**，且只在传统接口 `GET /api/game/versions` 里有：
+    `1.21.1=11779`、`NeoForge=10150`、`Client=9638`、`Server=9639`
+    （少环境组会报 `must select at least one version from the environment group of versions`；
+      Eternal 那边的 1.21.1 是 89/12735 等，传进去会被拒为 invalid dependency）
 - 待配置（缺一不可）：`CURSEFORGE_PROJECT_ID`、`NEOECOAE_JAR_URL`、`CURSEFORGE_TOKEN`（`MODRINTH_PROJECT_ID` 已配）
 - 网页侧待办（API 改不了，需人工）：项目 Dependencies 标 AE2 为 required、Client/Server 环境标记（现为 unknown）、gallery 截图
 - 依赖项对照：AE2 = `ae2`（id `XxWD5pD3`）、GuideME = `guideme`（id `Ck4E7v7R`）
