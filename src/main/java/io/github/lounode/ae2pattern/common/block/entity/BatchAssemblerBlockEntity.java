@@ -2,9 +2,11 @@ package io.github.lounode.ae2pattern.common.block.entity;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -71,7 +73,18 @@ import io.github.lounode.ae2pattern.common.logic.PatternPlan;
  * remainders) are pushed back into the ME network, where the crafting CPU continues from there.</p>
  *
  * <p>The cell slots never join the ME network storage: this block entity deliberately implements neither
- * {@code IStorageProvider} nor the {@code ME_STORAGE} capability.</p>
+ * {@code IStorageProvider} nor the {@code ME_STORAGE} capability. Material that is still sitting in them
+ * once the machine has gone idle is handed back to the network after {@link #IDLE_FLUSH_TICKS} quiet ticks,
+ * so leftovers do not pile up in the machine; a full network defers that handover rather than dropping it.</p>
+ *
+ * <p>Two delays are cut on purpose. A window that gathered next to nothing - fewer than eight jobs - is dead
+ * time on the next arrival, so the machine then starts after a single quiet tick instead; every
+ * {@link #PROBE_EVERY_RUNS} such runs it serves the full window once more, which is how a supply that has
+ * turned into a steady stream gets noticed instead of being run push by push forever, and a silence of
+ * {@link #IDLE_RESET_WINDOWS} windows wipes the classification so an order arriving after a long pause
+ * aggregates exactly as it always did. Runs that do gather a batch always serve the full window, which is
+ * what keeps a bulk order accumulating. Keys the network is currently waiting for skip the smooth-return
+ * trickle too, instead of arriving over {@link #OUTPUT_RETURN_TICKS} ticks.</p>
  */
 public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         implements InternalInventoryHost, IUpgradeableObject, IGridTickable, ICraftingMachine, ICraftingProvider,
@@ -86,6 +99,24 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     /** Flush window: idle ticks after the last input that trigger a batch, regardless of queue size. */
     private static final int STANDARD_BATCH_TICKS = 40;
     private static final int FAST_BATCH_TICKS = 10;
+    /** A run that assembles this many jobs is a real batch: the quiet window did its job, so the machine
+     * serves the full window from then on instead of the short one. */
+    private static final int LARGE_BATCH_JOBS = 8;
+    /** Consecutive small runs after which the machine serves the full window once more. Without that probe a
+     * supply that turned into a stream would be run push by push forever: each run catches about one tick of
+     * arrivals, so it can never grow into the batch that would end the short window. */
+    private static final int PROBE_EVERY_RUNS = 32;
+    /** Quiet windows of silence that wipe the batch classification: an order arriving after such a pause is
+     * aggregated like it always was, whatever the machine ran before it. */
+    private static final int IDLE_RESET_WINDOWS = 8;
+    /** Quiet ticks a push needs while the machine is on the short window. */
+    private static final int SHORT_WINDOW_TICKS = 1;
+    /** Quiet ticks after which an idle machine hands whatever its cells still hold back to the network. */
+    private static final int IDLE_FLUSH_TICKS = 10;
+    /** Upper bound on what a claimed key hands over in one tick (never less than the smooth rate). A
+     * catalyst-sized amount therefore arrives in full on the spot, while a huge batch still never becomes
+     * one giant IO burst - the reason the smooth return exists at all. */
+    private static final long PRIORITY_RETURN_BURST = 512;
     /** Smooth-return horizon: accumulated outputs are returned to the network over this many ticks
      * (5% of the accumulated total per tick), so a huge batch never produces one giant IO burst. */
     private static final int OUTPUT_RETURN_TICKS = 20;
@@ -153,7 +184,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         if (queue.isEmpty()) {
             return 0;
         }
-        return (int) Math.max(0, batchIdleTicks() - inputGapTicks());
+        return (int) Math.max(0, effectiveWindowTicks() - inputGapTicks());
     }
 
     /** @return what the machine is doing, or why it is not doing it. */
@@ -248,6 +279,19 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     /** Game time of the last accepted input push. The batch window is the gap measured from here, so
      * material that keeps arriving simply keeps the window open. */
     private long lastInputGameTime;
+    /** Game time of the last thing the machine actually did (accepted a push, ran a batch, returned
+     * outputs). The idle flush counts its quiet ticks from here. */
+    private long lastActivityGameTime;
+    /** How many jobs the last run assembled. 0 means the machine has not produced anything yet - it never
+     * ran, or its last run assembled nothing - which keeps the full window: the first productive run is what
+     * shows whether the supply is a steady stream or a slow trickle. */
+    private long lastRunJobs;
+    /** Consecutive runs that came out small; every {@link #PROBE_EVERY_RUNS} of them the full window is served
+     * once more to re-measure the supply. */
+    private int shortRunStreak;
+    /** Whether this idle period already tried the cell flush - the network may simply be full, and retrying
+     * that every tick would be pointless. Cleared as soon as the machine does anything again. */
+    private boolean idleFlushDone;
     /** Fast batch mode flushes after 10 quiet ticks instead of the standard 40. */
     private boolean fastBatchMode = false;
     /** Worker threads used to analyse newly queued patterns in parallel; null while there are none. */
@@ -416,8 +460,18 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         // Each push books exactly one job: the CPU delivers the full order one push at a time, so the
         // job volume must never be scaled here.
         queue.merge(patternDetails, 1L, Long::sum);
+        long now = currentGameTime();
+        // A pause this long means the last batch is history: whatever it looked like - a small run that put the
+        // machine on the short window, say - must not decide how a fresh order is handled. Clearing the
+        // classification lets that order aggregate exactly as it did before the short window existed.
+        if (lastInputGameTime != 0 && now - lastInputGameTime >= (long) batchIdleTicks() * IDLE_RESET_WINDOWS) {
+            lastRunJobs = 0;
+            shortRunStreak = 0;
+        }
         // Every arrival restarts the window: the machine waits for the arrivals to actually stop.
-        lastInputGameTime = currentGameTime();
+        lastInputGameTime = now;
+        idleFlushDone = false;
+        lastActivityGameTime = now;
         alertTicker();
         saveChanges();
         return true;
@@ -539,8 +593,14 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
 
     @Override
     public TickRateModulation tickingRequest(IGridNode node, int ticksSinceLastCall) {
+        long now = currentGameTime();
+        if (lastActivityGameTime == 0) {
+            // Freshly loaded or just powered: start the idle countdown here instead of reading the world clock
+            // as one long silence, which would hand the cells over on the very first tick.
+            lastActivityGameTime = now;
+        }
         if (queue.isEmpty() && pendingOutputs.isEmpty()) {
-            return TickRateModulation.SLEEP;
+            return idleTick(now);
         }
         // The output drain runs every tick, independent of batch scheduling: the smooth-return queue
         // keeps feeding the crafting CPU while (and after) the batch executes.
@@ -552,21 +612,44 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         // overwrites it with whatever it ran into.
         if (queue.isEmpty()) {
             workState = pendingWork ? WorkState.RETURNING_OUTPUTS : WorkState.IDLE;
-        } else if (inputGapTicks() < batchIdleTicks()) {
+        } else if (inputGapTicks() < effectiveWindowTicks()) {
             workState = WorkState.WAITING_FOR_MATERIAL;
         }
         // A batch starts only while the material is genuinely quiet: the window is the gap since the last
         // accepted push, so as long as material keeps arriving the machine keeps waiting. Nothing forces
         // a batch through on a timer.
         boolean worked = false;
-        if (!queue.isEmpty() && inputGapTicks() >= batchIdleTicks()) {
+        // Inside the short-window case one quiet tick is enough: the last batch gathered next to nothing, so
+        // holding this one back for a full window would only be dead time.
+        if (!queue.isEmpty() && inputGapTicks() >= effectiveWindowTicks()) {
             worked = runBatch();
         }
         if (worked || pendingWork) {
+            idleFlushDone = false;
+            lastActivityGameTime = now;
             saveChanges();
         }
         if (!queue.isEmpty() || !pendingOutputs.isEmpty()) {
             return TickRateModulation.IDLE;
+        }
+        return TickRateModulation.SLEEP;
+    }
+
+    /**
+     * Tick body while the machine has nothing queued and nothing left to return: normally this is where it
+     * goes back to sleep. It stays awake for {@link #IDLE_FLUSH_TICKS} instead when the cells still hold
+     * something, and then hands that material back to the network - see {@link #flushCellsToNetwork}.
+     */
+    private TickRateModulation idleTick(long now) {
+        if (idleFlushDone || !hasCellContents()) {
+            return TickRateModulation.SLEEP;
+        }
+        if (now - lastActivityGameTime < IDLE_FLUSH_TICKS) {
+            return TickRateModulation.IDLE;
+        }
+        idleFlushDone = true;
+        if (flushCellsToNetwork()) {
+            saveChanges();
         }
         return TickRateModulation.SLEEP;
     }
@@ -588,6 +671,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         KeyCounter buffer = null;
 
         boolean worked = false;
+        int assembled = 0;
         // Set when a run stops for a reason of its own, so that a later pattern which does run cannot erase it.
         boolean stopped = false;
         var it = queue.entrySet().iterator();
@@ -616,6 +700,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
                 }
                 remaining--;
                 worked = true;
+                assembled++;
             }
 
             if (remaining <= 0) {
@@ -625,6 +710,19 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
             }
         }
 
+        lastRunJobs = assembled;
+        if (assembled > 0 && assembled < LARGE_BATCH_JOBS) {
+            // A small run: the window gathered next to nothing, so the next batch is not made to wait for it.
+            // Saturated rather than allowed to wrap: the probe keys off this counter, and a negative value
+            // would stop it from ever firing again.
+            if (shortRunStreak < Integer.MAX_VALUE) {
+                shortRunStreak++;
+            }
+        } else {
+            // A real batch (or a run that assembled nothing): the queue is not starved of arrivals, or there
+            // is nothing to gather - either way the full window comes back.
+            shortRunStreak = 0;
+        }
         if (worked) {
             saveChanges();
         }
@@ -713,13 +811,22 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
             return;
         }
         returnStalled = false;
-        var storage = node.getGrid().getStorageService().getInventory();
+        var grid = node.getGrid();
+        var storage = grid.getStorageService().getInventory();
+        // Read once per drain: the per-key check below would otherwise walk every queued plan again.
+        var queuedInputs = queuedInputKeys();
         var it = pendingOutputs.entrySet().iterator();
         while (it.hasNext()) {
             var entry = it.next();
             var slot = entry.getValue();
             long rate = Math.max(1, (slot[1] + OUTPUT_RETURN_TICKS - 1) / OUTPUT_RETURN_TICKS);
             long amount = Math.min(slot[0], rate);
+            if (claimedByNetwork(grid, queuedInputs, entry.getKey())) {
+                // Wanted right now: hand the whole claim over at once instead of trickling it over the horizon.
+                // A recycled container arriving one tick at a time is exactly what keeps a planning chain
+                // from starting its next wave.
+                amount = Math.min(slot[0], Math.max(rate, PRIORITY_RETURN_BURST));
+            }
             long inserted = storage.insert(entry.getKey(), amount, Actionable.MODULATE, actionSource);
             slot[0] -= inserted;
             if (inserted == 0) {
@@ -732,8 +839,42 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     }
 
     /**
-     * Charges the grid for one assembly run. Energy is charged per run, not per parallel item, matching
-     * the design rule that parallel work does not add extra consumption.
+     * Every input key the queued plans declare. Only already-analysed plans are read: the drain runs every
+     * tick and must not put pattern analysis back on the server thread.
+     */
+    private Set<AEKey> queuedInputKeys() {
+        var keys = new HashSet<AEKey>();
+        for (var pattern : queue.keySet()) {
+            var plan = planCache.get(pattern);
+            if (plan == null) {
+                continue;
+            }
+            for (var input : plan.inputs()) {
+                if (input != null) {
+                    keys.addAll(input.candidates());
+                }
+            }
+        }
+        return keys;
+    }
+
+    /**
+     * Whether the network is after this key right now. {@code ICraftingService.getRequestedAmount} covers the
+     * outputs and container items of every job in flight, which is the main case for a machine fed by a
+     * crafting CPU; the queued inputs cover what the machine is still going to consume itself. Either way
+     * such a key skips the smooth-return trickle - the container a chain recycles above all.
+     */
+    private boolean claimedByNetwork(IGrid grid, Set<AEKey> queuedInputs, AEKey key) {
+        var crafting = grid.getCraftingService();
+        if (crafting != null && crafting.getRequestedAmount(key) > 0) {
+            return true;
+        }
+        return queuedInputs.contains(key);
+    }
+
+    /**
+     * Charges the grid for one assembled job ({@link #ENERGY_PER_RUN}). Parallel work inside that job -
+     * pattern multipliers, container remainders - does not add extra consumption.
      */
     private boolean consumePower() {
         var node = getMainNode().getNode();
@@ -876,20 +1017,104 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         return amount - inserted;
     }
 
+    /** @return whether any cell slot currently holds something. */
+    private boolean hasCellContents() {
+        for (var cell : resolvedCells()) {
+            if (cell == null) {
+                continue;
+            }
+            var contents = new KeyCounter();
+            cell.getAvailableStacks(contents);
+            if (!contents.isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Hands whatever the cells still hold back to the ME network. Material that is only sitting in them is
+     * locked up: the cells refuse extraction while work is buffered, and once the machine falls idle nothing
+     * else would ever take it out again. Nothing is dropped - what the network will not take goes back into
+     * the cells and waits for the next attempt.
+     *
+     * @return whether anything was handed over
+     */
+    private boolean flushCellsToNetwork() {
+        boolean any = false;
+        for (var cell : resolvedCells()) {
+            if (cell == null) {
+                continue;
+            }
+            var contents = new KeyCounter();
+            cell.getAvailableStacks(contents);
+            for (var entry : contents) {
+                long amount = entry.getLongValue();
+                if (amount <= 0) {
+                    continue;
+                }
+                long taken = cell.extract(entry.getKey(), amount, Actionable.MODULATE, actionSource);
+                if (taken <= 0) {
+                    continue;
+                }
+                any = true;
+                long leftover = pushToNetwork(entry.getKey(), taken);
+                if (leftover > 0) {
+                    // The cell just handed this much out, so it goes back there rather than to any cell - the
+                    // space is guaranteed and nothing can be lost in between. Third-party cells are not bound
+                    // by that assumption, so a shortfall is booked for another attempt instead of vanishing.
+                    long back = cell.insert(entry.getKey(), leftover, Actionable.MODULATE, actionSource);
+                    requeueOutput(entry.getKey(), leftover - back);
+                }
+            }
+        }
+        return any;
+    }
+
+    /** Puts an amount back into the smooth-return queue, so nothing can fall between two structures that
+     * each took a part of it. */
+    private void requeueOutput(AEKey key, long amount) {
+        if (amount <= 0) {
+            return;
+        }
+        var slot = pendingOutputs.computeIfAbsent(key, k -> new long[]{0, 0});
+        slot[0] += amount;
+        slot[1] += amount;
+    }
+
     /** Empties the cell buffer back into the ME network (used by the "cancel crafting" action). */
     public void cancelAndReturnContents() {
         queue.clear();
         // Reset the window: the queue is gone, so the next push must go through a fresh batch window.
-        lastInputGameTime = currentGameTime();
+        long now = currentGameTime();
+        lastInputGameTime = now;
+        lastActivityGameTime = now;
+        lastRunJobs = 0;
+        shortRunStreak = 0;
+        idleFlushDone = false;
         // Flush the smooth-return queue immediately: after the block is removed (drops path) nothing
-        // would tick anymore, and the crafting CPU is still waiting for these outputs.
+        // would tick anymore, and the crafting CPU is still waiting for these outputs. Whatever the network
+        // refuses goes back into the cells instead of vanishing - on the drops path those cells leave the
+        // machine as items, so the goods stay with the player.
         for (var entry : pendingOutputs.entrySet()) {
             var slot = entry.getValue();
+            if (slot[0] <= 0) {
+                continue;
+            }
+            long leftover = pushToNetwork(entry.getKey(), slot[0]);
+            // What the network refused goes into the cells; only what neither of them accepts stays queued.
+            // Writing back the whole leftover would book the same items twice - once in a cell, once in the
+            // queue - and both routes would deliver them.
+            long placed = leftover > 0
+                    ? insertIntoCells(entry.getKey(), leftover, Actionable.MODULATE)
+                    : 0;
+            slot[0] = leftover - placed;
             if (slot[0] > 0) {
-                pushToNetwork(entry.getKey(), slot[0]);
+                LOGGER.warn("Batch assembler could not return {} x{}: network full and no cell space",
+                        entry.getKey(), slot[0]);
             }
         }
-        pendingOutputs.clear();
+        pendingOutputs.entrySet().removeIf(entry -> entry.getValue()[0] <= 0);
         for (var cell : resolvedCells()) {
             if (cell == null) {
                 continue;
@@ -903,7 +1128,13 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
                 }
                 long taken = cell.extract(entry.getKey(), amount, Actionable.MODULATE, actionSource);
                 if (taken > 0) {
-                    pushToNetwork(entry.getKey(), taken);
+                    long leftover = pushToNetwork(entry.getKey(), taken);
+                    if (leftover > 0) {
+                        // Put it back where it came from: the cell just handed that much out, so the space is
+                        // still there. Handing it to "some cell" instead could quietly drop it.
+                        long back = cell.insert(entry.getKey(), leftover, Actionable.MODULATE, actionSource);
+                        requeueOutput(entry.getKey(), leftover - back);
+                    }
                 }
             }
         }
@@ -1091,6 +1322,22 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         return fastBatchMode ? FAST_BATCH_TICKS : STANDARD_BATCH_TICKS;
     }
 
+    /**
+     * The quiet window that actually applies right now. Runs that gathered a batch - and a machine that has
+     * not run yet - serve the window of the selected mode, which is what makes a bulk order accumulate.
+     * Small runs serve a single quiet tick instead, with the full window coming back for one round every
+     * {@link #PROBE_EVERY_RUNS} small runs so a supply that turned into a stream is noticed. Progress and
+     * countdown displays ask this one, so they never promise a wait the machine is not going to serve.
+     */
+    private long effectiveWindowTicks() {
+        if (shortRunStreak > 0 && shortRunStreak % PROBE_EVERY_RUNS == 0) {
+            return batchIdleTicks();
+        }
+        return lastRunJobs > 0 && lastRunJobs < LARGE_BATCH_JOBS
+                ? SHORT_WINDOW_TICKS
+                : batchIdleTicks();
+    }
+
     public boolean isFastBatchMode() {
         return fastBatchMode;
     }
@@ -1116,6 +1363,8 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
             terminalView.invalidate(); // invalidate the pattern access terminal view
         } else {
             cellsDirty = true;
+            // A freshly inserted cell brings its own contents along: give the idle flush another chance.
+            idleFlushDone = false;
         }
         saveChanges();
         alertTicker();
@@ -1240,10 +1489,32 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     @Override
     public void addAdditionalDrops(Level level, BlockPos pos, List<ItemStack> drops) {
         // Anything still buffered belongs to jobs the CPU already accounts for; hand it back before the
-        // cells (and therefore their contents) leave the machine.
-        if (hasBufferedWork()) {
+        // cells (and therefore their contents) leave the machine. Queued jobs are not the only case: the
+        // smooth-return queue may still hold finished outputs (or be stuck on a full network), and those are
+        // just as lost if the block goes away without flushing them.
+        if (hasBufferedWork() || !pendingOutputs.isEmpty()) {
             cancelAndReturnContents();
         }
+        // Whatever neither the network nor a cell would take is still the player's: it leaves with the block
+        // as drops, because after this method the block entity and its queues are gone.
+        for (var entry : pendingOutputs.entrySet()) {
+            long amount = entry.getValue()[0];
+            var key = entry.getKey();
+            if (amount <= 0) {
+                continue;
+            }
+            if (!(key instanceof AEItemKey itemKey)) {
+                // Fluids and other non-item keys have no item stack to be dropped as.
+                LOGGER.warn("Batch assembler leftover {} x{} cannot be dropped as an item", key, amount);
+                continue;
+            }
+            while (amount > 0) {
+                int perStack = (int) Math.min(amount, Math.max(1, itemKey.getMaxStackSize()));
+                drops.add(itemKey.toStack(perStack));
+                amount -= perStack;
+            }
+        }
+        pendingOutputs.clear();
         super.addAdditionalDrops(level, pos, drops);
         for (int i = 0; i < CELL_SLOTS; i++) {
             var cell = cellInv.getStackInSlot(i);
