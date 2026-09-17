@@ -94,6 +94,15 @@
   - CurseForge：上传步骤绿（该 Action 失败会 setFailed），文件进入人工审核（`latestFiles` 暂为空，与 0.2.0 同）
   - GitHub Release：`v0.2.1`，附件 `ae2_pattern_disk-0.2.1.jar`，正文为完整 47 行 changelog——证明 `--match 'v[0-9]*'` 与 `body:` 两处修复生效（否则会只剩 1 行）
   - 结论：**发版流程定型** —— `git tag vX.Y.Z && git push origin vX.Y.Z`，Modrinth/CF/GitHub 三平台全自动
+- **0.2.3（2026-09-17）** ✅ 三端一次跑通：run [35246426042](https://github.com/xingluo01/AE2-Pattern-Disk/actions/runs/35246426042)，15/15 步骤 success，零重试
+  - 内容：批处理装配室自适应供料窗口（上一批 <8 件 → 短窗 1 tick；每 32 次小批运行整窗探针；久停 8 窗口清零分类）＋缓存栏闲置退回＋被 CPU 索要的键优先返回；编码终端配方输入槽补可合成「+」角标；README/指南口径同步、批处理装配室纹理改按作者自有 ARR 表述
+  - Modrinth：`Publish to Modrinth` 步骤绿（version 已创建）；项目仍为 draft，未认证访问公开 API `/v2/project/ae2-pattern-disk` 与 `/v2/project/rtvtr6bT` 均 404，属预期（对照 fabric-api 返回 200，确认是 draft 不可见而非网络问题）
+  - CurseForge：`project_id: 1698612`、`file_path: build/libs/ae2_pattern_disk-0.2.3.jar`，步骤绿（新文件仍进人工审核）
+  - GitHub Release：`v0.2.3`，附件 `ae2_pattern_disk-0.2.3.jar`（362,017 B），正文 = `v0.2.2..v0.2.3` 的 5 条 commit subject
+  - `fail_on_unmatched_files: true`：未触发（产物名与 `-Pmod_version=0.2.3` 匹配，证明该保护不误杀正常产物）
+  - **itsmeow 步骤实际表现已核实**：仍输出 `##[warning]Node.js 20 is deprecated … forced to run on Node.js 24: itsmeow/curseforge-upload@v3.1.2`，**上传功能正常** → 与 9/23 时间线判断一致（属「声明不受支持」，非「不可用」）
+  - 观察（非阻塞）：minotaur 的 `:modrinth` 任务在配置缓存下报 `invocation of 'Task.project' at execution time is unsupported`（`Configuration cache entry discarded with 5 problems`），但 BUILD SUCCESSFUL、发布正常；若日后 Gradle 收紧，可加 `--no-configuration-cache` 或升级 minotaur
+  - 网页侧仍待人工（API 改不了）：Modrinth/CF 项目正文补一句「代码 LGPL-3.0，批处理装配室方块纹理与模型为作者自有 ARR」；Dependencies 标 AE2 required、Client/Server 环境标记、gallery 截图
 - **CF 双 API 混用（踩坑记录，缺一不可）**：
   - **上传**走传统接口 `POST https://minecraft.curseforge.com/api/projects/{数字id}/upload-file`，header `X-Api-Token`
     - token 是**网站账户 token**（UUID 形式，在 `curseforge.com/account/api-tokens` 生成）——不是 console 的 API key
@@ -142,7 +151,7 @@
     `sed -i "s|^org.gradle.java.home=.*|org.gradle.java.home=$JAVA_HOME|" gradle.properties` 直接替换可通。
     但 `release.yml` 现用的 `-D` 写法已被 v0.2.1 真实发版证明有效（15/15），**不要改动该路径**；
     若某天失效（表现为硬失败 `invalid org.gradle.java.home`），可切换到 sed 写法。
-  - **下次正式发版后**：把那次 run 链接补进本节，并确认 `fail_on_unmatched_files` 与 itsmeow 步骤的实际表现。
+  - **「下次正式发版后」的收尾项（v0.2.3 已完成）**：见上方 0.2.3 记录 —— run 链接已补、`fail_on_unmatched_files` 未触发、itsmeow 仍输出 Node 20 弃用警告但功能正常。
   - **遗留**：`itsmeow/curseforge-upload@v3.1.2` 仍是 node20，上游最后提交 2024-04、无更高版本可升。预案（推荐序）：
     ① **fork 后改 `runs.using: node24` 并 pin commit SHA**（首选：上游自 2024-04 起零活动，等不到合并）；
     ② 自写 curl 直连 CF 传统上传接口（最彻底解耦，该接口与数字 id 本项目已在用，见上方记录）；
