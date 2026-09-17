@@ -24,3 +24,4 @@ libs/*.jar
 
 # Pi workflow metadata
 plans/
+.pi/
