@@ -66,7 +66,7 @@
 - ✅ 实测结果：EAE 的拓展样板管理终端会正确扣除网络空样板并锁定槽位
 
 ### D. 方块原创纹理补票 — P3 ✅（2026-09 完成，仅剩下方 GUI 纹理来源待确认）
-- 现状：转存器用 io_port 风格（`pattern_transferer_*` + `pattern_transferer*.json`，由 `powered`（= ME 节点在线）驱动 off/on）；**批处理装配室改用 `batch_assembler_grid*`（取自 XingLuo_AE2_1.21_GUIExpansion 资源包的 AdvancedAE 量子合成器一套，模型 `batch_assembler.json` / `batch_assembler_on.json`，同样由 `powered` 驱动）**；供应器用 `pattern_provider*`；高效装配室用 `molecular_assembler.png`。其中转存器/供应器/高效装配室纹理已于 2026-09 局部重绘（已非 AE2 字节副本，README 授权表按像素比对分档）；转存器的 `_top.png` 与 side/back/bottom 仍是 AE2 原文件。批处理装配室旧的一套 io_port 风格 `batch_assembler_{front,front_on,top,top_on,side,back,bottom}.png` 已被 grid 一套取代并**已删除**（不再随包分发）
+- 现状：转存器用 io_port 风格（`pattern_transferer_*` + `pattern_transferer*.json`，由 `powered`（= ME 节点在线）驱动 off/on）；**批处理装配室改用 `batch_assembler_grid*`（取自 XingLuo_AE2_1.21_GUIExpansion 资源包的 AdvancedAE 量子合成器一套，模型 `batch_assembler.json` / `batch_assembler_on.json`，同样由 `powered` 驱动）**；供应器用 `pattern_provider*`；高效装配室用 `molecular_assembler.png`。其中转存器/供应器/高效装配室纹理已于 2026-09 局部重绘（已非 AE2 字节副本，README 授权表按像素比对分档）；转存器的 `_top.png` 与 side/back/bottom 仍是 AE2 原文件。批处理装配室旧的一套 io_port 风格 `batch_assembler_{front,front_on,top,top_on,side,back,bottom}.png` 已被 grid 一套取代并**已删除**（不再随包分发）；该资源包与本 mod 为同一制作者，属内部流通，README 无需引用资源包
 - 目标：为 4 个方块（转存器 / ME样板磁盘供应器 / 高效分子装配室 / 批处理装配室）绘制原创纹理并替换，同时同步 README 授权表（移除对应条目）
 - 范围：先做借用纹理本地化与外观替换（不改现有几何资产；批处理装配室的模型 `batch_assembler.json` 为 `cube_all` 包装、`batch_assembler_on.json` 取资源包量子合成器发光壳几何），后续逐块替换为原创纹理
 - 待确认：`textures/guis/pattern_modes.png`、`states.png` 与 AE2 同名件同画布但像素差异较大（~69% / ~58%），来源待作者确认后在 README 归类（现按 unconfirmed 列出）

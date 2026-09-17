@@ -45,13 +45,17 @@ Buffers the jobs pushed by AE2 crafting CPUs inside nine private storage cell sl
 
 The window is measured in game time since the last accepted push (two modes: standard 40 ticks, fast 10 ticks), so material that keeps coming simply keeps the batch waiting; the buffer adds no limit of its own beyond the capacity of the inserted cells (plan analysis keeps its own separate 1024-entry cache), and a started batch runs to the end of the queue without a per-tick ceiling. Supports crafting-table, smithing-table and stonecutting recipes.
 
+A batch that comes out small - fewer than eight jobs - means the window gathered next to nothing, so the machine starts the next one after a single quiet tick instead of serving another full window. Every 32 such runs it serves the full window once more, which is how a supply that has turned into a steady stream gets noticed rather than run push by push forever; the same reset happens after eight windows of silence, so a small run cannot follow orders around forever. Runs that do gather a batch, and a machine that has not run yet, always serve the full window - that is what keeps a bulk order accumulating the way it always did. The window state is runtime only, like the job queue: after a reload the machine starts on the full window again.
+
 #### Output Queue
 
-Produced outputs (including container remainders) enter a smooth-return queue and reach the network over ~20 ticks at ~5% of the accumulated total per tick; when the network cannot take them they stay queued and are retried, and the inputs are not rolled back for that reason - inputs roll back only when the cells cannot hold a push, when material is missing, or when the grid is out of power.
+Produced outputs (including container remainders) enter a smooth-return queue and reach the network over ~20 ticks at ~5% of the accumulated total per tick; when the network cannot take them they stay queued and are retried, and the inputs are not rolled back for that reason - inputs roll back only when the cells cannot hold a push, when material is missing, or when the grid is out of power. Keys the network is waiting for right now - the crafting CPU books them, or a queued job consumes them, which is what a recycled container does - skip that trickle and go back at once: at least 512 items per tick (all of it when that is less), and never less than the smooth rate, so the ceiling for a large batch stays where it was while a catalyst-sized amount arrives the same tick.
 
 #### Cell Slots
 
-Storage cells inserted here are private to the machine (never exposed to the ME network) and are locked while work is buffered; breaking the block or pressing cancel returns the buffer to the network.
+Storage cells inserted here are private to the machine (never exposed to the ME network) and are locked while work is buffered; breaking the block or pressing cancel returns the buffer to the network. Leftovers do not stay locked up either: once the machine has been idle - nothing queued and nothing left to return - for ten ticks, whatever the cells still hold goes back to the network, and what the network refuses stays in the cells until the machine has something to do again.
+
+Queued jobs live in memory only. After a reload the machine holds none of them, and the material they brought in is returned to the network by the idle flush above; a crafting CPU job that was waiting on that work has to be cancelled by hand.
 
 #### Speed Cards
 
@@ -170,6 +174,10 @@ build the hooks are absent, the integration logs a warning and the rest of the m
 This project is licensed under the **GNU Lesser General Public License v3.0 (LGPL-3.0)**.
 See the [LICENSE](LICENSE) file for the full license text. Source: [github.com/xingluo01/AE2-Pattern-Disk](https://github.com/xingluo01/AE2-Pattern-Disk).
 
+Assets marked ARR are the author's own works and are **not** covered by this LGPL-3.0 grant — currently
+the batch assembler block textures and its glow-shell model (see the batch assembler entry under Upstream
+Attribution below).
+
 ### Upstream Attribution
 
 This mod is an addon for **[Applied Energistics 2](https://github.com/AppliedEnergistics/Applied-Energistics-2)** (AE2), which is also licensed under LGPL-3.0.
@@ -212,22 +220,24 @@ counterparts and were partially reworked in 2026-09; the relation column records
 against AE2 19.2.17, which is why the reworked rows remain listed even though they are no longer
 byte-identical.
 
-**The batch assembler's current look comes from a different source: the XingLuo_AE2_1.21_GUIExpansion
-resource pack** (author: XingLuo). The pack is a 1.20.1 resource pack that substitutes its own art for
-AE2-ecosystem assets, including AdvancedAE's quantum crafter; what this mod copies is the pack's
-own work at those paths (its `quantum_crafter_on.json` carries `credit: "Made with Blockbench"`,
-while AdvancedAE's own model at that path is a plain cube - so the glow-shell geometry is the pack
-author's, not AdvancedAE's):
+**The batch assembler's block textures are not AE2-derived.** Its three grid textures and the
+glow-shell geometry of its lit model are the mod author's own work - neither AE2's nor AdvancedAE's -
+and the author keeps all rights to them (**ARR**, all rights reserved), so they are not covered by the
+LGPL-3.0 grant the AE2-derived assets above carry. They ship with the mod because the same author made
+them, so they stay inside the author's own works and no third-party attribution applies here. The
+block's GUI sheet is a separate case: it is an AE2-derived texture and stays under LGPL-3.0 (see the GUI
+table below).
 
-| File | Source |
-|------|--------|
-| `assets/ae2_pattern_disk/textures/block/batch_assembler_grid.png` (+ `.mcmeta`) | `assets/advanced_ae/textures/block/quantum_crafter_grid.png` in that pack |
-| `assets/ae2_pattern_disk/textures/block/batch_assembler_grid_on.png` (+ `.mcmeta`) | `assets/advanced_ae/textures/block/quantum_crafter_grid_on.png` |
-| `assets/ae2_pattern_disk/textures/block/batch_assembler_grid_on_light.png` (+ `.mcmeta`) | `assets/advanced_ae/textures/block/quantum_crafter_grid_on_light.png` |
-| `assets/ae2_pattern_disk/models/block/batch_assembler_on.json` | geometry of the pack's `assets/advanced_ae/models/block/quantum_crafter_on.json` |
+| File | Role |
+|------|------|
+| `assets/ae2_pattern_disk/textures/block/batch_assembler_grid.png` (+ `.mcmeta`) | unpowered shell |
+| `assets/ae2_pattern_disk/textures/block/batch_assembler_grid_on.png` (+ `.mcmeta`) | powered core, particle texture |
+| `assets/ae2_pattern_disk/textures/block/batch_assembler_grid_on_light.png` (+ `.mcmeta`) | powered emissive shell |
+| `assets/ae2_pattern_disk/models/block/batch_assembler.json` | unpowered `cube_all` model over the shell texture |
+| `assets/ae2_pattern_disk/models/block/batch_assembler_on.json` | powered glow-shell geometry and display transforms |
 
-The resource pack is the mod author's own work (XingLuo) and is redistributed here under this
-project's LGPL-3.0 license.
+The block's registry ID is `batch_molecular_assembler`, so its blockstate and item model files carry
+that name while the model and texture files are named `batch_assembler*`.
 
 An older io_port-style set of seven `textures/block/batch_assembler_*.png` files (byte-identical copies of
 the `pattern_transferer_*` files above) was deleted once the grid set replaced it and nothing referenced it
@@ -257,9 +267,8 @@ these files, so none of them is a copy of an AE2 texture.
 AE2's `assets/ae2/models/block/io_port.json` / `io_port_on.json` (same element geometry and display
 transforms, textures repointed to the local copies above), and are therefore also covered by
 LGPL-3.0. `models/block/batch_assembler.json` is a plain `cube_all` wrapper, while
-`batch_assembler_on.json` copies the glow-shell geometry the resource pack supplies for
-`quantum_crafter_on` (see above); the item model points at the `_on` variant so the inventory icon
-keeps its display transforms - the same choice AdvancedAE makes for its own item model. Which batch
+`batch_assembler_on.json` carries the author's own glow-shell geometry (see above); the item model
+points at the `_on` variant so the inventory icon keeps its display transforms. Which batch
 model is used is driven by the block's `powered` state, mirroring AE2's IO port: on while the ME node
 is online, so the glow means "connected and powered", not "currently crafting". The remaining model
 JSON files referencing `ae2:*` parents (`display_base`, `display_off`, `cable_interface`) are derivative
@@ -273,3 +282,5 @@ the same reason.
 The EMI recipe transfer integration (`integration/emi/`) is modelled after AE2's own `EmiEncodePatternHandler`;
 the JEI transfer handler follows the same design pattern as AE2's JEI handler. Both are independent implementations
 that interact only with the respective recipe-viewer's public API and do not contain code copied from AE2.
+The craftable "+" indicator in the pattern disk encoding terminal (and its tooltip line) follows AE2's own
+pattern encoding terminal the same way: same slot semantics, same placement, no AE2 code copied.

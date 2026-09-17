@@ -1,5 +1,5 @@
 {
-  "credit": "Geometry copied from the model the XingLuo_AE2_1.21_GUIExpansion resource pack substitutes for advanced_ae:block/quantum_crafter_on (pack author: XingLuo; the pack's own Blockbench model, not AdvancedAE's). Textures from the same pack.",
+  "credit": "Batch assembler glow-shell geometry and textures authored by XingLuo, the author of this mod; not AE2- or AdvancedAE-derived. All rights reserved (ARR).",
   "render_type": "cutout",
   "textures": {
     "1": "ae2_pattern_disk:block/batch_assembler_grid_on_light",
