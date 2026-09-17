@@ -8,18 +8,26 @@ import java.util.Map;
 
 import org.jetbrains.annotations.Nullable;
 
+import net.minecraft.ChatFormatting;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.ItemStack;
 
 import guideme.PageAnchor;
 
 import appeng.api.stacks.AEItemKey;
+import appeng.api.stacks.GenericStack;
 import appeng.client.gui.me.common.MEStorageScreen;
+import appeng.client.gui.me.common.StackSizeRenderer;
 import appeng.client.gui.style.Blitter;
 import appeng.client.gui.style.ScreenStyle;
 import appeng.client.gui.widgets.AETextField;
 import appeng.client.gui.widgets.ActionButton;
+import appeng.core.localization.ButtonToolTips;
+import appeng.menu.SlotSemantics;
 import appeng.parts.encoding.EncodingMode;
 
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
@@ -248,6 +256,55 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             return null;
         }
         return diskEntries.get(index);
+    }
+
+    // ---- 可合成指示 ----------------------------------------------------------
+
+    /**
+     * 配方输入槽里的物品若 ME 网络能合成，在左上角画 “+”，与 AE2 样板编码终端行为一致。
+     */
+    @Override
+    public void renderSlot(GuiGraphics guiGraphics, Slot s) {
+        super.renderSlot(guiGraphics, s);
+
+        if (shouldShowCraftableIndicatorForSlot(s)) {
+            var poseStack = guiGraphics.pose();
+            poseStack.pushPose();
+            poseStack.translate(0, 0, 100); // 物品以 z=100 渲染；renderSizeLabel 内部再 +200，角标叠在物品之上
+            StackSizeRenderer.renderSizeLabel(guiGraphics, this.font, s.x - 11, s.y - 11, "+", false);
+            poseStack.popPose();
+        }
+    }
+
+    // 父类方法在本项目的 AE2 类路径下是 public，覆写必须同样是 public（改成 protected 会编译失败）
+    @Override
+    public List<Component> getTooltipFromContainerItem(ItemStack stack) {
+        var lines = super.getTooltipFromContainerItem(stack);
+
+        if (hoveredSlot != null && shouldShowCraftableIndicatorForSlot(hoveredSlot)) {
+            lines = new ArrayList<>(lines); // 原列表可能被缓存，复制后再加
+            lines.add(ButtonToolTips.Craftable.text().withStyle(ChatFormatting.DARK_GRAY));
+        }
+
+        return lines;
+    }
+
+    /**
+     * 只有配方输入槽参与判定（四种模式的输入位），其余槽位不显示角标。
+     */
+    private boolean shouldShowCraftableIndicatorForSlot(Slot s) {
+        var semantic = menu.getSlotSemantic(s);
+        if (semantic != SlotSemantics.CRAFTING_GRID
+                && semantic != SlotSemantics.PROCESSING_INPUTS
+                && semantic != SlotSemantics.SMITHING_TABLE_ADDITION
+                && semantic != SlotSemantics.SMITHING_TABLE_BASE
+                && semantic != SlotSemantics.SMITHING_TABLE_TEMPLATE
+                && semantic != SlotSemantics.STONECUTTING_INPUT) {
+            return false;
+        }
+
+        var slotContent = GenericStack.fromItemStack(s.getItem());
+        return slotContent != null && repo.isCraftable(slotContent.what());
     }
 
     @Override
