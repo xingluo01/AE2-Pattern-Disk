@@ -286,7 +286,13 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             var needle = search.toLowerCase(Locale.ROOT);
             if (needle.startsWith("#")) {
                 var markNeedle = needle.substring(1);
-                diskEntries.removeIf(d -> !matchesMark(d, markNeedle));
+                // 开关打开时，无标记的盘不受标记搜索约束：它们本来就没有标记可匹配，而开关要的正是把
+                // 它们留在列表里。有标记的盘照旧按标记过滤。
+                if (showUnmarkedDisks) {
+                    diskEntries.removeIf(d -> hasMark(d) && !matchesMark(d, markNeedle));
+                } else {
+                    diskEntries.removeIf(d -> !matchesMark(d, markNeedle));
+                }
             } else {
                 diskEntries.removeIf(d -> !d.displayName().toLowerCase(Locale.ROOT).contains(needle));
             }
