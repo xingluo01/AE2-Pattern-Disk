@@ -177,7 +177,6 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
     /** The serial each disk slot last used, so a re-send can hand out the same one again. */
     private final java.util.Map<DiskSlotKey, Long> diskSerials = new java.util.HashMap<>();
 
-
     private final List<RecipeHolder<StonecutterRecipe>> stonecuttingRecipes = new java.util.ArrayList<>();
 
     public PatternDiskEncodingTermMenu(int id, Inventory ip, PatternDiskEncodingTerminalPart host) {
@@ -244,6 +243,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
         registerClientAction(ACTION_TRANSFER_TO_DISK, Long.class, this::transferToDisk);
         registerClientAction(ACTION_BIND_PREFIX, Long.class, this::bindPrefix);
         registerClientAction("setPendingRecipeCategory", String.class, this::setPendingRecipeCategory);
+        registerClientAction("setPendingAutoDisk", Long.class, this::setPendingAutoDisk);
         registerClientAction("setPendingDiskName", String.class, this::setPendingDiskName);
         registerClientAction("setPendingMarkText", String.class, this::setPendingMarkText);
         registerClientAction("bindSearchMark", Long.class, this::bindSearchMark);
@@ -260,12 +260,16 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
     public void encode() {
         if (isClientSide()) {
             // 配方类别只有客户端知道（EMI 导入时记下的），而服务端要靠它才能把样板直接写进对应标记的磁盘，
-            // 所以像 bindPrefix 一样先单独送过去。
+            // 所以像 bindPrefix 一样先单独送过去。搜索栏筛出的唯一那张盘的 serial 同理。
             var category = pendingRecipeCategory;
             sendClientAction("setPendingRecipeCategory", category == null ? "" : category);
+            sendClientAction("setPendingAutoDisk", clientAutoDisk);
             sendClientAction(ACTION_ENCODE);
             return;
         }
+        // 一次操作一个值：先取值再清空，所以提前退出也不会把这次的 serial 留给下一次编码。
+        var auto = pendingAutoDisk;
+        pendingAutoDisk = -1;
         ItemStack encodedPattern = encodePattern();
         if (encodedPattern != null) {
             var encodeOutput = this.encodedPatternSlot.getItem();
@@ -281,8 +285,11 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
                 }
             }
             this.encodedPatternSlot.set(encodedPattern);
-            // 附加优化：配方类型正好只对应一张磁盘时直接写进去，省掉「编出一个样板再点磁盘」两步。
-            transferToUniqueMatchingDisk();
+            // 搜索栏筛完只剩一张盘时，刚编好的样板直接写进去——省掉「编出一个样板再点磁盘」两步。
+            // 那张盘收不下（已满、锁定类型不符、主产物重复）就什么都不做，样板留在下方的已编码样板槽里。
+            if (auto >= 0) {
+                transferToDisk(auto);
+            }
         } else {
             clearPattern();
         }
@@ -560,42 +567,6 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
         }
     }
 
-    /**
-     * 网络里的磁盘正好只有一张匹配当前配方类型时，把刚编好的样板直接写进去——这是「编出样板再点磁盘」
-     * 那整套操作的快捷方式。写入判据完全复用 {@link PatternDiskItem#canInsert}（写盘本身仍走
-     * {@link #transferToDisk}），所以容量、锁定类型、主产物互斥这些防重条件一致。
-     *
-     * <p>匹配上但**收不下这份样板**（已满、锁定类型不符、主产物已覆盖）的磁盘会被跳过：它们本来也写不
-     * 进去，留着只会让「唯一」判不出来。跳过之后仍不唯一、或一张都没有，就什么都不做，保持原样让玩家
-     * 自己挑。</p>
-     *
-     * <p>匹配看的是磁盘自己记下的标记，而不是玩家当前的搜索过滤——搜索只是界面上的事，不该决定样板
-     * 落到哪张盘上。</p>
-     */
-    private void transferToUniqueMatchingDisk() {
-        var encoded = encodedPatternSlot.getItem();
-        if (encoded.isEmpty() || !PatternDetailsHelper.isEncodedPattern(encoded)) {
-            return;
-        }
-        var mark = deriveMarkId();
-        var level = getPlayer().level();
-        var unique = -1L;
-        for (var entry : diskRefs.long2ObjectEntrySet()) {
-            var ref = entry.getValue();
-            var stack = ref.host().getDiskInventory().getStackInSlot(ref.slot());
-            if (!(stack.getItem() instanceof PatternDiskItem disk)) continue;
-            if (!mark.equals(stack.get(AEPatternRegistries.DISK_PREFIX.get()))) continue;
-            if (!disk.canInsert(stack, encoded, level)) continue;
-            if (unique >= 0) {
-                return; // 不止一张能收：不替玩家做选择
-            }
-            unique = entry.getLongKey();
-        }
-        if (unique >= 0) {
-            transferToDisk(unique);
-        }
-    }
-
     /** 样板写进磁盘后给个回执，免得玩家不确定刚才那一下到底落没落盘。 */
     private void notifyPatternWritten(Component diskName) {
         if (getPlayer() instanceof ServerPlayer player) {
@@ -654,6 +625,27 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
     /** Remembers the recipe category of the recipe just imported, for {@link #deriveMarkId()}. */
     public void setPendingRecipeCategory(@Nullable String categoryId) {
         this.pendingRecipeCategory = categoryId;
+    }
+
+    /**
+     * 客户端：样板磁盘搜索栏筛完剩下的唯一一张盘的 serial（-1 = 不是唯一，不自动写）。
+     * 搜索过滤只存在于客户端，所以这个判断也只在客户端做，每帧由屏幕写入，本身不过网。
+     */
+    private long clientAutoDisk = -1;
+
+    /** @see #clientAutoDisk */
+    public void setClientAutoDisk(long serial) {
+        this.clientAutoDisk = serial;
+    }
+
+    /**
+     * 服务端：客户端报上来的自动写盘目标，与 {@code ACTION_ENCODE} 成对使用，用后清空。
+     */
+    private long pendingAutoDisk = -1;
+
+    /** @see #pendingAutoDisk */
+    public void setPendingAutoDisk(long serial) {
+        this.pendingAutoDisk = serial;
     }
 
     /** The name the client wants to give a disk, for {@link #renameDisk(long)}. */
