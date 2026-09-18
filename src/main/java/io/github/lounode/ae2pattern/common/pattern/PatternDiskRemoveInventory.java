@@ -16,6 +16,9 @@ import appeng.api.inventories.InternalInventory;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * Writable {@link InternalInventory} view over the encoded patterns stored across all inserted pattern
  * disks, exposed to AE2 pattern access terminals (PAT) as the provider's terminal inventory.
@@ -31,7 +34,7 @@ import io.github.lounode.ae2pattern.AEPatternRegistries;
  * while the original stack is cached in {@link #lastRemoved}; the swap's restore write-back then
  * re-inserts the original pattern at its original position and returns the drawn blank pattern, so the
  * swap leaves the disk completely unchanged. Non-restore writes (anything not matching a row this view
- * just took) stay rejected — the disk accepts no pattern writes from a terminal.</p>
+ * just took) stay rejected — with one exception, the upload write described below.</p>
  *
  * <p>Row count is frozen per open PAT session (AE2 keeps a fixed slot count per session, so shrinking
  * would desync the open terminal). Removed rows are therefore emptied <em>in place</em>; the real disk
@@ -94,6 +97,9 @@ public class PatternDiskRemoveInventory implements InternalInventory {
      */
     private static final String UPLOAD_CLIENT_MOD_ID = "extendedae_plus";
 
+    private static final Logger LOGGER =
+            LoggerFactory.getLogger("ae2_pattern_disk.pattern.PatternDiskRemoveInventory");
+
     /** Resolved once, and only once the mod list is there to ask. */
     private static Boolean uploadClientPresent;
 
@@ -124,8 +130,8 @@ public class PatternDiskRemoveInventory implements InternalInventory {
         return uploadClientPresent;
     }
 
-    /** Re-scans the disk slots into a compacted, hole-free row mapping (fresh view / rebuild). */
-    public void rebuild() {
+    /** Re-scans the disk slots into a compacted, hole-free row mapping (called by the constructor). */
+    private void rebuild() {
         var list = new ArrayList<DiskRef>();
         int freeCapacity = 0;
         for (int slot = 0; slot < diskInventory.size(); slot++) {
@@ -256,10 +262,11 @@ public class PatternDiskRemoveInventory implements InternalInventory {
                 continue; // canInsert said yes: a refusal here means the disk changed, so keep looking
             }
             diskInventory.setItemDirect(slot, updated);
-            if (blankPatternSink != null) {
+            if (blankPatternSink != null && !blankPatternSink.returnBlankPatterns(1)) {
                 // Best effort: a network that cannot take the blank pattern back leaves the upload done
                 // rather than rolling the disk write back, since the caller offers no fallback for it.
-                blankPatternSink.returnBlankPatterns(1);
+                LOGGER.warn("ExtendedAE Plus upload landed on disk slot {}, but its blank pattern could not "
+                        + "be returned to the ME network; one blank pattern is lost", slot);
             }
             onChange.run(); // rebuild the provider's pattern list and drop the cached view
             return ItemStack.EMPTY;

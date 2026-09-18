@@ -22,8 +22,8 @@ import appeng.util.inv.AppEngInternalInventory;
  * take an encoded pattern without touching the disk it came from - the take would be undone by the next
  * rebuild, and the disk would still hold the pattern. Both hosts therefore expose
  * {@link PatternDiskRemoveInventory} instead, which expands reads from the disks, charges a blank
- * pattern from the network for every take and physically removes the recipe from its disk, refusing
- * all writes.</p>
+ * pattern from the network for every take and physically removes the recipe from its disk. The only
+ * write it lets through is ExtendedAE Plus's upload, which lands on a disk rather than on this copy.</p>
  *
  * <p>The disk inventory is small, but the view is rebuilt from scratch by the constructor and by
  * {@link #invalidate()}, and its row layout must stay stable while a terminal is open - so the view is
