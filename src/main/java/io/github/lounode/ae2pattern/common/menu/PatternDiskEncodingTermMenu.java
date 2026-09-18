@@ -560,22 +560,32 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
 
     /**
      * 网络里的磁盘正好只有一张匹配当前配方类型时，把刚编好的样板直接写进去——这是「编出样板再点磁盘」
-     * 那整套操作的快捷方式。写入判据完全复用 {@link #transferToDisk}，所以容量、锁定类型、主产物互斥
-     * 这些防重条件一致；匹配不唯一或磁盘收不下时就什么都不做，保持原样让玩家自己挑。
+     * 那整套操作的快捷方式。写入判据完全复用 {@link PatternDiskItem#canInsert}（写盘本身仍走
+     * {@link #transferToDisk}），所以容量、锁定类型、主产物互斥这些防重条件一致。
+     *
+     * <p>匹配上但**收不下这份样板**（已满、锁定类型不符、主产物已覆盖）的磁盘会被跳过：它们本来也写不
+     * 进去，留着只会让「唯一」判不出来。跳过之后仍不唯一、或一张都没有，就什么都不做，保持原样让玩家
+     * 自己挑。</p>
      *
      * <p>匹配看的是磁盘自己记下的标记，而不是玩家当前的搜索过滤——搜索只是界面上的事，不该决定样板
      * 落到哪张盘上。</p>
      */
     private void transferToUniqueMatchingDisk() {
+        var encoded = encodedPatternSlot.getItem();
+        if (encoded.isEmpty() || !PatternDetailsHelper.isEncodedPattern(encoded)) {
+            return;
+        }
         var mark = deriveMarkId();
+        var level = getPlayer().level();
         var unique = -1L;
         for (var entry : diskRefs.long2ObjectEntrySet()) {
             var ref = entry.getValue();
             var stack = ref.host().getDiskInventory().getStackInSlot(ref.slot());
-            if (!(stack.getItem() instanceof PatternDiskItem)) continue;
+            if (!(stack.getItem() instanceof PatternDiskItem disk)) continue;
             if (!mark.equals(stack.get(AEPatternRegistries.DISK_PREFIX.get()))) continue;
+            if (!disk.canInsert(stack, encoded, level)) continue;
             if (unique >= 0) {
-                return; // 不止一张：不替玩家做选择
+                return; // 不止一张能收：不替玩家做选择
             }
             unique = entry.getLongKey();
         }
@@ -619,7 +629,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
         if (stack.isEmpty() || !(stack.getItem() instanceof PatternDiskItem)) return;
 
         var updated = stack.copy();
-        updated.set(io.github.lounode.ae2pattern.AEPatternRegistries.DISK_PREFIX, mark);
+        updated.set(AEPatternRegistries.DISK_PREFIX, mark);
         writeDiskSlot(inv, ref.slot(), updated);
     }
 
