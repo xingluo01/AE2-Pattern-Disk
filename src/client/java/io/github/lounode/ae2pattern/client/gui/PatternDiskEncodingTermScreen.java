@@ -387,18 +387,16 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
 
     /**
      * Shift+右键：把搜索栏里写的那个标记打到这张盘上。它不依赖“当前导入的配方类型”，所以玩家可以先搜出
-     * 某类磁盘，再把同一个标记标到别的盘上。搜索栏为空时什么也不做。
+     * 某类磁盘，再把同一个标记标到别的盘上。搜索栏为空时反过来清掉这张盘的标记。
      */
     private void onDiskShiftRightClick(int index) {
         var entry = getDiskEntryAt(index);
         if (entry == null) {
             return;
         }
+        // 搜索栏为空 = 没有标记可打，那就把这张盘已有的标记去掉。
         var search = diskListPanel.getSearchText();
-        if (search == null || search.isEmpty()) {
-            return;
-        }
-        menu.setPendingMarkText(search);
+        menu.setPendingMarkText(search == null ? "" : search);
         menu.bindSearchMark(entry.serial());
     }
 

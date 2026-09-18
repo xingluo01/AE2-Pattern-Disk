@@ -263,9 +263,9 @@ public class DiskListPanel implements ICompositeWidget {
                 // One line per key combination: the line says both the gesture and what it does to the disk.
                 lines.add(Component.translatable("ae2_pattern_disk.tooltip.disk.click")
                         .withStyle(ChatFormatting.GRAY));
-                lines.add(Component.translatable("ae2_pattern_disk.tooltip.disk.right_click")
-                        .withStyle(ChatFormatting.GRAY));
                 lines.add(Component.translatable("ae2_pattern_disk.tooltip.disk.shift_right_click")
+                        .withStyle(ChatFormatting.GRAY));
+                lines.add(Component.translatable("ae2_pattern_disk.tooltip.disk.right_click")
                         .withStyle(ChatFormatting.GRAY));
                 lines.add(Component.translatable("ae2_pattern_disk.tooltip.disk.middle_click")
                         .withStyle(ChatFormatting.GRAY));
@@ -292,7 +292,8 @@ public class DiskListPanel implements ICompositeWidget {
                 if (onClick != null) onClick.accept(globalIdx);
                 return true;
             } else if (button == 1) {
-                // 右键：用当前配方类型覆写该磁盘的标记；按住 Shift 则用搜索栏里写的那个标记。
+                // 右键：用当前配方类型覆写该磁盘的标记；按住 Shift 则用搜索栏里写的那条标记，搜索栏为空
+                // 时反过来清掉标记。
                 var callback = Screen.hasShiftDown() ? onShiftRightClick : onRightClick;
                 if (callback != null) callback.accept(globalIdx);
                 return true;

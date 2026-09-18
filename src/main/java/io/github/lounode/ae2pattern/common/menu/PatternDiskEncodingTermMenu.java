@@ -668,9 +668,9 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
     }
 
     /**
-     * 把搜索栏里写的标记打到磁盘上（Shift+右键）。文本带不带 # 前缀都行，统一按标记存。与
-     * {@link #bindPrefix(long)} 不同，这条标记不来自导入的配方，而是玩家自己写/搜出来的，所以它能把
-     * 任意一类标记标到任意一张盘上。
+     * 把搜索栏里写的标记打到磁盘上（Shift+右键）；文本为空则清掉这张盘的标记。文本带不带 # 前缀
+     * 都行，统一按标记存。与 {@link #bindPrefix(long)} 不同，这条标记不来自导入的配方，而是玩家自己
+     * 写/搜出来的，所以它能把任意一类标记标到任意一张盘上。
      */
     public void bindSearchMark(long serial) {
         if (isClientSide()) {
@@ -682,19 +682,19 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
         // 一次操作一个值，理由同 pendingDiskName。
         var text = pendingMarkText;
         pendingMarkText = null;
-        if (text == null || text.isEmpty()) return;
+        // null 表示客户端根本没设过值（误用），空串表示要清标记，两者不能混。
+        if (text == null) return;
 
-        // 值来自客户端，服务端自己收紧：去掉控制字符与 §，再截断；“#” 单独一个不算标记。
-        text = DISALLOWED_NAME_CHARS.matcher(text).replaceAll("");
-        // 搜索栏里可能只有空格，或者只有一个 #，那些都不该当成一个标记。
-        text = text.strip();
-        if (text.isEmpty()) return;
-
-        var mark = text.startsWith("#") ? text : "#" + text;
-        if (mark.length() > MAX_DISK_NAME_LENGTH) {
+        // 值来自客户端，服务端自己收紧：去掉控制字符与 §，再裁掉首尾空白。
+        text = DISALLOWED_NAME_CHARS.matcher(text).replaceAll("").strip();
+        // 只有“#”一个字符不算标记，当成空——否则盘上会多出一个看不出内容的标记。
+        String mark = text.isEmpty() ? null : (text.startsWith("#") ? text : "#" + text);
+        if (mark != null && mark.length() > MAX_DISK_NAME_LENGTH) {
             mark = mark.substring(0, MAX_DISK_NAME_LENGTH);
         }
-        if (mark.length() <= 1) return;
+        if (mark != null && mark.length() <= 1) {
+            mark = null;
+        }
 
         var ref = diskRefs.get(serial);
         if (ref == null) return;
@@ -702,8 +702,15 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
         var stack = inv.getStackInSlot(ref.slot());
         if (stack.isEmpty() || !(stack.getItem() instanceof PatternDiskItem)) return;
 
+        // 没什么可清的就别写：对无标记的盘重复 Shift+右键会白白重发一次列表。
+        if (mark == null && stack.get(AEPatternRegistries.DISK_PREFIX.get()) == null) return;
+
         var updated = stack.copy();
-        updated.set(AEPatternRegistries.DISK_PREFIX, mark);
+        if (mark == null) {
+            updated.remove(AEPatternRegistries.DISK_PREFIX);
+        } else {
+            updated.set(AEPatternRegistries.DISK_PREFIX, mark);
+        }
         writeDiskSlot(inv, ref.slot(), updated);
     }
 
