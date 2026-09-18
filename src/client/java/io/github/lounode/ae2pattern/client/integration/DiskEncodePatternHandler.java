@@ -42,6 +42,11 @@ public class DiskEncodePatternHandler extends AbstractDiskRecipeHandler<PatternD
         }
 
         if (doTransfer) {
+            // Remember which recipe category this came from: it is what a disk mark should say, and it is
+            // only visible here on the client.
+            var category = emiRecipe.getCategory();
+            menu.setPendingRecipeCategory(category == null ? null : category.getId().toString());
+
             if (craftingRecipe && recipeId != null) {
                 DiskEncodingHelper.encodeCraftingRecipe(menu,
                         new RecipeHolder<>(recipeId, recipe),

@@ -7,6 +7,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.Rect2i;
+import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
@@ -235,10 +236,23 @@ public class DiskListPanel implements ICompositeWidget {
             if (mouse.getX() >= slotCanvasX && mouse.getX() < slotCanvasX + SLOT_SIZE
                     && mouse.getY() >= slotCanvasY && mouse.getY() < slotCanvasY + SLOT_SIZE) {
                 var entry = diskEntries.get(entryIdx);
-                var lines = java.util.List.<Component>of(
-                        Component.literal(entry.displayName()),
-                        Component.translatable("ae2_pattern_disk.tooltip.capacity",
-                                entry.used(), entry.capacity()));
+                var lines = new java.util.ArrayList<Component>();
+                lines.add(Component.literal(entry.displayName()));
+                lines.add(Component.translatable("ae2_pattern_disk.tooltip.capacity",
+                        entry.used(), entry.capacity()));
+
+                var mark = PatternDiskMarks.displayName(entry.stack());
+                if (mark != null) {
+                    lines.add(Component.translatable("ae2_pattern_disk.tooltip.mark", mark));
+                }
+
+                // One line per key combination, because these are all the interactions this row has.
+                lines.add(Component.translatable("ae2_pattern_disk.tooltip.disk.click")
+                        .withStyle(ChatFormatting.GRAY));
+                lines.add(Component.translatable("ae2_pattern_disk.tooltip.disk.shift_click")
+                        .withStyle(ChatFormatting.GRAY));
+                lines.add(Component.translatable("ae2_pattern_disk.tooltip.disk.middle_click")
+                        .withStyle(ChatFormatting.GRAY));
                 guiGraphics.renderComponentTooltip(Minecraft.getInstance().font,
                         lines, mouse.getX() + bounds.getX(), mouse.getY() + bounds.getY());
             }

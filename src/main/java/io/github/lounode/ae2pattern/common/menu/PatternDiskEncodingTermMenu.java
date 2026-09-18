@@ -4,6 +4,7 @@ import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 
 import org.jetbrains.annotations.Nullable;
@@ -12,8 +13,6 @@ import it.unimi.dsi.fastutil.ints.IntArraySet;
 import it.unimi.dsi.fastutil.ints.IntSet;
 
 import net.minecraft.core.NonNullList;
-import net.minecraft.core.component.DataComponents;
-import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
@@ -125,13 +124,20 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
     @Nullable
     public ResourceLocation stonecuttingRecipeId;
 
-    /** 当前配方前缀（配方ID路径），用于客户端磁盘列表前缀过滤。空字符串=无前缀。由服务端在 broadcastChanges 中同步。 */
+    /** 当前模式的标记（如 #mode:crafting），用于搜索栏自动填充。空字符串=无。由服务端在 broadcastChanges 中同步。 */
     @GuiSync(93)
     public String recipePrefix = "";
 
     /** 处理模式下同物品合并开关（true=启用，false=禁用）。 */
     @GuiSync(92)
     public boolean mergeSameItems = true;
+
+    /**
+     * 客户端侧：最近一次从 EMI/JEI 导入的配方类别 id。绑定标记时优先用它——它才是「这是一台什么
+     * 机器」的答案，编码模式只是四个粗类。为空则退回编码模式。
+     */
+    @Nullable
+    private String pendingRecipeCategory;
 
     /** 支持流体替换的合成网格槽位（用于 CraftingEncodingPanel 高亮）。 */
     public IntSet slotsSupportingFluidSubstitution = new IntArraySet();
@@ -218,6 +224,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
                 encodingLogic::setStonecuttingRecipeId);
         registerClientAction(ACTION_TRANSFER_TO_DISK, Long.class, this::transferToDisk);
         registerClientAction(ACTION_BIND_PREFIX, Long.class, this::bindPrefix);
+        registerClientAction("setPendingRecipeCategory", String.class, this::setPendingRecipeCategory);
         registerClientAction(ACTION_RENAME_DISK, Long.class, this::renameDisk);
         registerClientAction("setMergeSameItems", Boolean.class, this::setMergeSameItems);
         registerClientAction(ACTION_UPLOAD_PATTERN, this::neoecoae$uploadPattern);
@@ -444,12 +451,16 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
     }
 
     /**
-     * Binds the current pattern's recipe type (4-class disk type) to the disk identified by serial,
-     * renaming it to the type's localized display name (e.g. 合成样板/处理样板/锻造样板/切石样板).
-     * The processing class covers every non-crafting/smithing/stonecutting recipe type.
+     * Binds the current recipe type to the disk identified by serial, as a mark in the disk's
+     * {@code DISK_PREFIX} component. The disk's own name is left alone: the mark shows up in the disk's
+     * tooltip instead of renaming the item, which used to make every disk of a kind look identical.
      */
     public void bindPrefix(long serial) {
         if (isClientSide()) {
+            // The mark depends on the imported recipe's category, which only the client knows, so it travels
+            // as its own action just ahead of the bind.
+            var category = pendingRecipeCategory;
+            sendClientAction("setPendingRecipeCategory", category == null ? "" : category);
             sendClientAction(ACTION_BIND_PREFIX, serial);
             return;
         }
@@ -457,44 +468,49 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
         var ref = diskRefs.get(serial);
         if (ref == null) return;
 
-        var typeName = resolveCurrentPatternTypeName();
-        if (typeName == null) return;
+        var mark = deriveMarkId();
+        if (mark.isEmpty()) return;
 
         var inv = ref.host().getDiskInventory();
         var stack = inv.getStackInSlot(ref.slot());
         if (stack.isEmpty() || !(stack.getItem() instanceof PatternDiskItem)) return;
 
         var updated = stack.copy();
-        updated.set(io.github.lounode.ae2pattern.AEPatternRegistries.DISK_PREFIX, typeName);
-        updated.set(DataComponents.CUSTOM_NAME, Component.literal(typeName));
+        updated.set(io.github.lounode.ae2pattern.AEPatternRegistries.DISK_PREFIX, mark);
         inv.setItemDirect(ref.slot(), updated); // triggers host refresh
     }
 
     /**
-     * Returns the 4-class display name of the current encoding mode, or null if unavailable.
-     * The disk type classes are fixed: crafting / processing (covers all unknown recipe types) /
-     * smithing / stonecutting.
+     * The mark to bind: the imported recipe's category when there is one, otherwise the encoding mode.
+     * Both are stored as {@code #}-prefixed identifiers so the tooltip can tell an identifier from the
+     * plain text older disks carry.
      */
-    @Nullable
-    private String resolveCurrentPatternTypeName() {
-        return switch (this.mode) {
-            case CRAFTING -> "合成样板";
-            case PROCESSING -> "处理样板";
-            case SMITHING_TABLE -> "锻造样板";
-            case STONECUTTING -> "切石样板";
-        };
+    public String deriveMarkId() {
+        return pendingRecipeCategory != null && !pendingRecipeCategory.isEmpty()
+                ? "#" + pendingRecipeCategory
+                : modeMarkId(this.mode);
+    }
+
+    /** The mark standing for an encoding mode, for disks marked without an imported recipe. */
+    public static String modeMarkId(EncodingMode mode) {
+        return "#mode:" + mode.name().toLowerCase(Locale.ROOT);
+    }
+
+    /** Remembers the recipe category of the recipe just imported, for {@link #deriveMarkId()}. */
+    public void setPendingRecipeCategory(@Nullable String categoryId) {
+        this.pendingRecipeCategory = categoryId;
     }
 
     /**
      * Renames the disk identified by serial. 暂未实现独立命名 UI：重命名入口统一走
-     * {@link #bindPrefix(long)}（潜行左键绑定配方类型并重命名），中键保留为未来扩展点。
+     * {@link #bindPrefix(long)}（潜行左键绑定配方类型标记），中键保留为未来扩展点。
      */
     public void renameDisk(long serial) {
         if (isClientSide()) {
             sendClientAction(ACTION_RENAME_DISK, serial);
             return;
         }
-        // 未实现：需命名对话框 UI。当前重命名路径 = 潜行左键 bindPrefix。
+        // 未实现：需命名对话框 UI。当前标记路径 = 潜行左键 bindPrefix。
     }
 
     /**
@@ -662,20 +678,20 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
     }
 
     /**
-     * Returns the 4-class display name recorded as the current recipe prefix for disk-list filtering.
+     * Returns the mark of the current encoding mode, for disks bound without an imported recipe category.
      */
     @Nullable
     public String getCurrentRecipePrefix() {
         if (isClientSide()) {
             return this.recipePrefix.isEmpty() ? null : this.recipePrefix;
         }
-        return resolveCurrentPatternTypeName();
+        return modeMarkId(this.mode);
     }
 
     @Nullable
     private String resolveCurrentRecipePrefix() {
-        // 兼容旧调用：类型名即当前前缀语义
-        return resolveCurrentPatternTypeName();
+        // 兼容旧调用：当前模式的标记即当前前缀语义
+        return modeMarkId(this.mode);
     }
 
     // ---- Accessors -----------------------------------------------------------

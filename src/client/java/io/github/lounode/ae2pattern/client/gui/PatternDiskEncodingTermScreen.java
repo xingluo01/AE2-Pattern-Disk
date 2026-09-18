@@ -4,12 +4,15 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 
 import org.jetbrains.annotations.Nullable;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
@@ -79,8 +82,12 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     /** 当前磁盘条目列表（含 serial，用于回调映射）。 */
     private final List<DiskEntry> diskEntries = new ArrayList<>();
 
-    /** 当前配方前缀（用于前缀过滤）。 */
-    private String currentRecipePrefix = "";
+    /** 上一次自动填进搜索栏的标记，避免用户清空后又被填回去。 */
+    @Nullable
+    private String lastAutoFilledMark;
+
+    /** 打开终端时不自动填充：还没绑定任何标记时填了会把列表直接清空。 */
+    private boolean autoFillInitialized;
 
     public PatternDiskEncodingTermScreen(PatternDiskEncodingTermMenu menu, Inventory playerInventory, Component title,
             ScreenStyle style) {
@@ -111,6 +118,8 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         // 迷你搜索栏（磁盘列表内独立组件，与终端顶部主搜索栏分开）
         this.miniSearchField = widgets.addTextField("miniSearch");
         this.miniSearchField.setPlaceholder(Component.translatable("gui.ae2_pattern_disk.encoding_terminal.disk_search"));
+        this.miniSearchField.setTooltip(Tooltip.create(
+                Component.translatable("gui.ae2_pattern_disk.encoding_terminal.disk_search.tooltip")));
         this.miniSearchField.setResponder(text -> diskListPanel.setSearchText(text));
 
         // 模式轮换按钮（左侧工具栏）—— states.png 项目内图标
@@ -165,8 +174,20 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             entry.getValue().setVisible(entry.getKey() == currentMode);
         }
 
-        // 刷新磁盘列表（过滤 PatternDiskItem + 前缀匹配 + 搜索过滤）
-        currentRecipePrefix = menu.getCurrentRecipePrefix();
+        // 刷新磁盘列表（过滤 PatternDiskItem + 搜索过滤）。
+        // 匹配当前配方类型的磁盘不再把列表换掉，而是把搜索条件填进搜索栏：玩家看得见为什么只剩这些，
+        // 而且随时能改。用的是将要绑定的那个标记，与 2.2 的绑定规则一致。
+        var prefix = menu.deriveMarkId();
+        if (!autoFillInitialized) {
+            autoFillInitialized = true;
+            lastAutoFilledMark = prefix;
+        } else if (!Objects.equals(lastAutoFilledMark, prefix)) {
+            lastAutoFilledMark = prefix;
+            if (prefix != null && !prefix.isEmpty()) {
+                miniSearchField.setValue(markSearchTerm(prefix));
+            }
+        }
+
         updateDiskEntries();
     }
 
@@ -194,21 +215,16 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
                     entry.serial()));
         }
 
-        // 配方前缀过滤：若网络中存在前缀匹配的磁盘，仅显示该磁盘；否则显示全部
-        var prefix = currentRecipePrefix;
-        if (prefix != null && !prefix.isEmpty()) {
-            boolean hasMatchingDisk = diskEntries.stream()
-                    .anyMatch(d -> prefix.equals(d.stack().get(io.github.lounode.ae2pattern.AEPatternRegistries.DISK_PREFIX.get())));
-            if (hasMatchingDisk) {
-                diskEntries.removeIf(d -> !prefix.equals(d.stack().get(io.github.lounode.ae2pattern.AEPatternRegistries.DISK_PREFIX.get())));
-            }
-        }
-
-        // 迷你搜索过滤
+        // 搜索过滤：# 开头匹配磁盘标记（标记原文或其可读名），否则匹配磁盘显示名。
         String search = diskListPanel.getSearchText();
         if (search != null && !search.isEmpty()) {
-            diskEntries.removeIf(d -> !d.displayName().toLowerCase(java.util.Locale.ROOT)
-                    .contains(search.toLowerCase(java.util.Locale.ROOT)));
+            var needle = search.toLowerCase(Locale.ROOT);
+            if (needle.startsWith("#")) {
+                var markNeedle = needle.substring(1);
+                diskEntries.removeIf(d -> !matchesMark(d, markNeedle));
+            } else {
+                diskEntries.removeIf(d -> !d.displayName().toLowerCase(Locale.ROOT).contains(needle));
+            }
         }
 
         // 按显示名排序
@@ -216,6 +232,25 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
 
         // 传给面板
         diskListPanel.setDiskEntries(List.copyOf(diskEntries));
+    }
+
+    /** The search term that selects disks carrying {@code mark}: the {@code #} marker plus its label. */
+    private static String markSearchTerm(String mark) {
+        var label = PatternDiskMarks.displayName(mark);
+        return "#" + (label == null ? mark : label.getString());
+    }
+
+    /** Whether {@code entry} carries a mark matching {@code needle} (already lower-cased). */
+    private static boolean matchesMark(DiskEntry entry, String needle) {
+        var raw = entry.stack().get(io.github.lounode.ae2pattern.AEPatternRegistries.DISK_PREFIX.get());
+        if (raw == null || raw.isEmpty()) {
+            return false;
+        }
+        if (raw.toLowerCase(Locale.ROOT).contains(needle)) {
+            return true;
+        }
+        var label = PatternDiskMarks.displayName(entry.stack());
+        return label != null && label.getString().toLowerCase(Locale.ROOT).contains(needle);
     }
 
     // ---- 磁盘列表交互 --------------------------------------------------------
@@ -231,7 +266,7 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     }
 
     /**
-     * 潜行左键：把当前配方前缀绑定到磁盘并重命名。
+     * 潜行左键：把当前配方类型记为磁盘标记（不再改磁盘名，标记走 tooltip）。
      */
     private void onDiskShiftClick(int index) {
         var entry = getDiskEntryAt(index);
