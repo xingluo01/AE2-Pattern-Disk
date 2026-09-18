@@ -11,7 +11,6 @@ import appeng.api.networking.security.IActionHost;
 import appeng.api.networking.security.IActionSource;
 import appeng.api.stacks.AEItemKey;
 import appeng.core.definitions.AEItems;
-import appeng.util.inv.AppEngInternalInventory;
 
 /**
  * Terminal-facing view of the disks held by an ME pattern disk provider, shared by both of its forms
@@ -31,7 +30,7 @@ import appeng.util.inv.AppEngInternalInventory;
  */
 public final class PatternDiskTerminalView implements PatternDiskRemoveInventory.BlankPatternSink {
 
-    private final AppEngInternalInventory diskInventory;
+    private final InternalInventory diskInventory;
     private final Supplier<IGrid> gridSupplier;
     private final IActionSource actionSource;
     private final Runnable onChanged;
@@ -40,13 +39,13 @@ public final class PatternDiskTerminalView implements PatternDiskRemoveInventory
     private PatternDiskRemoveInventory view;
 
     /**
-     * @param diskInventory the slots holding pattern disks
+     * @param diskInventory the slots holding pattern disks; only the slots that hold one are read
      * @param gridSupplier  resolves the attached grid lazily; may return {@code null} while off-grid
      * @param machine       the host, used as the action source for blank-pattern accounting
      * @param onChanged     invoked after a real mutation so the host can persist and rebuild
      * @param levelSupplier resolves the level lazily, for decoding a pattern before it is written to a disk
      */
-    public PatternDiskTerminalView(AppEngInternalInventory diskInventory, Supplier<IGrid> gridSupplier,
+    public PatternDiskTerminalView(InternalInventory diskInventory, Supplier<IGrid> gridSupplier,
             IActionHost machine, Runnable onChanged, Supplier<Level> levelSupplier) {
         this.diskInventory = diskInventory;
         this.gridSupplier = gridSupplier;
