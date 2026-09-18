@@ -39,7 +39,9 @@ public final class PatternDiskTerminalView implements PatternDiskRemoveInventory
     private PatternDiskRemoveInventory view;
 
     /**
-     * @param diskInventory the slots holding pattern disks; only the slots that hold one are read
+     * @param diskInventory the slots holding pattern disks; only the slots that hold one are used, and
+     *                      the view writes back through {@code setItemDirect} when a pattern is taken,
+     *                      uploaded or rolled back, so the inventory must actually persist writes
      * @param gridSupplier  resolves the attached grid lazily; may return {@code null} while off-grid
      * @param machine       the host, used as the action source for blank-pattern accounting
      * @param onChanged     invoked after a real mutation so the host can persist and rebuild
