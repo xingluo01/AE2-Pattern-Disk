@@ -289,6 +289,9 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
             // 那张盘收不下（已满、锁定类型不符、主产物重复）就什么都不做，样板留在下方的已编码样板槽里。
             if (auto >= 0) {
                 transferToDisk(auto);
+            } else {
+                // 没有“唯一一张”可写时也交代一句：否则玩家点了按钮、样板却留在下面，没有任何反馈。
+                notifyNoAutoTarget();
             }
         } else {
             clearPattern();
@@ -550,10 +553,17 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
         }
 
         var ref = diskRefs.get(serial);
-        if (ref == null) return;
+        if (ref == null) {
+            // 客户端列表可能比服务端旧：那张盘已经被拿走了。不提示的话，玩家只会看到点了没反应。
+            notifyStaleTarget();
+            return;
+        }
         var inv = ref.host().getDiskInventory();
         var stack = inv.getStackInSlot(ref.slot());
-        if (stack.isEmpty() || !(stack.getItem() instanceof PatternDiskItem disk)) return;
+        if (stack.isEmpty() || !(stack.getItem() instanceof PatternDiskItem disk)) {
+            notifyStaleTarget();
+            return;
+        }
 
         // 接收判据（容量/锁定类型/主产物互斥）统一由 PatternDiskItem.canInsert/tryInsert 负责
         var level = getPlayer().level();
@@ -570,6 +580,17 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
         }
     }
 
+    /**
+     * 编码成功、但列表里没有"恰好一张"盘可以自动写时交代一句。没有唯一目标就不替玩家做选择，
+     * 但也不该什么都不说：否则点了按钮、样板却留在下面，看不出是没写还是写失败。
+     */
+    private void notifyNoAutoTarget() {
+        if (getPlayer() instanceof ServerPlayer player) {
+            player.displayClientMessage(Component.translatable(
+                    "gui.ae2_pattern_disk.encoding_terminal.no_auto_target"), true);
+        }
+    }
+
     /** 样板写不进磁盘时说明理由。原因与写入路径共用同一套判据（见 whyCannotInsert）。 */
     private void notifyDiskRefused(Component diskName, @Nullable PatternDiskItem.InsertFailure reason) {
         if (!(getPlayer() instanceof ServerPlayer player)) {
@@ -583,6 +604,14 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
         };
         player.displayClientMessage(Component.translatable(
                 "gui.ae2_pattern_disk.encoding_terminal.disk_refused." + key, diskName), true);
+    }
+
+    /** 目标磁盘已不在列表里（客户端列表比服务端旧）时说明一句，否则又是点了没反应。 */
+    private void notifyStaleTarget() {
+        if (getPlayer() instanceof ServerPlayer player) {
+            player.displayClientMessage(Component.translatable(
+                    "gui.ae2_pattern_disk.encoding_terminal.disk_refused.stale_target"), true);
+        }
     }
 
     /** 样板写进磁盘后给个回执，免得玩家不确定刚才那一下到底落没落盘。 */
