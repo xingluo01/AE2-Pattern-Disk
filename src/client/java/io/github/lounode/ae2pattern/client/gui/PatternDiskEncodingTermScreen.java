@@ -14,7 +14,6 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
@@ -134,8 +133,11 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         // 迷你搜索栏（磁盘列表内独立组件，与终端顶部主搜索栏分开）
         this.miniSearchField = widgets.addTextField("miniSearch");
         this.miniSearchField.setPlaceholder(Component.translatable("gui.ae2_pattern_disk.encoding_terminal.disk_search"));
-        this.miniSearchField.setTooltip(Tooltip.create(
-                Component.translatable("gui.ae2_pattern_disk.encoding_terminal.disk_search.tooltip")));
+        // 走 AE2 自己的链路（不是自建 Tooltip）：AEBaseScreen 会给实现 ITooltip 的控件渲染 tooltip，
+        // 并自动把第一行刷白、其余行刷灰，与 AE2 终端搜索框完全一致。
+        this.miniSearchField.setTooltipMessage(List.of(
+                Component.translatable("gui.ae2_pattern_disk.encoding_terminal.disk_search.title"),
+                Component.translatable("gui.ae2_pattern_disk.encoding_terminal.disk_search.mark_hint")));
         this.miniSearchField.setResponder(text -> diskListPanel.setSearchText(text));
 
         // 模式轮换按钮（左侧工具栏）—— states.png 项目内图标

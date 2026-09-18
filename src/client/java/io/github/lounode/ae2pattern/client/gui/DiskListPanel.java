@@ -254,13 +254,18 @@ public class DiskListPanel implements ICompositeWidget {
                     }
                 }
 
-                // One line per key combination, because these are all the interactions this row has.
+                // One line per key combination, because these are all the interactions this row has,
+                // followed by what that interaction actually does to the disk.
                 lines.add(Component.translatable("ae2_pattern_disk.tooltip.disk.click")
                         .withStyle(ChatFormatting.GRAY));
                 lines.add(Component.translatable("ae2_pattern_disk.tooltip.disk.right_click")
                         .withStyle(ChatFormatting.GRAY));
+                lines.add(Component.translatable("ae2_pattern_disk.tooltip.disk.right_click.rule")
+                        .withStyle(ChatFormatting.DARK_GRAY));
                 lines.add(Component.translatable("ae2_pattern_disk.tooltip.disk.middle_click")
                         .withStyle(ChatFormatting.GRAY));
+                lines.add(Component.translatable("ae2_pattern_disk.tooltip.disk.middle_click.rule")
+                        .withStyle(ChatFormatting.DARK_GRAY));
                 guiGraphics.renderComponentTooltip(Minecraft.getInstance().font,
                         lines, mouse.getX() + bounds.getX(), mouse.getY() + bounds.getY());
             }
