@@ -13,6 +13,7 @@ import org.jetbrains.annotations.Nullable;
 import it.unimi.dsi.fastutil.ints.IntArraySet;
 import it.unimi.dsi.fastutil.ints.IntSet;
 
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.NonNullList;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
@@ -150,6 +151,9 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
     /** 客户端接收到的磁盘列表（由 DiskListPayload 更新，供 Screen 渲染）。 */
     private List<DiskListPayload.DiskEntry> diskList = List.of();
 
+    /** 客户端已收到多少次磁盘列表推送，用来判断“刚才要的刷新到货了没有”。 */
+    private long diskListRevision;
+
     /** serial → 磁盘所在供应器槽位的反查表（仅服务端使用）。 */
     private final it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap<DiskRef> diskRefs = new it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap<>();
     private static long nextDiskSerial = Long.MIN_VALUE;
@@ -159,6 +163,17 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
 
     private record DiskRef(IPatternDiskHost host, int slot) {
     }
+
+    /**
+     * A disk slot's value identity, built the same way the sync fingerprint does. Its purpose is to survive
+     * hosts that hand out a fresh adapter object on every collect (the Neo ECO integration does), where
+     * comparing {@link DiskRef} by reference would silently fail.
+     */
+    private record DiskSlotKey(BlockPos pos, int salt, int slot) {
+    }
+
+    /** The serial each disk slot last used, so a re-send can hand out the same one again. */
+    private final java.util.Map<DiskSlotKey, Long> diskSerials = new java.util.HashMap<>();
 
 
     private final List<RecipeHolder<StonecutterRecipe>> stonecuttingRecipes = new java.util.ArrayList<>();
@@ -229,6 +244,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
         registerClientAction(ACTION_BIND_PREFIX, Long.class, this::bindPrefix);
         registerClientAction("setPendingRecipeCategory", String.class, this::setPendingRecipeCategory);
         registerClientAction("setPendingDiskName", String.class, this::setPendingDiskName);
+        registerClientAction("refreshDiskList", this::refreshDiskList);
         registerClientAction(ACTION_RENAME_DISK, Long.class, this::renameDisk);
         registerClientAction("setMergeSameItems", Boolean.class, this::setMergeSameItems);
         registerClientAction(ACTION_UPLOAD_PATTERN, this::neoecoae$uploadPattern);
@@ -514,7 +530,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
         this.pendingDiskName = name;
     }
 
-    /** 磁盘名的上限，与原版铁炉一致。 */
+    /** 磁盘名的上限，与原版铁砧一致。 */
     private static final int MAX_DISK_NAME_LENGTH = 50;
 
     /** 名字里不允许出现的字符：控制字符与 § 格式码。客户端送来的串不能带着它们进物品组件。 */
@@ -626,10 +642,19 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
 
     /**
      * 服务端：扫描网格中所有样板磁盘宿主（ME样板磁盘供应器、批处理装配室等）的磁盘槽，
-     * 指纹变化时重建 serial 映射并推送全量列表到客户端。serial 在本菜单生命周期内稳定
-     * 映射到 (磁盘宿主, 槽位)。
+     * 指纹变化时重建 serial 映射并推送全量列表到客户端。serial 按“宿主位置 + 身份盐 + 槽位”
+     * 这一值身份在菜单生命周期内稳定映射到同一个磁盘槽，与宿主适配器是否被重建无关。
      */
     private void syncDiskList() {
+        syncDiskList(false);
+    }
+
+    /**
+     * @param force re-send even when the fingerprint says nothing changed. The client asks for this before
+     *              reading a disk's components for an action, because a mark written a moment ago may not
+     *              have reached it yet.
+     */
+    private void syncDiskList(boolean force) {
         // 收集当前网格中所有磁盘宿主的磁盘槽（item 类型为 PatternDiskItem 的非空槽）
         var grid = getGrid();
         var slots = new java.util.ArrayList<DiskRef>();
@@ -652,22 +677,43 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
         }
 
         int fingerprint = computeDiskFingerprint(slots);
-        if (fingerprintInitialized && fingerprint == lastDiskFingerprint) {
+        if (!force && fingerprintInitialized && fingerprint == lastDiskFingerprint) {
             return; // unchanged: skip full resend
         }
         lastDiskFingerprint = fingerprint;
         fingerprintInitialized = true;
 
-        // Rebuild serial mapping and full packet
+        // Rebuild serial mapping and full packet. Serials stay attached to the same disk slot across
+        // refreshes - matched by value, not by adapter object - because the client uses them to name the disk
+        // it is acting on, and handing out new ones would make an in-flight action point at the wrong disk.
+        var previousSerials = new java.util.HashMap<>(diskSerials);
+        diskSerials.clear();
         diskRefs.clear();
         var entries = new java.util.ArrayList<DiskListPayload.DiskEntry>();
         for (var ref : slots) {
-            var serial = nextDiskSerial++;
+            var key = new DiskSlotKey(ref.host().getBlockPos(), ref.host().getIdentitySalt(), ref.slot());
+            var serial = previousSerials.get(key);
+            if (serial == null) {
+                serial = nextDiskSerial++;
+            }
+            diskSerials.put(key, serial);
             diskRefs.put(serial, ref);
             var stack = ref.host().getDiskInventory().getStackInSlot(ref.slot());
             entries.add(new DiskListPayload.DiskEntry(serial, stack.copy()));
         }
         sendPacketToClient(new DiskListPayload(entries));
+    }
+
+    /**
+     * Re-sends the disk list even when nothing seems to have changed. The client asks for this before an
+     * action that reads a disk's components, since a mark written a moment ago may not have reached it yet.
+     */
+    public void refreshDiskList() {
+        if (isClientSide()) {
+            sendClientAction("refreshDiskList");
+            return;
+        }
+        syncDiskList(true);
     }
 
     /** Appends every pattern disk currently sitting in {@code host}'s disk inventory. */
@@ -711,6 +757,15 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
      */
     public void receiveDiskList(List<DiskListPayload.DiskEntry> disks) {
         this.diskList = disks;
+        this.diskListRevision++; // 客户端用它判断一次刷新是否真的到货了
+    }
+
+    /**
+     * How many disk-list payloads this client has received. A screen that just asked for a refresh compares
+     * this against the value it saw when asking, so it acts on the fresh list rather than the stale one.
+     */
+    public long getDiskListRevision() {
+        return diskListRevision;
     }
 
     /**

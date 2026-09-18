@@ -11,6 +11,7 @@ import java.util.Objects;
 import org.jetbrains.annotations.Nullable;
 
 import net.minecraft.ChatFormatting;
+import net.minecraft.Util;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.network.chat.Component;
@@ -83,9 +84,22 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     /** 当前磁盘条目列表（含 serial，用于回调映射）。 */
     private final List<DiskEntry> diskEntries = new ArrayList<>();
 
+    /** 等刷新到的上限：超过这么久还没收到新列表就不再改了。 */
+    private static final long RENAME_REFRESH_TIMEOUT_MS = 2000;
+
     /** 上一次自动填进搜索栏的标记，避免用户清空后又被填回去。 */
     @Nullable
     private String lastAutoFilledMark;
+
+    /** 中键待改名的磁盘。serial 从 Long.MIN_VALUE 起自增、恒为负，所以不能拿它当“无待办”的哨兵。 */
+    private boolean pendingRename;
+    private long pendingRenameSerial;
+
+    /** 中键时看到的列表修订号：只有收到更新的那一份才开始改名，否则读到的还是旧标记。 */
+    private long pendingRenameRevision;
+
+    /** 等刷新的截止时刻。超了这次中键就作罢；用时间而非帧数，免得帧率越高容忍越短。 */
+    private long pendingRenameDeadline;
 
     /** 打开终端时不自动填充：还没绑定任何标记时填了会把列表直接清空。 */
     private boolean autoFillInitialized;
@@ -233,6 +247,34 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
 
         // 传给面板
         diskListPanel.setDiskEntries(List.copyOf(diskEntries));
+
+        // 中键的结算：要等到刷新回来的那一份列表，否则读到的还是旧标记。等不到就作罢，而不是拿旧标记
+        // 改名——那样只会把上一次的机器名写上去。
+        if (pendingRename) {
+            if (menu.getDiskListRevision() != pendingRenameRevision) {
+                pendingRename = false;
+                renameDiskBySerial(pendingRenameSerial);
+            } else if (Util.getMillis() > pendingRenameDeadline) {
+                pendingRename = false;
+            }
+        }
+    }
+
+    /** Renames the disk {@code serial} after the machine its mark stands for. */
+    private void renameDiskBySerial(long serial) {
+        // 从菜单的完整列表里找，而不是已经过搜索过滤的 diskEntries：改名不该受搜索框影响。
+        for (var entry : menu.getDiskList()) {
+            if (entry.serial() != serial) {
+                continue;
+            }
+            var mark = entry.stack().get(AEPatternRegistries.DISK_PREFIX.get());
+            var name = PatternDiskMarks.machineName(mark);
+            if (name != null && !name.isEmpty()) {
+                menu.setPendingDiskName(name);
+                menu.renameDisk(serial);
+            }
+            return;
+        }
     }
 
     /** The search term that selects disks carrying {@code mark}: the {@code #} marker plus its label. */
@@ -277,20 +319,20 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     }
 
     /**
-     * 中键：把磁盘重命名为其标记所属机器的名称。标记是客户端才解析得出的东西（配方类别 → 机器方块），
-     * 所以名字在这里算好再交给服务端写。
+     * 中键：把磁盘重命名为其标记所属机器的名称。标记可能刚被右键覆写过而客户端还没收到，所以先要一次
+     * 权威列表，等它回来后用磁盘上真正的标记算名字（见 {@link #renameDiskBySerial(long)}）。
      */
     private void onDiskMiddleClick(int index) {
         var entry = getDiskEntryAt(index);
         if (entry == null) {
             return;
         }
-        var mark = entry.stack().get(AEPatternRegistries.DISK_PREFIX.get());
-        var name = PatternDiskMarks.machineName(mark);
-        if (name != null && !name.isEmpty()) {
-            menu.setPendingDiskName(name);
-            menu.renameDisk(entry.serial());
-        }
+        // 先写三个字段再把标志立起来：标志一为真就代表它们是一套完整值。
+        pendingRenameSerial = entry.serial();
+        pendingRenameRevision = menu.getDiskListRevision();
+        pendingRenameDeadline = Util.getMillis() + RENAME_REFRESH_TIMEOUT_MS;
+        pendingRename = true;
+        menu.refreshDiskList();
     }
 
     @Nullable
