@@ -32,6 +32,7 @@ import net.minecraft.world.item.crafting.SmithingRecipeInput;
 import net.minecraft.world.item.crafting.StonecutterRecipe;
 
 import appeng.api.config.Actionable;
+import appeng.api.networking.security.IActionSource;
 import appeng.api.crafting.PatternDetailsHelper;
 import appeng.api.inventories.InternalInventory;
 import appeng.api.networking.IGrid;
@@ -55,6 +56,7 @@ import appeng.util.ConfigInventory;
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
 import io.github.lounode.ae2pattern.common.menu.DiskEncodingLogic;
+import io.github.lounode.ae2pattern.common.menu.slot.NetworkBlankPatternSlot;
 import io.github.lounode.ae2pattern.common.pattern.PatternClassifier;
 import io.github.lounode.ae2pattern.common.pattern.PatternDiskContents;
 import io.github.lounode.ae2pattern.common.part.PatternDiskEncodingTerminalPart;
@@ -112,7 +114,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
     private final FakeSlot smithingTableBaseSlot;
     private final FakeSlot smithingTableAdditionSlot;
     private final PatternTermSlot craftOutputSlot;
-    private final RestrictedInputSlot blankPatternSlot;
+    private final NetworkBlankPatternSlot blankPatternSlot;
     private final RestrictedInputSlot encodedPatternSlot;
 
     private RecipeHolder<CraftingRecipe> currentRecipe;
@@ -220,10 +222,9 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
         this.smithingTableAdditionSlot.setHideAmount(true);
 
         // Blank + encoded pattern slots
-        this.addSlot(
-                this.blankPatternSlot = new RestrictedInputSlot(RestrictedInputSlot.PlacableItemType.BLANK_PATTERN,
-                        encodingLogic.getBlankPatternInv(), 0),
-                SlotSemantics.BLANK_PATTERN);
+        // Blank pattern slot: a read-only mirror of what the network holds. The terminal no longer has to be
+        // stocked by hand - encoding pulls from the network (see encode()).
+        this.addSlot(this.blankPatternSlot = new NetworkBlankPatternSlot(), SlotSemantics.BLANK_PATTERN);
         this.addSlot(
                 this.encodedPatternSlot = new RestrictedInputSlot(RestrictedInputSlot.PlacableItemType.ENCODED_PATTERN,
                         encodingLogic.getEncodedPatternInv(), 0),
@@ -267,13 +268,10 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
                     && !AEItems.BLANK_PATTERN.is(encodeOutput)) {
                 return;
             } else if (encodeOutput.isEmpty()) {
-                var blankPattern = this.blankPatternSlot.getItem();
-                if (!isPattern(blankPattern)) {
+                // 空白样板来自网络，不再从槽里拿。扣不到就告诉玩家，而不是默默没反应。
+                if (!consumeNetworkBlankPattern()) {
+                    notifyNoBlankPattern();
                     return;
-                }
-                blankPattern.shrink(1);
-                if (blankPattern.getCount() <= 0) {
-                    this.blankPatternSlot.set(ItemStack.EMPTY);
                 }
             }
             this.encodedPatternSlot.set(encodedPattern);
@@ -388,8 +386,79 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
         else return null;
     }
 
-    private boolean isPattern(ItemStack output) {
+    private boolean isBlankPattern(ItemStack output) {
         return !output.isEmpty() && AEItems.BLANK_PATTERN.is(output);
+    }
+
+    // ---- 空白样板：网络镜像 -----------------------------------------------------
+
+    /** 旧存档遗留在样板槽里的空白样板只迁移一次。 */
+    private boolean legacyBlankPatternsMigrated;
+
+    /** 服务端：网络里可用的空白样板数量（模拟提取，不动库存）。网络不在时是 0，也就编不了码。 */
+    public long getNetworkBlankPatternCount() {
+        var grid = getGrid();
+        var storage = grid == null ? null : grid.getStorageService();
+        if (storage == null) {
+            return 0;
+        }
+        return storage.getInventory().extract(AEItemKey.of(AEItems.BLANK_PATTERN), Long.MAX_VALUE,
+                Actionable.SIMULATE, IActionSource.ofPlayer(getPlayer()));
+    }
+
+    /** 从网络取走一个空白样板；网络里没有则返回 false。 */
+    private boolean consumeNetworkBlankPattern() {
+        var grid = getGrid();
+        var storage = grid == null ? null : grid.getStorageService();
+        if (storage == null) {
+            return false;
+        }
+        return storage.getInventory().extract(AEItemKey.of(AEItems.BLANK_PATTERN), 1,
+                Actionable.MODULATE, IActionSource.ofPlayer(getPlayer())) > 0;
+    }
+
+    /**
+     * 客户端：现在能不能编码——网络里有空白样板，或者编码槽里停着一个已经从网络取出的样板（空白载体、
+     * 或可被直接覆盖的已编码样板），后两种情形都不再需要网络。这只是提前拦住，真正的裁决仍在服务端。
+     */
+    public boolean canEncode() {
+        var encodedOutput = encodedPatternSlot.getItem();
+        return isBlankPattern(blankPatternSlot.getItem())
+                || isBlankPattern(encodedOutput)
+                || PatternDetailsHelper.isEncodedPattern(encodedOutput);
+    }
+
+    /** 网络里拿不到空白样板时告诉玩家一声；静默失败会让人以为是界面卡了。 */
+    private void notifyNoBlankPattern() {
+        if (getPlayer() instanceof ServerPlayer player) {
+            player.displayClientMessage(
+                    Component.translatable("gui.ae2_pattern_disk.encoding_terminal.no_blank_pattern"), true);
+        }
+    }
+
+    /**
+     * 旧存档里玩家是往样板槽塞样板的，现在那个槽只是网络镜像、放不下东西了。把遗留的物品转进网络，
+     * 网络收不下就还给玩家，别让它卡在只用于显示的地方再也拿不出来。网络未就绪时直接退化为还给玩家。
+     */
+    private void migrateLegacyBlankPatterns() {
+        var inv = encodingLogic.getBlankPatternInv();
+        var legacy = inv.getStackInSlot(0);
+        if (legacy.isEmpty()) {
+            return;
+        }
+        inv.setItemDirect(0, ItemStack.EMPTY);
+
+        var remainder = legacy.copy();
+        var grid = getGrid();
+        var storage = grid == null ? null : grid.getStorageService();
+        if (storage != null) {
+            var inserted = storage.getInventory().insert(AEItemKey.of(AEItems.BLANK_PATTERN), remainder.getCount(),
+                    Actionable.MODULATE, IActionSource.ofPlayer(getPlayer()));
+            remainder.shrink((int) inserted);
+        }
+        if (!remainder.isEmpty() && !getPlayer().getInventory().add(remainder)) {
+            getPlayer().drop(remainder, false);
+        }
     }
 
     private ItemStack getAndUpdateOutput() {
@@ -464,7 +533,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
         var updated = stack.copy();
         if (disk.tryInsert(updated, encoded, level)) {
             inv.setItemDirect(ref.slot(), updated); // triggers host refresh
-            // 样板已存入磁盘：编码槽清空，原编码样板回退为空白样板并按 样板槽→ME网→背包 优先级落位
+            // 样板已存入磁盘：编码槽清空，原编码样板回退为空白样板并按 ME网络→玩家背包→编码槽 优先级落位
             this.encodedPatternSlot.set(ItemStack.EMPTY);
             returnBlankPatternToStorage();
         }
@@ -573,38 +642,26 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
     }
 
     /**
-     * 样板存入磁盘后，把回退产生的空白样板按 样板槽→ME网络→玩家背包 优先级落位。
-     * 样板槽(blankPatternSlot)为空时优先回填，否则尝试插入 ME 网络存储，
-     * 最后尝试放入玩家背包；均失败时留在编码槽下游由玩家手动取走。
+     * 样板存入磁盘后，把回退产生的空白样板还回去。样板本来就取自网络，所以优先入网；网络不在或满了
+     * 就落玩家背包；背包也满则留在编码槽由玩家手动取走（不丢失）。
      */
     private void returnBlankPatternToStorage() {
-        // 1) 优先回填终端样板槽
-        var blankSlotInv = encodingLogic.getBlankPatternInv();
-        if (blankSlotInv.getStackInSlot(0).isEmpty()) {
-            blankSlotInv.setItemDirect(0, AEPatternRegistries.blankPattern());
-            broadcastChanges();
-            return;
-        }
-        // 2) 插入 ME 网络存储
         var grid = getGrid();
-        if (grid != null) {
-            var storage = grid.getStorageService();
-            if (storage != null) {
-                var blank = appeng.api.stacks.AEItemKey.of(appeng.core.definitions.AEItems.BLANK_PATTERN);
-                long inserted = storage.getInventory().insert(blank, 1,
-                        appeng.api.config.Actionable.MODULATE, appeng.api.networking.security.IActionSource.ofPlayer(getPlayer()));
-                if (inserted > 0) {
-                    broadcastChanges();
-                    return;
-                }
+        var storage = grid == null ? null : grid.getStorageService();
+        if (storage != null) {
+            var inserted = storage.getInventory().insert(AEItemKey.of(AEItems.BLANK_PATTERN), 1,
+                    Actionable.MODULATE, IActionSource.ofPlayer(getPlayer()));
+            if (inserted > 0) {
+                broadcastChanges();
+                return;
             }
         }
-        // 3) 放入玩家背包
         if (getPlayer().getInventory().add(AEPatternRegistries.blankPattern())) {
             broadcastChanges();
             return;
         }
-        // 4) 均失败：留在编码槽（不丢失）
+        // 都放不下：退回编码槽。调用方已经把编码槽清空了，这里是那一个样板唯一的去处。
+        this.encodedPatternSlot.set(AEPatternRegistries.blankPattern());
         broadcastChanges();
     }
 
@@ -818,6 +875,11 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
             this.stonecuttingRecipeId = encodingLogic.getStonecuttingRecipeId();
             this.recipePrefix = Objects.toString(resolveCurrentRecipePrefix(), "");
             syncDiskList();
+            if (!legacyBlankPatternsMigrated) {
+                legacyBlankPatternsMigrated = true;
+                migrateLegacyBlankPatterns();
+            }
+            blankPatternSlot.updateMirror(getNetworkBlankPatternCount());
         }
     }
 
@@ -1014,10 +1076,6 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
     @Override
     protected int transferStackToMenu(ItemStack input) {
         int initialCount = input.getCount();
-        if (blankPatternSlot.mayPlace(input)) {
-            input = blankPatternSlot.safeInsert(input);
-            if (input.isEmpty()) return initialCount;
-        }
         if (encodedPatternSlot.mayPlace(input)) {
             input = encodedPatternSlot.safeInsert(input);
             if (input.isEmpty()) return initialCount;

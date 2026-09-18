@@ -35,6 +35,7 @@
   "ae2_pattern_disk.tooltip.disk.right_click": "Right click: mark this disk with the current recipe type",
   "ae2_pattern_disk.tooltip.disk.middle_click": "Middle click: rename this disk after the machine it is marked for",
   "gui.ae2_pattern_disk.encoding_terminal.disk_search.tooltip": "Searches disks by name. Start with # to match a disk's mark instead, for example #smoking",
+  "gui.ae2_pattern_disk.encoding_terminal.no_blank_pattern": "The ME network has no blank patterns",
   "item.ae2_pattern_disk.pattern_disk_encoding_terminal": "ME Pattern Disk Encoding Terminal",
   "item.ae2_pattern_disk.cable_pattern_disk_provider": "ME Pattern Disk Provider",
   "gui.ae2_pattern_disk.encoding_terminal.mode_cycle": "Cycle Mode",

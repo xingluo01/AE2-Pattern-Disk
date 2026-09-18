@@ -35,6 +35,7 @@
   "ae2_pattern_disk.tooltip.disk.right_click": "右键：用当前配方类型覆写该磁盘的标记",
   "ae2_pattern_disk.tooltip.disk.middle_click": "中键：把该磁盘重命名为其标记对应的机器名称",
   "gui.ae2_pattern_disk.encoding_terminal.disk_search.tooltip": "按名称搜索磁盘；以 # 开头则改搜磁盘标记，例如 #烟熏",
+  "gui.ae2_pattern_disk.encoding_terminal.no_blank_pattern": "ME 网络里没有空白样板",
   "item.ae2_pattern_disk.pattern_disk_encoding_terminal": "ME样板磁盘编码终端",
   "item.ae2_pattern_disk.cable_pattern_disk_provider": "ME样板磁盘供应器",
   "gui.ae2_pattern_disk.encoding_terminal.mode_cycle": "切换模式",

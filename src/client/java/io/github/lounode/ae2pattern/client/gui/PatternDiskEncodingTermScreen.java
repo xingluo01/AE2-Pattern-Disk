@@ -12,6 +12,7 @@ import org.jetbrains.annotations.Nullable;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.Util;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.network.chat.Component;
@@ -152,7 +153,18 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         addToLeftToolbar(this.modeCycleButton);
 
         // 编码/保存按钮
-        var encodeBtn = new ActionButton(appeng.api.config.ActionItems.ENCODE, act -> menu.encode());
+        // 编码/保存按钮：网络里没有空白样板就不必白跑一趟服务端，直接说清楚原因。
+        var encodeBtn = new ActionButton(appeng.api.config.ActionItems.ENCODE, act -> {
+            if (!menu.canEncode()) {
+                var player = Minecraft.getInstance().player;
+                if (player != null) {
+                    player.displayClientMessage(Component.translatable(
+                            "gui.ae2_pattern_disk.encoding_terminal.no_blank_pattern"), true);
+                }
+                return;
+            }
+            menu.encode();
+        });
         widgets.add("encodePattern", encodeBtn);
     }
 
