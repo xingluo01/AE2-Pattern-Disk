@@ -32,6 +32,13 @@ public final class PatternDiskMarks {
         return displayName(stack.get(AEPatternRegistries.DISK_PREFIX.get()));
     }
 
+    /** The mark exactly as stored, for the line shown under vanilla's advanced tooltips. */
+    @Nullable
+    public static String rawMark(ItemStack stack) {
+        var mark = stack.get(AEPatternRegistries.DISK_PREFIX.get());
+        return mark == null || mark.isEmpty() ? null : mark;
+    }
+
     /** The readable form of a stored mark, or {@code null} when there is none. */
     @Nullable
     public static Component displayName(@Nullable String mark) {
@@ -54,6 +61,31 @@ public final class PatternDiskMarks {
 
     private static final String MODE_PREFIX = "#mode:";
     private static final String ID_PREFIX = "#";
+
+    /**
+     * The name to give a disk carrying {@code mark} when renaming it after its machine ("烟熏炉"). Marks
+     * that stand for an encoding mode, and categories whose machine is unknown, fall back to the mark's own
+     * readable name - the disk still ends up with a meaningful name rather than none. Without EMI a category
+     * mark has no readable name at all, so what comes back is the identifier itself.
+     */
+    @Nullable
+    public static String machineName(@Nullable String mark) {
+        var label = displayName(mark);
+        if (label == null || mark == null) {
+            return null;
+        }
+        if (mark.startsWith(ID_PREFIX) && !mark.startsWith(MODE_PREFIX) && ModList.get().isLoaded("emi")) {
+            try {
+                var machine = EmiMarkNames.machineName(mark.substring(ID_PREFIX.length()));
+                if (machine != null && !machine.isEmpty()) {
+                    return machine;
+                }
+            } catch (Throwable ignored) {
+                // Fall through to the readable name.
+            }
+        }
+        return label.getString();
+    }
 
     /** EMI is optional, so its types stay behind this check (see {@link EmiMarkNames}). */
     @Nullable

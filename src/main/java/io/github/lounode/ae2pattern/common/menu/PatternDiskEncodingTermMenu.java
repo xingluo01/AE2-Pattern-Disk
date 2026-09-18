@@ -6,6 +6,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.regex.Pattern;
 
 import org.jetbrains.annotations.Nullable;
 
@@ -13,6 +14,8 @@ import it.unimi.dsi.fastutil.ints.IntArraySet;
 import it.unimi.dsi.fastutil.ints.IntSet;
 
 import net.minecraft.core.NonNullList;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
@@ -225,6 +228,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
         registerClientAction(ACTION_TRANSFER_TO_DISK, Long.class, this::transferToDisk);
         registerClientAction(ACTION_BIND_PREFIX, Long.class, this::bindPrefix);
         registerClientAction("setPendingRecipeCategory", String.class, this::setPendingRecipeCategory);
+        registerClientAction("setPendingDiskName", String.class, this::setPendingDiskName);
         registerClientAction(ACTION_RENAME_DISK, Long.class, this::renameDisk);
         registerClientAction("setMergeSameItems", Boolean.class, this::setMergeSameItems);
         registerClientAction(ACTION_UPLOAD_PATTERN, this::neoecoae$uploadPattern);
@@ -454,6 +458,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
      * Binds the current recipe type to the disk identified by serial, as a mark in the disk's
      * {@code DISK_PREFIX} component. The disk's own name is left alone: the mark shows up in the disk's
      * tooltip instead of renaming the item, which used to make every disk of a kind look identical.
+     * Renaming is a separate interaction (see {@link #renameDisk(long)}).
      */
     public void bindPrefix(long serial) {
         if (isClientSide()) {
@@ -501,16 +506,54 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
         this.pendingRecipeCategory = categoryId;
     }
 
+    /** The name the client wants to give a disk, for {@link #renameDisk(long)}. */
+    private String pendingDiskName;
+
+    /** Remembers the name the client resolved for the hovered disk, for {@link #renameDisk(long)}. */
+    public void setPendingDiskName(@Nullable String name) {
+        this.pendingDiskName = name;
+    }
+
+    /** 磁盘名的上限，与原版铁炉一致。 */
+    private static final int MAX_DISK_NAME_LENGTH = 50;
+
+    /** 名字里不允许出现的字符：控制字符与 § 格式码。客户端送来的串不能带着它们进物品组件。 */
+    private static final Pattern DISALLOWED_NAME_CHARS = Pattern.compile("[\\p{Cntrl}\u00a7]");
+
     /**
-     * Renames the disk identified by serial. 暂未实现独立命名 UI：重命名入口统一走
-     * {@link #bindPrefix(long)}（潜行左键绑定配方类型标记），中键保留为未来扩展点。
+     * Renames the disk identified by serial to the name the client resolved. It travels as its own action
+     * just ahead of the rename, the same way {@link #bindPrefix(long)} carries the recipe category: the name
+     * comes from the mark's recipe category, which only the client can look up.
      */
     public void renameDisk(long serial) {
         if (isClientSide()) {
+            sendClientAction("setPendingDiskName", pendingDiskName == null ? "" : pendingDiskName);
             sendClientAction(ACTION_RENAME_DISK, serial);
             return;
         }
-        // 未实现：需命名对话框 UI。当前标记路径 = 潜行左键 bindPrefix。
+
+        // 一次操作一个名字。留着会让下一个只发 rename、没发 setPendingDiskName 的调用沿用旧名。
+        var name = pendingDiskName;
+        pendingDiskName = null;
+        if (name == null || name.isEmpty()) return;
+
+        // 名字来自客户端，所以服务端要自己收紧一遍：改包客户端可以送任意长的串或不含格式字符的串。
+        name = DISALLOWED_NAME_CHARS.matcher(name).replaceAll("");
+        if (name.length() > MAX_DISK_NAME_LENGTH) {
+            name = name.substring(0, MAX_DISK_NAME_LENGTH);
+        }
+        if (name.isEmpty()) return;
+
+        var ref = diskRefs.get(serial);
+        if (ref == null) return;
+
+        var inv = ref.host().getDiskInventory();
+        var stack = inv.getStackInSlot(ref.slot());
+        if (stack.isEmpty() || !(stack.getItem() instanceof PatternDiskItem)) return;
+
+        var updated = stack.copy();
+        updated.set(DataComponents.CUSTOM_NAME, Component.literal(name));
+        inv.setItemDirect(ref.slot(), updated);
     }
 
     /**

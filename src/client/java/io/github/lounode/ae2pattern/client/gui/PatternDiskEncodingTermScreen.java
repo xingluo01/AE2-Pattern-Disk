@@ -33,6 +33,7 @@ import appeng.core.localization.ButtonToolTips;
 import appeng.menu.SlotSemantics;
 import appeng.parts.encoding.EncodingMode;
 
+import io.github.lounode.ae2pattern.AEPatternRegistries;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
 import io.github.lounode.ae2pattern.client.gui.DiskListPanel.DiskEntry;
@@ -112,7 +113,7 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
 
         // 磁盘列表点击回调
         this.diskListPanel.setOnClick(this::onDiskClick);
-        this.diskListPanel.setOnShiftClick(this::onDiskShiftClick);
+        this.diskListPanel.setOnRightClick(this::onDiskRightClick);
         this.diskListPanel.setOnMiddleClick(this::onDiskMiddleClick);
 
         // 迷你搜索栏（磁盘列表内独立组件，与终端顶部主搜索栏分开）
@@ -242,7 +243,7 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
 
     /** Whether {@code entry} carries a mark matching {@code needle} (already lower-cased). */
     private static boolean matchesMark(DiskEntry entry, String needle) {
-        var raw = entry.stack().get(io.github.lounode.ae2pattern.AEPatternRegistries.DISK_PREFIX.get());
+        var raw = entry.stack().get(AEPatternRegistries.DISK_PREFIX.get());
         if (raw == null || raw.isEmpty()) {
             return false;
         }
@@ -266,9 +267,9 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     }
 
     /**
-     * 潜行左键：把当前配方类型记为磁盘标记（不再改磁盘名，标记走 tooltip）。
+     * 右键：用当前配方类型覆写该磁盘的标记（覆盖旧的，不动磁盘名）。
      */
-    private void onDiskShiftClick(int index) {
+    private void onDiskRightClick(int index) {
         var entry = getDiskEntryAt(index);
         if (entry != null) {
             menu.bindPrefix(entry.serial());
@@ -276,11 +277,18 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     }
 
     /**
-     * 中键：重命名磁盘（占位）。
+     * 中键：把磁盘重命名为其标记所属机器的名称。标记是客户端才解析得出的东西（配方类别 → 机器方块），
+     * 所以名字在这里算好再交给服务端写。
      */
     private void onDiskMiddleClick(int index) {
         var entry = getDiskEntryAt(index);
-        if (entry != null) {
+        if (entry == null) {
+            return;
+        }
+        var mark = entry.stack().get(AEPatternRegistries.DISK_PREFIX.get());
+        var name = PatternDiskMarks.machineName(mark);
+        if (name != null && !name.isEmpty()) {
+            menu.setPendingDiskName(name);
             menu.renameDisk(entry.serial());
         }
     }

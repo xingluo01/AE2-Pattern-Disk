@@ -5,7 +5,6 @@ import java.util.function.Consumer;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
@@ -17,7 +16,7 @@ import appeng.client.gui.ICompositeWidget;
 import appeng.client.gui.style.Blitter;
 
 /**
- * 磁盘列表面板：从 ME 网络存储中显示样板磁盘列表，支持 3 槽滚动、点击写入配方、前缀绑定、重命名。
+ * 磁盘列表面板：从 ME 网络存储中显示样板磁盘列表，支持 3 槽滚动、左键写入样板、右键覆写标记、中键按机器名重命名。
  * <p>
  * GUI 位置：(8,86) 24×66，对应 pattern_modes.png 磁盘覆盖层 (0,144) 24×66。
  */
@@ -69,15 +68,15 @@ public class DiskListPanel implements ICompositeWidget {
     // ---- 回调 ----------------------------------------------------------------
 
     private Consumer<Integer> onClick;
-    private Consumer<Integer> onShiftClick;
+    private Consumer<Integer> onRightClick;
     private Consumer<Integer> onMiddleClick;
 
     public void setOnClick(Consumer<Integer> callback) {
         this.onClick = callback;
     }
 
-    public void setOnShiftClick(Consumer<Integer> callback) {
-        this.onShiftClick = callback;
+    public void setOnRightClick(Consumer<Integer> callback) {
+        this.onRightClick = callback;
     }
 
     public void setOnMiddleClick(Consumer<Integer> callback) {
@@ -132,7 +131,7 @@ public class DiskListPanel implements ICompositeWidget {
 
     // ---- 数据源（由 Screen 每帧调用） ----------------------------------------
 
-    /** 设置完整的磁盘条目列表（已排序+已搜索过滤+已前缀过滤）。 */
+    /** 设置完整的磁盘条目列表（已排序 + 已搜索过滤）。 */
     public void setDiskEntries(List<DiskEntry> entries) {
         this.diskEntries = entries;
         // 滚动偏移无效时复位
@@ -244,12 +243,21 @@ public class DiskListPanel implements ICompositeWidget {
                 var mark = PatternDiskMarks.displayName(entry.stack());
                 if (mark != null) {
                     lines.add(Component.translatable("ae2_pattern_disk.tooltip.mark", mark));
+
+                    // 只在原版高级信息（F3+H）下多给一行原始标记：机器名可能重复，排查时看 id 才准。
+                    if (Minecraft.getInstance().options.advancedItemTooltips) {
+                        var raw = PatternDiskMarks.rawMark(entry.stack());
+                        if (raw != null) {
+                            lines.add(Component.translatable("ae2_pattern_disk.tooltip.mark.raw", raw)
+                                    .withStyle(ChatFormatting.DARK_GRAY));
+                        }
+                    }
                 }
 
                 // One line per key combination, because these are all the interactions this row has.
                 lines.add(Component.translatable("ae2_pattern_disk.tooltip.disk.click")
                         .withStyle(ChatFormatting.GRAY));
-                lines.add(Component.translatable("ae2_pattern_disk.tooltip.disk.shift_click")
+                lines.add(Component.translatable("ae2_pattern_disk.tooltip.disk.right_click")
                         .withStyle(ChatFormatting.GRAY));
                 lines.add(Component.translatable("ae2_pattern_disk.tooltip.disk.middle_click")
                         .withStyle(ChatFormatting.GRAY));
@@ -272,12 +280,12 @@ public class DiskListPanel implements ICompositeWidget {
             selectedSlot = globalIdx;
 
             if (button == 0) {
-                // 左键
-                if (Screen.hasShiftDown()) {
-                    if (onShiftClick != null) onShiftClick.accept(globalIdx);
-                } else {
-                    if (onClick != null) onClick.accept(globalIdx);
-                }
+                // 左键：写入当前编码的样板
+                if (onClick != null) onClick.accept(globalIdx);
+                return true;
+            } else if (button == 1) {
+                // 右键：用当前配方类型覆写该磁盘的标记
+                if (onRightClick != null) onRightClick.accept(globalIdx);
                 return true;
             } else if (button == 2) {
                 // 中键
