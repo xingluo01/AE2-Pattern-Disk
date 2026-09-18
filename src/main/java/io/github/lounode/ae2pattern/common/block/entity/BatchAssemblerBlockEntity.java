@@ -492,7 +492,15 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
 
     @Override
     public PatternContainerGroup getCraftingMachineInfo() {
-        return PatternContainerGroup.nothing();
+        // A real group, not nothing(): a machine reporting nothing() becomes a neighbour whose name
+        // pattern providers borrow, so the pattern access terminal ends up showing "Nothing" with no
+        // icon for every provider placed against it. AE2's own molecular assembler reports its icon and
+        // name the same way this does.
+        var item = AEPatternRegistries.ITEM_BATCH_ASSEMBLER.get();
+        return new PatternContainerGroup(
+                AEItemKey.of(item),
+                item.getDescription(),
+                List.of());
     }
 
     // ---- ICraftingProvider (patterns exposed to the ME autocrafting service) --
