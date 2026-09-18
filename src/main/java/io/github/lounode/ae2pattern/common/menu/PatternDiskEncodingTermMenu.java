@@ -508,6 +508,18 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
     // ---- Disk list interactions ---------------------------------------------
 
     /**
+     * 把改好的磁盘写回槽位，并立即把列表推给客户端。
+     *
+     * <p>写入不再依赖 {@link #syncDiskList()} 的指纹比对去到达客户端：那条路曾被看到落后于写入，
+     * 而玩家刚刚标记完磁盘、眼里却没变化时，只会得出「这次右键没生效」的结论。传入调用方已经解析好的
+     * 库存，免得写回时再解析一次。</p>
+     */
+    private void writeDiskSlot(InternalInventory inv, int slot, ItemStack updated) {
+        inv.setItemDirect(slot, updated); // triggers host refresh
+        syncDiskList(true);
+    }
+
+    /**
      * Writes the currently encoded pattern into the disk identified by its serial.
      * The disk lives in a PatternDiskProvider's disk inventory; after the write the provider
      * re-decodes its patterns, so the newly stored pattern becomes available to autocrafting.
@@ -532,7 +544,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
         var level = getPlayer().level();
         var updated = stack.copy();
         if (disk.tryInsert(updated, encoded, level)) {
-            inv.setItemDirect(ref.slot(), updated); // triggers host refresh
+            writeDiskSlot(inv, ref.slot(), updated);
             // 样板已存入磁盘：编码槽清空，原编码样板回退为空白样板并按 ME网络→玩家背包→编码槽 优先级落位
             this.encodedPatternSlot.set(ItemStack.EMPTY);
             returnBlankPatternToStorage();
@@ -567,7 +579,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
 
         var updated = stack.copy();
         updated.set(io.github.lounode.ae2pattern.AEPatternRegistries.DISK_PREFIX, mark);
-        inv.setItemDirect(ref.slot(), updated); // triggers host refresh
+        writeDiskSlot(inv, ref.slot(), updated);
     }
 
     /**
@@ -638,7 +650,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
 
         var updated = stack.copy();
         updated.set(DataComponents.CUSTOM_NAME, Component.literal(name));
-        inv.setItemDirect(ref.slot(), updated);
+        writeDiskSlot(inv, ref.slot(), updated);
     }
 
     /**
