@@ -205,7 +205,7 @@ public class PatternDiskRemoveInventory implements InternalInventory {
 
     @Override
     public boolean isItemValid(int slot, ItemStack stack) {
-        return false; // disk-backed provider does not accept pattern writes from a terminal
+        return false; // AE2 终端的插入路径一律拒绝（ExtendedAE Plus 的上传走 insertItem，不经此处）
     }
 
     /**
@@ -262,16 +262,25 @@ public class PatternDiskRemoveInventory implements InternalInventory {
                 continue; // canInsert said yes: a refusal here means the disk changed, so keep looking
             }
             diskInventory.setItemDirect(slot, updated);
-            if (blankPatternSink != null && !blankPatternSink.returnBlankPatterns(1)) {
-                // Best effort: a network that cannot take the blank pattern back leaves the upload done
-                // rather than rolling the disk write back, since the caller offers no fallback for it.
-                LOGGER.warn("ExtendedAE Plus upload landed on disk slot {}, but its blank pattern could not "
-                        + "be returned to the ME network; one blank pattern is lost", slot);
-            }
+            returnBlankPattern(slot);
             onChange.run(); // rebuild the provider's pattern list and drop the cached view
             return ItemStack.EMPTY;
         }
         return stack; // no disk takes it: hand the pattern back so the caller reports a failure
+    }
+
+    /**
+     * Returns one blank pattern this view owes the ME network, logging the loss when the network will not
+     * take it back. Best effort by design: whatever freed the pattern is already done and is not rolled
+     * back, since the caller offers no fallback destination for it.
+     *
+     * @param diskSlot the disk involved, for the log line
+     */
+    private void returnBlankPattern(int diskSlot) {
+        if (blankPatternSink != null && !blankPatternSink.returnBlankPatterns(1)) {
+            LOGGER.warn("A blank pattern owed to the ME network could not be returned (disk slot {}); "
+                    + "one blank pattern is lost", diskSlot);
+        }
     }
 
     private DiskRef refAt(int index) {
@@ -303,7 +312,7 @@ public class PatternDiskRemoveInventory implements InternalInventory {
     private void setItemDirectImpl(DiskRef ref, ItemStack stack) {
         // 磁盘样板槽仅可取出，不可放入。非空写入只能是 AE2 swap 的恢复写回：若该行刚被本视图取出
         // （lastRemoved 命中），把原样板原位插回并返还空白——swap 整体无效果；其余非空写入（如
-        // 恶意携带物、非恢复写回）一律拒绝，磁盘不接受终端写入。
+        // 恶意携带物、非恢复写回）一律拒绝。ExtendedAE Plus 的上传是唯一的另一条写入口，走 insertItem。
         if (!stack.isEmpty()) {
             if (restoreLastRemoval(ref, stack)) {
                 return; // swap 回滚成功：磁盘与视图均恢复原状
@@ -370,9 +379,7 @@ public class PatternDiskRemoveInventory implements InternalInventory {
             refs[removed.flatIndex()] = ref;
         }
         lastRemoved.remove(ref);
-        if (blankPatternSink != null) {
-            blankPatternSink.returnBlankPatterns(1);
-        }
+        returnBlankPattern(ref.diskSlot);
         onChange.run();
         return true;
     }
