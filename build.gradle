@@ -192,14 +192,12 @@ dependencies {
     localRuntime 'curse.maven:applied-energistics-2-223794:7027323'
     localRuntime 'maven.modrinth:guideme:21.1.15'
 
-    // AECS development integration. Prefer a sibling checkout when available;
-    // override AECS_DEV_JAR to use a different location without editing this file.
-    // Resolved eagerly at configuration time (no script-object reference in a closure) so the
-    // runClient task remains compatible with the Gradle configuration cache.
-    def aecsDevJarPath = providers.environmentVariable('AECS_DEV_JAR')
-        .orElse(layout.projectDirectory.file('../AE2-Crystal-Science/build/libs/ae2cs-1.21.1-1.2.2.jar').asFile.absolutePath)
-        .get()
-    localRuntime files(aecsDevJarPath)
+    // AECS development integration: the jar sits in libs/ next to NEO ECO's, so the dev runtime - and the
+    // dev client built from it - loads it the same way. Drop a fresh build of that mod's jar in as
+    // libs/ae2cs-<version>.jar; libs/*.jar is not tracked in git. Nothing compiles against AECS yet, so
+    // the dependency only has to reach the runtime; a compileOnly line joins it once integration code
+    // references AECS types.
+    localRuntime files('libs/ae2cs-1.21.1-1.2.2.jar')
 
     // AECS runtime prerequisite.
     localRuntime 'de.mari_023:ae2wtlib:19.5.0'

@@ -18,8 +18,8 @@ logs/
 *.log
 
 # Local development dependency jars.
-# libs/ holds the Neo ECO AE Extension dev build referenced by build.gradle; it is a build
-# artifact of a sibling checkout, not a source file. See the README for how to produce it.
+# libs/ holds the dev jars build.gradle reaches for (NEO ECO, AECS, ModDevMCP). Each one is a build
+# artifact of its own repository, copied in by hand; the comments beside each dependency say which.
 libs/*.jar
 
 # Pi workflow metadata
