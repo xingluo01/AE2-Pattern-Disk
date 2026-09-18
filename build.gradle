@@ -209,6 +209,16 @@ dependencies {
     // 1.21.1/NeoForge/AE2 19.2.x compatible (EAE 1.21-2.2.35, AAE 1.6.11-1.21.1).
     localRuntime 'curse.maven:ex-pattern-provider-892005:8511901'
     localRuntime 'curse.maven:advancedae-1084104:7849217'
+
+    // ExtendedAE Plus (EAE+) dev reference. Its "upload pattern to a provider" button is the feature the
+    // pattern disk provider has to serve, so it belongs in the dev runtime to exercise that path.
+    // Published on Modrinth for 1.21.1/NeoForge; the version id pins that release rather than the
+    // 1.21.1 branch, which keeps moving past it.
+    localRuntime 'maven.modrinth:extendedae-plus:o8U8Ekro'
+    // Curios and Kotlin for Forge are runtime references of EAE+'s own integrations.
+    localRuntime 'curse.maven:curios-309927:6529130'
+    localRuntime 'curse.maven:kotlin-for-forge-351264:7471280'
+
     // Glodium: shared AE2-ecosystem UI library required at runtime by both EAE and AAE.
     localRuntime 'io.github.glodblock:Glodium:1.21-2.2-neoforge'
     // GeckoLib: mandatory runtime dependency of AdvancedAE (requires >= 4.8.2 for 1.21.1).
@@ -251,7 +261,12 @@ dependencies {
     // 原先靠 settings.gradle 的 composite-build 替换或 mavenLocal 解析，CI 上两者都没有，
     // 所以改成显式指向 libs/ 下的 jar：本地从 mavenLocal 复制，CI 由 release workflow 按
     // 仓库变量 MODDEVMCP_JAR_URL 下载。
-    implementation files('libs/moddevmcp-0.3.jar')
+    // Compile-only: the 0.3 jar declares a javafml language level NeoForge 21.1 does not provide, so
+    // loading it into the dev runtime fails the entire mod load ("broken mod state") and with it every
+    // event, including menu registration. Nothing in src/ references it; the dev-runtime tool comes from
+    // the dev.vfyjxf:moddevmcp dependency above, which settings.gradle substitutes with the local source
+    // build when that checkout is present.
+    compileOnly files('libs/moddevmcp-0.3.jar')
 }
 
 tasks.withType(JavaCompile).configureEach {
