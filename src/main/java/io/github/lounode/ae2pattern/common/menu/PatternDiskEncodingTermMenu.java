@@ -257,6 +257,10 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
 
     public void encode() {
         if (isClientSide()) {
+            // 配方类别只有客户端知道（EMI 导入时记下的），而服务端要靠它才能把样板直接写进对应标记的磁盘，
+            // 所以像 bindPrefix 一样先单独送过去。
+            var category = pendingRecipeCategory;
+            sendClientAction("setPendingRecipeCategory", category == null ? "" : category);
             sendClientAction(ACTION_ENCODE);
             return;
         }
@@ -275,6 +279,8 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
                 }
             }
             this.encodedPatternSlot.set(encodedPattern);
+            // 附加优化：配方类型正好只对应一张磁盘时直接写进去，省掉「编出一个样板再点磁盘」两步。
+            transferToUniqueMatchingDisk();
         } else {
             clearPattern();
         }
@@ -548,6 +554,41 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
             // 样板已存入磁盘：编码槽清空，原编码样板回退为空白样板并按 ME网络→玩家背包→编码槽 优先级落位
             this.encodedPatternSlot.set(ItemStack.EMPTY);
             returnBlankPatternToStorage();
+            notifyPatternWritten(stack.getHoverName());
+        }
+    }
+
+    /**
+     * 网络里的磁盘正好只有一张匹配当前配方类型时，把刚编好的样板直接写进去——这是「编出样板再点磁盘」
+     * 那整套操作的快捷方式。写入判据完全复用 {@link #transferToDisk}，所以容量、锁定类型、主产物互斥
+     * 这些防重条件一致；匹配不唯一或磁盘收不下时就什么都不做，保持原样让玩家自己挑。
+     *
+     * <p>匹配看的是磁盘自己记下的标记，而不是玩家当前的搜索过滤——搜索只是界面上的事，不该决定样板
+     * 落到哪张盘上。</p>
+     */
+    private void transferToUniqueMatchingDisk() {
+        var mark = deriveMarkId();
+        var unique = -1L;
+        for (var entry : diskRefs.long2ObjectEntrySet()) {
+            var ref = entry.getValue();
+            var stack = ref.host().getDiskInventory().getStackInSlot(ref.slot());
+            if (!(stack.getItem() instanceof PatternDiskItem)) continue;
+            if (!mark.equals(stack.get(AEPatternRegistries.DISK_PREFIX.get()))) continue;
+            if (unique >= 0) {
+                return; // 不止一张：不替玩家做选择
+            }
+            unique = entry.getLongKey();
+        }
+        if (unique >= 0) {
+            transferToDisk(unique);
+        }
+    }
+
+    /** 样板写进磁盘后给个回执，免得玩家不确定刚才那一下到底落没落盘。 */
+    private void notifyPatternWritten(Component diskName) {
+        if (getPlayer() instanceof ServerPlayer player) {
+            player.displayClientMessage(
+                    Component.translatable("gui.ae2_pattern_disk.encoding_terminal.written_to_disk", diskName), true);
         }
     }
 

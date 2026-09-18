@@ -37,6 +37,7 @@
   "gui.ae2_pattern_disk.encoding_terminal.disk_search.title": "Search by disk name",
   "gui.ae2_pattern_disk.encoding_terminal.disk_search.mark_hint": "Use # to search by disk mark",
   "gui.ae2_pattern_disk.encoding_terminal.no_blank_pattern": "The ME network has no blank patterns",
+  "gui.ae2_pattern_disk.encoding_terminal.written_to_disk": "Pattern written to %s",
   "item.ae2_pattern_disk.pattern_disk_encoding_terminal": "ME Pattern Disk Encoding Terminal",
   "item.ae2_pattern_disk.cable_pattern_disk_provider": "ME Pattern Disk Provider",
   "gui.ae2_pattern_disk.encoding_terminal.mode_cycle": "Cycle Mode",
