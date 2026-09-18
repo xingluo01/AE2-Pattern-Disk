@@ -20,9 +20,9 @@ import io.github.lounode.ae2pattern.common.pattern.PatternDiskTerminalView;
  * Public entry points for addons that <em>carry</em> pattern disks or <em>serve</em> the patterns stored
  * on them.
  *
- * <p>Everything reachable from this class is stable surface: it changes only together with
- * {@link #API_VERSION}, which an addon can assert once during its own setup. The mod's other classes are
- * not part of that promise.</p>
+ * <p>Everything reachable from this class is stable surface: the methods here, together with every type
+ * that appears in their signatures, change only with {@link #API_VERSION} - which an addon can assert
+ * once during its own setup, to fail loudly rather than misbehave quietly.</p>
  *
  * <h2>What an addon usually needs</h2>
  *
@@ -55,6 +55,9 @@ public final class PatternDiskApi {
     }
 
     /**
+     * <p>The pattern stacks inside the returned value are the live ones held by the disk: read them, but
+     * do not modify them in place - writes belong to the disk's own insert path.</p>
+     *
      * @return what {@code stack} holds, or {@code null} when it is not a pattern disk - a disk that
      *         holds nothing still answers, with an untyped empty set of its own capacity
      */
@@ -83,7 +86,9 @@ public final class PatternDiskApi {
      * disk. The returned view caches its row layout, so call {@link PatternDiskTerminalView#invalidate()}
      * when the disks change.</p>
      *
-     * @param diskSlots  the slots holding pattern disks (slots holding anything else are ignored)
+     * @param diskSlots  the slots holding pattern disks (slots holding anything else are ignored). The
+     *                   view writes back through {@code setItemDirect} whenever a pattern is taken,
+     *                   uploaded or rolled back, so the inventory must actually persist writes
      * @param grid       resolves the attached grid, used to draw and return blank patterns
      * @param machine    the host, used as the action source for that accounting
      * @param onChanged  invoked after a real mutation so the host can persist and rebuild
@@ -98,7 +103,7 @@ public final class PatternDiskApi {
      * Registers a collector of the disk hosts a machine from another mod provides, so this mod's disk
      * encoding terminal lists their disks too. Safe to call from an integration's server-side setup.
      */
-    public static void registerDiskHost(PatternDiskHostRegistry.HostCollector collector) {
+    public static void registerDiskHost(DiskHostCollector collector) {
         PatternDiskHostRegistry.register(collector);
     }
 }

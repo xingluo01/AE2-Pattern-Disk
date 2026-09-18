@@ -1,4 +1,4 @@
-package io.github.lounode.ae2pattern.common.block.entity;
+package io.github.lounode.ae2pattern.api;
 
 import appeng.api.inventories.InternalInventory;
 

@@ -55,7 +55,7 @@ import io.github.lounode.ae2pattern.common.menu.DiskEncodingLogic;
 import io.github.lounode.ae2pattern.common.pattern.PatternClassifier;
 import io.github.lounode.ae2pattern.common.pattern.PatternDiskContents;
 import io.github.lounode.ae2pattern.common.part.PatternDiskEncodingTerminalPart;
-import io.github.lounode.ae2pattern.common.block.entity.IPatternDiskHost;
+import io.github.lounode.ae2pattern.api.IPatternDiskHost;
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskHostRegistry;
 import io.github.lounode.ae2pattern.network.DiskListPayload;
 

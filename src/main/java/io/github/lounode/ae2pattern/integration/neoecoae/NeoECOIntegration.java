@@ -5,7 +5,7 @@ import java.util.List;
 
 import appeng.api.networking.IGrid;
 
-import io.github.lounode.ae2pattern.common.block.entity.IPatternDiskHost;
+import io.github.lounode.ae2pattern.api.IPatternDiskHost;
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskHostRegistry;
 
 import org.slf4j.Logger;

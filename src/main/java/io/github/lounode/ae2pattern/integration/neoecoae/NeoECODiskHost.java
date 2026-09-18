@@ -5,7 +5,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 
 import appeng.api.inventories.InternalInventory;
 
-import io.github.lounode.ae2pattern.common.block.entity.IPatternDiskHost;
+import io.github.lounode.ae2pattern.api.IPatternDiskHost;
 
 /**
  * Presents one FD Smart Pattern Bus as a disk host, so the disks sitting in its bus slots reach the

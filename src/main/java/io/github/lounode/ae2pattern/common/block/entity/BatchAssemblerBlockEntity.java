@@ -56,6 +56,7 @@ import appeng.util.inv.filter.IAEItemFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.github.lounode.ae2pattern.api.IPatternDiskHost;
 import io.github.lounode.ae2pattern.common.pattern.PatternDiskTerminalView;
 
 import io.github.lounode.ae2pattern.AEPatternRegistries;
