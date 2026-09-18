@@ -68,6 +68,14 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/states.png"))
             .src(48, 16, 16, 16);
 
+    // states.png (16,0,16,8)：左 8x8 = 强制列出全部磁盘（含无标记的），右 8x8 = 只列有标记的
+    private static final Blitter ICON_SHOW_UNMARKED_ON = Blitter
+            .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/states.png"))
+            .src(16, 0, 8, 8);
+    private static final Blitter ICON_SHOW_UNMARKED_OFF = Blitter
+            .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/states.png"))
+            .src(24, 0, 8, 8);
+
     // states.png (208,224,36,20) 模式切换按钮背景：左半常态，右半光标选中
     private static final Blitter BG_MODE_NORMAL = Blitter
             .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/states.png"))
@@ -90,6 +98,12 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     /** 上一次自动填进搜索栏的标记，避免用户清空后又被填回去。 */
     @Nullable
     private String lastAutoFilledMark;
+
+    /** 是否把无标记的磁盘也列出来。默认否；按钮的状态跟着它走（init 会被多次调用）。 */
+    private boolean showUnmarkedDisks;
+
+    /** 无标记磁盘的显示开关；每帧回写状态，否则点下去图标不会变。 */
+    private StatesToggleButton showUnmarkedButton;
 
     /** 中键待改名的磁盘。serial 从 Long.MIN_VALUE 起自增、恒为负，所以不能拿它当“无待办”的哨兵。 */
     private boolean pendingRename;
@@ -128,6 +142,7 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         // 磁盘列表点击回调
         this.diskListPanel.setOnClick(this::onDiskClick);
         this.diskListPanel.setOnRightClick(this::onDiskRightClick);
+        this.diskListPanel.setOnShiftRightClick(this::onDiskShiftRightClick);
         this.diskListPanel.setOnMiddleClick(this::onDiskMiddleClick);
 
         // 迷你搜索栏（磁盘列表内独立组件，与终端顶部主搜索栏分开）
@@ -175,11 +190,28 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         super.init();
         int left = (this.width - imageWidth) / 2 + imageWidth;
         int top = (this.height - imageHeight) / 2 + imageHeight - 173;
+        var search = this.miniSearchField;
         addRenderableWidget(new UploadButton(
             left,
             top,
             b -> ((PatternEncodingTermMenuExtension) getMenu()).neoecoae$uploadPattern()
         ));
+
+        // 无标记磁盘的显示开关，贴在搜索栏右边 2px（搜索栏的可见宽度含内边距，所以要用它的 tooltip 区域），
+        // 与它同高：搜索栏高 8，按钮也是 8x8，顶对齐即居中。
+        var showUnmarked = new StatesToggleButton(ICON_SHOW_UNMARKED_ON, ICON_SHOW_UNMARKED_OFF,
+                state -> this.showUnmarkedDisks = state);
+        showUnmarked.setHalfSize(true);
+        var searchArea = search.getTooltipArea();
+        showUnmarked.setX(searchArea.getX() + searchArea.getWidth() + 2);
+        showUnmarked.setY(search.getY());
+        showUnmarked.setState(showUnmarkedDisks);
+        showUnmarked.setTooltipOn(List.of(
+                Component.translatable("gui.ae2_pattern_disk.encoding_terminal.show_unmarked.on")));
+        showUnmarked.setTooltipOff(List.of(
+                Component.translatable("gui.ae2_pattern_disk.encoding_terminal.show_unmarked.off")));
+        addRenderableWidget(showUnmarked);
+        this.showUnmarkedButton = showUnmarked;
     }
 
     private void cycleMode() {
@@ -197,6 +229,10 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     protected void updateBeforeRender() {
         super.updateBeforeRender();
 
+        // 开关状态以字段为准回写：按钮自己只会翻转它内部那个 state，不回写就永远停在初始态。
+        if (this.showUnmarkedButton != null) {
+            this.showUnmarkedButton.setState(showUnmarkedDisks);
+        }
         // 根据当前模式切换面板可见性
         var currentMode = menu.getMode();
         for (var entry : modePanels.entrySet()) {
@@ -256,6 +292,11 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             }
         }
 
+        // 默认只列有标记的磁盘（见 showUnmarkedDisks）。
+        if (!showUnmarkedDisks) {
+            diskEntries.removeIf(d -> !hasMark(d));
+        }
+
         // 按显示名排序
         diskEntries.sort(Comparator.comparing(DiskEntry::displayName));
 
@@ -272,6 +313,12 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
                 pendingRename = false;
             }
         }
+    }
+
+    /** 这张盘有没有标记——标记就是它属于哪个配方类型的记录。 */
+    private static boolean hasMark(DiskEntry entry) {
+        var mark = entry.stack().get(AEPatternRegistries.DISK_PREFIX.get());
+        return mark != null && !mark.isEmpty();
     }
 
     /** Renames the disk {@code serial} after the machine its mark stands for. */
@@ -330,6 +377,23 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         if (entry != null) {
             menu.bindPrefix(entry.serial());
         }
+    }
+
+    /**
+     * Shift+右键：把搜索栏里写的那个标记打到这张盘上。它不依赖“当前导入的配方类型”，所以玩家可以先搜出
+     * 某类磁盘，再把同一个标记标到别的盘上。搜索栏为空时什么也不做。
+     */
+    private void onDiskShiftRightClick(int index) {
+        var entry = getDiskEntryAt(index);
+        if (entry == null) {
+            return;
+        }
+        var search = diskListPanel.getSearchText();
+        if (search == null || search.isEmpty()) {
+            return;
+        }
+        menu.setPendingMarkText(search);
+        menu.bindSearchMark(entry.serial());
     }
 
     /**

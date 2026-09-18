@@ -5,6 +5,7 @@ import java.util.function.Consumer;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
@@ -69,6 +70,7 @@ public class DiskListPanel implements ICompositeWidget {
 
     private Consumer<Integer> onClick;
     private Consumer<Integer> onRightClick;
+    private Consumer<Integer> onShiftRightClick;
     private Consumer<Integer> onMiddleClick;
 
     public void setOnClick(Consumer<Integer> callback) {
@@ -77,6 +79,10 @@ public class DiskListPanel implements ICompositeWidget {
 
     public void setOnRightClick(Consumer<Integer> callback) {
         this.onRightClick = callback;
+    }
+
+    public void setOnShiftRightClick(Consumer<Integer> callback) {
+        this.onShiftRightClick = callback;
     }
 
     public void setOnMiddleClick(Consumer<Integer> callback) {
@@ -259,6 +265,8 @@ public class DiskListPanel implements ICompositeWidget {
                         .withStyle(ChatFormatting.GRAY));
                 lines.add(Component.translatable("ae2_pattern_disk.tooltip.disk.right_click")
                         .withStyle(ChatFormatting.GRAY));
+                lines.add(Component.translatable("ae2_pattern_disk.tooltip.disk.shift_right_click")
+                        .withStyle(ChatFormatting.GRAY));
                 lines.add(Component.translatable("ae2_pattern_disk.tooltip.disk.middle_click")
                         .withStyle(ChatFormatting.GRAY));
                 guiGraphics.renderComponentTooltip(Minecraft.getInstance().font,
@@ -284,8 +292,9 @@ public class DiskListPanel implements ICompositeWidget {
                 if (onClick != null) onClick.accept(globalIdx);
                 return true;
             } else if (button == 1) {
-                // 右键：用当前配方类型覆写该磁盘的标记
-                if (onRightClick != null) onRightClick.accept(globalIdx);
+                // 右键：用当前配方类型覆写该磁盘的标记；按住 Shift 则用搜索栏里写的那个标记。
+                var callback = Screen.hasShiftDown() ? onShiftRightClick : onRightClick;
+                if (callback != null) callback.accept(globalIdx);
                 return true;
             } else if (button == 2) {
                 // 中键

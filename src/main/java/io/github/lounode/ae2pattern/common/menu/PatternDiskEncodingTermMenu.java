@@ -245,6 +245,8 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
         registerClientAction(ACTION_BIND_PREFIX, Long.class, this::bindPrefix);
         registerClientAction("setPendingRecipeCategory", String.class, this::setPendingRecipeCategory);
         registerClientAction("setPendingDiskName", String.class, this::setPendingDiskName);
+        registerClientAction("setPendingMarkText", String.class, this::setPendingMarkText);
+        registerClientAction("bindSearchMark", Long.class, this::bindSearchMark);
         registerClientAction("refreshDiskList", this::refreshDiskList);
         registerClientAction(ACTION_RENAME_DISK, Long.class, this::renameDisk);
         registerClientAction("setMergeSameItems", Boolean.class, this::setMergeSameItems);
@@ -656,6 +658,54 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
 
     /** The name the client wants to give a disk, for {@link #renameDisk(long)}. */
     private String pendingDiskName;
+
+    /** 客户端要打到磁盘上的标记文本（Shift+右键），与 {@link #bindSearchMark(long)} 成对使用。 */
+    private String pendingMarkText;
+
+    /** Remembers the mark text the client resolved, for {@link #bindSearchMark(long)}. */
+    public void setPendingMarkText(@Nullable String text) {
+        this.pendingMarkText = text;
+    }
+
+    /**
+     * 把搜索栏里写的标记打到磁盘上（Shift+右键）。文本带不带 # 前缀都行，统一按标记存。与
+     * {@link #bindPrefix(long)} 不同，这条标记不来自导入的配方，而是玩家自己写/搜出来的，所以它能把
+     * 任意一类标记标到任意一张盘上。
+     */
+    public void bindSearchMark(long serial) {
+        if (isClientSide()) {
+            sendClientAction("setPendingMarkText", pendingMarkText == null ? "" : pendingMarkText);
+            sendClientAction("bindSearchMark", serial);
+            return;
+        }
+
+        // 一次操作一个值，理由同 pendingDiskName。
+        var text = pendingMarkText;
+        pendingMarkText = null;
+        if (text == null || text.isEmpty()) return;
+
+        // 值来自客户端，服务端自己收紧：去掉控制字符与 §，再截断；“#” 单独一个不算标记。
+        text = DISALLOWED_NAME_CHARS.matcher(text).replaceAll("");
+        // 搜索栏里可能只有空格，或者只有一个 #，那些都不该当成一个标记。
+        text = text.strip();
+        if (text.isEmpty()) return;
+
+        var mark = text.startsWith("#") ? text : "#" + text;
+        if (mark.length() > MAX_DISK_NAME_LENGTH) {
+            mark = mark.substring(0, MAX_DISK_NAME_LENGTH);
+        }
+        if (mark.length() <= 1) return;
+
+        var ref = diskRefs.get(serial);
+        if (ref == null) return;
+        var inv = ref.host().getDiskInventory();
+        var stack = inv.getStackInSlot(ref.slot());
+        if (stack.isEmpty() || !(stack.getItem() instanceof PatternDiskItem)) return;
+
+        var updated = stack.copy();
+        updated.set(AEPatternRegistries.DISK_PREFIX, mark);
+        writeDiskSlot(inv, ref.slot(), updated);
+    }
 
     /** Remembers the name the client resolved for the hovered disk, for {@link #renameDisk(long)}. */
     public void setPendingDiskName(@Nullable String name) {
