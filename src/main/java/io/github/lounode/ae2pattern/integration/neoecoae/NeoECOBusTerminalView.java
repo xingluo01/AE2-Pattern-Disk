@@ -56,7 +56,9 @@ final class NeoECOBusTerminalView implements InternalInventory {
         this.slots = slots;
         this.grid = grid;
         this.bus = bus;
-        this.disks = new PatternDiskRemoveInventory(slots, this::drawBlankPatterns, () -> { });
+        // Null level supplier: this view is the bus's own rows, not a provider face a terminal could upload
+        // through, so it also keeps reporting stored patterns only.
+        this.disks = new PatternDiskRemoveInventory(slots, this::drawBlankPatterns, () -> { }, null);
         this.head = headRows(slots);
     }
 

@@ -72,7 +72,7 @@ public class PatternDiskProviderPart extends AEBasePart
      * would leave the disk untouched.
      */
     private final PatternDiskTerminalView terminalView = new PatternDiskTerminalView(diskInventory,
-            () -> getMainNode().getGrid(), this, this::markTerminalChanged);
+            () -> getMainNode().getGrid(), this, this::markTerminalChanged, this::getLevel);
 
     protected final PatternProviderLogic logic = createLogic();
 

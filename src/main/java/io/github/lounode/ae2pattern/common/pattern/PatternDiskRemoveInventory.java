@@ -1,11 +1,15 @@
 package io.github.lounode.ae2pattern.common.pattern;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
+import net.neoforged.fml.ModList;
 
 import appeng.api.inventories.InternalInventory;
 
@@ -16,7 +20,7 @@ import io.github.lounode.ae2pattern.AEPatternRegistries;
  * Writable {@link InternalInventory} view over the encoded patterns stored across all inserted pattern
  * disks, exposed to AE2 pattern access terminals (PAT) as the provider's terminal inventory.
  *
- * <p>Pattern rows may only be <em>taken</em>, never written: any real extraction first draws one blank
+ * <p>Pattern rows are only ever <em>taken</em> from a terminal: any real extraction first draws one blank
  * pattern from the attached ME network (via {@link BlankPatternSink}) and is refused when the network
  * holds none; simulated operations ({@code simulate=true}) never mutate anything.</p>
  *
@@ -34,9 +38,14 @@ import io.github.lounode.ae2pattern.AEPatternRegistries;
  * contents re-flow, and the next terminal view (a fresh instance re-scanning the disks) shows the
  * compacted layout.</p>
  *
+ * <p>The one write this view accepts is {@link #insertItem}, and only while ExtendedAE Plus is
+ * installed: that mod uploads a pattern to a provider by looking for an empty row and writing into it,
+ * and for this provider the disks are the only place such a write can land.</p>
+ *
  * @param diskInventory the provider's disk slot inventory; only {@link PatternDiskItem} slots count
  * @param blankPatternSink draws/returns one blank pattern from the ME network; {@code null} refuses extraction
  * @param onChange       invoked after a real mutation so the provider can persist and rebuild the view
+ * @param levelSupplier  resolves the level lazily, for decoding a pattern before it is written to a disk
  */
 public class PatternDiskRemoveInventory implements InternalInventory {
 
@@ -78,21 +87,47 @@ public class PatternDiskRemoveInventory implements InternalInventory {
      */
     private DiskRef[] refs = new DiskRef[0];
 
+    /**
+     * Mod id of the one caller {@link #insertItem} answers. Both the free-space rows and the write exist
+     * for it alone: an AE2 pattern access terminal gains nothing from rows it cannot fill, and the row
+     * cap it syncs per packet makes empty rows a liability rather than a feature.
+     */
+    private static final String UPLOAD_CLIENT_MOD_ID = "extendedae_plus";
+
+    /** Resolved once, and only once the mod list is there to ask. */
+    private static Boolean uploadClientPresent;
+
     private final InternalInventory diskInventory;
     private final BlankPatternSink blankPatternSink;
     private final Runnable onChange;
+    private final Supplier<Level> levelSupplier;
 
     public PatternDiskRemoveInventory(InternalInventory diskInventory, BlankPatternSink blankPatternSink,
-            Runnable onChange) {
+            Runnable onChange, Supplier<Level> levelSupplier) {
         this.diskInventory = diskInventory;
         this.blankPatternSink = blankPatternSink;
         this.onChange = onChange;
+        this.levelSupplier = levelSupplier;
         rebuild();
+    }
+
+    private static boolean uploadClientPresent() {
+        if (uploadClientPresent == null) {
+            try {
+                // Only a real answer is cached: the class can initialize before the mod list exists, and
+                // caching that "absent" would silently disable uploads for the rest of the session.
+                uploadClientPresent = ModList.get().isLoaded(UPLOAD_CLIENT_MOD_ID);
+            } catch (Throwable ignored) {
+                return false;
+            }
+        }
+        return uploadClientPresent;
     }
 
     /** Re-scans the disk slots into a compacted, hole-free row mapping (fresh view / rebuild). */
     public void rebuild() {
         var list = new ArrayList<DiskRef>();
+        int freeCapacity = 0;
         for (int slot = 0; slot < diskInventory.size(); slot++) {
             var stack = diskInventory.getStackInSlot(slot);
             if (stack.isEmpty() || !(stack.getItem() instanceof PatternDiskItem disk)) {
@@ -105,8 +140,23 @@ public class PatternDiskRemoveInventory implements InternalInventory {
                 // in-place rewrite and could then never tell a rewritten recipe from the one this row was built for.
                 list.add(new DiskRef(slot, idx, contents.patterns().get(idx).copy()));
             }
+            freeCapacity += Math.max(0, contents.capacity() - contents.used());
         }
-        refs = list.toArray(new DiskRef[0]);
+        var stored = list.toArray(new DiskRef[0]);
+        if (levelSupplier != null && uploadClientPresent() && freeCapacity > 0) {
+            // One null row stands for "this provider has room". Every accessor below already answers "empty
+            // row" for a null ref, so the stored patterns stay at their flat indices and the free space
+            // simply follows them - no second kind of row, and no change to the take path that walks this
+            // array. A view without a level supplier is not a provider face an upload could land on, and
+            // keeps its old row count.
+            //
+            // One row rather than one per free slot: the caller that looks for a free row (ExtendedAE Plus)
+            // walks every row it is offered on paths that do not write, so 9 disks x 1024 slots would become
+            // thousands of slot probes per call. All it needs to learn is that a row is free.
+            refs = Arrays.copyOf(stored, stored.length + 1);
+        } else {
+            refs = stored;
+        }
         lastRemoved.clear();
     }
 
@@ -150,6 +200,71 @@ public class PatternDiskRemoveInventory implements InternalInventory {
     @Override
     public boolean isItemValid(int slot, ItemStack stack) {
         return false; // disk-backed provider does not accept pattern writes from a terminal
+    }
+
+    /**
+     * Writes one encoded pattern onto a disk, on behalf of ExtendedAE Plus's "upload pattern to a
+     * provider" button.
+     *
+     * <p>That button looks for an empty row in this view and then writes into it (see {@link #rebuild()}
+     * for the rows it sees). The write has to land on a disk: the provider's pattern inventory is only a
+     * mirror with no disk behind it, so a write landing there would be gone at the next refresh. The
+     * blank pattern the upload frees is returned to the ME network, the same accounting the encoding
+     * terminal applies when a player writes a disk by hand.</p>
+     *
+     * <p>Honoured only while ExtendedAE Plus is installed, so for every other caller the take path stays
+     * the only way a pattern leaves this view. A simulated call probes the disks and reports as if the
+     * write had happened, without writing and without returning a blank pattern.</p>
+     *
+     * <p>Compatibility shim: its exit condition is ExtendedAE Plus delegating disk-backed providers to a
+     * write API of their own instead of the generic terminal inventory.</p>
+     *
+     * <p>The {@code index} belongs to the caller's row scan: rows move between rebuilds and a disk-backed
+     * provider decides where a pattern lands, so the index is range-checked but never used to pick a disk.</p>
+     *
+     * @return {@link ItemStack#EMPTY} when the pattern was taken, otherwise {@code stack} unchanged
+     */
+    @Override
+    public ItemStack insertItem(int index, ItemStack stack, boolean simulate) {
+        // Encoded patterns are single items; a stack of them is not something a disk can store, and taking
+        // it would drop the surplus.
+        if (stack.isEmpty() || stack.getCount() != 1 || !uploadClientPresent()) {
+            return stack;
+        }
+        if (index < 0 || index >= refs.length) {
+            return stack; // a row this view no longer has: the caller's snapshot is stale
+        }
+        var level = levelSupplier == null ? null : levelSupplier.get();
+        if (level == null) {
+            return stack; // not in a level yet: there is no disk state to decode a pattern against
+        }
+        // The first disk that takes it wins, in slot order: a disk-backed provider decides where a pattern
+        // lands, and the upload path offers no way to say otherwise.
+        for (int slot = 0; slot < diskInventory.size(); slot++) {
+            var diskStack = diskInventory.getStackInSlot(slot);
+            if (diskStack.isEmpty() || !(diskStack.getItem() instanceof PatternDiskItem disk)) {
+                continue;
+            }
+            if (!disk.canInsert(diskStack, stack, level)) {
+                continue; // room, locked type and same-result exclusion all live in canInsert
+            }
+            if (simulate) {
+                return ItemStack.EMPTY; // a disk takes it: report as if the write had landed
+            }
+            var updated = diskStack.copy();
+            if (!disk.tryInsert(updated, stack, level)) {
+                continue; // canInsert said yes: a refusal here means the disk changed, so keep looking
+            }
+            diskInventory.setItemDirect(slot, updated);
+            if (blankPatternSink != null) {
+                // Best effort: a network that cannot take the blank pattern back leaves the upload done
+                // rather than rolling the disk write back, since the caller offers no fallback for it.
+                blankPatternSink.returnBlankPatterns(1);
+            }
+            onChange.run(); // rebuild the provider's pattern list and drop the cached view
+            return ItemStack.EMPTY;
+        }
+        return stack; // no disk takes it: hand the pattern back so the caller reports a failure
     }
 
     private DiskRef refAt(int index) {

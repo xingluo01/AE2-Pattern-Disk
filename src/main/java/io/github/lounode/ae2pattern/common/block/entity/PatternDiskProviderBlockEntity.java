@@ -46,7 +46,7 @@ public class PatternDiskProviderBlockEntity extends PatternProviderBlockEntity
      * any disk change invalidates it and the next terminal that opens re-scans the disks.
      */
     private final PatternDiskTerminalView terminalView = new PatternDiskTerminalView(diskInventory,
-            () -> getMainNode().getGrid(), this, this::markTerminalChanged);
+            () -> getMainNode().getGrid(), this, this::markTerminalChanged, this::getLevel);
 
     public PatternDiskProviderBlockEntity(BlockPos pos, BlockState blockState) {
         super(AEPatternRegistries.BE_PROVIDER.get(), pos, blockState);

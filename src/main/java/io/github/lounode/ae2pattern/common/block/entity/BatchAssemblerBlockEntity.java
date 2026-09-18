@@ -1377,7 +1377,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
      * terminal has to read the disks, never this machine's derived recipe pool.
      */
     private final PatternDiskTerminalView terminalView = new PatternDiskTerminalView(diskInv,
-            this::getGrid, this, this::markTerminalChanged);
+            this::getGrid, this, this::markTerminalChanged, this::getLevel);
 
     @Override
     public IGrid getGrid() {

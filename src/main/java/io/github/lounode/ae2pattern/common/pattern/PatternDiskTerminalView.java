@@ -2,6 +2,8 @@ package io.github.lounode.ae2pattern.common.pattern;
 
 import java.util.function.Supplier;
 
+import net.minecraft.world.level.Level;
+
 import appeng.api.config.Actionable;
 import appeng.api.inventories.InternalInventory;
 import appeng.api.networking.IGrid;
@@ -33,6 +35,7 @@ public final class PatternDiskTerminalView implements PatternDiskRemoveInventory
     private final Supplier<IGrid> gridSupplier;
     private final IActionSource actionSource;
     private final Runnable onChanged;
+    private final Supplier<Level> levelSupplier;
 
     private PatternDiskRemoveInventory view;
 
@@ -41,19 +44,21 @@ public final class PatternDiskTerminalView implements PatternDiskRemoveInventory
      * @param gridSupplier  resolves the attached grid lazily; may return {@code null} while off-grid
      * @param machine       the host, used as the action source for blank-pattern accounting
      * @param onChanged     invoked after a real mutation so the host can persist and rebuild
+     * @param levelSupplier resolves the level lazily, for decoding a pattern before it is written to a disk
      */
     public PatternDiskTerminalView(AppEngInternalInventory diskInventory, Supplier<IGrid> gridSupplier,
-            IActionHost machine, Runnable onChanged) {
+            IActionHost machine, Runnable onChanged, Supplier<Level> levelSupplier) {
         this.diskInventory = diskInventory;
         this.gridSupplier = gridSupplier;
         this.actionSource = IActionSource.ofMachine(machine);
         this.onChanged = onChanged;
+        this.levelSupplier = levelSupplier;
     }
 
     /** @return the current terminal view, rebuilding it if the disks changed since the last call. */
     public InternalInventory view() {
         if (view == null) {
-            view = new PatternDiskRemoveInventory(diskInventory, this, onChanged);
+            view = new PatternDiskRemoveInventory(diskInventory, this, onChanged, levelSupplier);
         }
         return view;
     }
