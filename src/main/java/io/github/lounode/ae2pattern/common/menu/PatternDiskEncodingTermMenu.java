@@ -564,7 +564,25 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
             this.encodedPatternSlot.set(ItemStack.EMPTY);
             returnBlankPatternToStorage();
             notifyPatternWritten(stack.getHoverName());
+        } else {
+            // 写不进去时说明理由：不写提示的话，玩家只会看到样板留在编码槽里，不知道卡在哪一步。
+            notifyDiskRefused(stack.getHoverName(), disk.whyCannotInsert(stack, encoded, level));
         }
+    }
+
+    /** 样板写不进磁盘时说明理由。原因与写入路径共用同一套判据（见 whyCannotInsert）。 */
+    private void notifyDiskRefused(Component diskName, @Nullable PatternDiskItem.InsertFailure reason) {
+        if (!(getPlayer() instanceof ServerPlayer player)) {
+            return;
+        }
+        var key = reason == null ? "unknown" : switch (reason) {
+            case FULL -> "full";
+            case TYPE_LOCKED -> "type_locked";
+            case DUPLICATE_OUTPUT -> "duplicate_output";
+            case UNRESOLVABLE -> "unresolvable";
+        };
+        player.displayClientMessage(Component.translatable(
+                "gui.ae2_pattern_disk.encoding_terminal.disk_refused." + key, diskName), true);
     }
 
     /** 样板写进磁盘后给个回执，免得玩家不确定刚才那一下到底落没落盘。 */

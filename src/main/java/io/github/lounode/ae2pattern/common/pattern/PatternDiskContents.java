@@ -85,7 +85,15 @@ public record PatternDiskContents(
      * short-circuit and starts accepting patterns the write path then refuses.</p>
      */
     public boolean acceptsType(String patternType) {
-        return !isFull() && (type == null || type.equals(patternType));
+        return !isFull() && acceptsTypeOnly(patternType);
+    }
+
+    /**
+     * 只看类型锁，不看容量。{@link #acceptsType} 是它的容量版；需要分开判断“满了还是锁了”的调用方
+     * （例如给玩家一句具体说明）用这个，避免自己再写一遍类型比较而与写入路径走偏。
+     */
+    public boolean acceptsTypeOnly(String patternType) {
+        return type == null || type.equals(patternType);
     }
 
     public boolean isEmpty() {

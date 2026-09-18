@@ -94,6 +94,47 @@ public class PatternDiskItem extends Item {
     }
 
     /**
+     * 这份样板收不进这张盘的原因，用来给玩家一句能看懂的说明。
+     */
+    public enum InsertFailure {
+        /** 盘满了。 */
+        FULL,
+        /** 盘已锁定为另一种样板类型。 */
+        TYPE_LOCKED,
+        /** 盘里已有产出相同的配方（同主产物互斥）。 */
+        DUPLICATE_OUTPUT,
+        /** 这份样板解不出类型，正常玩法下不会出现。 */
+        UNRESOLVABLE,
+    }
+
+    /**
+     * 为什么这份样板收不进这张盘；能收下就返回 {@code null}。
+     *
+     * <p>判断与 {@link #canInsert}/{@link #tryInsert} 共用 {@link PatternDiskContents#acceptsTypeOnly}
+     * 与 {@link PatternClassifier#hasSamePrimaryOutput}，所以只是把它们的分支顺序拆开来报，不会与
+     * 真正写入时的结果分歧。</p>
+     */
+    @Nullable
+    public InsertFailure whyCannotInsert(ItemStack disk, ItemStack pattern, Level level) {
+        IPatternDetails details = PatternClassifier.decode(pattern, level);
+        String patternType = details == null ? null : PatternClassifier.typeOf(details);
+        if (patternType == null) {
+            return InsertFailure.UNRESOLVABLE;
+        }
+        var contents = contents(disk);
+        if (contents.isFull()) {
+            return InsertFailure.FULL;
+        }
+        if (!contents.acceptsTypeOnly(patternType)) {
+            return InsertFailure.TYPE_LOCKED;
+        }
+        if (PatternClassifier.hasSamePrimaryOutput(contents, details, level)) {
+            return InsertFailure.DUPLICATE_OUTPUT;
+        }
+        return null;
+    }
+
+    /**
      * Attempts to insert an encoded pattern into the disk.
      *
      * <p>The same-result exclusion is enforced <em>here</em> rather than left to callers: every write
