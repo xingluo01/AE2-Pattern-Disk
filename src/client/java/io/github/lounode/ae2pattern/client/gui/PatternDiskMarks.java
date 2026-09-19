@@ -1,5 +1,7 @@
 package io.github.lounode.ae2pattern.client.gui;
 
+import java.util.Locale;
+
 import org.jetbrains.annotations.Nullable;
 
 import net.minecraft.network.chat.Component;
@@ -9,6 +11,7 @@ import net.neoforged.fml.ModList;
 
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 import io.github.lounode.ae2pattern.client.integration.EmiMarkNames;
+import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
 
 /**
  * Turns a disk's mark (the {@code DISK_PREFIX} component) into the line shown in its tooltip.
@@ -52,6 +55,12 @@ public final class PatternDiskMarks {
 
         if (mark.startsWith(ID_PREFIX)) {
             var id = mark.substring(ID_PREFIX.length());
+            // 早期版本把 EMI 的配方类别 id 当标记存，同一台机器因此有第二个说法（切石既有“切石”也有
+            // “切石样板”）。能归到编码模式的就按模式那套显示，让新老标记的显示名、搜索词、改名结果一致。
+            var mode = PatternDiskEncodingTermMenu.modeForCategory(id);
+            if (mode != null) {
+                return Component.translatable("ae2_pattern_disk.mark.mode." + mode.name().toLowerCase(Locale.ROOT));
+            }
             var name = findCategoryName(id);
             return name != null ? name : Component.literal(id);
         }

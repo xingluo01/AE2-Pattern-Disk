@@ -39,7 +39,7 @@
   "gui.ae2_pattern_disk.encoding_terminal.disk_search.mark_hint": "用 # 按磁盘标记搜索",
   "gui.ae2_pattern_disk.encoding_terminal.no_blank_pattern": "ME 网络里没有空白样板",
   "gui.ae2_pattern_disk.encoding_terminal.written_to_disk": "样板已写入 %s",
-  "gui.ae2_pattern_disk.encoding_terminal.no_auto_target": "样板留在编码槽：列表里没有恰好一张盘可以自动写入",
+  "gui.ae2_pattern_disk.encoding_terminal.no_auto_target": "样板留在编码槽：列表里有 %s 张盘，不是恰好一张",
   "gui.ae2_pattern_disk.encoding_terminal.disk_refused.full": "样板磁盘 %s 已满",
   "gui.ae2_pattern_disk.encoding_terminal.disk_refused.type_locked": "样板磁盘 %s 已锁定为其他类型的样板",
   "gui.ae2_pattern_disk.encoding_terminal.disk_refused.duplicate_output": "样板磁盘 %s 中已有产出相同的配方",

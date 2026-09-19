@@ -39,7 +39,7 @@
   "gui.ae2_pattern_disk.encoding_terminal.disk_search.mark_hint": "Use # to search by disk mark",
   "gui.ae2_pattern_disk.encoding_terminal.no_blank_pattern": "The ME network has no blank patterns",
   "gui.ae2_pattern_disk.encoding_terminal.written_to_disk": "Pattern written to %s",
-  "gui.ae2_pattern_disk.encoding_terminal.no_auto_target": "Pattern left in the encoded slot: the list does not have exactly one disk to write to",
+  "gui.ae2_pattern_disk.encoding_terminal.no_auto_target": "Pattern left in the encoded slot: the list has %s disks, not exactly one",
   "gui.ae2_pattern_disk.encoding_terminal.disk_refused.full": "%s is full",
   "gui.ae2_pattern_disk.encoding_terminal.disk_refused.type_locked": "%s is locked to another pattern type",
   "gui.ae2_pattern_disk.encoding_terminal.disk_refused.duplicate_output": "%s already stores a recipe with the same output",

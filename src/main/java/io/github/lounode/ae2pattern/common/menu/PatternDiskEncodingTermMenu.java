@@ -2,7 +2,6 @@ package io.github.lounode.ae2pattern.common.menu;
 
 import java.util.Arrays;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -40,7 +39,6 @@ import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import appeng.core.definitions.AEItems;
-import appeng.core.network.serverbound.InventoryActionPacket;
 import appeng.crafting.pattern.AECraftingPattern;
 import appeng.crafting.pattern.AEProcessingPattern;
 import appeng.menu.SlotSemantics;
@@ -57,8 +55,6 @@ import io.github.lounode.ae2pattern.AEPatternRegistries;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
 import io.github.lounode.ae2pattern.common.menu.DiskEncodingLogic;
 import io.github.lounode.ae2pattern.common.menu.slot.NetworkBlankPatternSlot;
-import io.github.lounode.ae2pattern.common.pattern.PatternClassifier;
-import io.github.lounode.ae2pattern.common.pattern.PatternDiskContents;
 import io.github.lounode.ae2pattern.common.part.PatternDiskEncodingTerminalPart;
 import io.github.lounode.ae2pattern.api.IPatternDiskHost;
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskHostRegistry;
@@ -286,12 +282,10 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
             }
             this.encodedPatternSlot.set(encodedPattern);
             // 搜索栏筛完只剩一张盘时，刚编好的样板直接写进去——省掉「编出一个样板再点磁盘」两步。
-            // 那张盘收不下（已满、锁定类型不符、主产物重复）就什么都不做，样板留在下方的已编码样板槽里。
+            // 那张盘收不下（已满、锁定类型不符、主产物重复）由 transferToDisk 自己报原因；
+            // 没有唯一目标时由客户端当场说明（张数只有那边知道）。
             if (auto >= 0) {
                 transferToDisk(auto);
-            } else {
-                // 没有“唯一一张”可写时也交代一句：否则玩家点了按钮、样板却留在下面，没有任何反馈。
-                notifyNoAutoTarget();
             }
         } else {
             clearPattern();
@@ -449,8 +443,8 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
     /** 网络里拿不到空白样板时告诉玩家一声；静默失败会让人以为是界面卡了。 */
     private void notifyNoBlankPattern() {
         if (getPlayer() instanceof ServerPlayer player) {
-            player.displayClientMessage(
-                    Component.translatable("gui.ae2_pattern_disk.encoding_terminal.no_blank_pattern"), true);
+            player.sendSystemMessage(Component.translatable(
+                    "gui.ae2_pattern_disk.encoding_terminal.no_blank_pattern"));
         }
     }
 
@@ -580,17 +574,6 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
         }
     }
 
-    /**
-     * 编码成功、但列表里没有"恰好一张"盘可以自动写时交代一句。没有唯一目标就不替玩家做选择，
-     * 但也不该什么都不说：否则点了按钮、样板却留在下面，看不出是没写还是写失败。
-     */
-    private void notifyNoAutoTarget() {
-        if (getPlayer() instanceof ServerPlayer player) {
-            player.displayClientMessage(Component.translatable(
-                    "gui.ae2_pattern_disk.encoding_terminal.no_auto_target"), true);
-        }
-    }
-
     /** 样板写不进磁盘时说明理由。原因与写入路径共用同一套判据（见 whyCannotInsert）。 */
     private void notifyDiskRefused(Component diskName, @Nullable PatternDiskItem.InsertFailure reason) {
         if (!(getPlayer() instanceof ServerPlayer player)) {
@@ -602,23 +585,23 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
             case DUPLICATE_OUTPUT -> "duplicate_output";
             case UNRESOLVABLE -> "unresolvable";
         };
-        player.displayClientMessage(Component.translatable(
-                "gui.ae2_pattern_disk.encoding_terminal.disk_refused." + key, diskName), true);
+        player.sendSystemMessage(Component.translatable(
+                "gui.ae2_pattern_disk.encoding_terminal.disk_refused." + key, diskName));
     }
 
     /** 目标磁盘已不在列表里（客户端列表比服务端旧）时说明一句，否则又是点了没反应。 */
     private void notifyStaleTarget() {
         if (getPlayer() instanceof ServerPlayer player) {
-            player.displayClientMessage(Component.translatable(
-                    "gui.ae2_pattern_disk.encoding_terminal.disk_refused.stale_target"), true);
+            player.sendSystemMessage(Component.translatable(
+                    "gui.ae2_pattern_disk.encoding_terminal.disk_refused.stale_target"));
         }
     }
 
     /** 样板写进磁盘后给个回执，免得玩家不确定刚才那一下到底落没落盘。 */
     private void notifyPatternWritten(Component diskName) {
         if (getPlayer() instanceof ServerPlayer player) {
-            player.displayClientMessage(
-                    Component.translatable("gui.ae2_pattern_disk.encoding_terminal.written_to_disk", diskName), true);
+            player.sendSystemMessage(
+                    Component.translatable("gui.ae2_pattern_disk.encoding_terminal.written_to_disk", diskName));
         }
     }
 
@@ -654,14 +637,38 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
     }
 
     /**
-     * The mark to bind: the imported recipe's category when there is one, otherwise the encoding mode.
-     * Both are stored as {@code #}-prefixed identifiers so the tooltip can tell an identifier from the
-     * plain text older disks carry.
+     * 要绑到磁盘上的标记。始终归到编码模式那一套：配方类别会为同一台机器给出第二个说法（切石同时
+     * 出现过“切石”和“切石样板”两种），而没有任何配方可参考时（手动编码、直接绑）只能靠模式，
+     * 所以模式是唯一的真源。类别仅用来判断当前该用哪个模式。
      */
     public String deriveMarkId() {
-        return pendingRecipeCategory != null && !pendingRecipeCategory.isEmpty()
-                ? "#" + pendingRecipeCategory
-                : modeMarkId(this.mode);
+        var fromCategory = modeForCategory(pendingRecipeCategory);
+        return modeMarkId(fromCategory != null ? fromCategory : this.mode);
+    }
+
+    /**
+     * 把 EMI 的配方类别归到编码模式。认不出来时返回 null，由调用方回退到当前模式——宁可偶尔粗一点，
+     * 也不要为同一台机器再生出第三套标记。客户端把旧盘上的类别标记按同一规则显示，所以这里是公开的。
+     */
+    @Nullable
+    public static EncodingMode modeForCategory(@Nullable String categoryId) {
+        if (categoryId == null || categoryId.isEmpty()) {
+            return null;
+        }
+        var id = categoryId.toLowerCase(Locale.ROOT);
+        if (id.contains("stonecutting")) {
+            return EncodingMode.STONECUTTING;
+        }
+        if (id.contains("smithing")) {
+            return EncodingMode.SMITHING_TABLE;
+        }
+        if (id.contains("crafting")) {
+            return EncodingMode.CRAFTING;
+        }
+        if (id.contains("processing")) {
+            return EncodingMode.PROCESSING;
+        }
+        return null;
     }
 
     /** The mark standing for an encoding mode, for disks marked without an imported recipe. */
@@ -679,6 +686,11 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
      * 搜索过滤只存在于客户端，所以这个判断也只在客户端做，每帧由屏幕写入，本身不过网。
      */
     private long clientAutoDisk = -1;
+
+    /** @see #clientAutoDisk */
+    public long getClientAutoDisk() {
+        return clientAutoDisk;
+    }
 
     /** @see #clientAutoDisk */
     public void setClientAutoDisk(long serial) {
@@ -1205,6 +1217,9 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
             updateStonecuttingRecipes();
         }
         if (isClientSide()) {
+            // 手动换模式等于放弃刚才导入的那个配方：配方类别只用来决定标记该归到哪个模式，留着它会让
+            // 下一次绑定写出一份与当前模式不符的标记。
+            pendingRecipeCategory = null;
             sendClientAction(ACTION_SET_MODE, mode);
         } else {
             this.mode = mode;

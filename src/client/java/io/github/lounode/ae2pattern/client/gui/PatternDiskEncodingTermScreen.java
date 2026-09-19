@@ -22,7 +22,6 @@ import net.minecraft.world.item.ItemStack;
 
 import guideme.PageAnchor;
 
-import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.GenericStack;
 import appeng.client.gui.me.common.MEStorageScreen;
 import appeng.client.gui.me.common.StackSizeRenderer;
@@ -175,10 +174,19 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             if (!menu.canEncode()) {
                 var player = Minecraft.getInstance().player;
                 if (player != null) {
-                    player.displayClientMessage(Component.translatable(
-                            "gui.ae2_pattern_disk.encoding_terminal.no_blank_pattern"), true);
+                    player.sendSystemMessage(Component.translatable(
+                            "gui.ae2_pattern_disk.encoding_terminal.no_blank_pattern"));
                 }
                 return;
+            }
+            // 写盘目标是不是唯一，只有这边知道（过滤后的列表在客户端），所以没目标时由客户端说。
+            // 报上实际张数：只说“没有恰好一张”的话，看不出到底是零张还是多张。
+            if (menu.getClientAutoDisk() < 0) {
+                var player = Minecraft.getInstance().player;
+                if (player != null) {
+                    player.sendSystemMessage(Component.translatable(
+                            "gui.ae2_pattern_disk.encoding_terminal.no_auto_target", diskEntries.size()));
+                }
             }
             menu.encode();
         });
@@ -202,6 +210,8 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         var showUnmarked = new StatesToggleButton(ICON_SHOW_UNMARKED_ON, ICON_SHOW_UNMARKED_OFF,
                 state -> this.showUnmarkedDisks = state);
         showUnmarked.setHalfSize(true);
+        // 不要 hover 下压动画：开关的两种状态对应同一枚图标，悬停时下移 1px 会让它看起来在跳。
+        showUnmarked.setPressAnimation(false);
         var searchArea = search.getTooltipArea();
         showUnmarked.setX(searchArea.getX() + searchArea.getWidth() + 2);
         showUnmarked.setY(search.getY());
