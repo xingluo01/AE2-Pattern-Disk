@@ -2,31 +2,35 @@ name: Sync project description
 
 # 把仓库里的描述源文本同步到 Modrinth 项目页：
 #   短描述 ← gradle.properties 的 mod_description（与 neoforge.mods.toml 同源）
-#   正  文 ← README.md（掐掉 <!-- modrinth-exclude --> ... <!-- /modrinth-exclude --> 之间的构建说明）
+#   正  文 ← PLATFORM.md（面向玩家的正文；README.md 是仓库自用的开发者文档，不参与同步）
 #
-# 描述源只有上面这两处。日后新增源文件（比如 DESCRIPTION.md）必须同时加进下面的 paths，
-# 否则本 workflow 会静默不跑——workflow_dispatch 可以手动补一次。
+# 描述源只有上面这两处。日后新增源文件必须同时加进下面的 paths，
+# 否则本 workflow 会静默不跑——workflow_dispatch 可以手动补一次（本文件自身也在 paths 内，改守卫会触发一次校验）。
+#
+# MC百科（mcmod.cn）：正文另见 PLATFORM_MCMOD.md。那里用百科自己的 [h1=] / [h2=] 标签排版，
+# 与 Markdown 不通用，只能人工粘贴，因此不接入本 workflow（它永远不会被自动发布）。
 #
 # 为什么不并进 release.yml：这段同步要求 PAT 带 PROJECT_WRITE，scope 一旦缺失就会失败；放在发版流程里
 # 会变成「版本已发布、job 却变红」，而重跑同一个 tag 既会因 Modrinth 版本号已存在而失败、CurseForge 又
 # 会重复上传一份。独立成 workflow 后，描述同步出问题不影响发版本身。
 #
-# 注意：Modrinth 项目页正文以 README 为唯一事实源——每次同步都会整体覆盖，页面上手改过的内容会被冲掉。
+# 注意：Modrinth 项目页正文以 PLATFORM.md 为唯一事实源——每次同步都会整体覆盖，页面上手改过的内容会被冲掉。
 #
 # CurseForge：公开的 v1 Core API 里没有可写项目描述的端点（只有只读的 GET /v1/mods/{modId}/description，
 # 官方需求单 CF-I-6366 至今仍在请求这个能力；本仓库用的 curseforge-upload action 也没有描述类输入）。
-# 所以那边的项目描述只能人工在站点上改——改的时候直接抄 README 的 Features / Blocks & Items / Recipes 三节。
+# 所以那边的项目描述只能人工在站点上改——改的时候把 PLATFORM.md 整份粘过去即可。
 #
 # GitHub：仓库描述是另一处手工设置的副本（gh repo edit --description），与 gradle.properties 没有机械绑定，
-# 改这句时记得两边一起改；README 本身就是仓库正文，随提交自动更新。
+# 改这句时记得两边一起改；README 是仓库自用的开发者文档（含构建说明），随提交自动更新，不上项目页。
 #
 # 依赖：Secrets MODRINTH_TOKEN（需 PROJECT_WRITE）、Variables MODRINTH_PROJECT_ID。
 on:
   push:
     branches: [main]
     paths:
-      - README.md
+      - PLATFORM.md
       - gradle.properties
+      - .github/workflows/sync-project-pages.yml
   workflow_dispatch:
 
 permissions:
@@ -60,28 +64,51 @@ jobs:
             exit 1
           fi
 
-          # 排除标记必须成对。只有 start 会把后面全吃掉、只有 end 会把构建说明整段发出去，两种都
-          # 不会报错——先卡住标记数量，再卡残留内容。
-          start_marks=$(grep -c -- '^<!-- modrinth-exclude -->$' README.md || true)
-          end_marks=$(grep -c -- '^<!-- /modrinth-exclude -->$' README.md || true)
-          if [ "$start_marks" != "1" ] || [ "$end_marks" != "1" ]; then
-            echo "::error title=排除标记异常::modrinth-exclude 起止标记必须各恰好 1 个（start=$start_marks end=$end_marks）。"
+          # 正文直接取 PLATFORM.md 全文：它专供项目页，构建说明那类内容只留在 README 里。
+          body_src=PLATFORM.md
+          if [ ! -f "$body_src" ]; then
+            echo "::error title=正文源缺失::$body_src 不存在，拒绝发布。"
+            exit 1
+          fi
+          cp "$body_src" /tmp/body.md
+
+          if [ ! -s /tmp/body.md ]; then
+            echo "::error title=正文为空::$body_src 是空文件，拒绝发布。"
             exit 1
           fi
 
-          # 用 index() 判头而不是正则：CI 的 awk 是 mawk，\/ 这类转义在 POSIX ERE 里没定义。
-          awk '
-            index($0, "<!-- modrinth-exclude -->") == 1 { skip = 1; next }
-            index($0, "<!-- /modrinth-exclude -->") == 1 { skip = 0; next }
-            !skip { print }
-          ' README.md > /tmp/body.md
-
+          # 兜底：PLATFORM.md 面向玩家，混进构建章节说明属于误编辑，拦下不发。
           if grep -qE '^## Building$|gradlew' /tmp/body.md; then
-            echo "::error title=正文含开发章节::排除区间没生效，拒绝发布。"
+            echo "::error title=正文含开发章节::$body_src 里出现了构建说明，拒绝发布。"
             exit 1
           fi
 
-          echo "描述 ${#DESC} 字符；正文 $(wc -l < /tmp/body.md) 行（原始 $(wc -l < README.md) 行）"
+          # PLATFORM_MCMOD.md 用的是百科标签，误粘进来会原样发到 Modrinth。
+          if grep -qE '^\[h[0-9]+=' /tmp/body.md; then
+            echo "::error title=正文含百科标签::$body_src 看起来是 MC百科 的正文，拒绝发布。"
+            exit 1
+          fi
+
+          # 非空但被改成残桩（例如只剩几行）同样会覆盖掉项目页正文：两个结构锚 + 行数地板兜住。
+          # 锚点写法刻意放宽（多个空格/尾随空白也算），免得将来给标题改词就把发布拦死。
+          if ! grep -qE '^## Features[[:space:]]*$' /tmp/body.md || ! grep -qE '^## +License[[:space:]]*$' /tmp/body.md; then
+            echo "::error title=正文结构异常::$body_src 缺少 '## Features' 或 '## License' 章节，疑似残桩，拒绝发布。"
+            exit 1
+          fi
+
+          body_lines=$(wc -l < /tmp/body.md)
+          if [ "$body_lines" -lt 60 ]; then
+            echo "::error title=正文过短::$body_src 只有 $body_lines 行（地板 60），拒绝发布。"
+            exit 1
+          fi
+
+          # workflow_dispatch 不受 paths 约束：在非 main 分支手动跑时只演练守卫，绝不把该分支正文盖上线上。
+          if [ "${GITHUB_EVENT_NAME:-}" = "workflow_dispatch" ] && [ "${GITHUB_REF_NAME:-}" != "main" ]; then
+            echo "::warning title=非 main 分支演练::守卫已全部通过（描述 ${#DESC} 字符、正文 $body_lines 行），跳过实际发布。"
+            exit 0
+          fi
+
+          echo "描述 ${#DESC} 字符；正文 $body_lines 行"
 
           jq -n --arg d "$DESC" --rawfile b /tmp/body.md '{description: $d, body: $b}' > /tmp/patch.json
 
@@ -104,13 +131,23 @@ jobs:
 
           # 读回来复核，免得 PATCH 返回 2xx 但字段没落进去。这一步失败只是“查不到”，
           # 不代表 PATCH 没成功，所以降级成 warning，不把已完成的同步报成红的。
-          got=$(curl -sS --retry 3 --retry-delay 5 --max-time 30 \
+          got_json=$(curl -sS --retry 3 --retry-delay 5 --max-time 30 \
             -H 'User-Agent: ae2-pattern-disk-ci' \
             -H "Authorization: $MODRINTH_TOKEN" \
-            "https://api.modrinth.com/v2/project/$MODRINTH_PROJECT_ID" | jq -r '.description' || true)
+            "https://api.modrinth.com/v2/project/$MODRINTH_PROJECT_ID" || true)
+          got=$(printf '%s' "$got_json" | jq -r '.description // ""' 2>/dev/null || true)
+          # jq -r 会自己补一个换行，直接 wc -l 会和本地差 1 ⇒ 两侧都过一遍「剥尾换行再补一个」的同尺换算。
+          got_body=$(printf '%s' "$got_json" | jq -j '.body // ""' 2>/dev/null || true)
+          got_lines=$(wc -l <<<"$got_body")
+          local_lines=$(wc -l <<<"$(cat /tmp/body.md)")
           echo "复核 · Modrinth 上的描述现在是：$got"
+          echo "复核 · 线上正文 $got_lines 行（本地 $local_lines 行）"
           if [ -z "$got" ]; then
             echo "::warning title=复核未取到描述::PATCH 已返回成功，但读回来的内容为空，请到项目页确认。"
           elif [ "$got" != "$DESC" ]; then
             echo "::warning title=描述未完全一致::读回的内容与源文本不同，请到项目页确认。"
+          fi
+          # 正文只比行数：比文本容易被服务端的空白规范化误报成差异。GET 整体失败时不比，免得连带刷第二条告警。
+          if [ -n "$got_json" ] && [ "$got_lines" != "$local_lines" ]; then
+            echo "::warning title=正文行数不一致::线上 $got_lines 行 / 本地 $local_lines 行，请到项目页确认。"
           fi

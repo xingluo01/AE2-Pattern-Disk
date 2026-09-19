@@ -161,8 +161,6 @@ The mod ships a GuideME guide (in `assets/ae2_pattern_disk/ae2guide/`) covering 
 - `ae2` (required, `[19.0.0,)`)
 - `guideme` (provided at build; required for the guide pages)
 
-<!-- modrinth-exclude -->
-
 ## Building
 
 Requires **JDK 21** and a Gradle 9 wrapper.
@@ -190,8 +188,6 @@ cp build/libs/neoecoae-21.2.0-beta3.jar ../AE2-Pattern-Disk/libs/
 The FD Smart Pattern Bus integration (upload-to-ECO button, disk-aware insertion, pattern access
 terminal view, encoding-terminal disk list) needs the hooks added by that PR. Against a stock NEO ECO
 build the hooks are absent, the integration logs a warning and the rest of the mod behaves normally.
-
-<!-- /modrinth-exclude -->
 
 ## License
 
