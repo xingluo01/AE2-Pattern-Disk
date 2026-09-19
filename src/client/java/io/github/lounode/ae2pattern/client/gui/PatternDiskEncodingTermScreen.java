@@ -181,7 +181,7 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             }
             // 写盘目标是不是唯一，只有这边知道（过滤后的列表在客户端），所以没目标时由客户端说。
             // 报上实际张数：只说“没有恰好一张”的话，看不出到底是零张还是多张。
-            if (menu.getClientAutoDisk() < 0) {
+            if (menu.getClientAutoDiskCount() != 1) {
                 var player = Minecraft.getInstance().player;
                 if (player != null) {
                     player.sendSystemMessage(Component.translatable(
@@ -322,7 +322,7 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
 
         // 编码按钮要不要直接落盘，取决于搜索栏筛完还剩几张盘。这一步必须等过滤做完：玩家点按钮时看到的
         // 就是这份列表，早一帧算出来就可能把目标算成此刻已经看不到的那张盘。
-        menu.setClientAutoDisk(diskEntries.size() == 1 ? diskEntries.get(0).serial() : -1L);
+        menu.setClientAutoDisk(diskEntries.size(), diskEntries.size() == 1 ? diskEntries.get(0).serial() : 0L);
 
         // 中键的结算：要等到刷新回来的那一份列表，否则读到的还是旧标记。等不到就作罢，而不是拿旧标记
         // 改名——那样只会把上一次的机器名写上去。

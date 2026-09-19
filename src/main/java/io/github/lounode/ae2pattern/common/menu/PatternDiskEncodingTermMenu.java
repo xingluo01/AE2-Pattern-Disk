@@ -240,6 +240,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
         registerClientAction(ACTION_BIND_PREFIX, Long.class, this::bindPrefix);
         registerClientAction("setPendingRecipeCategory", String.class, this::setPendingRecipeCategory);
         registerClientAction("setPendingAutoDisk", Long.class, this::setPendingAutoDisk);
+        registerClientAction("setPendingAutoDiskCount", Integer.class, this::setPendingAutoDiskCount);
         registerClientAction("setPendingDiskName", String.class, this::setPendingDiskName);
         registerClientAction("setPendingMarkText", String.class, this::setPendingMarkText);
         registerClientAction("bindSearchMark", Long.class, this::bindSearchMark);
@@ -260,12 +261,15 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
             var category = pendingRecipeCategory;
             sendClientAction("setPendingRecipeCategory", category == null ? "" : category);
             sendClientAction("setPendingAutoDisk", clientAutoDisk);
+            sendClientAction("setPendingAutoDiskCount", clientAutoDiskCount);
             sendClientAction(ACTION_ENCODE);
             return;
         }
-        // 一次操作一个值：先取值再清空，所以提前退出也不会把这次的 serial 留给下一次编码。
+        // 先取值再清空，所以提前退出也不会把这次的报数留给下一次编码。
+        var autoCount = pendingAutoDiskCount;
+        pendingAutoDiskCount = 0;
         var auto = pendingAutoDisk;
-        pendingAutoDisk = -1;
+        pendingAutoDisk = 0L;
         ItemStack encodedPattern = encodePattern();
         if (encodedPattern != null) {
             var encodeOutput = this.encodedPatternSlot.getItem();
@@ -284,7 +288,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
             // 搜索栏筛完只剩一张盘时，刚编好的样板直接写进去——省掉「编出一个样板再点磁盘」两步。
             // 那张盘收不下（已满、锁定类型不符、主产物重复）由 transferToDisk 自己报原因；
             // 没有唯一目标时由客户端当场说明（张数只有那边知道）。
-            if (auto >= 0) {
+            if (autoCount == 1) {
                 transferToDisk(auto);
             }
         } else {
@@ -675,27 +679,39 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
     }
 
     /**
-     * 客户端：样板磁盘搜索栏筛完剩下的唯一一张盘的 serial（-1 = 不是唯一，不自动写）。
-     * 搜索过滤只存在于客户端，所以这个判断也只在客户端做，每帧由屏幕写入，本身不过网。
+     * 客户端：样板磁盘搜索栏筛完剩下的张数，以及恰好一张时那台的 serial。
+     *
+     * <p>判断“有没有唯一目标”只看张数：serial 是从 {@code Long.MIN_VALUE} 开始自增的，恒为负数，
+     * 拿它的符号当"没有"的标记会把每一张都误当成没有。</p>
      */
-    private long clientAutoDisk = -1;
+    private int clientAutoDiskCount;
+    /** 只在 {@link #clientAutoDiskCount} 为 1 时有意义；其余时候这里的值是占位，不参与查表。 */
+    private long clientAutoDisk;
 
-    /** @see #clientAutoDisk */
-    public long getClientAutoDisk() {
-        return clientAutoDisk;
+    /** @see #clientAutoDiskCount */
+    public int getClientAutoDiskCount() {
+        return clientAutoDiskCount;
     }
 
-    /** @see #clientAutoDisk */
-    public void setClientAutoDisk(long serial) {
+    /** @see #clientAutoDiskCount */
+    public void setClientAutoDisk(int count, long serial) {
+        this.clientAutoDiskCount = count;
         this.clientAutoDisk = serial;
     }
 
     /**
-     * 服务端：客户端报上来的自动写盘目标，与 {@code ACTION_ENCODE} 成对使用，用后清空。
+     * 服务端：客户端报上来的张数与唯一目标，与 {@code ACTION_ENCODE} 成对使用，用后清空。
      */
-    private long pendingAutoDisk = -1;
+    private int pendingAutoDiskCount;
+    /** 只在 {@link #pendingAutoDiskCount} 为 1 时有意义；其余时候这里的值是占位，不参与查表。 */
+    private long pendingAutoDisk;
 
-    /** @see #pendingAutoDisk */
+    /** @see #pendingAutoDiskCount */
+    public void setPendingAutoDiskCount(int count) {
+        this.pendingAutoDiskCount = count;
+    }
+
+    /** @see #pendingAutoDiskCount */
     public void setPendingAutoDisk(long serial) {
         this.pendingAutoDisk = serial;
     }
