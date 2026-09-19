@@ -2,6 +2,8 @@ name: Release
 
 # 推 tag（如 v0.2.1）即发布：构建 → Modrinth → CurseForge → GitHub Release。
 #
+# 更新日志优先从仓库里的 CHANGELOG.md 取当前版本的段落，取不到才退回按提交主题拼接。
+#
 # 需要在仓库里预先配置（Settings → Secrets and variables → Actions）：
 #   Secrets   MODRINTH_TOKEN         Modrinth PAT。发版至少要 VERSION_CREATE（上传新版本）；
 #                                   标准更新流程再勾 VERSION_WRITE（改已发布版本的元数据/文件）与
@@ -98,20 +100,42 @@ jobs:
             -Dorg.gradle.java.home="$JAVA_HOME" \
             -Dorg.gradle.jvmargs="-Xmx3G -Dhttps.protocols=TLSv1.2,TLSv1.3 -Djavax.net.ssl.trustStoreType=JKS"
 
-      - name: Collect changelog from commits since last tag
+      - name: Collect changelog
         id: changelog
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
         run: |
           set -euo pipefail
-          # 只认版本 tag（v 开头）。否则别的 tag——例如托管构建依赖用的 deps-v1——会被当成
-          # 上一个版本，把首发发布说明截成一行。
-          PREVIOUS=$(git describe --tags --match 'v[0-9]*' --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+          # 优先用仓库里的 CHANGELOG.md：那是按玩家视角整理过的说明，比拼接 commit 主题可读。
+          # 取 "## [<版本>]" 到下一个 "## [" 之间的内容（三级标题 ### 不会误终止）。取不到就
+          # 退回到按提交主题拼接，保证任何情况下都有内容可用。
+          BODY=""
+          SOURCE="none"
+          if [ -f CHANGELOG.md ]; then
+            # 用 index() 判头而不是正则：CI 的 awk 是 mawk，\[ 在 POSIX ERE 里属未定义写法。
+            BODY=$(awk -v ver="$VERSION" '
+              index($0, "## [") == 1 {
+                if (found) exit
+                if (index($0, "[" ver "]") > 0) { found = 1; next }
+              }
+              found { print }
+            ' CHANGELOG.md | sed -e '/./,$!d')
+            if [ -n "$BODY" ]; then SOURCE="CHANGELOG.md"; fi
+          fi
+          if [ -z "$BODY" ]; then
+            SOURCE="commit log"
+            PREVIOUS=$(git describe --tags --match 'v[0-9]*' --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+            if [ -n "$PREVIOUS" ]; then
+              BODY=$(git log --no-merges --pretty=format:'- %s (%h)' "${PREVIOUS}..${GITHUB_REF_NAME}")
+            else
+              BODY=$(git log --no-merges --pretty=format:'- %s (%h)' "${GITHUB_REF_NAME}")
+            fi
+          fi
+          # 回退是静默的，打一行出来，事后能从 CI 日志看出发布说明是哪来的。
+          echo "changelog source: $SOURCE (${#BODY} chars)"
           {
             echo "body<<CHANGELOG_EOF"
-            if [ -n "$PREVIOUS" ]; then
-              git log --no-merges --pretty=format:'- %s (%h)' "${PREVIOUS}..${GITHUB_REF_NAME}"
-            else
-              git log --no-merges --pretty=format:'- %s (%h)' "${GITHUB_REF_NAME}"
-            fi
+            echo "$BODY"
             echo
             echo "CHANGELOG_EOF"
           } >> "$GITHUB_OUTPUT"
