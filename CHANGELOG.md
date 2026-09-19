@@ -4,6 +4,12 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循语义化版本。
 
+## [0.3.1] - 2026-09-19
+
+### 修复
+
+- **修复了因 neoecoae 硬依赖泄漏导致的启动崩溃**。`PatternDiskEncodingTermMenu` 此前 `implements` neoecoae 的接口 `PatternEncodingTermMenuExtension`，而 neoecoae 是可选依赖——未装 neoecoae 的玩家加载该菜单类时会因接口类不存在而抛 `NoClassDefFoundError`。现在所有 neoecoae 硬引用已收敛到 `integration/neoecoae/` 包内，通过「mod 存在检查 + 独立 holder 类」的条件加载模式按需接入；menu 与 screen 的字节码里不再出现第三方符号（艾琳审查已通过）。
+
 ## [0.3.0] - 2026-09-19
 
 这一版把「样板磁盘编码终端」补成了一台能用的机器：磁盘列表能按标记归类与搜索、写盘失败会说明原因、编好的样板在目标唯一时直接落盘。

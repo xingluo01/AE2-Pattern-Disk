@@ -60,10 +60,6 @@ import io.github.lounode.ae2pattern.api.IPatternDiskHost;
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskHostRegistry;
 import io.github.lounode.ae2pattern.network.DiskListPayload;
 
-// NEO ECO AE Extension integration
-import cn.dancingsnow.neoecoae.api.PatternEncodingTermMenuExtension;
-import cn.dancingsnow.neoecoae.api.IECOPatternStorageService;
-
 /**
  * Menu for the pattern disk encoding terminal. Extends {@link MEStorageMenu} to inherit network
  * storage access (disk scanning) and the item terminal infrastructure.
@@ -74,7 +70,7 @@ import cn.dancingsnow.neoecoae.api.IECOPatternStorageService;
  * list: click a disk to write the currently encoded pattern into it, shift-right-click to bind the
  * pattern's prefix to the disk (renaming it), middle-click to rename, and a mini search bar.</p>
  */
-public class PatternDiskEncodingTermMenu extends MEStorageMenu implements PatternEncodingTermMenuExtension {
+public class PatternDiskEncodingTermMenu extends MEStorageMenu {
 
     private static final int CRAFTING_GRID_WIDTH = 3;
     private static final int CRAFTING_GRID_HEIGHT = 3;
@@ -90,6 +86,10 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
     private static final String ACTION_BIND_PREFIX = "bindPrefix";
     private static final String ACTION_RENAME_DISK = "renameDisk";
     private static final String ACTION_UPLOAD_PATTERN = "neoecoae:uploadPattern";
+
+    /** Set by NeoECOIntegration when neoecoae is present. Null when absent. */
+    @Nullable
+    public static volatile java.util.function.Consumer<PatternDiskEncodingTermMenu> uploadHandler;
 
     // 不可用 build()：会将实例推入 AE2 的 InitMenuTypes 注册队列，与下方 MENUS DeferredRegister 形成同实例双通道注册，
     // 注册冲突即触发 NeoForge MappedRegistry 的 duplicate value 崩溃；其余三个菜单均用 buildUnregistered 单通道。
@@ -247,7 +247,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
         registerClientAction("refreshDiskList", this::refreshDiskList);
         registerClientAction(ACTION_RENAME_DISK, Long.class, this::renameDisk);
         registerClientAction("setMergeSameItems", Boolean.class, this::setMergeSameItems);
-        registerClientAction(ACTION_UPLOAD_PATTERN, this::neoecoae$uploadPattern);
+        registerClientAction(ACTION_UPLOAD_PATTERN, this::uploadPattern);
 
         updateStonecuttingRecipes();
     }
@@ -848,31 +848,34 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
     // ---- NEO ECO AE Extension upload ----------------------------------------
 
     /**
-     * Uploads the currently encoded pattern to the NEO ECO computation cluster's IECOPatternStorageService.
-     * Mirrors the behaviour of NEO ECO's own {@code PatternEncodingTermMenuMixin.neoecoae()}:
-     * reads the encoded pattern slot, inserts it via the grid service, and on success clears the slot
-     * and returns a blank pattern to storage/network.
+     * Uploads the currently encoded pattern to the NEO ECO computation cluster.
+     * Delegates to the integration-registered handler when neoecoae is present;
+     * otherwise does nothing.
      */
-    @Override
-    public void neoecoae$uploadPattern() {
+    public void uploadPattern() {
         if (isClientSide()) {
             sendClientAction(ACTION_UPLOAD_PATTERN);
             return;
         }
-        var node = getGridNode();
-        if (node == null || !node.isActive()) return;
-        var grid = node.getGrid();
-        if (grid == null) return;
-
-        var encoded = encodedPatternSlot.getItem();
-        if (encoded.isEmpty() || !PatternDetailsHelper.isEncodedPattern(encoded)) return;
-
-        var service = grid.getService(IECOPatternStorageService.class);
-        if (service != null && service.getPatternStorage().insertPattern(encoded.copy())) {
-            // Upload succeeded: clear the encoded slot, return a blank pattern
-            this.encodedPatternSlot.set(ItemStack.EMPTY);
-            returnBlankPatternToStorage();
+        var h = uploadHandler;
+        if (h != null) {
+            h.accept(this);
         }
+    }
+
+    /**
+     * @return the item in the encoded pattern slot.
+     */
+    public ItemStack getEncodedPatternItem() {
+        return encodedPatternSlot.getItem();
+    }
+
+    /**
+     * Clears the encoded pattern slot and returns a blank pattern to storage / the player's inventory.
+     */
+    public void clearEncodedPatternAndReturnBlank() {
+        this.encodedPatternSlot.set(ItemStack.EMPTY);
+        returnBlankPatternToStorage();
     }
 
     // ---- 磁盘列表同步（服务端扫描 <-> 客户端渲染） ----

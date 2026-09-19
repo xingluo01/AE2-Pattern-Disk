@@ -7,6 +7,7 @@ import appeng.api.networking.IGrid;
 
 import io.github.lounode.ae2pattern.api.IPatternDiskHost;
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskHostRegistry;
+import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -104,6 +105,11 @@ public class NeoECOIntegration {
         // rather than the bus's own view in which they are only listed. Without this the listing is accurate
         // but inert: a recipe could be read off the terminal and not taken out of the disk it came from.
         registerTerminalView(busClass, handles);
+
+        // Upload button for the encoding terminal: wire up the pattern-storage upload so that clicking the
+        // NEO ECO button in the terminal screen calls into the disk's storage service.
+        PatternDiskEncodingTermMenu.uploadHandler = NeoECOUploadHandler.create();
+        LOGGER.info("[AE2-Pattern-Disk] Encoding terminal upload button wired");
     }
 
     /**

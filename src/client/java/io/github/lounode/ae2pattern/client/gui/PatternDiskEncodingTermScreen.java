@@ -38,10 +38,6 @@ import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
 import io.github.lounode.ae2pattern.client.gui.DiskListPanel.DiskEntry;
 
-// NEO ECO AE Extension integration
-import cn.dancingsnow.neoecoae.api.PatternEncodingTermMenuExtension;
-import cn.dancingsnow.neoecoae.gui.widget.UploadButton;
-
 /**
  * 样板磁盘编码终端屏幕。布局：
  * <ul>
@@ -199,11 +195,7 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         int left = (this.width - imageWidth) / 2 + imageWidth;
         int top = (this.height - imageHeight) / 2 + imageHeight - 173;
         var search = this.miniSearchField;
-        addRenderableWidget(new UploadButton(
-            left,
-            top,
-            b -> ((PatternEncodingTermMenuExtension) getMenu()).neoecoae$uploadPattern()
-        ));
+        io.github.lounode.ae2pattern.client.integration.neoecoae.NeoECOClientIntegration.addUploadButtonIfPresent(this, left, top);
 
         // 无标记磁盘的显示开关，贴在搜索栏右边 2px（搜索栏的可见宽度含内边距，所以要用它的 tooltip 区域），
         // 与它同高：搜索栏高 8，按钮也是 8x8，顶对齐即居中。
@@ -494,5 +486,14 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         return new PageAnchor(
                 ResourceLocation.parse("ae2_pattern_disk:items-blocks-machines/pattern_disk_encoding_terminal.md"),
                 null);
+    }
+
+    /**
+     * Public wrapper for adding widgets (delegates to protected {@link #addRenderableWidget}).
+     * Used by the neoecoae integration to install the upload button without accessing
+     * the protected method from a different package.
+     */
+    public void addWidget(net.minecraft.client.gui.components.AbstractWidget widget) {
+        addRenderableWidget(widget);
     }
 }
