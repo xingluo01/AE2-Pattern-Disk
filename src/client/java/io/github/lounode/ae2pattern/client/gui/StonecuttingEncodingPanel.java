@@ -27,7 +27,7 @@ import appeng.menu.SlotSemantics;
 
 /**
  * 切石模式编码面板。覆盖层位于 pattern_modes.png (121,72) 115×66；
- * 内部画板 (157,79) 64×54，条目按钮常态/被选择/光标选中位于 (240,72)/(240,90)/(240,108) 16×18。
+ * 内部画板 (157,79) 64×54，4 列 3 行，条目按钮常态/被选择/光标选中位于 (240,72)/(240,90)/(240,108) 16×18。
  */
 public final class StonecuttingEncodingPanel extends DiskEncodingModePanel {
     private static final Blitter BG = Blitter
@@ -46,20 +46,23 @@ public final class StonecuttingEncodingPanel extends DiskEncodingModePanel {
     /** 内部画板相对覆盖层的偏移 (157-121, 79-72)。 */
     private static final int CANVAS_OFFSET_X = 36;
     private static final int CANVAS_OFFSET_Y = 7;
-    /** 画板 64×54，4 列 2 行。 */
+    /** 画板 64×54，4 列 3 行。 */
     private static final int COLS = 4;
-    private static final int ROWS = 2;
+    private static final int ROWS = 3;
     private static final int SLOT_W = 16;
     private static final int SLOT_H = 18;
-    /** 行距 = 画板高 / 行数 = 27，列距 = 画板宽 / 列数 = 16。 */
-    private static final int ROW_SPACING = 27;
+    /**
+     * 行距 = 条目高，上下不留空隙；3 行正好铺满 54 高的画板。第一行由 {@link #CANVAS_OFFSET_Y} 定位，
+     * 后续行以它为基准往下排。列距 = 条目宽 = 16。
+     */
+    private static final int ROW_SPACING = SLOT_H;
 
     private final Scrollbar scrollbar;
 
     public StonecuttingEncodingPanel(PatternDiskEncodingTermScreen screen, WidgetContainer widgets) {
         super(screen, widgets);
         this.scrollbar = widgets.addScrollBar("stonecuttingPatternModeScrollbar", Scrollbar.SMALL);
-        this.scrollbar.setRange(0, 0, COLS);
+        this.scrollbar.setRange(0, 0, ROWS);
         this.scrollbar.setCaptureMouseWheel(false);
     }
 
