@@ -20,7 +20,6 @@ import net.neoforged.neoforge.network.PacketDistributor;
 
 import appeng.api.config.Actionable;
 import appeng.api.crafting.PatternDetailsHelper;
-import appeng.api.networking.GridFlags;
 import appeng.api.networking.IGridNode;
 import appeng.api.networking.IGridNodeListener;
 import appeng.api.networking.IManagedGridNode;
@@ -82,12 +81,12 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
         }
         this.upgrades = UpgradeInventories.forMachine(AEPatternRegistries.BLOCK_ASSEMBLER.get(), 5,
                 this::onUpgradesChanged);
+        // 与 AE2 分子装配室一致：它只做被推送的合成，不占频道（仍从网格取电）。
         this.getMainNode()
-                .setFlags(GridFlags.REQUIRE_CHANNEL)
                 .setIdlePowerUsage(0)
                 .setInWorldNode(true)
                 .setExposedOnSides(java.util.Set.of(Direction.values()))
-                .addService(IGridTickable.class, this);;
+                .addService(IGridTickable.class, this);
     }
 
     private void onUpgradesChanged() {
@@ -225,7 +224,7 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
         data.writeBoolean(this.isPowered);
     }
 
-    /** True when the machine has an active grid channel (used to drive the border status light). */
+    /** True while the device is active on the grid (powered and booted - it takes no channel). */
     public boolean isPowered() {
         return isPowered;
     }

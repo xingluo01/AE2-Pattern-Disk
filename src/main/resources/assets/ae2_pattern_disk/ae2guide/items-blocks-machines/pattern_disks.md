@@ -37,12 +37,12 @@ A disk can carry a **mark** recording which machine or recipe type it belongs to
 
 Two interactions write a mark, both on the disk list of the [ME Pattern Disk Encoding Terminal](pattern_disk_encoding_terminal.md):
 
-- **Right click with a work block**: records the current recipe type. If you imported a recipe from the recipe viewer, that is the recipe's category (furnace, smoking, stonecutting and so on, each kept apart); encoding by hand instead falls back to the encoding mode (crafting / processing / smithing / stonecutting).
+- **Right click with a work block picked up on the cursor**: records the recipe category that work block runs (crafting table, stonecutter, smithing table, furnace, smoker and so on, each kept apart), and it works at any time - no imported recipe needed. Only when the item on the cursor is no category's work block does it fall back to the imported recipe's category; with neither, nothing is written at all - writing would only stamp a mode mark that has nothing to do with this disk (use Shift + right click to write or clear a mark). The recipe viewer's machine table decides this (EMI: the category's icon when that icon is a block, plus its registered workstations; JEI: catalysts only, since JEI category icons are drawables); a block the viewer does not list cannot be identified, and the game says so on screen - that right click writes nothing.
 - **Shift + right click**: records the search bar's text as the mark, and clears the mark when the search bar is empty. This one does not depend on an imported recipe, so you can stamp the same mark onto any disk you like.
 
 The encoding terminal folds crafting, smithing and stonecutting mode marks onto their matching category name, so a disk encoded by hand and one written from an imported stonecutting recipe show the same name in the list and answer the same search. Processing has no single category — each machine has its own — so a hand-encoded processing disk keeps the name "Processing pattern".
 
-The mark is what the encoding terminal's disk list filters on by default — only marked disks are listed — and it decides which machine name a middle-click rename uses.
+The mark is what the encoding terminal's disk list filters on when you search with `#`, and it decides which machine name a middle-click rename uses.
 
 ## Compatibility
 

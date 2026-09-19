@@ -34,6 +34,11 @@ import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
  * Crafting-family recipes are encoded from the real recipe object (the encoding helper re-derives the 3x3
  * grid itself, including the stonecutting recipe id); anything else becomes a processing pattern built
  * from the recipe's ingredient slots.</p>
+ *
+ * <p>The container class is a constructor argument because JEI keys its transfer table by the container's
+ * <b>runtime</b> class and never walks up to a superclass: one instance has to be registered per concrete
+ * class {@link PatternDiskEncodingTermMenu#concreteMenuClasses()} reports, or the recipe's transfer button
+ * silently disappears for that environment.</p>
  */
 public class JeiDiskEncodeRecipeHandler implements IUniversalRecipeTransferHandler<PatternDiskEncodingTermMenu> {
 
@@ -42,13 +47,18 @@ public class JeiDiskEncodeRecipeHandler implements IUniversalRecipeTransferHandl
 
     private final IRecipeTransferHandlerHelper helper;
 
-    public JeiDiskEncodeRecipeHandler(IRecipeTransferHandlerHelper helper) {
+    /** 本实例登记在 JEI 表里的容器类键，必须是具体类（子类由父类工厂按 EAE+ 契约在场与否产生）。 */
+    private final Class<? extends PatternDiskEncodingTermMenu> containerClass;
+
+    public JeiDiskEncodeRecipeHandler(IRecipeTransferHandlerHelper helper,
+            Class<? extends PatternDiskEncodingTermMenu> containerClass) {
         this.helper = helper;
+        this.containerClass = containerClass;
     }
 
     @Override
     public Class<? extends PatternDiskEncodingTermMenu> getContainerClass() {
-        return PatternDiskEncodingTermMenu.class;
+        return containerClass;
     }
 
     @Override
@@ -79,6 +89,13 @@ public class JeiDiskEncodeRecipeHandler implements IUniversalRecipeTransferHandl
             } else {
                 DiskEncodingHelper.encodeProcessingRecipe(menu, collectInputs(recipeSlots), collectOutputs(recipeSlots));
             }
+
+            // 与 EMI 侧同一顺序：编码会先 setMode，手动换模式会丢弃旧类别，所以类别最后写。
+            var category = JeiTransferCategory.take();
+            var categoryId = category == null ? null : category.toString();
+            menu.setPendingRecipeCategory(categoryId);
+            // 记一笔「导入过」并留下这次导入的类别：搜索栏只认这个入口填自己（见 noteCategoryImported）。
+            menu.noteCategoryImported(categoryId);
         }
         return null;
     }

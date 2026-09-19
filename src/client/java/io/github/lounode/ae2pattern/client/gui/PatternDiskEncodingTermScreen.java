@@ -6,22 +6,29 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
-
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.mojang.blaze3d.platform.InputConstants;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 import guideme.PageAnchor;
 
+import appeng.api.behaviors.ContainerItemStrategies;
+import appeng.api.behaviors.EmptyingAction;
 import appeng.api.stacks.GenericStack;
 import appeng.client.gui.me.common.MEStorageScreen;
 import appeng.client.gui.me.common.StackSizeRenderer;
@@ -30,10 +37,13 @@ import appeng.client.gui.style.ScreenStyle;
 import appeng.client.gui.widgets.AETextField;
 import appeng.client.gui.widgets.ActionButton;
 import appeng.core.localization.ButtonToolTips;
+import appeng.core.network.serverbound.InventoryActionPacket;
+import appeng.helpers.InventoryAction;
 import appeng.menu.SlotSemantics;
 import appeng.parts.encoding.EncodingMode;
 
 import io.github.lounode.ae2pattern.AEPatternRegistries;
+import io.github.lounode.ae2pattern.client.integration.MachineRecipeTypes;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
 import io.github.lounode.ae2pattern.client.gui.DiskListPanel.DiskEntry;
@@ -50,6 +60,9 @@ import io.github.lounode.ae2pattern.client.gui.DiskListPanel.DiskEntry;
 public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEncodingTermMenu> {
 
     // states.png (0,16,64,16) 四模式图标：合成/处理/锻造/切石
+    /** NEO ECO 上传按钮的尺寸（neoecoae 的 UploadButton 构造里写死的 18×20）。 */
+    static final int NEO_ECO_UPLOAD_BUTTON_WIDTH = 18;
+    static final int NEO_ECO_UPLOAD_BUTTON_HEIGHT = 20;
     private static final Blitter ICON_CRAFTING = Blitter
             .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/states.png"))
             .src(0, 16, 16, 16);
@@ -90,9 +103,8 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     /** 等刷新到的上限：超过这么久还没收到新列表就不再改了。 */
     private static final long RENAME_REFRESH_TIMEOUT_MS = 2000;
 
-    /** 上一次自动填进搜索栏的标记，避免用户清空后又被填回去。 */
-    @Nullable
-    private String lastAutoFilledMark;
+    /** 已经填过的那次导入（菜单里的导入修订号）：搜索栏只在导入发生时填，见 updateBeforeRender。 */
+    private int seenImportRevision;
 
     /** 是否把无标记的磁盘也列出来。默认否；按钮的状态跟着它走（init 会被多次调用）。 */
     private boolean showUnmarkedDisks;
@@ -110,12 +122,11 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     /** 等刷新的截止时刻。超了这次中键就作罢；用时间而非帧数，免得帧率越高容忍越短。 */
     private long pendingRenameDeadline;
 
-    /** 打开终端时不自动填充：还没绑定任何标记时填了会把列表直接清空。 */
-    private boolean autoFillInitialized;
-
     public PatternDiskEncodingTermScreen(PatternDiskEncodingTermMenu menu, Inventory playerInventory, Component title,
             ScreenStyle style) {
         super(menu, playerInventory, title, style);
+        // 与菜单对齐，不假设「新屏幕一定配新菜单」：万一菜单是复用的，开屏第一帧就不该把旧导入填回去。
+        this.seenImportRevision = menu.getCategoryImportRevision();
 
         // 注册 4 个模式面板
         for (var mode : EncodingMode.values()) {
@@ -189,13 +200,24 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         widgets.add("encodePattern", encodeBtn);
     }
 
+    /**
+     * NEO ECO 上传按钮在屏幕上的绝对位置与尺寸（该按钮固定 18×20，见 neoecoae 的 UploadButton）。
+     *
+     * <p>{@link #init()} 造按钮与 ExtendedAE Plus 的适配屏幕取锚点都走这一份算式，免得两处位置漂移。</p>
+     */
+    public Rect2i neoEcoUploadButtonBounds() {
+        int left = (this.width - imageWidth) / 2 + imageWidth;
+        int top = (this.height - imageHeight) / 2 + imageHeight - 173;
+        return new Rect2i(left, top, NEO_ECO_UPLOAD_BUTTON_WIDTH, NEO_ECO_UPLOAD_BUTTON_HEIGHT);
+    }
+
     @Override
     public void init() {
         super.init();
-        int left = (this.width - imageWidth) / 2 + imageWidth;
-        int top = (this.height - imageHeight) / 2 + imageHeight - 173;
+        var ecoUpload = neoEcoUploadButtonBounds();
         var search = this.miniSearchField;
-        io.github.lounode.ae2pattern.client.integration.neoecoae.NeoECOClientIntegration.addUploadButtonIfPresent(this, left, top);
+        io.github.lounode.ae2pattern.client.integration.neoecoae.NeoECOClientIntegration.addUploadButtonIfPresent(this,
+                ecoUpload.getX(), ecoUpload.getY());
 
         // 无标记磁盘的显示开关，贴在搜索栏右边 2px（搜索栏的可见宽度含内边距，所以要用它的 tooltip 区域），
         // 与它同高：搜索栏高 8，按钮也是 8x8，顶对齐即居中。
@@ -243,16 +265,17 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         }
 
         // 刷新磁盘列表（过滤 PatternDiskItem + 搜索过滤）。
-        // 匹配当前配方类型的磁盘不再把列表换掉，而是把搜索条件填进搜索栏：玩家看得见为什么只剩这些，
-        // 而且随时能改。用的是将要绑定的那个标记，与 2.2 的绑定规则一致。
-        var prefix = menu.deriveMarkId();
-        if (!autoFillInitialized) {
-            autoFillInitialized = true;
-            lastAutoFilledMark = prefix;
-        } else if (!Objects.equals(lastAutoFilledMark, prefix)) {
-            lastAutoFilledMark = prefix;
-            if (prefix != null && !prefix.isEmpty()) {
-                miniSearchField.setValue(markSearchTerm(prefix));
+        // 搜索栏的自动填充只跟「导入配方」有关：JEI/EMI 配方页点「编写样板」那一刻在菜单里记一次修订号，
+        // 这里跟着填。绑定标记、切换模式、放样板回流同样会改掉标记的值，但它们都不该动玩家正在用的搜索
+        // 条件——判据是「发生了导入」，而不是「标记值变了」（后者曾把右键写标记也变成改写搜索框）。
+        var importRevision = menu.getCategoryImportRevision();
+        if (importRevision != seenImportRevision) {
+            seenImportRevision = importRevision;
+            // 用导入当场记下的类别，而不是此刻的「当前类别」：后者可能已被右键（光标上的工作方块）改掉，或被
+            // 切模式清空。类别为空时不填——那会退回模式标记（#mode:...），不是导入者想要的筛选词。
+            var imported = menu.getLastImportedCategory();
+            if (imported != null && !imported.isEmpty()) {
+                miniSearchField.setValue(markSearchTerm("#" + imported));
             }
         }
 
@@ -283,28 +306,29 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
                     entry.serial()));
         }
 
-        // 搜索过滤：# 开头匹配磁盘标记（标记原文或其可读名），否则匹配磁盘显示名。
-        String search = diskListPanel.getSearchText();
-        if (search != null && !search.isEmpty()) {
-            var needle = search.toLowerCase(Locale.ROOT);
-            if (needle.startsWith("#")) {
-                var markNeedle = needle.substring(1);
-                // 开关打开时，无标记的盘不受标记搜索约束：它们本来就没有标记可匹配，而开关要的正是把
-                // 它们留在列表里。有标记的盘照旧按标记过滤。
-                if (showUnmarkedDisks) {
-                    diskEntries.removeIf(d -> hasMark(d) && !matchesMark(d, markNeedle));
-                } else {
-                    diskEntries.removeIf(d -> !matchesMark(d, markNeedle));
+        // 搜索过滤：**没有搜索条件就什么都不剔除**（含无标记的空盘）——这是「常态显示」的字面意思，也是旧
+        // 实现写错的地方（它不带任何搜索条件也按标记默认剔一遍）。
+        //
+        // 一个搜索条件只筛它自己那一维：名字搜索只比名字（无标记的盘照常参与，它也有名字），`#` 标记搜索
+        // 只比标记（无标记的盘没东西可匹配，自然不出现）。开关打开 = 无标记的盘不受本次搜索约束，一律留下。
+        // 输入先 strip，免得一串空格被当成搜索条件把列表清空。
+        var search = diskListPanel.getSearchText();
+        var needleText = search == null ? "" : search.strip();
+        if (!needleText.isEmpty()) {
+            var needle = needleText.toLowerCase(Locale.ROOT);
+            var markSearch = needle.startsWith("#");
+            // `#` 之后也 strip：玩家习惯输入 `# 合成`，多一个空格不该把结果清空（标记本身也存不下首尾空格）。
+            var matchNeedle = markSearch ? needle.substring(1).strip() : needle;
+            diskEntries.removeIf(d -> {
+                if (!hasMark(d)) {
+                    // 无标记：开关打开时一律留下；常态下仅在标记搜索里被筛掉（它没有标记可匹配）。
+                    return !showUnmarkedDisks && markSearch;
                 }
-            } else {
-                diskEntries.removeIf(d -> !d.displayName().toLowerCase(Locale.ROOT).contains(needle));
-            }
+                return !matchesSearch(d, matchNeedle, markSearch);
+            });
         }
 
-        // 默认只列有标记的磁盘（见 showUnmarkedDisks）。
-        if (!showUnmarkedDisks) {
-            diskEntries.removeIf(d -> !hasMark(d));
-        }
+        // 没有搜索条件时什么都不剔除（含无标记的空盘）——规则写在上面那段注释里。
 
         // 按显示名排序
         diskEntries.sort(Comparator.comparing(DiskEntry::displayName));
@@ -329,6 +353,14 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     }
 
     /** 这张盘有没有标记——标记就是它属于哪个配方类型的记录。 */
+    /** 磁盘是否匹配当前搜索：{@code markSearch} 时比标记（原文或可读名），否则比显示名。 */
+    private static boolean matchesSearch(DiskEntry entry, String needle, boolean markSearch) {
+        if (markSearch) {
+            return matchesMark(entry, needle);
+        }
+        return entry.displayName().toLowerCase(Locale.ROOT).contains(needle);
+    }
+
     private static boolean hasMark(DiskEntry entry) {
         var mark = entry.stack().get(AEPatternRegistries.DISK_PREFIX.get());
         return mark != null && !mark.isEmpty();
@@ -384,11 +416,77 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
 
     /**
      * 右键：用当前配方类型覆写该磁盘的标记（覆盖旧的，不动磁盘名）。
+     *
+     * <p>「当前配方类型」优先看**鼠标上拿着**的那个工作方块：拿起工作方块右键，写的就是它所属的类别，任何
+     * 时机都成立——不取决于有没有导入过配方，也不取决于中间切没切过模式（这两件事都会把导入时记下的类别
+     * 清掉）。光标上那件认不出类别时退回刚导入的配方类别；两样都没有就干脆不写——写下去只会是模式标记，而
+     * 清空/改写标记是 Shift+右键的活。写没写成由服务端在聊天栏回执（见 Menu#bindPrefix）。</p>
      */
     private void onDiskRightClick(int index) {
         var entry = getDiskEntryAt(index);
-        if (entry != null) {
-            menu.bindPrefix(entry.serial());
+        if (entry == null) {
+            return;
+        }
+        applyHeldMachineMark();
+        menu.bindPrefix(entry.serial());
+        // 写没写成由服务端在聊天栏里回执（与上传链路同一路），客户端不抢着报结果，也不必再管搜索栏：
+        // 填充只认「导入配方」一个入口。
+    }
+
+    private static final Logger LOGGER = LoggerFactory.getLogger("ae2_pattern_disk.mark");
+
+    /**
+     * 把标记的类别换成鼠标上拿着的工作方块所属的那一个；认不出就不动标记（玩家侧的回执由服务端发，见
+     * {@code Menu#bindPrefix}）。
+     *
+     * <p>「持有」只认**光标上拿着的那一件**，主手/副手不参与：在终端里整理磁盘时，工作方块正是这么被拿起来的，
+     * 而手边顺带放着的东西不该决定这张盘的标记。</p>
+     *
+     * <p>「认不出来」这件事必须记下来：否则玩家只看到这次右键没写入，会以为是功能坏了，而实际上是拿着的方块
+     * 不在配方查看器的机器表里（EMI：类别图标或工作站；JEI：催化剂）。</p>
+     */
+    private void applyHeldMachineMark() {
+        var player = Minecraft.getInstance().player;
+        if (player == null) {
+            return;
+        }
+        // 「持有」只认鼠标上拿着的那一件：终端里整理磁盘时，工作方块正是这么被拿起来的。主手/副手不参与——
+        // 它们往往只是顺带放着的东西，拿它们去决定这张盘的标记只会让人莫名其妙。
+        var held = menu.getCarried();
+        String category = null;
+        try {
+            var imported = menu.getPendingRecipeCategory();
+            category = MachineRecipeTypes.forHeldMachine(held, imported);
+        } catch (Throwable failed) {
+            // 配方查看器还没就绪、或者它换了 API，都不该让右键失效：退回原有行为即可。
+            LOGGER.warn("Work-block mark lookup failed for {}", held, failed);
+        }
+        if (category != null) {
+            // 提到 info：一次右键一行，而排查「识别成功却没写出标记」时正是靠它与服务端的
+            // "Binding mark ..." 成对出现——只有客户端有日志的话，就没法区分「没识别」与「没送达」。
+            LOGGER.info("Mark taken from work block on the cursor {}: {}", held, category);
+            menu.setPendingRecipeCategory(category);
+            return;
+        }
+        if (!held.isEmpty()) {
+            // 认不出来时把反查链路的现场一起说出来：只有「认不出」一句的话，看的人只能猜是光标上那件不对、
+            // 查看器没就绪、还是索引里根本没有它。诊断本身会遍历建表，可能被第三方查看器数据噎住，所以
+            // 夹住它——诊断失败不该让右键也跟着失败。
+            String scene;
+            try {
+                scene = MachineRecipeTypes.diagnose(held);
+            } catch (Throwable failed) {
+                scene = "诊断本身失败（不影响标记回退）：" + failed;
+                LOGGER.warn("Work-block diagnose failed for {}", held, failed);
+            }
+            LOGGER.info("Held {} is no recipe category's work block; there is no work-block category to bind. {}",
+                    held, scene);
+            // 玩家侧不再由客户端发话：写没写成、为什么没写成，统一由服务端在聊天栏里回执。
+        } else {
+            // 光标上什么都没有：没什么可识别。写不写由服务端定（见 Menu#bindPrefix），顺便记下当时选中的
+            // 快捷栏格号，省得下次还要猜玩家周围到底放了什么。
+            LOGGER.info("Nothing on the cursor; no work-block category to take (selected hotbar slot={})",
+                    player.getInventory().selected);
         }
     }
 
@@ -430,6 +528,110 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             return null;
         }
         return diskEntries.get(index);
+    }
+
+    // ---- 过滤槽交互 ----------------------------------------------------------
+
+    /**
+     * 处理模式的输入/输出过滤槽按玩家口径改写：右键携带物品=把该物品连同它的堆叠数标记进槽位（覆盖
+     * 槽内原有内容，不累加），左键=清空。
+     * AE2 默认的 FakeSlot 语义是“左键放物品、右键加减数量”，与这套口径不同，所以直接发显式的
+     * SET_FILTER，而不走默认的 FakeSlot 动作。
+     *
+     * <p>空手右键没有可标记的东西，交回 AE2 的默认语义（把槽内数量减一）；Shift 点击、拖动、双击也一律
+     * 走 AE2 默认，属已知差异。手持桶/瓶这类可倒空的容器时也交回基类，走 AE2 的 EMPTY_ITEM 把内容物
+     * 设成过滤（见 {@link #getEmptyingAction}），而不是把容器本身标记进去。</p>
+     */
+    @Override
+    protected void slotClicked(@Nullable Slot slot, int slotIdx, int mouseButton, ClickType clickType) {
+        if (clickType == ClickType.PICKUP && menu.isProcessingPatternSlot(slot)) {
+            var carried = menu.getCarried();
+            if (mouseButton == InputConstants.MOUSE_BUTTON_RIGHT) {
+                if (!carried.isEmpty()) {
+                    // 能倒空的容器（桶/瓶）优先：AE2 会把内容物设成过滤，这是手动设流体过滤的唯一入口。
+                    if (getEmptyingAction(slot, carried) != null) {
+                        super.slotClicked(slot, slotIdx, mouseButton, clickType);
+                        return;
+                    }
+                    sendSetFilter(slot.index, carried.copy());
+                    return;
+                }
+            } else if (mouseButton == InputConstants.MOUSE_BUTTON_LEFT) {
+                sendSetFilter(slot.index, ItemStack.EMPTY);
+                return;
+            }
+        }
+
+        super.slotClicked(slot, slotIdx, mouseButton, clickType);
+    }
+
+    /**
+     * 照抄 AE2 样板编码终端的口径：处理槽先直接问手里这件可倒空容器（{@link ContainerItemStrategies}）
+     * 能倒出什么，拿到了就把这个动作交给基类去走 EMPTY_ITEM，拿不到再退回基类判定。
+     *
+     * <p>这里和 AE2 一样跳过了基类的 {@code isItemValid} 闸门。日后若给编码配置加上
+     * {@code supportedType}/{@code slotFilter} 限制，需同步补回校验，否则会出现「提示可倒空、服务端
+     * 静默不落」的空操作。</p>
+     */
+    @Override
+    protected EmptyingAction getEmptyingAction(Slot slot, ItemStack carried) {
+        if (menu.isProcessingPatternSlot(slot)) {
+            var emptyingAction = ContainerItemStrategies.getEmptyingAction(carried);
+            if (emptyingAction != null) {
+                return emptyingAction;
+            }
+        }
+
+        return super.getEmptyingAction(slot, carried);
+    }
+
+    /** 中键落在过滤槽上时打开数量对话框（与 AE2 样板编码终端同款）；其余中键仍交给基类。 */
+    @Override
+    public boolean mouseClicked(double xCoord, double yCoord, int btn) {
+        if (minecraft != null && minecraft.options.keyPickItem.matchesMouse(btn)) {
+            var slot = processingPatternSlotAt(xCoord, yCoord);
+            if (menu.canModifyAmountForSlot(slot)) {
+                var currentStack = GenericStack.fromItemStack(slot.getItem());
+                if (currentStack != null) {
+                    switchToScreen(new DiskEncodingAmountScreen(this, currentStack,
+                            newStack -> sendSetFilter(slot.index,
+                                    newStack == null ? ItemStack.EMPTY : GenericStack.wrapInItemStack(newStack))));
+                    return true;
+                }
+            }
+        }
+
+        return super.mouseClicked(xCoord, yCoord, btn);
+    }
+
+    /**
+     * 鼠标下的处理模式过滤槽；没命中时返回 null。
+     *
+     * <p>命中区自己算：AE2 是带着它自己的访问放宽才调用 {@code findSlot} 的，该项目类路径下这个方法
+     * 不可访问（实测编译不通过），所以这里照 MC 的 18×18 口径自己判。</p>
+     */
+    @Nullable
+    private Slot processingPatternSlotAt(double mouseX, double mouseY) {
+        for (var slot : menu.slots) {
+            if (!slot.isActive() || !menu.isProcessingPatternSlot(slot)) {
+                continue;
+            }
+            // 命中区与 MC 一致：以槽位左上角为准的 18×18（含 1 像素边框）。
+            if (mouseX >= leftPos + slot.x - 1 && mouseX < leftPos + slot.x + 17
+                    && mouseY >= topPos + slot.y - 1 && mouseY < topPos + slot.y + 17) {
+                return slot;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 过滤槽的内容由服务端盖章（SET_FILTER 走的 {@code AEBaseMenu#setFilter}），客户端只负责把请求发出去；
+     * 空物品即清空。
+     */
+    private static void sendSetFilter(int slotIndex, ItemStack stack) {
+        PacketDistributor.sendToServer(
+                new InventoryActionPacket(InventoryAction.SET_FILTER, slotIndex, stack));
     }
 
     // ---- 可合成指示 ----------------------------------------------------------

@@ -24,7 +24,8 @@ public final class NeoECOClientIntegration {
         screen.addWidget(NeoECOClientButton.createButton(left, top, () -> screen.getMenu().uploadPattern()));
     }
 
-    private static boolean isLoaded() {
+    /** @return neoecoae 是否在场；EAE+ 的适配屏幕靠它判断有没有 ECO 上传按钮可以贴。 */
+    public static boolean isLoaded() {
         try {
             return ModList.get().isLoaded("neoecoae");
         } catch (Throwable ignored) {

@@ -56,7 +56,10 @@ public class DiskEncodePatternHandler extends AbstractDiskRecipeHandler<PatternD
             // 记下这份配方来自哪个类别：磁盘标记要写的就是它，而它只在客户端可见。必须放在编码之后
             // ——编码会先 setMode，而手动换模式时会丢弃旧的类别，先设的会被那一下清掉。
             var category = emiRecipe.getCategory();
-            menu.setPendingRecipeCategory(category == null ? null : category.getId().toString());
+            var categoryId = category == null ? null : category.getId().toString();
+            menu.setPendingRecipeCategory(categoryId);
+            // 记一笔「导入过」并留下这次导入的类别：搜索栏只认这个入口填自己（见 noteCategoryImported）。
+            menu.noteCategoryImported(categoryId);
         } else {
             var repo = menu.getClientRepo();
             Set<AEKey> craftableKeys = repo != null ? repo.getAllEntries().stream()

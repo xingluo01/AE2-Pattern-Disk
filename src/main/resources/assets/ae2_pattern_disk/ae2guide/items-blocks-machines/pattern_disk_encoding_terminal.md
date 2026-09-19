@@ -36,30 +36,30 @@ Tools unique to processing mode, for tuning the recipe multiplier of large autom
 
 ## Disk list
 
-The lower part of the interface lists the network's pattern disks. By default **only disks carrying a mark are listed** — a mark records which kind of recipe a disk belongs to (see [Pattern Disks](pattern_disks.md)). A disk with no mark stays out of the default list whether or not it holds patterns — including a disk you have only ever written to and never bound a mark on. The toggle next to the search bar brings those disks out.
+The lower part of the interface lists the network's pattern disks. **With nothing in the search bar every disk is listed** (unmarked ones included); while you type, the list is filtered by what you typed - by name (unmarked disks have names too and take part like any other), or by mark when prefixed with `#` (unmarked disks have no mark to match). The toggle next to the search bar keeps unmarked disks in regardless of the search. A mark records which kind of recipe a disk belongs to (see [Pattern Disks](pattern_disks.md)).
 
 ### Search
 
 The search bar filters in two ways:
 
 - **Plain text**: matches the disk's name.
-- **Text starting with `#`**: matches the disk's mark. A mark records which machine the disk belongs to: binding it with a right-click takes the imported recipe's category when you have just imported one, and the current encoding mode otherwise. Crafting, smithing and stonecutting marks fold onto their category name, so a hand-encoded disk and one written from an imported recipe of the same kind carry the same name and answer the same search. Processing has no single category — each machine has its own — so a hand-encoded processing disk keeps the name "Processing pattern"; search for "processing" to find it.
+- **Text starting with `#`**: matches the disk's mark. A mark records which work block the disk belongs to: a right-click binds the recipe category of the work block on your cursor, and only without such a work block does it fall back to the imported recipe's category; with neither, that right click writes nothing. Crafting, smithing and stonecutting marks fold onto their category name, so a hand-encoded disk and one written from an imported recipe of the same kind carry the same name and answer the same search. Processing has no single category — each machine has its own — so a hand-encoded processing disk keeps the name "Processing pattern"; search for "processing" to find it.
 
 ### Showing unmarked disks
 
 The toggle to the right of the search bar decides whether disks without a mark appear:
 
-- **Normal** (off): only marked disks are listed; unmarked ones are left out.
-- **Force show** (on): unmarked disks are listed as well and are exempt from `#` mark search, having no mark to match. Marked disks are still filtered by mark as usual.
+- **Normal** (off): filtered by what you typed. A name search compares names only, and unmarked disks take part like any other; a `#` mark search finds no match for them, so they stay out.
+- **Force show** (on): unmarked disks ignore the search filter and stay listed. Marked disks are still filtered by the search as usual.
 
 ### Mouse controls
 
 Each button does something different on a disk:
 
 - **Left click**: write the currently encoded pattern onto that disk.
-- **Right click with a work block**: overwrite the disk's mark with the current recipe type. This changes the mark, not the name.
+- **Right click with a work block picked up on the cursor**: overwrite the disk's mark with the recipe category that work block runs; without such a work block on the cursor it falls back to the imported recipe's category; with neither, nothing is written. This changes the mark, not the name.
 - **Shift + right click**: write the search bar's text onto the disk as its mark; an empty search bar clears the disk's mark instead.
-- **Middle click with a work block**: rename the disk after the machine its mark stands for.
+- **Middle click**: rename the disk after the work block its mark stands for.
 
 ### Write results
 

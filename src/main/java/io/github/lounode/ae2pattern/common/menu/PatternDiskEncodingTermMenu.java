@@ -8,6 +8,8 @@ import java.util.Objects;
 import java.util.regex.Pattern;
 
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import it.unimi.dsi.fastutil.ints.IntArraySet;
 import it.unimi.dsi.fastutil.ints.IntSet;
@@ -89,13 +91,53 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
 
     /** Set by NeoECOIntegration when neoecoae is present. Null when absent. */
     @Nullable
+    /**
+     * 标记这条链横跨两侧：识别在客户端（配方查看器只有客户端有），落盘在服务端，中间隔着一次客户端动作。
+     * 这一笔日志是唯一能把「没识别出来」与「识别出来却没送达」分开的证据——后者只会表现为标记退回模式。
+     */
+    private static final Logger LOGGER = LoggerFactory.getLogger("ae2_pattern_disk.mark");
+
     public static volatile java.util.function.Consumer<PatternDiskEncodingTermMenu> uploadHandler;
 
     // 不可用 build()：会将实例推入 AE2 的 InitMenuTypes 注册队列，与下方 MENUS DeferredRegister 形成同实例双通道注册，
     // 注册冲突即触发 NeoForge MappedRegistry 的 duplicate value 崩溃；其余三个菜单均用 buildUnregistered 单通道。
     public static final MenuType<PatternDiskEncodingTermMenu> TYPE = MenuTypeBuilder
-            .create(PatternDiskEncodingTermMenu::new, PatternDiskEncodingTerminalPart.class)
+            .create(PatternDiskEncodingTermMenu::createForHost, PatternDiskEncodingTerminalPart.class)
             .buildUnregistered(net.minecraft.resources.ResourceLocation.parse("ae2_pattern_disk:pattern_disk_encoding_terminal"));
+
+    /**
+     * 菜单工厂：装了 ExtendedAE Plus 时返回带它上传接口的子类，否则返回本类。
+     *
+     * <p>子类只在 {@link io.github.lounode.ae2pattern.integration.extendedae_plus.ExtendedAEPlusCompat#hasUploadContract()}
+     * 为真时才走到（契约类不在的构建——包括在架的 1.6.2——同样走基类），所以它引用的那几个 EAE+ 接口类
+     * 不会被解析；菜单类本身是每次开界面都要加载的，接口不能写在它的签名上。</p>
+     */
+    private static PatternDiskEncodingTermMenu createForHost(int containerId, Inventory playerInventory,
+            PatternDiskEncodingTerminalPart host) {
+        if (io.github.lounode.ae2pattern.integration.extendedae_plus.ExtendedAEPlusCompat.hasUploadContract()) {
+            return new io.github.lounode.ae2pattern.integration.extendedae_plus.ExtendedAEPlusUploadMenu(
+                    containerId, playerInventory, host);
+        }
+        return new PatternDiskEncodingTermMenu(containerId, playerInventory, host);
+    }
+
+    /**
+     * 本终端实际可能被实例化的全部菜单类：基类，以及 EAE+ 上传契约在场时的适配子类。
+     *
+     * <p>给按「容器的运行时类」查表的集成用。JEI 的转移登记表是 {@code ImmutableTable<容器类, 配方类型,
+     * 处理器>}，查表键取自 {@code container.getClass()}——精确匹配，不认父类；所以少登记一个类，那种
+     * 环境下的「编写样板」按钮就整个不出现，而且不报任何错。</p>
+     *
+     * <p>条件与 {@link #createForHost} 必须一致（同一个 {@code hasUploadContract()}）：工厂现在能造出的
+     * 具体类，这里就得列全，改一处必须同步另一处。</p>
+     */
+    public static java.util.List<Class<? extends PatternDiskEncodingTermMenu>> concreteMenuClasses() {
+        if (io.github.lounode.ae2pattern.integration.extendedae_plus.ExtendedAEPlusCompat.hasUploadContract()) {
+            return java.util.List.of(PatternDiskEncodingTermMenu.class,
+                    io.github.lounode.ae2pattern.integration.extendedae_plus.ExtendedAEPlusUploadMenu.class);
+        }
+        return java.util.List.of(PatternDiskEncodingTermMenu.class);
+    }
 
     private final PatternDiskEncodingTerminalPart host;
     private final DiskEncodingLogic encodingLogic;
@@ -252,12 +294,40 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
         updateStonecuttingRecipes();
     }
 
+    // ---- 过滤槽 --------------------------------------------------------------
+
+    /**
+     * 处理模式的输入/输出槽是过滤槽：玩家配置的是“要什么、要几个”，不是搬进真实物品。只有它们允许改
+     * 数量，这与 AE2 样板编码终端一致（中键数量对话框的适用面同此）。
+     */
+    public boolean isProcessingPatternSlot(@Nullable Slot slot) {
+        if (slot == null) {
+            return false;
+        }
+        for (var candidate : processingInputSlots) {
+            if (candidate == slot) {
+                return true;
+            }
+        }
+        for (var candidate : processingOutputSlots) {
+            if (candidate == slot) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 过滤槽里有东西时，中键打开数量对话框才有意义。 */
+    public boolean canModifyAmountForSlot(@Nullable Slot slot) {
+        return isProcessingPatternSlot(slot) && slot.hasItem();
+    }
+
     // ---- Encoding ------------------------------------------------------------
 
     public void encode() {
         if (isClientSide()) {
-            // 配方类别只有客户端知道（EMI 导入时记下的），而服务端要靠它才能把样板直接写进对应标记的磁盘，
-            // 所以像 bindPrefix 一样先单独送过去。搜索栏筛出的唯一那张盘的 serial 同理。
+            // 配方类别只有客户端知道（导入时记下的），而服务端绑标记时要用它，所以像 bindPrefix 一样先单独送过去。
+            // 搜索栏筛出的唯一那张盘的 serial 同理。
             var category = pendingRecipeCategory;
             sendClientAction("setPendingRecipeCategory", category == null ? "" : category);
             sendClientAction("setPendingAutoDisk", clientAutoDisk);
@@ -610,6 +680,34 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
     }
 
     /**
+     * 标记写入回执。与上传链路（{@link #notifyPatternWritten(Component)}）同一路：服务端发言、落在聊天栏——
+     * 玩家看到的是「这一次右键到底写没写成」，而不用去磁盘提示里猜。
+     */
+    private void notifyMarkWritten(Component diskName) {
+        if (getPlayer() instanceof ServerPlayer player) {
+            player.sendSystemMessage(
+                    Component.translatable("gui.ae2_pattern_disk.encoding_terminal.mark_written", diskName));
+        }
+    }
+
+    /** 没写成的回执：光标上有东西就说清是哪件认不出来，光标为空则只说没有可用的类别。 */
+    private void notifyMarkNotWritten() {
+        if (!(getPlayer() instanceof ServerPlayer player)) {
+            return;
+        }
+        // 光标上拿的是哪件，服务端自己有（菜单的光标槽是同步的），不必让客户端报一遍。口径必须与客户端一致：
+        // 两边都只看光标，主手/副手不算。
+        var held = getCarried();
+        if (held.isEmpty()) {
+            player.sendSystemMessage(Component.translatable(
+                    "gui.ae2_pattern_disk.encoding_terminal.mark_skipped"));
+        } else {
+            player.sendSystemMessage(Component.translatable(
+                    "gui.ae2_pattern_disk.encoding_terminal.mark_unidentified", held.getHoverName()));
+        }
+    }
+
+    /**
      * Binds the current recipe type to the disk identified by serial, as a mark in the disk's
      * {@code DISK_PREFIX} component. The disk's own name is left alone: the mark shows up in the disk's
      * tooltip instead of renaming the item, which used to make every disk of a kind look identical.
@@ -626,23 +724,45 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
         }
 
         var ref = diskRefs.get(serial);
-        if (ref == null) return;
-
-        var mark = deriveMarkId();
-        if (mark.isEmpty()) return;
+        if (ref == null) {
+            // 客户端列表可能比服务端旧：那张盘已经被拿走了。不提示的话，玩家只会看到点了没反应。
+            notifyStaleTarget();
+            return;
+        }
 
         var inv = ref.host().getDiskInventory();
         var stack = inv.getStackInSlot(ref.slot());
-        if (stack.isEmpty() || !(stack.getItem() instanceof PatternDiskItem)) return;
+        if (stack.isEmpty() || !(stack.getItem() instanceof PatternDiskItem)) {
+            // 同一个理由：列表里还有它，槽里已经不是了。
+            notifyStaleTarget();
+            return;
+        }
+
+        // 光标上没有可识别的工作方块、也没有刚导入的配方时，deriveMarkId() 给出的只是当前模式标记——那不是玩家
+        // 对这张盘的判断，写下去只会把盘上原有的标记冲成「处理样板」。这种右键不写，并且跟上传链路一样把结果
+        // 说进聊天栏：写没写成，玩家得看得到。
+        if (pendingRecipeCategory == null || pendingRecipeCategory.isEmpty()) {
+            LOGGER.info("Bind skipped for disk {}: nothing on the cursor and nothing imported", serial);
+            notifyMarkNotWritten();
+            return;
+        }
+
+        var mark = deriveMarkId();
+        LOGGER.info("Binding mark {} to disk {}", mark, serial);
 
         var updated = stack.copy();
         updated.set(AEPatternRegistries.DISK_PREFIX, mark);
         writeDiskSlot(inv, ref.slot(), updated);
+        notifyMarkWritten(stack.getHoverName());
     }
 
     /**
-     * 要绑到磁盘上的标记：导入过配方就用它自己的类别（同一台机器下的不同类别分得开），手动编码、
-     * 直接绑盘这类拿不到配方时就回退到编码模式。两者都存成 {@code #} 开头的标识符。
+     * 要绑到磁盘上的标记：导入过配方就用它自己的类别（同一台机器下的不同类别分得开），否则回退到编码模式。
+     * 两者都存成 {@code #} 开头的标识符。
+     *
+     * <p>{@code #mode:} 那一支现在只在「没导入过」时供显示层使用：绑盘这一路（{@link #bindPrefix(long)}）会先
+     * 判掉空的类别，所以协议上写不出模式标记；要刻意给磁盘打模式标记得走 Shift+右键
+     * （{@link #bindSearchMark(long)}，它把搜索栏文本原样存下）。</p>
      *
      * <p>两套写法看起来是两种标记，但显示与搜索会把模式标记归一成对应的类别（见
      * {@link #categoryForMode}），所以玩家看到的、搜到的名字是一致的。</p>
@@ -676,6 +796,47 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
     /** Remembers the recipe category of the recipe just imported, for {@link #deriveMarkId()}. */
     public void setPendingRecipeCategory(@Nullable String categoryId) {
         this.pendingRecipeCategory = categoryId;
+    }
+
+    /**
+     * 导入配方（JEI/EMI 配方页的「编写样板」）的最后一步：记下这次导入的类别与一次导入事实，供搜索栏决定要不要填自己。
+     *
+     * <p>搜索栏的自动填充只认这一个入口。绑定标记、切换模式、放样板回流同样会改掉标记的值，但它们都不该
+     * 动玩家正在用的搜索条件——所以判据是「发生了导入」，而不是「标记值变了」。</p>
+     *
+     * <p>用修订号而不是回调屏幕：导入那一下由配方页的转写处理器执行，它拿不到终端屏幕（也不该去拿）。
+     * 修订号只记事实，屏幕下一帧自行读取，两边互不依赖对方存在。</p>
+     */
+    public void noteCategoryImported(@Nullable String categoryId) {
+        this.lastImportedCategory = categoryId;
+        this.categoryImportRevision++;
+    }
+
+    /** 导入配方发生过多少次；{@code 0} 表示还没导入过（屏幕据此判断「首次打开不填」）。 */
+    public int getCategoryImportRevision() {
+        return this.categoryImportRevision;
+    }
+
+    /**
+     * 最近一次导入的类别，没导入过、或者那次没取到类别时是 {@code null}。填充用的是它而不是「当前类别」：
+     * 后者在导入之后还可能被右键（光标上的工作方块）改掉、或被换模式清空，快照下来才能保证填的就是这次导入。
+     */
+    @Nullable
+    public String getLastImportedCategory() {
+        return this.lastImportedCategory;
+    }
+
+    private int categoryImportRevision;
+    @Nullable
+    private String lastImportedCategory;
+
+    /**
+     * 刚导入的配方类别（只有客户端知道），或者 {@code null}。给「光标上拿工作方块右键」当取舍提示用：光标上那个
+     * 工作方块能跑这个类别时就用它——比同命名空间之类的启发式更贴切。
+     */
+    @Nullable
+    public String getPendingRecipeCategory() {
+        return pendingRecipeCategory;
     }
 
     /**
@@ -868,6 +1029,14 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
      */
     public ItemStack getEncodedPatternItem() {
         return encodedPatternSlot.getItem();
+    }
+
+    /**
+     * 编码槽本身。ExtendedAE Plus 的「上传到供应器」要在服务端直接读/清这个槽，见
+     * {@code integration.extendedae_plus.ExtendedAEPlusUploadMenu}。
+     */
+    public Slot getEncodedPatternSlot() {
+        return encodedPatternSlot;
     }
 
     /**

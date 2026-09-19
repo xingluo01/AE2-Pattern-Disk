@@ -30,3 +30,75 @@ type="required"
 versionRange="[19.0.0,)"
 ordering="NONE"
 side="BOTH"
+
+# JEI integration is optional, but needs JEI 19.56.0 or newer when present. That is the compile baseline of
+# both this mod and ExtendedAE Plus, so a pack cannot end up with a JEI that one accepts and the other rejects.
+# The recipe-transfer listener hook the disk-mark lookup uses would only need 19.52.0.
+[[dependencies.${mod_id}]]
+modId="jei"
+type="optional"
+versionRange="[19.56.0,)"
+ordering="AFTER"
+side="CLIENT"
+
+# EMI integration is optional and client-side only: when JEI is not around the disk marks borrow their
+# category names from EMI instead. 1.1.22 is the API this mod compiles against.
+[[dependencies.${mod_id}]]
+modId="emi"
+type="optional"
+versionRange="[1.1.22,)"
+ordering="AFTER"
+side="CLIENT"
+
+# NEO ECO AE Extension is optional but covers both sides: its smart pattern bus accepts our disks, and its
+# upload button is installed on our terminal. No version bound of our own: the auxiliary-pattern-store API
+# only exists in our fork's builds, and a stock NEO ECO makes the reflection lookups fail and the integration
+# stand down (with a log line) rather than block the load.
+[[dependencies.${mod_id}]]
+modId="neoecoae"
+type="optional"
+versionRange="*"
+ordering="AFTER"
+side="BOTH"
+
+# ExtendedAE Plus is optional and both-sided: our menu/screen implement its terminal upload contract, but only
+# in adapter subclasses that are instantiated when the contract interfaces are really there (probed by class,
+# see ExtendedAEPlusCompat.hasUploadContract) - a build without them would otherwise fail to link.
+# 1.6.2 is the build this mod is developed against; the release carrying the contract is still pending.
+[[dependencies.${mod_id}]]
+modId="extendedae_plus"
+type="optional"
+versionRange="[1.6.2,)"
+ordering="AFTER"
+side="BOTH"
+
+# Jade is optional and has real code on our side (integration/jade), so the relationship is declared instead of
+# being left to the dev runtime. 15.10.6 is the API this mod compiles against. CLIENT because that plugin is a
+# display integration Jade discovers on its own; a server that happens to run Jade is not checked (AE2 declares
+# it BOTH, the AE2 add-ons around us use CLIENT).
+[[dependencies.${mod_id}]]
+modId="jade"
+type="optional"
+versionRange="[15.10.6,)"
+ordering="AFTER"
+side="CLIENT"
+
+# The AE2 <-> JEI bridge is a mod of its own; without it JEI has no AE2 recipe categories for our marks to read
+# names from. We do not reference its classes, so no version bound of our own.
+[[dependencies.${mod_id}]]
+modId="ae2jeiintegration"
+type="optional"
+versionRange="*"
+ordering="AFTER"
+side="CLIENT"
+
+# AE2 Crystal Science is optional, and the relationship runs the other way: it is the one calling into our
+# PatternDiskApi (its own metadata does not declare us), so this entry only says the two are meant to ship
+# together - no version bound of our own, same reasoning ExtendedAE Plus uses for `extendedae`. BEFORE keeps
+# us loaded first, so a consumer that touches our API during its setup does not race our own construction.
+[[dependencies.${mod_id}]]
+modId="ae2cs"
+type="optional"
+versionRange="*"
+ordering="BEFORE"
+side="BOTH"

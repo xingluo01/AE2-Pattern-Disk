@@ -210,9 +210,30 @@ dependencies {
 
     // ExtendedAE Plus (EAE+) dev reference. Its "upload pattern to a provider" button is the feature the
     // pattern disk provider has to serve, so it belongs in the dev runtime to exercise that path.
-    // Published on Modrinth for 1.21.1/NeoForge; the version id pins that release rather than the
-    // 1.21.1 branch, which keeps moving past it.
-    localRuntime 'maven.modrinth:extendedae-plus:o8U8Ekro'
+    //
+    // 已发布的 1.6.2（Modrinth o8U8Ekro，2026-08-28）是对着旧版 JEI 编的：它的 jei.BookmarkOverlayMixin 调用
+    // mezz.jei.gui.input.handlers.CombinedInputHandler，而 JEI 19.56 把这个类挪到了 mezz.jei.common.input.handlers，
+    // 于是 JEI 一启动就 ClassNotFoundException，客户端进世界即崩。EAE+ 侧已修（本地提交 389c8e44 / 85a50ea5，
+    // mods.toml 声明 jei 为可选依赖 [19.56.0,)）但尚未发版，所以这里优先用放到 libs/ 的本地构建产物
+    // （与上面的 AECS、NEO ECO 同法，libs/*.jar 不入库）。换别的构建用 -PeaePlusJar=<jar 路径>；
+    // 没有本地件时回退到 Modrinth 发布件，但那个版本与 JEI 19.56 不兼容，进入世界会崩溃。
+    def eaePlusJar = providers.gradleProperty('eaePlusJar')
+            .map { file(it) }
+            .getOrElse(file('libs/extendedae_plus-1.6.2-dev.jar'))
+    if (eaePlusJar.exists()) {
+        localRuntime files(eaePlusJar)
+    } else {
+        logger.warn("EAE+ 本地构建产物不存在（{}），回退到 Modrinth 发布件 1.6.2 —— 该版本与 JEI 19.56 不兼容，" +
+                "进入世界会崩；修复办法见本行上方注释。", eaePlusJar)
+        localRuntime 'maven.modrinth:extendedae-plus:o8U8Ekro'
+    }
+
+    // EAE+ 的终端兼容层接口（IPatternUploadMenu / IPatternUploadTerminal）目前只存在于它的 1.21.1 分支，
+    // Modrinth 最新发布版（1.6.2，2026-08-28）还没有这两个类，所以编译期也用 libs/ 里这份构建产物。
+    // EAE+ 发版后把这里与上面的 localRuntime 一起换成 maven.modrinth 坐标；release.yml 里对应的
+    // 下载步骤（EAEPLUS_JAR_URL）也要一并删掉。
+    compileOnly files(eaePlusJar)
+    clientCompileOnly files(eaePlusJar)
     // Curios and Kotlin for Forge are runtime references of EAE+'s own integrations.
     localRuntime 'curse.maven:curios-309927:6529130'
     localRuntime 'curse.maven:kotlin-for-forge-351264:7471280'
@@ -251,9 +272,22 @@ dependencies {
     // Modrinth version id ZjqqrcWk = ldlib2 1.21.1-2.2.39.a neoforge.
     localRuntime 'maven.modrinth:ldlib:ZjqqrcWk'
     localRuntime 'dev.vfyjxf:moddevmcp:0.1.6'
-    localRuntime(libs.emi)
-    // JEI for the development runtime so the plugin can actually be exercised in runClient.
-    localRuntime(libs.jei.runtime)
+    // 开发运行期配方查看器默认 JEI：玩家侧的 JEI 兼容就在 runClient 里手动验证。需要回到 EMI 口径
+    // 核对时用 -Pemi 启动（EMI 仍保留编译期兼容，见上面的 clientCompileOnly(libs.emi)）。
+    //
+    // JEI 走官方 maven，不进 libs/：libs/ 那份策略只给没有公共 maven 的本地 mod（AECS / NEO ECO /
+    // ModDevMCP / EAE+）。版本以 libs.versions.toml 的 jei 钉位为准，且必须与 EAE+ 仓库引用的那个版本
+    // （19.56.0.438，见其 build.gradle 的 compileOnly/runtimeOnly）一致——EAE+ 的终端兼容层就是对着这个
+    // 版本编的，错开就会重现上次「进世界即崩」。
+    if (project.hasProperty('emi')) {
+        localRuntime(libs.emi)
+    } else {
+        localRuntime(libs.jei.runtime)
+        // AE2 的 JEI 集成是独立模组（AE2 本体不带），它的元数据又把 jei 标成 required：只能跟着 JEI 分支
+        // 走——放进 EMI 口径会让客户端因缺 JEI 直接加载失败。没有它，JEI 里根本不会出现与本项目（及
+        // AE2 终端）相关的配方转移入口，本项目的 JEI 兼容层也就无从验证。与 EAE+ 开发环境同一份坐标。
+        localRuntime 'curse.maven:ae2-jei-integration-1074338:5748513'
+    }
 
     // ModDevMCP 0.3 没有发布到任何公共 maven（Central / NeoForged / modmaven / BlameJared 都没有）。
     // 原先靠 settings.gradle 的 composite-build 替换或 mavenLocal 解析，CI 上两者都没有，

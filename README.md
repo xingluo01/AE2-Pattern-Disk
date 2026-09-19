@@ -42,16 +42,36 @@ A panel that mounts on an ME cable and ties pattern encoding to pattern disks. I
 
 **Blank patterns** come from the ME network: the slot is a read-only mirror of how many the network holds, and the terminal says so when there are none, so there is no need to place a blank pattern by hand.
 
-**Disk list.** By default only disks carrying a mark are listed; the toggle next to the search bar brings out the rest, and those unmarked disks are then exempt from `#` mark search while marked ones stay filtered as usual. The search bar matches a disk's name, or — prefixed with `#` — its mark. Crafting, smithing and stonecutting mode marks fold onto their category name, so a hand-encoded disk and one written from an imported recipe of the same kind answer the same search; processing has no single category (each machine has its own) and keeps the name "Processing pattern".
+**Disk list.** With nothing in the search bar every disk is listed; while searching, the list is filtered by what you typed — by name (unmarked disks take part like any other), or by mark when prefixed with `#` (unmarked disks have no mark to match). The toggle next to the search bar keeps unmarked disks in regardless of the search. The search bar matches a disk's name, or — prefixed with `#` — its mark. Crafting, smithing and stonecutting mode marks fold onto their category name, so a hand-encoded disk and one written from an imported recipe of the same kind answer the same search; processing has no single category (each machine has its own) and keeps the name "Processing pattern".
 
-**Mouse controls.** Left click writes the currently encoded pattern to the disk; right click with a work block overwrites the disk's mark with the current recipe type; Shift + right click writes the search bar's text as the mark, and an empty search bar clears it; middle click with a work block renames the disk after the machine its mark stands for.
+**Mouse controls.** Left click writes the currently encoded pattern to the disk; right click with a work block picked up on the cursor overwrites the disk's mark with that work block's recipe type (holding it in your hand does not count); Shift + right click writes the search bar's text as the mark, and an empty search bar clears it; middle click renames the disk after the machine its mark stands for.
+
+**Filter slots.** In processing mode the input and output slots are filters rather than real slots. Right
+click with a stack marks that stack and its count into the slot, replacing whatever the slot held rather
+than adding to it; left click clears the slot; middle click on a filled slot opens the same amount dialog
+AE2's pattern encoding terminal uses. Empty-hand right click keeps AE2's behaviour of lowering the count by
+one, and Shift click, dragging and double clicking keep AE2's own handling (add/subtract, and emptying for
+drainable containers). Right click marks the held stack, except for containers that can be emptied: a
+bucket or bottle right-clicked onto a filter sets the filter to its contents — water, lava and so on — at
+the container's full content amount, instead of the container itself, as in AE2; to mark the container as
+an item instead, drag it over the slot or import a recipe with `+`. Clearing a
+filter and then pressing Encode drops a pattern that was never written back to a blank pattern rather than
+losing it.
 
 **Write feedback.** Every write reports back in chat: which disk the pattern went to, or why it was refused — the disk is full, locked to another pattern type, already holds a recipe with the same output, the pattern's type cannot be resolved, or the target is no longer listed. When the search bar narrows the list to exactly one disk, pressing Encode writes the pattern straight to it rather than leaving it in the encoded slot.
 
 **NEO ECO integration.** With NEO ECO AE Extension installed, an upload button appears that sends the encoded pattern to its computation cluster and returns a blank pattern in the order network → inventory → encoded slot.
 
+**ExtendedAE Plus integration.** With ExtendedAE Plus installed, its "upload pattern to a provider" button is placed
+directly below the NEO ECO button with no gap when NEO ECO is installed; without NEO ECO it falls back to ExtendedAE
+Plus' own spot beside the encode button. The button reads this terminal's encoded slot, and a successful upload clears
+that slot without returning a blank pattern, exactly as in AE2's own terminal. ExtendedAE Plus' automatic uploads
+(Shift + Encode, and pushing straight to an assembler matrix after encoding) hang off AE2's terminal classes, so they
+do not apply here — use the button. The slot and the terminal are handed over through a subclass that is only loaded
+when EAE+ is present, so an install without it loads neither the interfaces nor the button.
+
 ### Efficient Molecular Assembler
-A parallel molecular assembler with **eight independent execution threads**. It accepts crafting jobs pushed by AE2 pattern providers and runs them concurrently. Each thread owns a 3×3 molecular assembler grid, an output slot, and independent progress.
+A parallel molecular assembler with **eight independent execution threads**. It accepts crafting jobs pushed by AE2 pattern providers and runs them concurrently. Each thread owns a 3×3 molecular assembler grid, an output slot, and independent progress. Like AE2's own molecular assembler it takes **no channel**; it still draws power from the grid.
 
 The GUI exposes one page per thread (mirroring ExtendedAE's (EAE) extension molecular assembler) with vertical progress only for the selected page. Accepts up to **five AE2 Speed Cards** with multipliers `1.0x / 1.3x / 1.7x / 2.0x / 2.5x / 5.0x`.
 
@@ -59,7 +79,7 @@ Each page also has an optional pattern slot. Inserting an encoded crafting patte
 
 ### Batch Assembler
 
-Buffers the jobs pushed by AE2 crafting CPUs inside nine private storage cell slots and executes them once the input material has actually stopped arriving.
+Buffers the jobs pushed by AE2 crafting CPUs inside nine private storage cell slots and executes them once the input material has actually stopped arriving. It takes **one channel**, because it exposes its patterns to autocrafting, and draws power from the grid.
 
 #### Batch Window
 
@@ -170,6 +190,40 @@ Requires **JDK 21** and a Gradle 9 wrapper.
 ```
 
 The resulting jar is written to `build/libs/`.
+
+### Verifying the recipe-viewer integration (JEI / EMI)
+
+The recipe-transfer integration — the "+" button on a recipe page, and the disk marks it feeds — has two
+optional implementations, so the dev runtime loads one viewer at a time. **JEI is the default**:
+
+```bash
+./gradlew runClient --no-configuration-cache      # JEI loaded (run_client.bat does the same)
+./gradlew runClient -Pemi --no-configuration-cache # EMI loaded instead
+```
+
+EMI stays a compile-time dependency either way (`clientCompileOnly(libs.emi)`); only the runtime viewer
+switches, so the EMI path keeps compiling and shipping unchanged.
+
+JEI is declared as an optional dependency with range `[19.56.0,)`: the version both this mod and ExtendedAE
+Plus compile against. The transfer-listener hook the disk-mark lookup reads its recipe category from has
+been there since 19.52.0, but the floor stays at the compile baseline so that two mods in one pack cannot
+disagree. An older JEI next to this mod is refused at load instead of quietly losing marks.
+
+Manual check list with JEI loaded and EMI absent:
+
+1. Open the ME Pattern Disk Encoding Terminal, open a recipe page in JEI and press "+". The pattern must
+   be encoded as before.
+2. Right-click a disk in the disk list: its mark becomes that recipe's category, and hovering the disk
+   must show a readable category name (for example "Smoking") instead of the raw id.
+3. Middle-click a disk: it is renamed after the machine of its mark (for example "Smoker").
+4. Type `#` plus that name into the disk search bar: the disk must stay listed.
+5. Shift + right-click a disk and the search bar text still writes/clears marks by hand, with no viewer
+   involved.
+6. With JEI absent the mod must still load and encode; the seven vanilla work blocks are still identified,
+   and a right click with no work block on the cursor and no imported recipe writes no mark (it says so in chat).
+
+With `-Pemi` the same list applies with EMI loaded and JEI absent; the names in steps 2 and 3 then come
+from EMI's recipe categories instead.
 
 ### Development dependency: Neo ECO AE Extension
 

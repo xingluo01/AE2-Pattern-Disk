@@ -28,6 +28,7 @@ import appeng.api.crafting.IPatternDetails;
 import appeng.api.implementations.blockentities.ICraftingMachine;
 import appeng.api.implementations.blockentities.PatternContainerGroup;
 import appeng.api.inventories.InternalInventory;
+import appeng.api.networking.GridFlags;
 import appeng.api.networking.IGrid;
 import appeng.api.networking.IGridNode;
 import appeng.api.networking.crafting.ICraftingProvider;
@@ -305,7 +306,9 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         this.upgrades = UpgradeInventories.forMachine(AEPatternRegistries.BLOCK_BATCH_ASSEMBLER.get(),
                 MAX_SPEED_CARDS, this::onUpgradesChanged);
 
+        // 它向自动合成暴露样板并自己从网络取料，按 AE2 的设备口径要占 1 个频道。
         this.getMainNode()
+                .setFlags(GridFlags.REQUIRE_CHANNEL)
                 .setIdlePowerUsage(0)
                 .setInWorldNode(true)
                 .setExposedOnSides(java.util.Set.of(net.minecraft.core.Direction.values()))
