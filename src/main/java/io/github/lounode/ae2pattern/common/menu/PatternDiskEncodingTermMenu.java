@@ -1210,8 +1210,8 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
             updateStonecuttingRecipes();
         }
         if (isClientSide()) {
-            // 手动换模式等于放弃刚才导入的那个配方：配方类别只用来决定标记该归到哪个模式，留着它会让
-            // 下一次绑定写出一份与当前模式不符的标记。
+            // 手动换模式等于放弃刚才导入的那个配方：类别是绑盘时要写的标记，留着它会让下一次绑定写出
+            // 一份与当前模式不符的标记。导入自己也会走 setMode，所以设置类别的一方要放在编码之后。
             pendingRecipeCategory = null;
             sendClientAction(ACTION_SET_MODE, mode);
         } else {

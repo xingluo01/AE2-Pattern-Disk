@@ -9,10 +9,11 @@ import net.minecraft.world.item.ItemStack;
 
 import net.neoforged.fml.ModList;
 
+import appeng.parts.encoding.EncodingMode;
+
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 import io.github.lounode.ae2pattern.client.integration.EmiMarkNames;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
-import appeng.parts.encoding.EncodingMode;
 
 /**
  * Turns a disk's mark (the {@code DISK_PREFIX} component) into the line shown in its tooltip.
@@ -52,9 +53,19 @@ public final class PatternDiskMarks {
 
         if (mark.startsWith(MODE_PREFIX)) {
             var modeName = mark.substring(MODE_PREFIX.length());
+            if (modeName.isEmpty()) {
+                // 只有一个 "#mode:"，没有模式名：显示原文，否则 tooltip 里会多出一个空行。
+                return Component.literal(mark);
+            }
+            var mode = parseMode(modeName);
+            if (mode == null) {
+                // 认不出是哪个模式（例如玩家自己写下的 #mode:xyz）：显示原文，别丢一串未翻译的键名。
+                return Component.literal(modeName);
+            }
             // 手动编码写下的盘用的是模式标记，而导入过配方的盘用配方类别。把模式归一到它对应的规范
             // 类别名，两种盘就叫同一个名字（否则切石会同时看到“切石”和“切石样板”），搜索也才搜得到。
-            var canonicalName = canonicalCategoryName(modeName);
+            var canonicalId = PatternDiskEncodingTermMenu.categoryForMode(mode);
+            var canonicalName = canonicalId == null ? null : findCategoryName(canonicalId);
             return canonicalName != null
                     ? canonicalName
                     : Component.translatable("ae2_pattern_disk.mark.mode." + modeName);
@@ -72,20 +83,14 @@ public final class PatternDiskMarks {
     private static final String MODE_PREFIX = "#mode:";
     private static final String ID_PREFIX = "#";
 
-    /**
-     * 模式标记归一后的显示名：按该模式对应的规范配方类别去 EMI 取名字，拿不到就返回 null 由调用方
-     * 回退到模式自己的文案。处理模式没有公认类别，总是回退。
-     */
+    /** 模式标记里那个名字对应的模式；认不出来返回 null。 */
     @Nullable
-    private static Component canonicalCategoryName(String modeName) {
-        EncodingMode mode;
+    private static EncodingMode parseMode(String modeName) {
         try {
-            mode = EncodingMode.valueOf(modeName.toUpperCase(Locale.ROOT));
+            return EncodingMode.valueOf(modeName.toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException unknownMode) {
             return null;
         }
-        var canonicalId = PatternDiskEncodingTermMenu.categoryForMode(mode);
-        return canonicalId == null ? null : findCategoryName(canonicalId);
     }
 
     /**

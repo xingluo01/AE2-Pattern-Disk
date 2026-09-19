@@ -42,11 +42,6 @@ public class DiskEncodePatternHandler extends AbstractDiskRecipeHandler<PatternD
         }
 
         if (doTransfer) {
-            // Remember which recipe category this came from: it is what a disk mark should say, and it is
-            // only visible here on the client.
-            var category = emiRecipe.getCategory();
-            menu.setPendingRecipeCategory(category == null ? null : category.getId().toString());
-
             if (craftingRecipe && recipeId != null) {
                 DiskEncodingHelper.encodeCraftingRecipe(menu,
                         new RecipeHolder<>(recipeId, recipe),
@@ -57,6 +52,11 @@ public class DiskEncodePatternHandler extends AbstractDiskRecipeHandler<PatternD
                         EmiStackHelper.ofInputs(emiRecipe),
                         EmiStackHelper.ofOutputs(emiRecipe));
             }
+
+            // 记下这份配方来自哪个类别：磁盘标记要写的就是它，而它只在客户端可见。必须放在编码之后
+            // ——编码会先 setMode，而手动换模式时会丢弃旧的类别，先设的会被那一下清掉。
+            var category = emiRecipe.getCategory();
+            menu.setPendingRecipeCategory(category == null ? null : category.getId().toString());
         } else {
             var repo = menu.getClientRepo();
             Set<AEKey> craftableKeys = repo != null ? repo.getAllEntries().stream()
