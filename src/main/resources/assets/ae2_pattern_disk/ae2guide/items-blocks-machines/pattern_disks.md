@@ -1,8 +1,8 @@
 ---
 navigation:
   parent: index.md
-  title: 样板磁盘
-  position: 10
+  title: Pattern Disks
+  position: 1010
 item_ids:
 - ae2_pattern_disk:pattern_disk_1k
 - ae2_pattern_disk:pattern_disk_4k
@@ -11,13 +11,13 @@ item_ids:
 - ae2_pattern_disk:pattern_disk_256k
 ---
 
-# 样板磁盘
+# Pattern Disks
 
-样板磁盘可以把编码过的 AE2 样板存进一个物品里。空磁盘没有类型限制，插进第一张样板后就会锁定为那种样板的类型。
+A pattern disk stores encoded AE2 patterns inside a single item. An empty disk takes any type; the first pattern written to it locks the disk to that pattern's type.
 
-各阶磁盘的用法完全一样，只是容量不同：
+Every tier works the same way, only the capacity differs:
 
-| 磁盘 | 样板容量 |
+| Disk | Patterns |
 | --- | ---: |
 | 1k | 4 |
 | 4k | 16 |
@@ -25,17 +25,30 @@ item_ids:
 | 64k | 256 |
 | 256k | 1024 |
 
-使用ME样板转存器插入或取出样板。装满样板的磁盘可以放进ME样板磁盘供应器，供应器会把这些样板提供给 ME 自动合成系统。
+Use the ME Pattern Transferer to write patterns into a disk, or write the pattern you just encoded straight onto one from the [ME Pattern Disk Encoding Terminal](pattern_disk_encoding_terminal.md). A full disk goes into an ME Pattern Disk Provider, which offers those patterns to ME autocrafting.
 
-## 样板类型
+## Pattern types
 
-一张磁盘只能装一种类型的样板。合成、处理、锻造和切石这四种样板分别锁定不同的磁盘类型。
+A disk holds one pattern type only. Crafting, processing, smithing and stonecutting patterns each lock the disk to a different type.
 
-## 兼容性说明
+## Marks
 
-容量越大的磁盘，物品本身附带的数据越多。请把它放在普通箱子这类容器里，用大容量磁盘时注意菜单和网络的同步情况。
+A disk can carry a **mark** recording which machine or recipe type it belongs to. The mark shows up in the disk list of the [ME Pattern Disk Encoding Terminal](pattern_disk_encoding_terminal.md) — hovering a disk there adds its own "Mark: ..." line, plus a raw mark ID line with F3+H enabled — and it never changes the disk's name.
 
-## 合成配方
+Two interactions write a mark, both on the disk list of the [ME Pattern Disk Encoding Terminal](pattern_disk_encoding_terminal.md):
+
+- **Right click with a work block**: records the current recipe type. If you imported a recipe from the recipe viewer, that is the recipe's category (furnace, smoking, stonecutting and so on, each kept apart); encoding by hand instead falls back to the encoding mode (crafting / processing / smithing / stonecutting).
+- **Shift + right click**: records the search bar's text as the mark, and clears the mark when the search bar is empty. This one does not depend on an imported recipe, so you can stamp the same mark onto any disk you like.
+
+The encoding terminal folds crafting, smithing and stonecutting mode marks onto their matching category name, so a disk encoded by hand and one written from an imported stonecutting recipe show the same name in the list and answer the same search. Processing has no single category — each machine has its own — so a hand-encoded processing disk keeps the name "Processing pattern".
+
+The mark is what the encoding terminal's disk list filters on by default — only marked disks are listed — and it decides which machine name a middle-click rename uses.
+
+## Compatibility
+
+The larger the disk, the more data the item itself carries. Keep them in ordinary containers such as chests, and mind menu and network synchronisation when working with the larger tiers.
+
+## Recipes
 
 <RecipesFor id="ae2_pattern_disk:pattern_disk_1k" />
 <RecipeFor id="ae2_pattern_disk:pattern_disk_4k" />

@@ -1,43 +1,78 @@
 ---
 navigation:
   parent: index.md
-  title: ME样板磁盘编码终端
-  position: 35
+  title: ME Pattern Disk Encoding Terminal
+  position: 1035
 item_ids:
 - ae2_pattern_disk:pattern_disk_encoding_terminal
 categories:
 - devices
 ---
 
-# ME样板磁盘编码终端
+# ME Pattern Disk Encoding Terminal
 
-ME样板磁盘编码终端是一块挂在 ME 线缆上的面板，用来把样板磁盘和样板编码结合起来：它扫出整个 ME 网络上所有的样板磁盘，选中一张后即可把当前编码好的样板配方写进磁盘，或查看、整理磁盘里的样板。
+The ME Pattern Disk Encoding Terminal is a panel mounted on an ME cable that ties pattern encoding to pattern disks. It scans the whole ME network for pattern disks; pick one and you can write the pattern you just encoded onto it, or review and tidy the patterns it already holds.
 
-## 编码模式
+## Encoding modes
 
-终端内置合成、处理、锻造和切石四种编码界面，用界面上的模式按钮轮换切换。切换后配方网格、输出区与可用工具都会跟着换一套。
+The terminal has four encoding views — crafting, processing, smithing and stonecutting — cycled with the mode button. Switching changes the recipe grid, the output area and the tools on offer.
 
-- **合成模式**：3×3 合成表 + 输出，支持替代样板与流体替代开关。
-- **处理模式**：多输入、多输出的处理配方，支持次级产物轮换与倍乘/倍除。
-- **锻造模式**：模板槽 + 基底槽 + 材料槽的标准锻造配方。
-- **切石模式**：单个输入，输出配方由选定的切石配方决定。
+- **Crafting**: 3×3 crafting grid plus output, with substitution and fluid-substitution toggles.
+- **Processing**: multi-input, multi-output processing recipes, with secondary-output rotation and multiply/divide.
+- **Smithing**: the standard template, base and addition layout.
+- **Stonecutting**: a single input, with twelve candidates visible at once over three rows (four columns by three rows, no gap between rows); a scrollbar appears when there are more.
 
-## 处理配方工具
+## Blank patterns
 
-处理模式独有的一组工具，用于微调大规模自动化的配方倍数：
+Encoding no longer needs a blank pattern in the slot. The blank pattern slot is read-only and shows how many blank patterns the ME network holds; pressing Encode takes one straight from the network. When the network has none the terminal says so rather than doing nothing.
 
-- **主产物轮换**：把主产物换成第一个副产物，循环切换并同步整理产物槽。
-- **倍乘 / 倍除**：按比例放大/缩小整个配方的输入与输出。普通点击 ×2（÷2），按住 Shift ×3（÷3）、Ctrl ×5（÷5）、Alt ×10（÷10）。倍除会检查输入与输出都能被整除，不能整除时不做任何改动。
-- **同物品合并**：合并处理配方中同种物品的输入槽，减少配方占用的槽位。
+## Processing tools
 
-## 磁盘操作
+Tools unique to processing mode, for tuning the recipe multiplier of large automated jobs:
 
-界面下方列出网络上所有磁盘，选中一张即可操作：
+- **Rotate primary output**: swaps the primary output for the first secondary one, cycling and tidying the output slots as it goes.
+- **Multiply / divide**: scales the whole recipe's inputs and outputs. Click for ×2 (÷2), Shift-click for ×3 (÷3), Ctrl-click for ×5 (÷5), Alt-click for ×10 (÷10). Divide checks that both inputs and outputs divide evenly, and does nothing at all when they do not.
+- **Merge same items**: merges input slots holding the same item, so a recipe takes up fewer slots.
 
-- **点击磁盘**：把当前编码的样板配方写入该磁盘。磁盘类型与配方不匹配、已含同主产物配方或已满时会被拒绝。
-- **潜行左键磁盘**：把磁盘绑定为当前编码界面的类型（合成/处理/锻造/切石）并改名为对应类型名。之后磁盘列表会按类型过滤显示，同名同类型的磁盘自动归拢。
-- **顶部搜索栏**：按名字快速定位改过名的磁盘。
+## Disk list
 
-## 合成配方
+The lower part of the interface lists the network's pattern disks. By default **only disks carrying a mark are listed** — a mark records which kind of recipe a disk belongs to (see [Pattern Disks](pattern_disks.md)). A disk with no mark stays out of the default list whether or not it holds patterns — including a disk you have only ever written to and never bound a mark on. The toggle next to the search bar brings those disks out.
+
+### Search
+
+The search bar filters in two ways:
+
+- **Plain text**: matches the disk's name.
+- **Text starting with `#`**: matches the disk's mark. A mark records which machine the disk belongs to: binding it with a right-click takes the imported recipe's category when you have just imported one, and the current encoding mode otherwise. Crafting, smithing and stonecutting marks fold onto their category name, so a hand-encoded disk and one written from an imported recipe of the same kind carry the same name and answer the same search. Processing has no single category — each machine has its own — so a hand-encoded processing disk keeps the name "Processing pattern"; search for "processing" to find it.
+
+### Showing unmarked disks
+
+The toggle to the right of the search bar decides whether disks without a mark appear:
+
+- **Normal** (off): only marked disks are listed; unmarked ones are left out.
+- **Force show** (on): unmarked disks are listed as well and are exempt from `#` mark search, having no mark to match. Marked disks are still filtered by mark as usual.
+
+### Mouse controls
+
+Each button does something different on a disk:
+
+- **Left click**: write the currently encoded pattern onto that disk.
+- **Right click with a work block**: overwrite the disk's mark with the current recipe type. This changes the mark, not the name.
+- **Shift + right click**: write the search bar's text onto the disk as its mark; an empty search bar clears the disk's mark instead.
+- **Middle click with a work block**: rename the disk after the machine its mark stands for.
+
+### Write results
+
+Every write reports back in chat. Success names the disk the pattern went to; failure gives the reason — the disk is full, it is locked to another pattern type, it already holds a recipe with the same output, this pattern's type cannot be resolved, or the target disk is no longer in the list.
+
+### Writing as you encode
+
+When the search bar narrows the list to exactly one disk, pressing Encode writes the pattern straight onto it, saving the "encode, then click the disk" round trip. With more than one disk, or none, the pattern stays in the encoded slot and chat reports how many disks the list currently holds.
+
+## Uploading to NEO ECO
+
+With NEO ECO AE Extension installed, an upload button appears in the top right of the interface. It sends the pattern in the encoded slot to NEO ECO's computation cluster pattern storage, clears the slot on success, and returns a blank pattern in the order network → inventory → encoded slot. Without that mod the button does not appear.
+
+## Recipe
 
 <RecipeFor id="ae2_pattern_disk:pattern_disk_encoding_terminal" />

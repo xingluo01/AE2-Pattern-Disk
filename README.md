@@ -20,6 +20,8 @@ Store encoded AE2 patterns in a single disk. A disk is untyped while empty; the 
 | 64k | 256 |
 | 256k | 1024 |
 
+A disk can also carry a **mark**, recording which machine or recipe type it belongs to. Marks show up in the disk list of the encoding terminal (hovering a disk adds a `Mark: ...` line, plus the raw mark ID with F3+H), never rename the disk itself, and are what that list filters on by default. See [ME Pattern Disk Encoding Terminal](#me-pattern-disk-encoding-terminal).
+
 ### ME Pattern Disk Provider
 A pattern provider backed by physical pattern disks. Insert disks into its slots and it exposes their encoded patterns to the ME autocrafting system. It is a task source (it does not craft itself) and accepts returned products through its return inventory.
 
@@ -27,8 +29,26 @@ It comes in two forms sharing one implementation: the in-world **block**, and a 
 (`cable_pattern_disk_provider`) that attaches to a cable like AE2's own cable pattern provider. The panel
 form keeps the same nine disk slots and the same return inventory, just in a thinner footprint.
 
+With ExtendedAE Plus installed, its "upload pattern to a provider" button works here too: the provider has no pattern slots of its own, so the uploaded pattern lands in a free space on one of the disks it holds.
+
 ### ME Pattern Transferer
 Moves encoded patterns between AE2 blank patterns and pattern disks. Input slots accept encoded patterns or populated disks; destination slots hold the target disks. Blank patterns produced by extraction are returned to the connected ME network. Supports speed cards.
+
+### ME Pattern Disk Encoding Terminal
+
+A panel that mounts on an ME cable and ties pattern encoding to pattern disks. It scans the whole ME network for pattern disks; pick one and you can write the pattern you just encoded onto it, or review and tidy the patterns it already holds.
+
+**Encoding modes.** Crafting, processing, smithing and stonecutting views, cycled with the mode button; switching swaps the recipe grid, the output area and the tools on offer. Processing mode adds secondary-output rotation, multiply/divide (click ×2, Shift ×3, Ctrl ×5, Alt ×10 — divide does nothing unless inputs and outputs both divide evenly) and same-item merging. Stonecutting shows twelve candidates at a time over three rows, with a scrollbar when there are more.
+
+**Blank patterns** come from the ME network: the slot is a read-only mirror of how many the network holds, and the terminal says so when there are none, so there is no need to place a blank pattern by hand.
+
+**Disk list.** By default only disks carrying a mark are listed; the toggle next to the search bar brings out the rest, and those unmarked disks are then exempt from `#` mark search while marked ones stay filtered as usual. The search bar matches a disk's name, or — prefixed with `#` — its mark. Crafting, smithing and stonecutting mode marks fold onto their category name, so a hand-encoded disk and one written from an imported recipe of the same kind answer the same search; processing has no single category (each machine has its own) and keeps the name "Processing pattern".
+
+**Mouse controls.** Left click writes the currently encoded pattern to the disk; right click with a work block overwrites the disk's mark with the current recipe type; Shift + right click writes the search bar's text as the mark, and an empty search bar clears it; middle click with a work block renames the disk after the machine its mark stands for.
+
+**Write feedback.** Every write reports back in chat: which disk the pattern went to, or why it was refused — the disk is full, locked to another pattern type, already holds a recipe with the same output, the pattern's type cannot be resolved, or the target is no longer listed. When the search bar narrows the list to exactly one disk, pressing Encode writes the pattern straight to it rather than leaving it in the encoded slot.
+
+**NEO ECO integration.** With NEO ECO AE Extension installed, an upload button appears that sends the encoded pattern to its computation cluster and returns a blank pattern in the order network → inventory → encoded slot.
 
 ### Efficient Molecular Assembler
 A parallel molecular assembler with **eight independent execution threads**. It accepts crafting jobs pushed by AE2 pattern providers and runs them concurrently. Each thread owns a 3×3 molecular assembler grid, an output slot, and independent progress.
@@ -141,6 +161,8 @@ The mod ships a GuideME guide (in `assets/ae2_pattern_disk/ae2guide/`) covering 
 - `ae2` (required, `[19.0.0,)`)
 - `guideme` (provided at build; required for the guide pages)
 
+<!-- modrinth-exclude -->
+
 ## Building
 
 Requires **JDK 21** and a Gradle 9 wrapper.
@@ -168,6 +190,8 @@ cp build/libs/neoecoae-21.2.0-beta3.jar ../AE2-Pattern-Disk/libs/
 The FD Smart Pattern Bus integration (upload-to-ECO button, disk-aware insertion, pattern access
 terminal view, encoding-terminal disk list) needs the hooks added by that PR. Against a stock NEO ECO
 build the hooks are absent, the integration logs a warning and the rest of the mod behaves normally.
+
+<!-- /modrinth-exclude -->
 
 ## License
 

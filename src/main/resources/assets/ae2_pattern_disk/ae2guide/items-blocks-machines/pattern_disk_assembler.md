@@ -1,38 +1,38 @@
 ---
 navigation:
   parent: index.md
-  title: 高效分子装配室
-  position: 40
+  title: Efficient Molecular Assembler
+  position: 1040
 item_ids:
 - ae2_pattern_disk:pattern_disk_assembler
 categories:
 - machines
 ---
 
-# 高效分子装配室
+# Efficient Molecular Assembler
 
-高效分子装配室是一台拥有八条独立加工线路的分子装配室。它接受 AE2 样板供应器送来的合成任务；除了每页一个手动样板槽外，它不负责样板的批量存放与管理（大批量样板请交给样板磁盘）。
+The Efficient Molecular Assembler is a molecular assembler with eight independent crafting lanes. It takes crafting jobs pushed by an AE2 pattern provider; apart from one manual pattern slot per page it does not store or manage patterns in bulk — leave that to the pattern disks.
 
-每个任务会自动交给第一条空闲的线路。每条线路都有自己的一套 3×3 合成网格、一个输出格和独立的进度。界面上有八个标签页，一页对应一条线路，方便你查看每条线路的加工情况。
+Each job goes to the first idle lane. Every lane has its own 3×3 crafting grid, its own output slot and its own progress. The interface has eight tabs, one per lane, so you can watch each lane at work.
 
-## 加速卡
+## Acceleration cards
 
-这台机器最多能装五张 AE2 加速卡，速度加成依次为 1.0 倍、1.3 倍、1.7 倍、2.0 倍、2.5 倍和 5.0 倍。加速卡越多，每条线路做完一个任务的时间就越短。
+The machine takes up to five AE2 acceleration cards, for speed multipliers of 1.0×, 1.3×, 1.7×, 2.0×, 2.5× and 5.0×. The more cards, the less time each lane takes over a job.
 
-## 输出
+## Output
 
-做好的物品会先送进旁边配置好的容器。放不下的部分会存进 ME 网络。合成中留下的容器会顺着同一条路送回，如果对方放满了，就先在原地排队。
+Finished items go first to the configured container beside the machine. Whatever will not fit goes into the ME network. Containers left over from crafting come back the same way; if the other side is full they queue up where they are.
 
-## 手动样板
+## Manual patterns
 
-每条线路的页面上都有一个样板槽。手动放入一张已编码的合成样板后，这一页会转为自执行：它持续从 ME 网络提取所需材料、连续合成，并把产物与容器余料送回相邻容器或 ME 网络；只要样板还在槽里、网络里还有材料，它就会一直工作。
+Each lane's page has a pattern slot. Put an encoded crafting pattern in by hand and that page turns self-driving: it keeps pulling the materials it needs from the ME network, crafting continuously, and sending products and leftover containers to the neighbouring container or the ME network. It keeps going as long as the pattern stays in the slot and the network has materials.
 
-插了样板的线路不会接受样板供应器派发的任务，所以整台机器只有在至少一条线路完全空闲时才会接单。取走样板后，该线路会把网格里剩下的物品退回，然后重新变回空闲线路。
+A lane holding a pattern will not take jobs pushed by a pattern provider, so the machine only accepts work while at least one lane is completely idle. Take the pattern out and the lane returns whatever is left on its grid, then goes back to being an idle lane.
 
-## 与样板供应器搭配
+## Pairing with a pattern provider
 
-把装配室放在ME样板磁盘供应器或其它 AE2 样板供应器旁边即可。供应器负责送样板和材料，装配室负责加工，做好后再把成品送回。
+Put the assembler next to an ME Pattern Disk Provider or any other AE2 pattern provider. The provider pushes patterns and materials, the assembler does the crafting, and the finished goods are sent back.
 
-## 合成配方
+## Recipe
 
 <RecipeFor id="ae2_pattern_disk:pattern_disk_assembler" />

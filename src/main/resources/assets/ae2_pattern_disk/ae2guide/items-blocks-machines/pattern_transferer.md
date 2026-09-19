@@ -1,22 +1,22 @@
 ---
 navigation:
   parent: index.md
-  title: ME样板转存器
-  position: 30
+  title: ME Pattern Transferer
+  position: 1030
 item_ids:
 - ae2_pattern_disk:pattern_transferer
 categories:
 - machines
 ---
 
-# ME样板转存器
+# ME Pattern Transferer
 
-ME样板转存器负责把编码样板在 AE2 空白样板和样板磁盘之间互相转移。
+The ME Pattern Transferer moves encoded patterns between AE2 blank patterns and pattern disks.
 
-输入端放编码样板或已经装满样板的磁盘；目标槽放你要写入的样板磁盘。从磁盘取出样板后，腾出的空白样板会被送回连接的 ME 网络。
+The input side takes encoded patterns, or disks already holding patterns; the target slot takes the disk you want to write to. Patterns taken out of a disk leave a blank pattern behind, which is sent back to the connected ME network.
 
-一张磁盘一次只接受一种样板类型，并且会拒绝和当前主输出重复的样板。ME样板转存器支持加速卡，插上后能加快转存的速度。
+A disk accepts one pattern type at a time and refuses patterns whose primary output it already holds. The transferer takes acceleration cards, which speed the transfer up.
 
-## 合成配方
+## Recipe
 
 <RecipeFor id="ae2_pattern_disk:pattern_transferer" />

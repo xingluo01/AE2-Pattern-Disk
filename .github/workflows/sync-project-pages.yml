@@ -1,0 +1,116 @@
+name: Sync project description
+
+# 把仓库里的描述源文本同步到 Modrinth 项目页：
+#   短描述 ← gradle.properties 的 mod_description（与 neoforge.mods.toml 同源）
+#   正  文 ← README.md（掐掉 <!-- modrinth-exclude --> ... <!-- /modrinth-exclude --> 之间的构建说明）
+#
+# 描述源只有上面这两处。日后新增源文件（比如 DESCRIPTION.md）必须同时加进下面的 paths，
+# 否则本 workflow 会静默不跑——workflow_dispatch 可以手动补一次。
+#
+# 为什么不并进 release.yml：这段同步要求 PAT 带 PROJECT_WRITE，scope 一旦缺失就会失败；放在发版流程里
+# 会变成「版本已发布、job 却变红」，而重跑同一个 tag 既会因 Modrinth 版本号已存在而失败、CurseForge 又
+# 会重复上传一份。独立成 workflow 后，描述同步出问题不影响发版本身。
+#
+# 注意：Modrinth 项目页正文以 README 为唯一事实源——每次同步都会整体覆盖，页面上手改过的内容会被冲掉。
+#
+# CurseForge：公开的 v1 Core API 里没有可写项目描述的端点（只有只读的 GET /v1/mods/{modId}/description，
+# 官方需求单 CF-I-6366 至今仍在请求这个能力；本仓库用的 curseforge-upload action 也没有描述类输入）。
+# 所以那边的项目描述只能人工在站点上改——改的时候直接抄 README 的 Features / Blocks & Items / Recipes 三节。
+#
+# GitHub：仓库描述是另一处手工设置的副本（gh repo edit --description），与 gradle.properties 没有机械绑定，
+# 改这句时记得两边一起改；README 本身就是仓库正文，随提交自动更新。
+#
+# 依赖：Secrets MODRINTH_TOKEN（需 PROJECT_WRITE）、Variables MODRINTH_PROJECT_ID。
+on:
+  push:
+    branches: [main]
+    paths:
+      - README.md
+      - gradle.properties
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-project-pages
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: PATCH Modrinth project description and body
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+          MODRINTH_PROJECT_ID: ${{ vars.MODRINTH_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${MODRINTH_TOKEN:-}" ] || [ -z "${MODRINTH_PROJECT_ID:-}" ]; then
+            echo "::warning title=跳过 Modrinth 描述同步::MODRINTH_TOKEN 或 MODRINTH_PROJECT_ID 未配置（fork 上属正常）。"
+            exit 0
+          fi
+
+          DESC=$(grep -m1 '^mod_description=' gradle.properties | cut -d= -f2- || true)
+          if [ -z "$DESC" ]; then
+            echo "::error title=描述为空::gradle.properties 里读不到 mod_description"
+            exit 1
+          fi
+
+          # 排除标记必须成对。只有 start 会把后面全吃掉、只有 end 会把构建说明整段发出去，两种都
+          # 不会报错——先卡住标记数量，再卡残留内容。
+          start_marks=$(grep -c -- '^<!-- modrinth-exclude -->$' README.md || true)
+          end_marks=$(grep -c -- '^<!-- /modrinth-exclude -->$' README.md || true)
+          if [ "$start_marks" != "1" ] || [ "$end_marks" != "1" ]; then
+            echo "::error title=排除标记异常::modrinth-exclude 起止标记必须各恰好 1 个（start=$start_marks end=$end_marks）。"
+            exit 1
+          fi
+
+          # 用 index() 判头而不是正则：CI 的 awk 是 mawk，\/ 这类转义在 POSIX ERE 里没定义。
+          awk '
+            index($0, "<!-- modrinth-exclude -->") == 1 { skip = 1; next }
+            index($0, "<!-- /modrinth-exclude -->") == 1 { skip = 0; next }
+            !skip { print }
+          ' README.md > /tmp/body.md
+
+          if grep -qE '^## Building$|gradlew' /tmp/body.md; then
+            echo "::error title=正文含开发章节::排除区间没生效，拒绝发布。"
+            exit 1
+          fi
+
+          echo "描述 ${#DESC} 字符；正文 $(wc -l < /tmp/body.md) 行（原始 $(wc -l < README.md) 行）"
+
+          jq -n --arg d "$DESC" --rawfile b /tmp/body.md '{description: $d, body: $b}' > /tmp/patch.json
+
+          # PATCH 是幂等的（同字段覆盖），重试安全。
+          status=$(curl -sS --retry 3 --retry-delay 5 --max-time 30 \
+            -H 'User-Agent: ae2-pattern-disk-ci' \
+            -o /tmp/resp -w '%{http_code}' \
+            -X PATCH \
+            -H "Authorization: $MODRINTH_TOKEN" \
+            -H 'Content-Type: application/json' \
+            --data-binary @/tmp/patch.json \
+            "https://api.modrinth.com/v2/project/$MODRINTH_PROJECT_ID" || true)
+          echo "PATCH /v2/project/$MODRINTH_PROJECT_ID → HTTP $status"
+
+          if [ "$status" != "204" ] && [ "$status" != "200" ]; then
+            [ -f /tmp/resp ] && cat /tmp/resp || true
+            echo "::error title=Modrinth 描述同步失败::HTTP $status；确认 PAT 带 PROJECT_WRITE scope。"
+            exit 1
+          fi
+
+          # 读回来复核，免得 PATCH 返回 2xx 但字段没落进去。这一步失败只是“查不到”，
+          # 不代表 PATCH 没成功，所以降级成 warning，不把已完成的同步报成红的。
+          got=$(curl -sS --retry 3 --retry-delay 5 --max-time 30 \
+            -H 'User-Agent: ae2-pattern-disk-ci' \
+            -H "Authorization: $MODRINTH_TOKEN" \
+            "https://api.modrinth.com/v2/project/$MODRINTH_PROJECT_ID" | jq -r '.description' || true)
+          echo "复核 · Modrinth 上的描述现在是：$got"
+          if [ -z "$got" ]; then
+            echo "::warning title=复核未取到描述::PATCH 已返回成功，但读回来的内容为空，请到项目页确认。"
+          elif [ "$got" != "$DESC" ]; then
+            echo "::warning title=描述未完全一致::读回的内容与源文本不同，请到项目页确认。"
+          fi

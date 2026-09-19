@@ -1,54 +1,54 @@
 ---
 navigation:
   parent: index.md
-  title: 批处理装配室
-  position: 50
+  title: Batch Assembler
+  position: 1050
 item_ids:
 - ae2_pattern_disk:batch_molecular_assembler
 categories:
 - machines
 ---
 
-# 批处理装配室
+# Batch Assembler
 
-批处理装配室把样板供应器推来的合成任务先缓存在机器内部的**存储元件**里，等一小段时间不再有新原料进来后，再把缓存里能做的配方一次性做完。适合大批量订单：原料攒够一批再做，产物集中送回网络。
+The Batch Assembler buffers the crafting jobs a pattern provider pushes at it in **storage cells** inside the machine, and once no new materials have arrived for a short while it runs everything it can from that buffer in one go. It suits large orders: let the materials pile up, then craft the batch and send the products back to the network together.
 
-## 缓存栏
+## Cell slots
 
-界面下一排的九个**缓存栏槽位**，可放入任何类型的存储元件（与 ME 驱动器同款过滤）。元件在这里只当作机器私有的缓存：它的内容不会进入 ME 网络，也不能被网络或管道取出；未注册存储 handler 的元件（如空间元件）放入后不提供缓存功能。**机器工作（有缓存的合成任务）时槽位被锁定**，无法放入或取出，避免刷物品。点击「退回缓存」会把元件里的缓存原材料全部退回 ME 网络；机器空转（没有积压、也没有待返回产物）满 10 tick 后，缓存栏里剩下的东西也会自动退回网络，免得原料被当成本机的私仓锁着。网络收不下时余量留在元件里，等下一次有活干再评估（不会每 tick 重试）；你手动放进元件的物品同样会被这套机制搬回网络。
+Nine **cell slots** run along the bottom of the interface and take storage cells of any type (the same filter as an ME Drive). Here a cell is nothing but the machine's private buffer: its contents never enter the ME network and cannot be pulled out by the network or by pipes. A cell that registers no storage handler — a spatial cell, for instance — provides no buffering at all. **The slots lock while the machine is working** (while there are buffered crafting jobs), so nothing can be added or removed and no items can be duplicated. Pressing "Return buffer" sends every buffered raw material back to the ME network; once the machine has been idle for 10 ticks (no backlog and nothing waiting to be returned), whatever is left in the cell slots also goes back automatically, so materials do not end up locked away as the machine's private store. If the network cannot take them, the remainder stays in the cell and is reconsidered the next time there is work — it does not retry every tick. Items you put into a cell by hand are carried back to the network by the same mechanism.
 
-队列只存在内存里：读档后机器没有积压，那些作业带进来的原料会由上面的闲置退回机制还回网络，对应的合成 CPU 作业需要你手动取消。
+The queue lives in memory only: after loading a save the machine has no backlog, and the materials those jobs brought in are returned to the network by the idle-return mechanism above. You will need to cancel the matching crafting CPU jobs by hand.
 
-## 样板池
+## Pattern pool
 
-九个**样板磁盘槽**（界面上一排）。所有磁盘上的配方会汇总成机器的共享样板池，并暴露给 ME 自动合成；这些磁盘也会同时出现在**样板管理终端**与**样板磁盘编码终端**的磁盘列表里。只有工作台、锻造台与切石这三类无耗时配方能被这台机器执行，处理类样板会被拒绝。
+Nine **pattern disk slots** (one row in the interface). The recipes on all those disks are pooled into the machine's shared pattern pool and exposed to ME autocrafting; the disks also show up in the disk lists of the **pattern access terminal** and the [ME Pattern Disk Encoding Terminal](pattern_disk_encoding_terminal.md). Only the three instant recipe types — crafting table, smithing table and stonecutting — can be run by this machine; processing patterns are refused.
 
-中间产物不会被机器私自消化：每次加工产出的物品（含容器余料）都进入机器内的**平滑返回队列**，在约 20 tick 内按每 tick 累计总量的 5% 送回 ME 网络，由合成 CPU 继续调度下一步，以免与 CPU 的记账冲突；网络空间不足时产物在队列中排队续传，原料不回滚、产物也不挤占缓存栏。若某个物品正是合成 CPU 此刻在等的（样板链自己回收的玻璃瓶之类），它不按 5%/tick 走，而是当 tick 直接送一批（每 tick 至少 512 个，且不低于平滑速率）——卡在那一格节奏上，整条链就得跟着等；大批量订单的单次写入上限仍与原来一致。
+Intermediate products are not swallowed by the machine: everything a craft produces (including leftover containers) goes into the machine's **smooth return queue**, which sends about 5% of the running total per tick back to the ME network over roughly 20 ticks, so the crafting CPU can schedule the next step without fighting the machine's bookkeeping. If the network is short on space the products queue up and keep going, with no rollback of materials and no products taking up the cell slots. When an item is exactly what the crafting CPU is waiting for right now — a bottle recovered by the pattern chain, say — it does not follow the 5%/tick rate but goes in one push that tick (at least 512 per tick, and never below the smooth rate): stalling on that one item would hold up the whole chain. The per-write cap for large orders is unchanged.
 
-## 批次等待模式
+## Batch wait modes
 
-机器只受**静默时间**驱动：每收到一次原料就重新开始计时，只有原料真的停下来（两次成功推送的间隔达到或超过选定的静默时长）才开批，随后一口气做完全部积压：
+The machine is driven purely by **quiet time**: every time materials arrive the clock restarts, and the batch only starts once the materials really stop (two successful pushes at least the chosen quiet period apart), after which everything buffered runs at once:
 
-* **标准**：静默 40 tick 后开做；
-* **极速**：静默 10 tick 后开做；
-* **小批次快开工**：上一批只做出不到 8 个作业时，说明那个静默窗口几乎没攒到东西，下一批只等 1 tick 就开做；每连续 32 次这种小批运行后，机器会用一整窗重新测一次供料（免得把已经转成连续供料的订单一直按推送逐条做），供料久停（8 个窗口）也会把分类清零，久闲之后的大订单照旧攒批。攒到 8 个及以上作业的运行、以及还没跑过第一批的机器，一律照常等满整窗——这正是大批量订单的攒批行为与以前完全一致的原因。这一条省下来的是调度开销（更少的运行次数与存档写入），与耗电无关：本机按**每个作业**扣 10 AE，不按批扣。窗口状态不持久化，读档后从整窗开始。
+* **Standard**: batches after 40 ticks of quiet;
+* **Fast**: batches after 10 ticks of quiet;
+* **Small batch, quick start**: when the previous batch produced fewer than 8 jobs, the quiet window clearly caught almost nothing, so the next batch starts after just 1 tick; after 32 such small runs in a row the machine spends one full window re-measuring the feed (so an order that has turned into a steady stream is not run push by push), and a feed that stays stopped for 8 windows resets the classification, so a large order after a long idle spell still batches as before. Runs that reach 8 jobs or more, and machines that have not run a first batch yet, always wait the full window — which is exactly why the batching behaviour for large orders is unchanged. What this saves is scheduling overhead (fewer runs and fewer save writes), not power: the machine charges 10 AE **per job**, not per batch. Window state is not persisted; after loading a save it starts from a full window.
 
-积压没有额外上限，缓存栏能装多少就攒多少（受元件自身容量约束）；缓存装不下时新的推送会被拒收（机器不会因此变成「忙碌」状态，CPU 会稍后重试），而已经攒下的积压只要成功推送停下来，仍会在一个静默窗口之后开做。吞吐上限取决于合成 CPU 的发配能力（受其加速卡数与协处理器数影响），机器侧建议配合 CPU 加速卡使用。
+There is no extra cap on the backlog: the cell slots hold as much as the cell itself allows. When the buffer is full new pushes are refused (the machine does not report itself as "busy" over this, and the CPU retries later), while a backlog that is already there still starts once the successful pushes stop, after one quiet window. Throughput is capped by what the crafting CPU can hand out (its own acceleration and co-processing cards), so pair the machine with CPU acceleration cards.
 
-## 加速卡
+## Acceleration cards
 
-最多装四张 AE2 加速卡，每张让工作线程翻倍（2 / 4 / 8 / 16 线程）。线程只用于**并行分析**排队的样板：样板首次进入队列时解析它的输入变体、容器余料与主产出，结果缓存起来供后续反复使用。
+Up to four AE2 acceleration cards, each doubling the worker threads (2 / 4 / 8 / 16). The threads are used only to **analyse queued patterns in parallel**: when a pattern first enters the queue its input variants, leftover containers and primary output are resolved and cached for reuse.
 
-* **存储与网络仍走服务端主线程**：元件的读写与网格交互必须在主线程完成（AE2 的存储不是线程安全的），所以加速卡不会把同一批加工拆到多个线程里跑，也不改变产物数量；
-* **每 tick 没有次数上限**：积压多少就尽力做完多少，批次不再被人为截断成每 tick 固定份数；
-* **产物平滑返回**：合成产物不一次性写入 ME 网络，而是在约 20 tick 内每 tick 返回累计总量的 5%，大订单不会因单次大量存储 IO 造成卡顿；网络空间不足时产物在机器内排队，待网络腾出空间后继续返回。
+* **Storage and network stay on the server thread**: cell reads and writes and grid interaction must happen there (AE2's storage is not thread-safe), so the cards do not split a batch across threads and do not change how much is produced;
+* **No per-tick limit**: as much of the backlog as possible is finished each tick, rather than the batch being cut off at a fixed number of jobs;
+* **Smooth product return**: products are not written to the ME network in one go but returned at about 5% of the running total per tick over roughly 20 ticks, so large orders do not stall the machine on a single burst of storage IO; when the network is short on space the products queue inside the machine until there is room again.
 
-合成总量始终由下单数量决定，加速卡不改变产物数量。
+The total produced always follows the ordered amount; the cards never change it.
 
-## 与样板供应器搭配
+## Pairing with a pattern provider
 
-把它放在ME样板磁盘供应器或其它 AE2 样板供应器旁边即可：供应器负责送样板与原料，批处理装配室负责攒批加工并回送产物。
+Put it next to an ME Pattern Disk Provider or any other AE2 pattern provider: the provider pushes patterns and materials, the Batch Assembler batches and crafts, and the products go back.
 
-## 合成配方
+## Recipe
 
 <RecipeFor id="ae2_pattern_disk:batch_molecular_assembler" />

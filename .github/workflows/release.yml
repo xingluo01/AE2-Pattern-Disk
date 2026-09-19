@@ -7,7 +7,8 @@ name: Release
 # 需要在仓库里预先配置（Settings → Secrets and variables → Actions）：
 #   Secrets   MODRINTH_TOKEN         Modrinth PAT。发版至少要 VERSION_CREATE（上传新版本）；
 #                                   标准更新流程再勾 VERSION_WRITE（改已发布版本的元数据/文件）与
-#                                   PROJECT_WRITE（改项目元数据，minotaur 的 syncBodyFrom 同步正文也要它）。
+#                                   PROJECT_WRITE（改项目元数据）。发版本身不需要它，但 sync-project-pages.yml
+#                                   同步项目描述时要（本项目没用 minotaur 的 syncBodyFrom，所以只需一处）。
 #                                   删除类、支付类、用户认证类、组织/收藏/通知类都不用勾。
 #                                   scope 名以 VERSION_CREATE 为准（minotaur README 写作
 #                                   CREATE_VERSION 是它的笔误）。

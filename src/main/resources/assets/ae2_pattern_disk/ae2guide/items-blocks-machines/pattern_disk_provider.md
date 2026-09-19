@@ -1,8 +1,8 @@
 ---
 navigation:
   parent: index.md
-  title: ME样板磁盘供应器
-  position: 20
+  title: ME Pattern Disk Provider
+  position: 1020
 item_ids:
 - ae2_pattern_disk:pattern_disk_provider
 - ae2_pattern_disk:cable_pattern_disk_provider
@@ -10,28 +10,32 @@ categories:
 - devices
 ---
 
-# ME样板磁盘供应器
+# ME Pattern Disk Provider
 
-ME样板磁盘供应器是一款直接使用实体样板磁盘的样板供应器。把装满样板的磁盘插进它的磁盘槽里，它就会把磁盘里的编码样板提供给 ME 自动合成系统。
+The ME Pattern Disk Provider is a pattern provider that serves real pattern disks. Put disks holding patterns into its disk slots and it offers their encoded patterns to ME autocrafting.
 
-它只负责送任务，不负责合成。它会向旁边兼容的机器推送样板和材料，比如高效分子装配室。
+It only pushes jobs; it does not craft. It sends patterns and materials to a compatible machine beside it, such as the Efficient Molecular Assembler.
 
-做好的成品可以送回供应器的物品返回栏。供应器以磁盘里的样板为唯一依据，磁盘内容一变，它就会重新整理可以提供的样板。
+Finished items can come back to the provider's return slots. The disks are the sole source of truth: change what is on them and the provider works out afresh what it can offer.
 
-## 使用方法
+## Using it
 
-1. 把供应器连上 ME 网络。
-2. 插入一张或多张样板磁盘。
-3. 在旁边放一台高效分子装配室或其它兼容机器。
-4. 先用ME样板转存器把样板写进磁盘，再把磁盘插进去。
+1. Connect the provider to your ME network.
+2. Insert one or more pattern disks.
+3. Put an Efficient Molecular Assembler or another compatible machine next to it.
+4. Write patterns onto the disks with the ME Pattern Transferer or the [ME Pattern Disk Encoding Terminal](pattern_disk_encoding_terminal.md), then insert them.
 
-## 面板形态
+## Panel form
 
-贴着 ME 线缆安装时，它是面板形态：磁盘槽、界面、样板逻辑和返还栏接口都与方块形态相同，区别是它只向所贴的那一面推送样板，更适合紧凑布线。
+Mounted on an ME cable it becomes a panel: same disk slots, interface, pattern logic and return-slot interface as the block form. The difference is that it only pushes patterns out of the face it is attached to, which suits tighter cabling.
 
-两种形态可以互相转换：在工作台里无序合成，一个换一个，不额外消耗材料。
+The two forms convert into each other: a shapeless craft in a crafting grid swaps one for the other, with no extra materials.
 
-## 合成配方
+## Upload button (ExtendedAE Plus)
+
+With ExtendedAE Plus installed, its "upload pattern to a provider" button works on this provider too. The provider has no pattern slots of its own, so an uploaded pattern lands in a free space on one of the disks it holds.
+
+## Recipes
 
 <RecipesFor id="ae2_pattern_disk:pattern_disk_provider" />
 
