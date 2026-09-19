@@ -637,38 +637,31 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements Patter
     }
 
     /**
-     * 要绑到磁盘上的标记。始终归到编码模式那一套：配方类别会为同一台机器给出第二个说法（切石同时
-     * 出现过“切石”和“切石样板”两种），而没有任何配方可参考时（手动编码、直接绑）只能靠模式，
-     * 所以模式是唯一的真源。类别仅用来判断当前该用哪个模式。
+     * 要绑到磁盘上的标记：导入过配方就用它自己的类别（同一台机器下的不同类别分得开），手动编码、
+     * 直接绑盘这类拿不到配方时就回退到编码模式。两者都存成 {@code #} 开头的标识符。
+     *
+     * <p>两套写法看起来是两种标记，但显示与搜索会把模式标记归一成对应的类别（见
+     * {@link #categoryForMode}），所以玩家看到的、搜到的名字是一致的。</p>
      */
     public String deriveMarkId() {
-        var fromCategory = modeForCategory(pendingRecipeCategory);
-        return modeMarkId(fromCategory != null ? fromCategory : this.mode);
+        return pendingRecipeCategory != null && !pendingRecipeCategory.isEmpty()
+                ? "#" + pendingRecipeCategory
+                : modeMarkId(this.mode);
     }
 
     /**
-     * 把 EMI 的配方类别归到编码模式。认不出来时返回 null，由调用方回退到当前模式——宁可偶尔粗一点，
-     * 也不要为同一台机器再生出第三套标记。客户端把旧盘上的类别标记按同一规则显示，所以这里是公开的。
+     * 编码模式对应的规范配方类别 id，没有公认类别时返回 null。“导入过”的盘用配方自己的类别，
+     * “手动编码”的盘只能用模式，把模式映射到类别是为了让这两种盘叫同一个名字。
      */
     @Nullable
-    public static EncodingMode modeForCategory(@Nullable String categoryId) {
-        if (categoryId == null || categoryId.isEmpty()) {
-            return null;
-        }
-        var id = categoryId.toLowerCase(Locale.ROOT);
-        if (id.contains("stonecutting")) {
-            return EncodingMode.STONECUTTING;
-        }
-        if (id.contains("smithing")) {
-            return EncodingMode.SMITHING_TABLE;
-        }
-        if (id.contains("crafting")) {
-            return EncodingMode.CRAFTING;
-        }
-        if (id.contains("processing")) {
-            return EncodingMode.PROCESSING;
-        }
-        return null;
+    public static String categoryForMode(EncodingMode mode) {
+        return switch (mode) {
+            case CRAFTING -> "minecraft:crafting";
+            case STONECUTTING -> "minecraft:stonecutting";
+            case SMITHING_TABLE -> "minecraft:smithing";
+            // 处理没有唯一的类别：不同机器各有各的 EMI 类别，只能保留模式自己的名字。
+            case PROCESSING -> null;
+        };
     }
 
     /** The mark standing for an encoding mode, for disks marked without an imported recipe. */

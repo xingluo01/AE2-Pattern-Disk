@@ -12,6 +12,7 @@ import net.neoforged.fml.ModList;
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 import io.github.lounode.ae2pattern.client.integration.EmiMarkNames;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
+import appeng.parts.encoding.EncodingMode;
 
 /**
  * Turns a disk's mark (the {@code DISK_PREFIX} component) into the line shown in its tooltip.
@@ -50,17 +51,17 @@ public final class PatternDiskMarks {
         }
 
         if (mark.startsWith(MODE_PREFIX)) {
-            return Component.translatable("ae2_pattern_disk.mark.mode." + mark.substring(MODE_PREFIX.length()));
+            var modeName = mark.substring(MODE_PREFIX.length());
+            // 手动编码写下的盘用的是模式标记，而导入过配方的盘用配方类别。把模式归一到它对应的规范
+            // 类别名，两种盘就叫同一个名字（否则切石会同时看到“切石”和“切石样板”），搜索也才搜得到。
+            var canonicalName = canonicalCategoryName(modeName);
+            return canonicalName != null
+                    ? canonicalName
+                    : Component.translatable("ae2_pattern_disk.mark.mode." + modeName);
         }
 
         if (mark.startsWith(ID_PREFIX)) {
             var id = mark.substring(ID_PREFIX.length());
-            // 早期版本把 EMI 的配方类别 id 当标记存，同一台机器因此有第二个说法（切石既有“切石”也有
-            // “切石样板”）。能归到编码模式的就按模式那套显示，让新老标记的显示名、搜索词、改名结果一致。
-            var mode = PatternDiskEncodingTermMenu.modeForCategory(id);
-            if (mode != null) {
-                return Component.translatable("ae2_pattern_disk.mark.mode." + mode.name().toLowerCase(Locale.ROOT));
-            }
             var name = findCategoryName(id);
             return name != null ? name : Component.literal(id);
         }
@@ -70,6 +71,22 @@ public final class PatternDiskMarks {
 
     private static final String MODE_PREFIX = "#mode:";
     private static final String ID_PREFIX = "#";
+
+    /**
+     * 模式标记归一后的显示名：按该模式对应的规范配方类别去 EMI 取名字，拿不到就返回 null 由调用方
+     * 回退到模式自己的文案。处理模式没有公认类别，总是回退。
+     */
+    @Nullable
+    private static Component canonicalCategoryName(String modeName) {
+        EncodingMode mode;
+        try {
+            mode = EncodingMode.valueOf(modeName.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException unknownMode) {
+            return null;
+        }
+        var canonicalId = PatternDiskEncodingTermMenu.categoryForMode(mode);
+        return canonicalId == null ? null : findCategoryName(canonicalId);
+    }
 
     /**
      * The name to give a disk carrying {@code mark} when renaming it after its machine ("烟熏炉"). Marks
