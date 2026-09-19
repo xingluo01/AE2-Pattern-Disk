@@ -147,6 +147,7 @@ jobs:
           MODRINTH_CHANGELOG: ${{ steps.changelog.outputs.body }}
         run: >
           ./gradlew modrinth
+          --no-configuration-cache
           -Pmod_version=${{ steps.ver.outputs.version }}
           -Dorg.gradle.java.home="$JAVA_HOME"
           -Dorg.gradle.jvmargs="-Xmx3G -Dhttps.protocols=TLSv1.2,TLSv1.3 -Djavax.net.ssl.trustStoreType=JKS"
