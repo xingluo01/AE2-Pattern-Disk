@@ -1,9 +1,59 @@
 {
  "$schema": "../schema.json",
  "includes": [
-  "../common/common.json"
+  "../common/common.json",
+  "../common/terminal_toolbox.json"
  ],
  "helpTopic": "ae2_pattern_disk:ae2guide/items-blocks-machines/pattern_disk_management_terminal.md",
+ "terminalStyle": {
+  "supportsAutoCrafting": true,
+  "slotsPerRow": 9,
+  "header": {
+   "texture": "ae2_pattern_disk:textures/guis/pattern_disk_management_terminal.png",
+   "srcRect": [
+    0,
+    0,
+    340,
+    17
+   ]
+  },
+  "firstRow": {
+   "texture": "ae2_pattern_disk:textures/guis/pattern_disk_management_terminal.png",
+   "srcRect": [
+    0,
+    17,
+    340,
+    18
+   ]
+  },
+  "row": {
+   "texture": "ae2_pattern_disk:textures/guis/pattern_disk_management_terminal.png",
+   "srcRect": [
+    0,
+    17,
+    340,
+    1000
+   ]
+  },
+  "lastRow": {
+   "texture": "ae2_pattern_disk:textures/guis/pattern_disk_management_terminal.png",
+   "srcRect": [
+    0,
+    17,
+    340,
+    18
+   ]
+  },
+  "bottom": {
+   "texture": "ae2_pattern_disk:textures/guis/pattern_disk_management_terminal.png",
+   "srcRect": [
+    0,
+    35,
+    340,
+    215
+   ]
+  }
+ },
  "background": {
   "texture": "ae2_pattern_disk:textures/guis/pattern_disk_management_terminal.png",
   "srcRect": [
@@ -16,50 +66,50 @@
  "slots": {
   "CRAFTING_GRID": {
    "left": 181,
-   "bottom": 51,
+   "bottom": 108,
    "grid": "BREAK_AFTER_3COLS"
   },
   "CRAFTING_RESULT": {
    "left": 264,
-   "bottom": 33
+   "bottom": 40
   },
   "PROCESSING_INPUTS": {
    "left": 190,
-   "bottom": 50,
+   "bottom": 107,
    "grid": "BREAK_AFTER_3COLS"
   },
   "PROCESSING_OUTPUTS": {
    "left": 267,
-   "bottom": 50,
+   "bottom": 107,
    "grid": "VERTICAL"
   },
   "SMITHING_TABLE_TEMPLATE": {
    "left": 182,
-   "bottom": 32
+   "bottom": 89
   },
   "SMITHING_TABLE_BASE": {
    "left": 200,
-   "bottom": 32
+   "bottom": 89
   },
   "SMITHING_TABLE_ADDITION": {
    "left": 218,
-   "bottom": 32
+   "bottom": 89
   },
   "SMITHING_TABLE_RESULT": {
    "left": 267,
-   "bottom": 32
+   "bottom": 89
   },
   "STONECUTTING_INPUT": {
    "left": 182,
-   "bottom": 31
+   "bottom": 88
   },
   "BLANK_PATTERN": {
    "left": 305,
-   "bottom": 57
+   "bottom": 114
   },
   "ENCODED_PATTERN": {
    "left": 305,
-   "bottom": 10
+   "bottom": 67
   },
   "PLAYER_INVENTORY": {
    "left": 7,
@@ -75,7 +125,7 @@
  "tooltips": {
   "processing-primary-output": {
    "left": 266,
-   "bottom": 51,
+   "bottom": 108,
    "width": 18,
    "height": 18,
    "tooltip": [
@@ -90,7 +140,7 @@
   },
   "processing-optional-output1": {
    "left": 266,
-   "bottom": 51,
+   "bottom": 108,
    "width": 18,
    "height": 18,
    "tooltip": [
@@ -105,7 +155,7 @@
   },
   "processing-optional-output2": {
    "left": 266,
-   "bottom": 33,
+   "bottom": 90,
    "width": 18,
    "height": 18,
    "tooltip": [
@@ -120,7 +170,7 @@
   },
   "processing-optional-output3": {
    "left": 266,
-   "bottom": 15,
+   "bottom": 72,
    "width": 18,
    "height": 18,
    "tooltip": [
@@ -159,96 +209,96 @@
    },
    "position": {
     "left": 175,
-    "bottom": 120
+    "bottom": 132
    }
   }
  },
  "widgets": {
   "modePanel0": {
    "left": 175,
-   "bottom": 108,
+   "bottom": 57,
    "width": 115,
    "height": 66
   },
   "modePanel1": {
    "left": 175,
-   "bottom": 108,
+   "bottom": 57,
    "width": 115,
    "height": 66
   },
   "modePanel2": {
    "left": 175,
-   "bottom": 108,
+   "bottom": 57,
    "width": 115,
    "height": 66
   },
   "modePanel3": {
    "left": 175,
-   "bottom": 108,
+   "bottom": 57,
    "width": 115,
    "height": 66
   },
   "encodePattern": {
    "left": 305,
-   "bottom": 37
+   "bottom": 94
   },
   "craftingClearPattern": {
    "left": 237,
-   "bottom": 51
+   "bottom": 108
   },
   "craftingSubstitutions": {
    "left": 247,
-   "bottom": 51
+   "bottom": 108
   },
   "craftingFluidSubstitutions": {
    "left": 257,
-   "bottom": 51
+   "bottom": 108
   },
   "processingPatternModeScrollbar": {
    "left": 180,
-   "bottom": 51,
+   "bottom": 108,
    "height": 54
   },
   "processingClearPattern": {
    "left": 246,
-   "bottom": 51
+   "bottom": 108
   },
   "processingMergeItems": {
    "left": 256,
-   "bottom": 41
+   "bottom": 98
   },
   "processingRotatePrimary": {
    "left": 256,
-   "bottom": 51
+   "bottom": 108
   },
   "processingSubstitutions": {
    "left": 246,
-   "bottom": 41
+   "bottom": 98
   },
   "processingMultiply": {
    "left": 246,
-   "bottom": 5
+   "bottom": 62
   },
   "processingDivide": {
    "left": 256,
-   "bottom": 5
+   "bottom": 62
   },
   "smithingTableSubstitutions": {
    "left": 191,
-   "bottom": 43
+   "bottom": 100
   },
   "smithingTableClearPattern": {
    "left": 181,
-   "bottom": 43
+   "bottom": 100
   },
   "stonecuttingPatternModeScrollbar": {
    "left": 278,
-   "bottom": 52,
+   "bottom": 109,
    "height": 56
   },
   "miniSearch": {
    "left": 185,
-   "bottom": 71,
+   "bottom": 128,
    "width": 66,
    "height": 8
   },

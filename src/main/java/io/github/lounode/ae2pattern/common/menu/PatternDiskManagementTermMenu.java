@@ -174,7 +174,8 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
 
             var patterns = diskItem.contents(stack).patterns();
             int fingerprint = contentFingerprint(patterns);
-            if (sentContentFingerprints.get(serial) == fingerprint) {
+            int stored = sentContentFingerprints.get(serial);
+            if (sentContentFingerprints.containsKey(serial) && stored == fingerprint) {
                 continue;
             }
             sentContentFingerprints.put(serial, fingerprint);

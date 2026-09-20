@@ -6,6 +6,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import appeng.client.gui.me.common.RepoSlot;
+
 import org.jetbrains.annotations.Nullable;
 
 import net.minecraft.client.Minecraft;
@@ -32,9 +34,8 @@ import io.github.lounode.ae2pattern.network.VisibleDisksPayload;
  *
  * <p>Layout comes from {@code Sprite-0001} (the texture this screen slices): a title strip and 17 columns of
  * 18px cells on top, then the player inventory on the left and the encoding area - the very same widgets the
- * encoding terminal builds in its constructor - on the right. Room for the encoding area is why the panel is
- * {@link #PANEL_HEIGHT} tall while the drawn art currently ends earlier; the extra strip at the bottom is
- * plain background.</p>
+ * encoding terminal builds in its constructor - on the right. The panel height (268px) is set by the style JSON's
+ * {@code terminalStyle}; the current painted art ends earlier, and the extra strip at the bottom is plain background.</p>
  *
  * <p><b>Rows.</b> One row per machine (a header carrying its icon, name and disk count, plus a show/hide
  * toggle), then one row per disk: cell 0 is the disk itself, the remaining 16 cells are the patterns stored on
@@ -86,6 +87,13 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
 
     private static final int TOGGLE_SIZE = 9;
 
+    /**
+     * 磁盘槽的浅绿色底色（纯上色，不走纹理资源）。
+     *
+     * <p>与盘内样板的格子在视觉上分开：一眼能看出哪一格是磁盘本身。带 alpha，底下的槽位描边与棋盘格仍透着。</p>
+     */
+    private static final int DISK_SLOT_TINT = 0x66B9F6CA;
+
     private sealed interface Row permits HostRow, DiskRow {
     }
 
@@ -102,8 +110,6 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     private final LongSet requestedContents = new LongOpenHashSet();
 
     private int scrollOffset;
-    private int hoveredRow = -1;
-    private int hoveredColumn = -1;
     private int contentRefreshCooldown = CONTENT_REFRESH_INTERVAL_TICKS;
 
     public PatternDiskManagementTermScreen(PatternDiskManagementTermMenu menu, Inventory playerInventory,
@@ -119,9 +125,8 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     @Override
     public void init() {
         super.init();
-        // 面板尺寸由贴图决定，不跟着终端样式走（父类按 terminalStyle 算的行数在这里不适用）。
-        this.imageWidth = PANEL_WIDTH;
-        this.imageHeight = PANEL_HEIGHT;
+        // MEStorageScreen.init() 给终端网格加了 RepoSlot；我们用自定义表格，不需要它们。
+        this.menu.slots.removeIf(slot -> slot instanceof RepoSlot);
     }
 
     // ---- 行模型 ----
@@ -255,9 +260,14 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         int x = offsetX + LIST_X;
         int y = offsetY + LIST_Y;
         guiGraphics.blit(TEXTURE, x, y, 0, 0, LIST_WIDTH, TITLE_HEIGHT);
-        // 贴图只画了一行，按行高重复出整片滚动区
+        // 贴图只画了一行，按行高重复出整片滚动区；磁盘行首格再压一层浅绿
         for (int i = 0; i < VISIBLE_ROWS; i++) {
-            guiGraphics.blit(TEXTURE, x, y + TITLE_HEIGHT + i * ROW_HEIGHT, 0, TITLE_HEIGHT, LIST_WIDTH, ROW_HEIGHT);
+            int rowY = y + TITLE_HEIGHT + i * ROW_HEIGHT;
+            guiGraphics.blit(TEXTURE, x, rowY, 0, TITLE_HEIGHT, LIST_WIDTH, ROW_HEIGHT);
+            int rowIndex = scrollOffset + i;
+            if (rowIndex < rows.size() && rows.get(rowIndex) instanceof DiskRow) {
+                guiGraphics.fill(x + 1, rowY + 1, x + 1 + 16, rowY + 1 + 16, DISK_SLOT_TINT);
+            }
         }
     }
 
@@ -398,8 +408,6 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTicks) {
-        hoveredRow = rowIndexAt(mouseX, mouseY);
-        hoveredColumn = hoveredRow < 0 ? -1 : columnAt(mouseX);
         super.render(guiGraphics, mouseX, mouseY, partialTicks);
     }
 

@@ -52,7 +52,8 @@ public class AE2PatternDiskClient {
     private void registerItemColors(RegisterColorHandlersEvent.Item event) {
         event.register(
                 (stack, tintIndex) -> FastColor.ARGB32.opaque(TERMINAL_COLOR.getColor(stack, tintIndex)),
-                AEPatternRegistries.ITEM_PATTERN_DISK_ENCODING_TERMINAL.get());
+                AEPatternRegistries.ITEM_PATTERN_DISK_ENCODING_TERMINAL.get(),
+                AEPatternRegistries.ITEM_PATTERN_DISK_MANAGEMENT_TERMINAL.get());
     }
 
     /** Fluix-coloured tint source, matching AE2's own terminals. */

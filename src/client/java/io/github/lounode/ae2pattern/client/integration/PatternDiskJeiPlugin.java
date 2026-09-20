@@ -12,6 +12,7 @@ import mezz.jei.api.runtime.IJeiRuntime;
 
 import io.github.lounode.ae2pattern.AE2PatternDisk;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
+import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
 
 /**
  * JEI entry point: wires the pattern disk encoding terminal into JEI's recipe transfer ("+") button.
@@ -40,6 +41,9 @@ public class PatternDiskJeiPlugin implements IModPlugin {
         for (var containerClass : PatternDiskEncodingTermMenu.concreteMenuClasses()) {
             registration.addUniversalRecipeTransferHandler(new JeiDiskEncodeRecipeHandler(helper, containerClass));
         }
+        // 管理终端的菜单有自己的类型（管理菜单继承编码菜单，但 JEI 的登记表按 class 精确匹配），
+        // 所以单独再登一条。
+        registration.addUniversalRecipeTransferHandler(new JeiDiskEncodeRecipeHandler(helper, PatternDiskManagementTermMenu.class));
         registerCategoryCapture(registration);
     }
 
