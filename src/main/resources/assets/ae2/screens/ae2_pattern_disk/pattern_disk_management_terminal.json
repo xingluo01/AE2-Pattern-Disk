@@ -66,50 +66,50 @@
  "slots": {
   "CRAFTING_GRID": {
    "left": 181,
-   "top": 142,
+   "top": 151,
    "grid": "BREAK_AFTER_3COLS"
   },
   "CRAFTING_RESULT": {
    "left": 264,
-   "top": 217
+   "top": 169
   },
   "PROCESSING_INPUTS": {
    "left": 190,
-   "top": 143,
+   "top": 152,
    "grid": "BREAK_AFTER_3COLS"
   },
   "PROCESSING_OUTPUTS": {
    "left": 267,
-   "top": 143,
+   "top": 152,
    "grid": "VERTICAL"
   },
   "SMITHING_TABLE_TEMPLATE": {
    "left": 182,
-   "top": 161
+   "top": 170
   },
   "SMITHING_TABLE_BASE": {
    "left": 200,
-   "top": 161
+   "top": 170
   },
   "SMITHING_TABLE_ADDITION": {
    "left": 218,
-   "top": 161
+   "top": 170
   },
   "SMITHING_TABLE_RESULT": {
    "left": 267,
-   "top": 161
+   "top": 170
   },
   "STONECUTTING_INPUT": {
    "left": 182,
-   "top": 162
+   "top": 171
   },
   "BLANK_PATTERN": {
    "left": 305,
-   "top": 136
+   "top": 145
   },
   "ENCODED_PATTERN": {
    "left": 305,
-   "top": 183
+   "top": 192
   },
   "PLAYER_INVENTORY": {
    "left": 7,
@@ -125,7 +125,7 @@
  "tooltips": {
   "processing-primary-output": {
    "left": 266,
-   "top": 142,
+   "top": 151,
    "width": 18,
    "height": 18,
    "tooltip": [
@@ -140,7 +140,7 @@
   },
   "processing-optional-output1": {
    "left": 266,
-   "top": 142,
+   "top": 151,
    "width": 18,
    "height": 18,
    "tooltip": [
@@ -155,7 +155,7 @@
   },
   "processing-optional-output2": {
    "left": 266,
-   "top": 160,
+   "top": 169,
    "width": 18,
    "height": 18,
    "tooltip": [
@@ -170,7 +170,7 @@
   },
   "processing-optional-output3": {
    "left": 266,
-   "top": 178,
+   "top": 187,
    "width": 18,
    "height": 18,
    "tooltip": [
@@ -209,7 +209,7 @@
    },
    "position": {
     "left": 175,
-    "top": 136
+    "top": 133
    }
   }
  },
@@ -240,73 +240,71 @@
   },
   "encodePattern": {
    "left": 305,
-   "top": 174
+   "top": 165
   },
   "craftingClearPattern": {
    "left": 237,
-   "top": 160
+   "top": 151
   },
   "craftingSubstitutions": {
    "left": 247,
-   "top": 160
+   "top": 151
   },
   "craftingFluidSubstitutions": {
    "left": 257,
-   "top": 160
+   "top": 151
   },
   "processingPatternModeScrollbar": {
    "left": 180,
-   "top": 106,
+   "top": 151,
    "height": 54
   },
   "processingClearPattern": {
    "left": 246,
-   "top": 160
+   "top": 151
   },
   "processingMergeItems": {
    "left": 256,
-   "top": 170
+   "top": 161
   },
   "processingRotatePrimary": {
    "left": 256,
-   "top": 160
+   "top": 151
   },
   "processingSubstitutions": {
    "left": 246,
-   "top": 170
+   "top": 161
   },
   "processingMultiply": {
    "left": 246,
-   "top": 206
+   "top": 197
   },
   "processingDivide": {
    "left": 256,
-   "top": 206
+   "top": 197
   },
   "smithingTableSubstitutions": {
    "left": 191,
-   "top": 168
+   "top": 159
   },
   "smithingTableClearPattern": {
    "left": 181,
-   "top": 168
+   "top": 159
   },
   "stonecuttingPatternModeScrollbar": {
    "left": 278,
-   "top": 103,
+   "top": 150,
    "height": 56
   },
   "miniSearch": {
-   "left": 185,
-   "top": 132,
-   "width": 66,
-   "height": 8
+   "left": 230,
+   "top": 4,
+   "width": 88,
+   "height": 12
   },
   "search": {
-   "left": 219,
-   "top": 4,
-   "width": 89,
-   "height": 12
+   "left": 1000,
+   "top": 0
   },
   "craftingStatus": {
    "left": 310,

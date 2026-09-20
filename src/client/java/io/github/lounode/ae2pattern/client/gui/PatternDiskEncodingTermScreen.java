@@ -97,6 +97,11 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     private final StatesIconButton modeCycleButton;
     private final AETextField miniSearchField;
 
+    /** 磁盘列表的搜索框（子屏要给它焦点，或者按自己的布局重新定位时读它）。 */
+    protected final AETextField miniSearchField() {
+        return miniSearchField;
+    }
+
     /** 当前磁盘条目列表（含 serial，用于回调映射）。 */
     private final List<DiskEntry> diskEntries = new ArrayList<>();
 
