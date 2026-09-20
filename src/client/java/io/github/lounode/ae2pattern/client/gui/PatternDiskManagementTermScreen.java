@@ -75,17 +75,23 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
      */
     private static final int TEXTURE_SIZE = 512;
 
-    // 与贴图切片对齐的几何（Sprite-0001：0,0,339,133 是表格区；17 格 × 18px）
+    // 表格区几何：按贴图实测（描边带 x0..7，填充区从 x8 开始；标题条 y0..17；行条 y18..35，其中 y=35 是 1px 分隔）。
+    // 落点口径同 AE2 槽位：格子的 x/y 就是「物品左上角」，底图画在它 −1 处。所以绘制时统一 +1——
+    // LIST_X 取 7 时物品落在贴图实测的 x=8，行首物品落在 y=19（= LIST_Y + TITLE_HEIGHT + 1）。
     private static final int PANEL_WIDTH = 340;
     /**
      * 面板高，与 style JSON 的 terminalStyle 算出的 imageHeight 一致（header 17 + firstRow 18 + lastRow 18 +
      * bottom 167 = 220）。贴图实际画到 y=219，面板按它收，底部不留空白。
      */
     private static final int PANEL_HEIGHT = 220;
-    private static final int LIST_X = 1;
-    private static final int LIST_Y = 1;
-    private static final int LIST_WIDTH = 339;
-    private static final int TITLE_HEIGHT = 17;
+    private static final int LIST_X = 7;
+    private static final int LIST_Y = 0;
+
+    /** 填充区宽：17 格 × 18px。贴图填充区实测到 x=311，再右是滚动条区（本屏只用滚轮，不画它）。 */
+    private static final int LIST_WIDTH = 306;
+
+    /** 标题条高：贴图里是 y0..17，共 18px（原来取 17，会让行条切片多含标题末行、丢掉 y=35 的分隔线）。 */
+    private static final int TITLE_HEIGHT = 18;
     private static final int ROW_HEIGHT = 18;
     private static final int COLUMNS = 17;
     private static final int VISIBLE_ROWS = 6;
@@ -97,9 +103,9 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     private static final Blitter BACKGROUND = Blitter.texture(TEXTURE, TEXTURE_SIZE, TEXTURE_SIZE)
             .src(0, 0, PANEL_WIDTH, PANEL_HEIGHT);
     private static final Blitter LIST_TITLE = Blitter.texture(TEXTURE, TEXTURE_SIZE, TEXTURE_SIZE)
-            .src(0, 0, LIST_WIDTH, TITLE_HEIGHT);
+            .src(LIST_X, LIST_Y, LIST_WIDTH, TITLE_HEIGHT);
     private static final Blitter LIST_ROW = Blitter.texture(TEXTURE, TEXTURE_SIZE, TEXTURE_SIZE)
-            .src(0, TITLE_HEIGHT, LIST_WIDTH, ROW_HEIGHT);
+            .src(LIST_X, LIST_Y + TITLE_HEIGHT, LIST_WIDTH, ROW_HEIGHT);
 
     /**
      * 可见集合没变也重报一次的间隔（tick）。
