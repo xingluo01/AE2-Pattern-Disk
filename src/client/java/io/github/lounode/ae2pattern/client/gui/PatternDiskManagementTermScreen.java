@@ -21,6 +21,7 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 
+import appeng.client.gui.style.Blitter;
 import appeng.client.gui.style.PaletteColor;
 import appeng.client.gui.style.ScreenStyle;
 
@@ -65,6 +66,15 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     private static final ResourceLocation TEXTURE = ResourceLocation
             .parse("ae2_pattern_disk:textures/guis/pattern_disk_management_terminal.png");
 
+    /**
+     * 贴图的真实像素尺寸。
+     *
+     * <p>本模组其余 GUI 贴图都是 256×256，而这张是 512×512：AE2 的 {@code Blitter} 与
+     * {@code GuiGraphics.blit} 的简写重载都按 256 算 UV（`srcRect / 256`），不声明真实尺寸的话
+     * 同一块 srcRect 会到 2 倍坐标处取样，整块背景都是错的。</p>
+     */
+    private static final int TEXTURE_SIZE = 512;
+
     // 与贴图切片对齐的几何（Sprite-0001：0,0,339,133 是表格区；17 格 × 18px）
     private static final int PANEL_WIDTH = 340;
     /**
@@ -81,6 +91,14 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     private static final int VISIBLE_ROWS = 6;
     /** 视口外多要一行内容：滚一格时不至于先闪一帧空行。 */
     private static final int CONTENT_MARGIN_ROWS = 1;
+
+    // 三个静态 Blitter：UV 按 512 算（见 TEXTURE_SIZE），每帧不新建对象。
+    private static final Blitter BACKGROUND = Blitter.texture(TEXTURE, TEXTURE_SIZE, TEXTURE_SIZE)
+            .src(0, 0, PANEL_WIDTH, PANEL_HEIGHT);
+    private static final Blitter LIST_TITLE = Blitter.texture(TEXTURE, TEXTURE_SIZE, TEXTURE_SIZE)
+            .src(0, 0, LIST_WIDTH, TITLE_HEIGHT);
+    private static final Blitter LIST_ROW = Blitter.texture(TEXTURE, TEXTURE_SIZE, TEXTURE_SIZE)
+            .src(0, TITLE_HEIGHT, LIST_WIDTH, ROW_HEIGHT);
 
     /**
      * 可见集合没变也重报一次的间隔（tick）。
@@ -266,20 +284,24 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         // 不调 super.drawBG：父类的终端样式链会把 lastRow/bottom 推到面板高之外（row srcRect 高 1000 的
         // hack 会导致 2 行之后跳 +2017px），改用固定贴图直接 blit。跳过它的代价是 AE2 物品网格的 pinned
         // 行覆盖层与那次手写 searchField.render——本屏不显示那个网格，而搜索框仍由 widget 容器正常渲染。
-        guiGraphics.blit(TEXTURE, offsetX, offsetY, 0, 0, PANEL_WIDTH, PANEL_HEIGHT);
+        blit(BACKGROUND, guiGraphics, offsetX, offsetY);
 
         int x = offsetX + LIST_X;
         int y = offsetY + LIST_Y;
-        guiGraphics.blit(TEXTURE, x, y, 0, 0, LIST_WIDTH, TITLE_HEIGHT);
+        blit(LIST_TITLE, guiGraphics, x, y);
         // 贴图只画了一行，按行高重复出整片滚动区；磁盘行首格再压一层浅绿
         for (int i = 0; i < VISIBLE_ROWS; i++) {
             int rowY = y + TITLE_HEIGHT + i * ROW_HEIGHT;
-            guiGraphics.blit(TEXTURE, x, rowY, 0, TITLE_HEIGHT, LIST_WIDTH, ROW_HEIGHT);
+            blit(LIST_ROW, guiGraphics, x, rowY);
             int rowIndex = scrollOffset + i;
             if (rowIndex < rows.size() && rows.get(rowIndex) instanceof DiskRow) {
                 guiGraphics.fill(x + 1, rowY + 1, x + 1 + 16, rowY + 1 + 16, DISK_SLOT_TINT);
             }
         }
+    }
+
+    private static void blit(Blitter blitter, GuiGraphics guiGraphics, int destX, int destY) {
+        blitter.dest(destX, destY).blit(guiGraphics);
     }
 
     @Override

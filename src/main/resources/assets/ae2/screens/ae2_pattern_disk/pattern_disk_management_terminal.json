@@ -15,7 +15,9 @@
     0,
     340,
     17
-   ]
+   ],
+   "textureWidth": 512,
+   "textureHeight": 512
   },
   "firstRow": {
    "texture": "ae2_pattern_disk:textures/guis/pattern_disk_management_terminal.png",
@@ -24,7 +26,9 @@
     17,
     340,
     18
-   ]
+   ],
+   "textureWidth": 512,
+   "textureHeight": 512
   },
   "row": {
    "texture": "ae2_pattern_disk:textures/guis/pattern_disk_management_terminal.png",
@@ -33,7 +37,9 @@
     17,
     340,
     1000
-   ]
+   ],
+   "textureWidth": 512,
+   "textureHeight": 512
   },
   "lastRow": {
    "texture": "ae2_pattern_disk:textures/guis/pattern_disk_management_terminal.png",
@@ -42,7 +48,9 @@
     17,
     340,
     18
-   ]
+   ],
+   "textureWidth": 512,
+   "textureHeight": 512
   },
   "bottom": {
    "texture": "ae2_pattern_disk:textures/guis/pattern_disk_management_terminal.png",
@@ -51,7 +59,9 @@
     35,
     340,
     167
-   ]
+   ],
+   "textureWidth": 512,
+   "textureHeight": 512
   }
  },
  "background": {
@@ -61,7 +71,9 @@
    0,
    340,
    220
-  ]
+  ],
+  "textureWidth": 512,
+  "textureHeight": 512
  },
  "slots": {
   "CRAFTING_GRID": {
