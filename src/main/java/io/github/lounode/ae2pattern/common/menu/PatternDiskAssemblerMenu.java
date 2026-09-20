@@ -139,6 +139,20 @@ public class PatternDiskAssemblerMenu extends UpgradeableMenu<PatternDiskAssembl
         standardDetectAndSendChanges();
     }
 
+    /**
+     * 客户端每次收到服务端字段同步时，先把当前页应用一遍。
+     *
+     * <p>槽位的启用状态只由 {@link #showPage()} 维护，而它原先只靠渲染帧调用（Screen.updateBeforeRender）。
+     * 服务端的字段包先于槽位包到达，槽位包在客户端 tick 里落地时 {@code AppEngSlot#set} 会因“这个槽不在当前页”
+     * 把内容丢掉；而服务端此时已经把物品记进 remoteSlots，不会再补发——那一页的物品就只能等关开界面才回来。
+     * 这个钩子在字段包处理时同步执行，正好抢在槽位包之前把启用状态摆好。</p>
+     */
+    @Override
+    public void onServerDataSync(it.unimi.dsi.fastutil.shorts.ShortSet updatedFields) {
+        super.onServerDataSync(updatedFields);
+        showPage();
+    }
+
     @Override
     public int getCurrentProgress() {
         return craftProgress;

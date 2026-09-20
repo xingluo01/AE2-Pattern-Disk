@@ -47,7 +47,8 @@ import io.github.lounode.ae2pattern.network.VisibleDisksPayload;
  *
  * <p><b>Rows.</b> One row per machine (a header carrying its icon, name and disk count, plus a show/hide
  * toggle), then one row per disk: cell 0 is the disk itself, the remaining 16 cells are the patterns stored on
- * it. Disk-level clicks go through the inherited {@code onDisk*Click} handlers, so selecting, marking and
+ * it. A disk holding more than 16 patterns continues on the rows below, where all 17 cells are patterns.
+ * Disk-level clicks go through the inherited {@code onDisk*Click} handlers, so selecting, marking and
  * renaming a disk behave exactly as in the encoding terminal.</p>
  *
  * <p><b>Search.</b> The mini search box is inherited unchanged and still filters the inherited disk list; the
@@ -191,15 +192,18 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     private record HostRow(String key, String name, ItemStack icon, int diskCount) implements Row {
     }
 
-    /** 磁盘行：首格是磁盘本身，其余 16 格是它里面的样板。 */
-    private record DiskRow(String hostKey, long serial, ItemStack disk) implements Row {
+    /**
+     * 磁盘行。{@code from == 0} 是首行：第 0 格是磁盘本身、后面 16 格是它里面的样板；{@code from > 0} 是续行：
+     * 17 格全是样板，{@code from} 是这一行第 0 格对应的样板序号（续行从第一格开始接）。
+     */
+    private record DiskRow(String hostKey, long serial, ItemStack disk, int from) implements Row {
     }
 
     /**
-     * 供应器剩余的（空）槽。{@code cells} 是本行要画几格（收起时恒为 1）；{@code foldedCount} &gt; 0 时在那一格右上角
-     * 写它代表多少空槽。
+     * 供应器剩余的一个空槽，一行一格、竖着排在第一列。{@code foldedCount} &gt; 0 时这一行代表整台机器的全部空槽，
+     * 数字写在格的右上角。
      */
-    private record FreeSlotsRow(int cells, int foldedCount) implements Row {
+    private record FreeSlotsRow(int foldedCount) implements Row {
     }
 
     private final List<Row> rows = new ArrayList<>();
@@ -311,9 +315,11 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         var menu = getMenu();
 
         var serialToGroup = new HashMap<Long, DiskHostListPayload.HostGroup>();
+        var serialToPatternCount = new HashMap<Long, Integer>();
         for (var group : menu.getHostList()) {
             for (var disk : group.disks()) {
                 serialToGroup.put(disk.serial(), group);
+                serialToPatternCount.put(disk.serial(), disk.patternCount());
             }
         }
 
@@ -342,7 +348,11 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
                         group == null ? ItemStack.EMPTY : group.icon(),
                         0));
             }
-            rebuilt.add(new DiskRow(key, entry.serial(), entry.stack()));
+            rebuilt.add(new DiskRow(key, entry.serial(), entry.stack(), 0));
+            // 一张盘的内容超过一行时往下续行：首行第 0 格占给了磁盘，续行没有磁盘格，17 格全放内容。
+            for (int from = COLUMNS - 1; from < serialToPatternCount.getOrDefault(entry.serial(), 0); from += COLUMNS) {
+                rebuilt.add(new DiskRow(key, entry.serial(), ItemStack.EMPTY, from));
+            }
         }
         appendFreeSlots(rebuilt, currentHost, emptySlots);
 
@@ -368,7 +378,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
      * <p>空槽数直接取服务端在分组里报的「真正的空格数」：搜索框筛掉部分盘、主机行开关隐藏整台都不会让它变化，
      * 槽位与别的物品共用（NEO ECO 把样板盘与已编码样板放在同一批槽里）也不会被算错。</p>
      *
-     * <p>收起时整台只留一格，格上写它代表多少空槽；展开时按每行 {@link #COLUMNS} 格铺开。</p>
+     * <p>收起时整台只留一行，行上写它代表多少空槽；展开时每个空槽一行，竖着排在第一列。</p>
      */
     private void appendFreeSlots(List<Row> out, String hostKey, Map<String, Integer> emptySlots) {
         if (hostKey == null || hostKey.isEmpty()) {
@@ -380,11 +390,12 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         }
 
         if (hideEmptySlots) {
-            out.add(new FreeSlotsRow(1, empty));
+            out.add(new FreeSlotsRow(empty));
             return;
         }
-        for (int left = empty; left > 0; left -= COLUMNS) {
-            out.add(new FreeSlotsRow(Math.min(COLUMNS, left), 0));
+        // 展开：一格一行，竖着排在第一列——空槽不是“盘里的内容”，不铺满整行。
+        for (int i = 0; i < empty; i++) {
+            out.add(new FreeSlotsRow(0));
         }
     }
 
@@ -393,11 +404,12 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         scrollOffset = Math.max(0, Math.min(scrollOffset, max));
     }
 
-    /** @return 当前表里磁盘行的张数（不含被隐藏的机器），用于「只剩一张就自动落到它」的判断。 */
+    /** @return 当前表里磁盘的张数（不含被隐藏的机器），用于「只剩一张就自动落到它」的判断。 */
     private int visibleDiskCount() {
         int count = 0;
         for (var row : rows) {
-            if (row instanceof DiskRow) {
+            // 只数首行：一张盘的内容续行也是 DiskRow，数进去会把一张盘算成好几张。
+            if (row instanceof DiskRow disk && disk.from() == 0) {
                 count++;
             }
         }
@@ -407,7 +419,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     private long soleVisibleDisk() {
         long found = 0;
         for (var row : rows) {
-            if (row instanceof DiskRow disk) {
+            if (row instanceof DiskRow disk && disk.from() == 0) {
                 if (found != 0) {
                     return 0;
                 }
@@ -478,8 +490,9 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
             if (slotsRow) {
                 blit(selectRowBand(true, firstLine, lastLine), guiGraphics, offsetX, rowY);
             }
-            // 磁盘行首格再压一层浅绿，位置与 drawFG 的磁盘图标同一点。
-            if (scrollOffset + i < rows.size() && rows.get(scrollOffset + i) instanceof DiskRow) {
+            // 磁盘首格再压一层浅绿，位置与 drawFG 的磁盘图标同一点（续行的第 0 格是样板格，不上色）。
+            if (scrollOffset + i < rows.size() && rows.get(scrollOffset + i) instanceof DiskRow diskRow
+                    && diskRow.from() == 0) {
                 int cellX = offsetX + LIST_X + 1;
                 guiGraphics.fill(cellX, rowY + CELL_Y_INSET, cellX + 16, rowY + CELL_Y_INSET + 16, DISK_SLOT_TINT);
             }
@@ -550,24 +563,35 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         }
     }
 
-    /** 磁盘行：第 0 格是磁盘，第 1..16 格是盘内样板（内容到达前只画磁盘）。 */
+    /**
+     * 磁盘行：首行的第 0 格是磁盘、后面 16 格是盘内样板；续行没有磁盘格，17 格全是样板（内容到达前只画磁盘）。
+     */
     private void drawDiskRow(GuiGraphics guiGraphics, int baseX, int rowY, DiskRow row) {
-        guiGraphics.renderItem(row.disk(), baseX + 1, rowY + CELL_Y_INSET);
-        guiGraphics.renderItemDecorations(font, row.disk(), baseX + 1, rowY + CELL_Y_INSET);
+        int firstColumn = row.from() == 0 ? 1 : 0;
+        if (firstColumn == 1) {
+            guiGraphics.renderItem(row.disk(), baseX + 1, rowY + CELL_Y_INSET);
+            guiGraphics.renderItemDecorations(font, row.disk(), baseX + 1, rowY + CELL_Y_INSET);
+        }
 
         var patterns = getMenu().getDiskContents(row.serial());
         if (patterns == null) {
             return;
         }
 
+        // 这一行第 0 格对应的样板序号：首行被磁盘占了第 0 格，所以减 1。
+        int patternBase = row.from() - firstColumn;
         var level = Minecraft.getInstance().level;
-        for (int i = 0; i < patterns.size() && i < COLUMNS - 1; i++) {
-            var pattern = patterns.get(i);
+        for (int column = firstColumn; column < COLUMNS; column++) {
+            int index = patternBase + column;
+            if (index < 0 || index >= patterns.size()) {
+                break;
+            }
+            var pattern = patterns.get(index);
             if (pattern.isEmpty()) {
                 continue;
             }
 
-            int cellX = baseX + (i + 1) * 18 + 1;
+            int cellX = baseX + column * 18 + 1;
             int cellY = rowY + CELL_Y_INSET;
 
             // 显示主产物，而不是样板本体：与 AE2 样板访问终端同口径（它的 PatternSlot.getDisplayStack 用
@@ -586,14 +610,12 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     }
 
     /**
-     * 剩余槽位行：把空槽画成空格，收起时在唯一那格右上角写上它代表多少空槽。
+     * 剩余槽位行：一行一格，把空槽画成空格；收起时那一行代表整台机器的全部空槽，数字写在格的右上角。
      */
     private void drawFreeSlotsRow(GuiGraphics guiGraphics, int baseX, int rowY, FreeSlotsRow row) {
         // BLANK_CELL 是 18×18 的槽框（自带 1px 边框），落点与行带本身的格框同格位——框对框，它内部就自然落在
         // +1，与同排物品格的内容线一致（物品画在 +CELL_Y_INSET）。
-        for (int i = 0; i < row.cells(); i++) {
-            blit(BLANK_CELL, guiGraphics, baseX + i * ROW_HEIGHT, rowY);
-        }
+        blit(BLANK_CELL, guiGraphics, baseX, rowY);
 
         if (row.foldedCount() <= 0) {
             return;
@@ -651,7 +673,8 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
             return true;
         }
 
-        if (row instanceof DiskRow disk && columnAt(xCoord) == 0) {
+        // 磁盘格只在首行存在：续行的第 0 格是样板，不该把选中/标记/改名这些磁盘动作落到它头上。
+        if (row instanceof DiskRow disk && disk.from() == 0 && columnAt(xCoord) == 0) {
             int index = indexOfDisk(disk.serial());
             // 列表口径与父类不一致时（例如磁盘刚被换走）不动作，也不把这一下漏给底下的控件。
             if (index < 0) {
@@ -736,12 +759,14 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
             return null;
         }
         if (rows.get(rowIndex) instanceof DiskRow disk) {
-            if (column == 0) {
+            int firstColumn = disk.from() == 0 ? 1 : 0;
+            if (column < firstColumn) {
                 return disk.disk();
             }
             var patterns = getMenu().getDiskContents(disk.serial());
-            if (patterns != null && column - 1 < patterns.size()) {
-                return patterns.get(column - 1);
+            int index = disk.from() - firstColumn + column;
+            if (patterns != null && index >= 0 && index < patterns.size()) {
+                return patterns.get(index);
             }
         }
         return null;

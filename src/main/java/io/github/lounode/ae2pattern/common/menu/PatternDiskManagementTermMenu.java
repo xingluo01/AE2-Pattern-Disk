@@ -117,7 +117,8 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
                 builder = new HostBuilder(key, describeHost(host), iconOf(host), countEmptySlots(host));
                 builders.put(key, builder);
             }
-            builder.disks.add(new DiskHostListPayload.Entry(entry.serial(), entry.stack()));
+            builder.disks.add(new DiskHostListPayload.Entry(entry.serial(), entry.stack(),
+                    patternCountOf(entry.stack())));
         }
 
         var groups = new ArrayList<DiskHostListPayload.HostGroup>(builders.size());
@@ -296,6 +297,11 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
         var level = getPlayer().level();
         var name = level.getBlockState(pos).getBlock().getName().getString();
         return name + " (" + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + ")";
+    }
+
+    /** 这张盘里有多少张样板：表格靠它决定一张盘占几行（内容本身只对屏幕上的盘下发）。 */
+    private static int patternCountOf(ItemStack stack) {
+        return stack.getItem() instanceof PatternDiskItem diskItem ? diskItem.contents(stack).used() : 0;
     }
 
     /**

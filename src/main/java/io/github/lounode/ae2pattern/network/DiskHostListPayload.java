@@ -91,19 +91,24 @@ public record DiskHostListPayload(List<HostGroup> hosts, ShowPatternProviders sh
                 HostGroup::new);
     }
 
-    /** A single disk in a group. Same shape as {@link DiskListPayload.DiskEntry}, deliberately. */
-    public record Entry(long serial, ItemStack stack) {
+    /**
+     * A single disk in a group. Same shape as {@link DiskListPayload.DiskEntry}, plus how many patterns the
+     * disk holds: the table needs that to know how many continuation rows a disk takes, and the contents
+     * themselves only travel for the disks currently on screen.
+     */
+    public record Entry(long serial, ItemStack stack, int patternCount) {
 
         public static final StreamCodec<RegistryFriendlyByteBuf, Entry> STREAM_CODEC = StreamCodec
                 .ofMember(Entry::write, Entry::decode);
 
         public static Entry decode(RegistryFriendlyByteBuf data) {
-            return new Entry(data.readVarLong(), ItemStack.OPTIONAL_STREAM_CODEC.decode(data));
+            return new Entry(data.readVarLong(), ItemStack.OPTIONAL_STREAM_CODEC.decode(data), data.readVarInt());
         }
 
         public void write(RegistryFriendlyByteBuf data) {
             data.writeVarLong(serial);
             ItemStack.OPTIONAL_STREAM_CODEC.encode(data, stack);
+            data.writeVarInt(patternCount);
         }
     }
 }

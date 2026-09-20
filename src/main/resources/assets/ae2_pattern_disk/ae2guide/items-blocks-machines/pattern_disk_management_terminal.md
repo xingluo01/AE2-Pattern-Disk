@@ -13,17 +13,18 @@ categories:
 
 <ItemImage id="ae2_pattern_disk:pattern_disk_management_terminal" />
 
-A cable-attached terminal that lays out **every pattern disk on the network** at once: grouped by the machine holding the disk, one row per disk, with the disk itself in the first cell and its patterns in the next 16. Underneath sits the same encoding area as the [ME Pattern Disk Encoding Terminal](pattern_disk_encoding_terminal.md), so a disk that turns out wrong can be re-encoded and written back on the spot.
+A cable-attached terminal that lays out **every pattern disk on the network** at once: grouped by the machine holding the disk, one row per disk, with the disk itself in the first cell and its patterns in the next 16 - a disk holding more continues on the rows below. Underneath sits the same encoding area as the [ME Pattern Disk Encoding Terminal](pattern_disk_encoding_terminal.md), so a disk that turns out wrong can be re-encoded and written back on the spot.
 
 ## The table
 
 | Part | What it shows |
 | --- | --- |
 | Header row | One machine: icon, name with coordinates, disk count `(n)`, and a show/hide toggle at the right end |
-| Disk row | Cell 1 is the disk, cells 2-17 are the patterns stored on it (slot order, up to 16 of them) |
+| Disk row | Cell 1 is the disk, cells 2-17 are the first 16 patterns stored on it (slot order); more continue on the rows below, where all 17 cells are patterns |
 
 - **Search** works like the encoding terminal's: by disk name, or `#`-prefixed for marks.
-- **Scroll** with the mouse wheel. A disk holding more than 16 patterns shows the first 16 in its row (it is still one row per disk).
+- **Scroll** with the mouse wheel. A disk holding more than 16 patterns continues on the rows below, starting at the first cell (those rows have no disk cell).
+- **Empty slots**: the slots the machine has no disk in are listed after that machine's disks, one cell per row. The "hide slots / show slots" button in the left toolbar folds them into a single row (with the folded count written in its top-right corner) or spreads them back out, one row per slot.
 - Patterns that cannot be decoded get a red overlay, same as the encoding terminal.
 - The table only lists disks on **the current network**; a broken or removed machine takes its group with it.
 
@@ -55,5 +56,5 @@ The lower half is the pattern disk encoding terminal's: mode cycling (crafting /
 ## Notes
 
 - The table is a **read-only view**: it shows what is on the disks, but to change them use the controls above or the encoding area. Dragging a pattern into a cell does nothing.
-- One row per disk, so a 1024-capacity disk does not stretch the table - its contents are truncated to the 16 cells of its row.
+- Contents are shown in full: a disk holding more simply takes more rows (the first row starts with the disk, every row below is 17 pattern cells).
 - Contents arrive from the server on demand, so a disk that was just placed may show as just the disk for a frame or two.
