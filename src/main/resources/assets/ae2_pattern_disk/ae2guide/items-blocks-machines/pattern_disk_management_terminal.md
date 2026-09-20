@@ -34,6 +34,8 @@ A cable-attached terminal that lays out **every pattern disk on the network** at
 
 > This screen has no network item grid, so **shift-clicking in your inventory does not send items into the ME network** (they would leave your sight with no way to get them back), and it does **not drop anything into the crafting grid or the processing slots** either - those are encoding slots, set by clicking them or dragging in from JEI. Shift + left click in your inventory only picks up pattern disks (storing them into the container the selected disk sits in); every other item goes neither into the network nor into an encoding slot (an already encoded pattern still returns to the pattern editing slot as usual).
 
+> Two more shortcuts come from JEI: **drag** an item or fluid from JEI onto a crafting grid or processing slot to set that slot, or **shift + left click** an item in the JEI list to fill the whole encoding area with one recipe that has it as an **output** (the first one JEI shows for R; a crafting-type recipe larger than 3x3 is refused with a message). Both only fill the encoding area - writing still needs the Encode button.
+
 ## Controls
 
 Everything acts on the cell under the cursor:

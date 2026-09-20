@@ -65,6 +65,8 @@ Each button does something different on a disk:
 
 > **Shift + left click** in your inventory no longer drops anything into the crafting grid or the processing slots - those are encoding slots, set by clicking them or dragging in from JEI (it used to leave a non-consuming "ghost" in the first empty one). The rest behaves as in AE2: an already encoded pattern goes back into the pattern editing slot, plain items go into the ME network (this screen has an item grid, so you can see them arrive), and when the network cannot take them they simply stay put. The "store into the container of the selected disk" gesture lives on the management terminal.
 
+> Two more shortcuts come from JEI: **drag** an item or fluid from JEI onto a crafting grid or processing slot to set that slot, or **shift + left click** an item in the JEI list to fill the whole encoding area with one recipe that has it as an **output** (the first one JEI shows for R; a crafting-type recipe larger than 3x3 is refused with a message). Both only fill the encoding area - writing still needs the Encode button.
+
 ### Write results
 
 Every write reports back in chat. Success names the disk the pattern went to; failure gives the reason — the disk is full, it is locked to another pattern type, it already holds a recipe with the same output, this pattern's type cannot be resolved, or the target disk is no longer in the list.
