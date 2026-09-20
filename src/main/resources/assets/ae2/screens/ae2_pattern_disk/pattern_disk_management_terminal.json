@@ -7,7 +7,6 @@
  "helpTopic": "ae2_pattern_disk:ae2guide/items-blocks-machines/pattern_disk_management_terminal.md",
  "terminalStyle": {
   "supportsAutoCrafting": false,
-  "sortable": false,
   "slotsPerRow": 9,
   "header": {
    "texture": "ae2_pattern_disk:textures/guis/pattern_disk_management_terminal.png",
@@ -334,6 +333,11 @@
   "scrollbar": {
    "left": 1000,
    "top": -1000
+  },
+  "tableScrollbar": {
+   "$comment": "表格自己的滚动条（行带右缘、表头下方；高度随行数每帧 setHeight，所以这里不给 height）。上面那个 scrollbar 是 AE2 给物品网格留的，本屏不显示物品网格，所以保持 park 在屏外。",
+   "left": 316,
+   "top": 17
   }
  }
 }

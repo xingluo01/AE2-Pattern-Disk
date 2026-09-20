@@ -30,6 +30,7 @@ import guideme.PageAnchor;
 
 import appeng.api.behaviors.ContainerItemStrategies;
 import appeng.api.behaviors.EmptyingAction;
+import appeng.api.config.Settings;
 import appeng.api.config.SortOrder;
 import appeng.api.stacks.GenericStack;
 import appeng.client.gui.me.common.MEStorageScreen;
@@ -38,6 +39,8 @@ import appeng.client.gui.style.Blitter;
 import appeng.client.gui.style.ScreenStyle;
 import appeng.client.gui.widgets.AETextField;
 import appeng.client.gui.widgets.ActionButton;
+import appeng.client.gui.widgets.IconButton;
+import appeng.client.gui.widgets.SettingToggleButton;
 import appeng.core.localization.ButtonToolTips;
 import appeng.core.network.serverbound.InventoryActionPacket;
 import appeng.helpers.InventoryAction;
@@ -106,7 +109,7 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
 
     private final Map<EncodingMode, DiskEncodingModePanel> modePanels = new EnumMap<>(EncodingMode.class);
     private final DiskListPanel diskListPanel;
-    private final StatesIconButton modeCycleButton;
+    protected final StatesIconButton modeCycleButton;
 
     /**
      * 「数值排序」开关（按 mod 排序时出现的二级排序）：默认开。开了以后 mod 组内按名字里的数值排
@@ -118,7 +121,11 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
      */
     private boolean naturalSort = true;
 
-    private StatesIconButton naturalSortButton;
+    /** 上次写进按钮的 tooltip 输入（当前档位 / 附加排序开关）；变了才重建那几行文本，不必每帧新建。 */
+    private EncodingMode tooltipMode;
+    private Boolean tooltipNaturalSort;
+
+    protected StatesIconButton naturalSortButton;
     private final AETextField miniSearchField;
 
     /** 磁盘列表的搜索框（子屏要给它焦点，或者按自己的布局重新定位时读它）。 */
@@ -198,10 +205,9 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
                     case STONECUTTING -> ICON_STONECUTTING;
                 },
                 btn -> cycleMode());
-        this.modeCycleButton.setMessage(Component.translatable("gui.ae2_pattern_disk.encoding_terminal.mode_cycle"));
-        // states.png (208,224,36,20)：左半常态背景，右半光标选中背景
         this.modeCycleButton.setBackground(BG_MODE_NORMAL, BG_MODE_HOVER);
         addToLeftToolbar(this.modeCycleButton);
+        // 提示语每帧回写（它报的是当前所属的配方类型），这里不设死文本。
 
         // 二级排序开关：贴在 AE2 那三枚排序按钮后面，只在「按 mod」那一档显示（见 updateBeforeRender）。
         this.naturalSortButton = new StatesIconButton(
@@ -298,6 +304,20 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
                 Component.translatable("gui.ae2_pattern_disk.encoding_terminal.show_unmarked.off")));
         addRenderableWidget(showUnmarked);
         this.showUnmarkedButton = showUnmarked;
+
+        orderToolbar();
+    }
+
+    /**
+     * 工具栏顺序：附加排序贴着 AE2 那枚「排序按」，本模组自己的模式轮换按钮排到 AE2 自带的之后。
+     * 子屏（管理终端）会再把自家那两枚排到模式轮换之前。
+     */
+    private void orderToolbar() {
+        var sortBy = findSortByButton();
+        if (sortBy != null) {
+            ToolbarOrder.placeAfter(this, naturalSortButton, sortBy);
+        }
+        ToolbarOrder.placeAtEnd(this, modeCycleButton);
     }
 
     /**
@@ -347,12 +367,28 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             this.showUnmarkedButton.setState(menu.isShowUnmarkedDisks());
         }
 
-        // 二级排序开关：只在「按 mod」时露面（其它档位下它没有意义），提示语随开关状态走。
+        // 附加排序开关：只在「按 mod」时露面（其它档位下它没有意义）。提示语第一行是点下去会做什么，
+        // 后两行把两条附加规则各自说清楚；文本只在切换时重建，显隐每帧照旧。
         if (this.naturalSortButton != null) {
             this.naturalSortButton.setVisibility(getSortBy() == SortOrder.MOD);
-            this.naturalSortButton.setMessage(Component.translatable(this.naturalSort
-                    ? "gui.ae2_pattern_disk.sort.natural.on"
-                    : "gui.ae2_pattern_disk.sort.natural.off"));
+            if (this.tooltipNaturalSort == null || this.tooltipNaturalSort != this.naturalSort) {
+                this.tooltipNaturalSort = this.naturalSort;
+                this.naturalSortButton.setTooltip(List.of(
+                        Component.translatable(this.naturalSort
+                                ? "gui.ae2_pattern_disk.sort.additional.disable"
+                                : "gui.ae2_pattern_disk.sort.additional.enable"),
+                        Component.translatable("gui.ae2_pattern_disk.sort.additional.rule.group"),
+                        Component.translatable("gui.ae2_pattern_disk.sort.additional.rule.numeric")));
+            }
+        }
+
+        // 模式轮换按钮的提示语：第一行就是它现在所属的配方类型，第二行才是「点一下换一个」。
+        var mode = menu.getMode();
+        if (mode != this.tooltipMode) {
+            this.tooltipMode = mode;
+            this.modeCycleButton.setTooltip(List.of(
+                    modeName(mode),
+                    Component.translatable("gui.ae2_pattern_disk.encoding_terminal.mode_cycle")));
         }
 
         // 根据当前模式切换面板可见性
@@ -386,6 +422,27 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     @Override
     public boolean naturalSortEnabled() {
         return this.naturalSort;
+    }
+
+    /** 当前所属的配方类型名；模式轮换按钮拿它当提示语的第一行。 */
+    private static Component modeName(EncodingMode mode) {
+        return switch (mode) {
+            case CRAFTING -> Component.translatable("ae2_pattern_disk.tooltip.type.crafting");
+            case PROCESSING -> Component.translatable("ae2_pattern_disk.tooltip.type.processing");
+            case SMITHING_TABLE -> Component.translatable("ae2_pattern_disk.tooltip.type.smithing");
+            case STONECUTTING -> Component.translatable("ae2_pattern_disk.tooltip.type.stonecutting");
+        };
+    }
+
+    /** 工具栏上 AE2 那枚「排序按」：附加排序要贴着它；认不出返回 {@code null}。 */
+    @Nullable
+    private IconButton findSortByButton() {
+        for (var listener : this.children()) {
+            if (listener instanceof SettingToggleButton<?> toggle && toggle.getSetting() == Settings.SORT_BY) {
+                return toggle;
+            }
+        }
+        return null;
     }
 
     // ---- 磁盘列表数据 --------------------------------------------------------

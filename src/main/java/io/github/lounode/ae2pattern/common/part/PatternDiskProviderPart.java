@@ -320,8 +320,9 @@ public class PatternDiskProviderPart extends AEBasePart
     }
 
     /**
-     * 扳手切「全向 / 定向」，与方块形态同一套手势。面板没有箭头模型，所以换档后在动作栏报一声，
-     * 否则玩家根本看不出这一扳手做了什么。
+     * 扳手切「全向 / 定向」。顺序是固定的，不依赖点的哪个面（面板没有「点哪一面」这回事）：
+     * 贴附面（默认档）→ 全向 → 其余五个面逐个 → 回贴附面。方块形态才是「点某一面」那一套。
+     * 面板没有箭头模型，所以换档后在动作栏报一声，否则玩家根本看不出这一扳手做了什么。
      */
     @Override
     public boolean onUseItemOn(ItemStack heldItem, Player player, InteractionHand hand, Vec3 pos) {

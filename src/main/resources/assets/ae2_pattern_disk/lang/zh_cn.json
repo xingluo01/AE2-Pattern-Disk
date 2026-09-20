@@ -114,8 +114,10 @@
   "gui.ae2_pattern_disk.management_terminal.tooltip.disk.shift_click": "Shift+左键：取进背包",
   "gui.ae2_pattern_disk.management_terminal.tooltip.disk.right_click": "右键：选中它作为「编写样板」的写入目标（手里拿工作方块时为打标）",
   "gui.ae2_pattern_disk.management_terminal.tooltip.disk.middle_click": "中键：以该样板磁盘标记所属工作方块的名字重命名",
-  "gui.ae2_pattern_disk.sort.natural.on": "二级排序：数值序（1k < 4k < 16k < 64k < 256k < 1M，只在按 mod 排序时生效）——点击改为字面序",
-  "gui.ae2_pattern_disk.sort.natural.off": "二级排序：字面序（16k 会排在 1k 前面）——点击改为数值序",
+  "gui.ae2_pattern_disk.sort.additional.enable": "启用附加排序",
+  "gui.ae2_pattern_disk.sort.additional.disable": "关闭附加排序",
+  "gui.ae2_pattern_disk.sort.additional.rule.group": "一级（分组）：去掉数字后名称相同的归为一组，1k存储元件与4k存储元件同组，1k存储组件另成一组",
+  "gui.ae2_pattern_disk.sort.additional.rule.numeric": "二级（组内）：按名称里的数值排——1k < 4k < 16k < 64k < 256k < 1M",
   "gui.ae2_pattern_disk.pattern_disk_provider.push_direction": "推入方向：%s",
   "gui.ae2_pattern_disk.pattern_disk_provider.push_direction.all": "全向",
   "gui.ae2_pattern_disk.pattern_disk_provider.push_direction.side": "%s面"

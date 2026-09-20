@@ -100,6 +100,14 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
         }
     }
 
+    @Override
+    protected int transferStackToMenu(ItemStack input) {
+        // 本屏没有网络物品栏：从背包 Shift+点击不该把东西塞进 ME 网络——那会让物品从视线里消失，
+        // 而这里既没网格能拿回来、也没有任何提示。拦的就是「快捷进网络」这一条（终端自己槽位之间
+        // 的快捷移动照旧，走 AE2 原来的按槽位分配）。
+        return 0;
+    }
+
     /**
      * 把父类的扁平清单按「序列号 → 宿主」分好组推给客户端。分组键取宿主的方块坐标与身份盐——同一根线缆上的
      * 多块面板靠盐区分，与父类的指纹口径一致。

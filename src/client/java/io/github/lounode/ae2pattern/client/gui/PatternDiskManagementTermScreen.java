@@ -12,6 +12,8 @@ import java.util.Set;
 import appeng.client.gui.me.common.RepoSlot;
 
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -29,13 +31,16 @@ import appeng.api.config.Settings;
 import appeng.api.config.ShowPatternProviders;
 import appeng.api.config.SortDir;
 import appeng.api.config.SortOrder;
+import appeng.client.gui.me.common.MEStorageScreen;
 import appeng.client.gui.style.Blitter;
 import appeng.client.gui.style.ScreenStyle;
 import appeng.client.gui.widgets.ActionButton;
 import appeng.client.gui.widgets.IconButton;
+import appeng.client.gui.widgets.Scrollbar;
 import appeng.client.gui.widgets.ServerSettingToggleButton;
 import appeng.core.localization.ButtonToolTips;
 
+import io.github.lounode.ae2pattern.client.sort.NaturalOrder;
 import io.github.lounode.ae2pattern.client.sort.NaturalSort;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
@@ -159,6 +164,14 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
      */
     private final Map<Long, DisplayOrder> displayOrders = new HashMap<>();
 
+    /**
+     * 表格自己的滚动条（字段名与父类那枚区分开）。本屏的行带不是 AE2 物品网格，所以范围得自己喂给它（见 {@link #syncScrollbar()}）；
+     * 拖动、滚轮、上下翻页按钮都由它处理，屏幕只负责把位置抄回来。
+     */
+    private Scrollbar tableScrollbar;
+
+    private static final Logger LOGGER = LoggerFactory.getLogger("ae2_pattern_disk.management_terminal");
+
     private static final int[] NO_ORDER = new int[0];
 
     /** 一次排序的结果；内容或排序口径一变就重算（拿内容列表的引用比，服务端每次推送会换一个新列表）。 */
@@ -279,6 +292,34 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
                 Component.translatable("gui.ae2_pattern_disk.management_terminal.show_slots_hint")));
         this.hideSlotsButton.setState(this.hideEmptySlots);
         addToLeftToolbar(this.hideSlotsButton);
+
+        // 滚动条：给表格自己接一条（样式 JSON 的 widgets.tableScrollbar 给了落点，高度每帧按行数设）。
+        // 必须换一个 id：父类在自己的构造器里已经用 "scrollbar" 那一个 id 注册过物品网格的滚动条，
+        // 同一个 id 再注册一次会直接抛 IllegalStateException（界面开不出来）。
+        this.tableScrollbar = widgets.addScrollBar("tableScrollbar", Scrollbar.BIG);
+        // 关掉物品网格那枚的滚轮捕获：它的范围会被父类在开屏/缩放/外部搜索时重新喂（不经过 repo），
+        // 所以只换 repo 的监听器不够；它排在 widget 表更前、又默认 captureMouseWheel，一旦有 range 就会
+        // 把整屏滚轮吃掉（而它 park 在屏外，玩家看不到任何反应）。
+        var gridScrollbar = parentScrollbar(this);
+        if (gridScrollbar != null) {
+            gridScrollbar.setCaptureMouseWheel(false);
+        }
+    }
+
+    /**
+     * 取父类那枚物品网格滚动条（字段 private：AE2 没给读法，ModAccessor 又只在运行时改名、
+     * 编译期看不见，所以只能反射）。取不到就作罢：最坏是表格滚轮不灵，不该因此把界面弄坏。
+     */
+    @Nullable
+    private static Scrollbar parentScrollbar(MEStorageScreen<?> screen) {
+        try {
+            var field = MEStorageScreen.class.getDeclaredField("scrollbar");
+            field.setAccessible(true);
+            return field.get(screen) instanceof Scrollbar bar ? bar : null;
+        } catch (Throwable e) {
+            LOGGER.debug("Could not reach AE2's grid scrollbar; table scrolling may ignore the wheel", e);
+            return null;
+        }
     }
 
     @Override
@@ -306,6 +347,9 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         // 玩家打字应该进磁盘表的搜索框，否则键会走进一个看不见的输入框。
         setInitialFocus(miniSearchField());
         hideIrrelevantToolbarButtons();
+        // 本模组自己的按钮排到 AE2 自带的之后，次序：显示模式 → 显示槽位 → 模式轮换
+        //（附加排序已在父类里贴到了「排序按」后面）。
+        ToolbarOrder.placeAtEnd(this, List.of(showProvidersButton, hideSlotsButton, modeCycleButton));
 
         // 风格档位可能把面板改矮：清单没变时 rebuildRows 不会夹偏移，这里补一次，免得顶部留白。
         // （前提：JSON 的 header=17、firstRow/lastRow=18、bottom=95，即 imageHeight = 18×行 + 112；改那几处要同步这里。）
@@ -346,63 +390,58 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     /**
      * 依据「父类过滤后的磁盘清单」与「服务端的分组清单」重塑行模型。
      *
-     * <p>磁盘来自父类那份列表，所以搜索框筛掉谁，表里就没有谁——编码按钮的写盘目标也是同一条口径。
-     * 分组只提供名字、图标与分组键；一台机器被隐藏时它整组都不进表。</p>
+     * <p>骨架是**宿主**而不是磁盘：一台支持样板磁盘的机器哪怕一张盘都没插也占一组（能看出它有几个空
+     * 槽），这正是这张表与「只列磁盘」的区别。盘仍旧取父类那份过滤后的列表，所以搜索框筛掉谁，表里就
+     * 没有谁；搜索生效时没有命中磁盘的组不出现（否则一搜就满屏空机器），没搜索时所有宿主都在。</p>
      */
     private void rebuildRows() {
         var menu = getMenu();
 
-        var serialToGroup = new HashMap<Long, DiskHostListPayload.HostGroup>();
+        // 父类过滤后的磁盘（搜索口径），按 serial 索引。
+        var visibleDisks = new HashMap<Long, DiskListPanel.DiskEntry>();
+        for (int i = 0; super.diskEntryAt(i) != null; i++) {
+            var entry = super.diskEntryAt(i);
+            visibleDisks.put(entry.serial(), entry);
+        }
+
         var serialToPatternCount = new HashMap<Long, Integer>();
         for (var group : menu.getHostList()) {
             for (var disk : group.disks()) {
-                serialToGroup.put(disk.serial(), group);
                 serialToPatternCount.put(disk.serial(), disk.patternCount());
             }
         }
 
-        var diskCounts = new HashMap<String, Integer>();
-        var emptySlots = new HashMap<String, Integer>();
-        for (var group : menu.getHostList()) {
-            emptySlots.put(group.key(), group.emptySlots());
-        }
+        boolean searched = isDiskSearchActive();
 
         // 盘内顺序缓存跟着当下的盘集合走：被取走、被搜索筛掉的盘不再留条目（连同它那份旧 contents 列表）。
-        displayOrders.keySet().retainAll(serialToGroup.keySet());
+        displayOrders.keySet().retainAll(visibleDisks.keySet());
 
         var rebuilt = new ArrayList<Row>();
-        String currentHost = null;
-        for (int i = 0; super.diskEntryAt(i) != null; i++) {
-            var entry = super.diskEntryAt(i);
-            var group = serialToGroup.get(entry.serial());
-            var key = group == null ? "" : group.key();
-            if (hiddenHosts.contains(key)) {
+        for (var group : menu.getHostList()) {
+            if (hiddenHosts.contains(group.key())) {
                 continue;
             }
 
-            diskCounts.merge(key, 1, Integer::sum);
-            if (!key.equals(currentHost)) {
-                appendFreeSlots(rebuilt, currentHost, emptySlots);
-                currentHost = key;
-                rebuilt.add(new HostRow(key,
-                        group == null ? Component.translatable("gui.ae2_pattern_disk.management_terminal.unknown_host").getString() : group.name(),
-                        group == null ? ItemStack.EMPTY : group.icon(),
-                        0));
+            var groupDisks = new ArrayList<DiskListPanel.DiskEntry>();
+            for (var disk : group.disks()) {
+                var visible = visibleDisks.get(disk.serial());
+                if (visible != null) {
+                    groupDisks.add(visible);
+                }
             }
-            rebuilt.add(new DiskRow(key, entry.serial(), entry.stack(), 0));
-            // 一张盘的内容超过一行时往下续行：首行第 0 格占给了磁盘，续行没有磁盘格，17 格全放内容。
-            for (int from = COLUMNS - 1; from < serialToPatternCount.getOrDefault(entry.serial(), 0); from += COLUMNS) {
-                rebuilt.add(new DiskRow(key, entry.serial(), ItemStack.EMPTY, from));
+            if (searched && groupDisks.isEmpty()) {
+                continue;
             }
-        }
-        appendFreeSlots(rebuilt, currentHost, emptySlots);
 
-        // 组头的张数要等本组数完才知道，回填一遍（行数很少，代价可以忽略）。
-        for (int i = 0; i < rebuilt.size(); i++) {
-            if (rebuilt.get(i) instanceof HostRow host) {
-                rebuilt.set(i, new HostRow(host.key(), host.name(), host.icon(),
-                        diskCounts.getOrDefault(host.key(), 0)));
+            rebuilt.add(new HostRow(group.key(), group.name(), group.icon(), groupDisks.size()));
+            for (var disk : groupDisks) {
+                rebuilt.add(new DiskRow(group.key(), disk.serial(), disk.stack(), 0));
+                // 一张盘的内容超过一行时往下续行：首行第 0 格占给了磁盘，续行没有磁盘格，17 格全放内容。
+                for (int from = COLUMNS - 1; from < serialToPatternCount.getOrDefault(disk.serial(), 0); from += COLUMNS) {
+                    rebuilt.add(new DiskRow(group.key(), disk.serial(), ItemStack.EMPTY, from));
+                }
             }
+            appendFreeSlots(rebuilt, group.emptySlots());
         }
 
         if (!rows.equals(rebuilt)) {
@@ -413,6 +452,12 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         requestVisibleContents(false);
     }
 
+    /** 搜索框里有没有内容；有内容时没命中磁盘的组不进表（否则一搜就满屏空机器）。 */
+    private boolean isDiskSearchActive() {
+        var search = miniSearchField().getValue();
+        return search != null && !search.isBlank();
+    }
+
     /**
      * 给刚数完的那台机器补「剩余槽位」行。
      *
@@ -421,12 +466,8 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
      *
      * <p>收起时整台只留一行，行上写它代表多少空槽；展开时每个空槽一行，竖着排在第一列。</p>
      */
-    private void appendFreeSlots(List<Row> out, String hostKey, Map<String, Integer> emptySlots) {
-        if (hostKey == null || hostKey.isEmpty()) {
-            return;
-        }
-        var empty = emptySlots.get(hostKey);
-        if (empty == null || empty <= 0) {
+    private void appendFreeSlots(List<Row> out, int empty) {
+        if (empty <= 0) {
             return;
         }
 
@@ -499,7 +540,9 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         super.updateBeforeRender();
         // 显示模式按钮的档位回显：换档后服务端会重推分组清单，档位跟着清单回来。
         this.showProvidersButton.set(getMenu().shownProviders());
+        syncScrollbar();
         rebuildRows();
+        syncScrollbar();
         if (--contentRefreshCooldown <= 0) {
             contentRefreshCooldown = CONTENT_REFRESH_INTERVAL_TICKS;
             requestVisibleContents(true);
@@ -772,15 +815,21 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         return true;
     }
 
-    @Override
-    public boolean mouseScrolled(double xCoord, double yCoord, double scrollX, double scrollY) {
-        int max = Math.max(0, rows.size() - visibleRows);
-        if (max > 0 && scrollY != 0) {
-            scrollOffset = Math.max(0, Math.min(max, scrollOffset - (int) Math.signum(scrollY)));
-            requestVisibleContents(false);
-            return true;
+    /**
+     * 把行数告诉滚动条，再把滚动条的位置抄回 {@code scrollOffset}。
+     *
+     * <p>滚动状态只有滚动条一份：滚轮、拖动滑块、上下翻页都改它（{@code wantsAllMouseWheelEvents}
+     * 让它接管整屏滚轮，所以本屏不再自己处理 wheel）；行数变少时这里把越界的位置夹回来。</p>
+     */
+    private void syncScrollbar() {
+        int maxScroll = Math.max(0, rows.size() - visibleRows);
+        this.tableScrollbar.setHeight(Math.max(1, visibleRows * ROW_HEIGHT - 2));
+        this.tableScrollbar.setRange(0, maxScroll, Math.max(1, visibleRows / 6));
+        this.scrollOffset = this.tableScrollbar.getCurrentScroll();
+        if (scrollOffset > maxScroll) {
+            scrollOffset = maxScroll;
+            this.tableScrollbar.setCurrentScroll(maxScroll);
         }
-        return super.mouseScrolled(xCoord, yCoord, scrollX, scrollY);
     }
 
     @Override
@@ -979,14 +1028,29 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
      */
     private Comparator<ItemStack> patternComparator(SortOrder order, SortDir dir, boolean natural) {
         return switch (order) {
-            case MOD -> Comparator.comparing(displayedItemModId, String::compareToIgnoreCase)
-                    .thenComparing(this::displayedItemName, NaturalSort.names(dir, natural));
-            // 名称档走字面序，与 AE2 原生口径、以及同一屏物品网格的名称档一致；数值序只在按 mod 时生效
-            // （它就是为了修 mod 分组内部那一档）。
+            case MOD -> byModComparator(dir, natural);
             case NAME -> Comparator.comparing(this::displayedItemName, NaturalSort.names(dir, false));
             // 数量档：一枚样板就是一件，没有可比的东西，保持盘里的原顺序。
             case AMOUNT -> (left, right) -> 0;
         };
+    }
+
+    /**
+     * 按 mod 排：附加排序打开时是三层——mod → 去掉数字后的文本 → 名字的数值序；关掉时退回 AE2 原本的两层
+     * （mod → 名字字面序）。第三层才是数大小：先分组再排数，同一系列（只是容量不同）才会相邻，
+     * 不会出现「1k存储元件、1k存储组件、4k存储元件」这种把同系列拆散的次序。
+     */
+    private Comparator<ItemStack> byModComparator(SortDir dir, boolean additional) {
+        Comparator<ItemStack> ascending = Comparator.comparing(displayedItemModId, String::compareToIgnoreCase);
+        if (additional) {
+            ascending = ascending
+                    .thenComparing(stack -> NaturalOrder.template(displayedItemName(stack)),
+                            String::compareToIgnoreCase)
+                    .thenComparing(this::displayedItemName, NaturalOrder.strings());
+        } else {
+            ascending = ascending.thenComparing(this::displayedItemName, String::compareToIgnoreCase);
+        }
+        return dir == SortDir.DESCENDING ? ascending.reversed() : ascending;
     }
 
     /** 格子里的名字：能解出主产物就用产物，解不出就用样板本体。 */

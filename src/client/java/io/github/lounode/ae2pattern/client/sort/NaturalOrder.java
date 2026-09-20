@@ -53,6 +53,32 @@ public final class NaturalOrder {
     }
 
     /**
+     * 去掉名字里所有「数字 + 可选单位」片段后剩下的文本（首尾空白也去掉），拿它当分组键：
+     * {@code 1k存储元件} 与 {@code 4k存储元件} 都归成 {@code 存储元件}，而 {@code 1k存储组件} 归成
+     * {@code 存储组件}。数字写在尾部（{@code 存储元件 1k}）也归到同一组。
+     *
+     * <p>先按它分组再按数值排，同一系列（只是容量不同）才会相邻：先排完 1k/4k 存储元件，再排存储组件，
+     * 而不是把 1k 存储元件、1k 存储组件排在一起、把 4k 存储元件丢到别处。</p>
+     */
+    public static String template(String name) {
+        var withoutNumbers = new StringBuilder(name.length());
+        int i = 0;
+        while (i < name.length()) {
+            char current = name.charAt(i);
+            if (!isDigit(current)) {
+                withoutNumbers.append(current);
+                i++;
+                continue;
+            }
+            // 数字段（连它后面的单位）整段丢掉；valueAt 只用来把位置推到片段末尾，值本身用不上。
+            int[] end = { i };
+            valueAt(name, end);
+            i = end[0];
+        }
+        return withoutNumbers.toString().strip();
+    }
+
+    /**
      * 从 {@code pos[0]} 起读一段「数字 + 可选单位」，返回换算后的值，并把 {@code pos[0]} 推到片段末尾。
      * 数字长到溢出时只保号（不会因为一个离谱的名字抛异常）。
      */
