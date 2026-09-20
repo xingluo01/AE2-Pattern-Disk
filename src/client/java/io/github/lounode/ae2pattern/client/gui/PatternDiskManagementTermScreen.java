@@ -368,13 +368,37 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
 
             int cellX = baseX + (i + 1) * 18 + 1;
             int cellY = rowY + 1;
-            guiGraphics.renderItem(pattern, cellX, cellY);
-            guiGraphics.renderItemDecorations(font, pattern, cellX, cellY);
 
-            // 解不出来的样板标红：与样板管理终端同一个提示口径，一眼看出哪张盘里有坏样板。
+            // 显示主产物，而不是样板本体：与 AE2 样板访问终端同口径（它的 PatternSlot.getDisplayStack 用
+            // EncodedPatternItem#getOutput 换掉槽位显示）。任何类型的产物都直接显示——那个方法对流体等
+            // 非物品产出会包一层伪物品；取不到时回退到样板本体。玩家因此不必按住 Shift 才知道样板做什么。
+            var output = patternOutputOf(pattern);
+            var icon = output.isEmpty() ? pattern : output;
+            guiGraphics.renderItem(icon, cellX, cellY);
+            guiGraphics.renderItemDecorations(font, icon, cellX, cellY);
+
+            // 解不出来的样板标红：与样板访问终端同一个提示口径，一眼看出哪张盘里有坏样板。
             if (level != null && appeng.api.crafting.PatternDetailsHelper.decodePattern(pattern, level) == null) {
                 guiGraphics.fill(cellX, cellY, cellX + 16, cellY + 16, 0x7fff0000);
             }
+        }
+    }
+
+    /**
+     * 样板在终端里该显示的主产物；不是 AE2 样板物品、或取不到主产物时返回空堆。
+     *
+     * <p>直接用 AE2 的 {@code EncodedPatternItem#getOutput}：它对非物品产出（流体等）会包一层伪物品，
+     * 所以任何类型的产物都能直接显示；它也自带缓存，逐帧调用不会反复解码。该方法在“解出的样板报告零产出”
+     * 时会在内部越界，而渲染路径不能因此炸掉整帧，所以在边界收口一次。</p>
+     */
+    private static ItemStack patternOutputOf(ItemStack pattern) {
+        if (!(pattern.getItem() instanceof appeng.crafting.pattern.EncodedPatternItem encodedPattern)) {
+            return ItemStack.EMPTY;
+        }
+        try {
+            return encodedPattern.getOutput(pattern);
+        } catch (RuntimeException e) {
+            return ItemStack.EMPTY;
         }
     }
 
