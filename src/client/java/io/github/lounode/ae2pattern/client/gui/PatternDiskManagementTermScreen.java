@@ -327,8 +327,12 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     public void drawFG(GuiGraphics guiGraphics, int offsetX, int offsetY, int mouseX, int mouseY) {
         super.drawFG(guiGraphics, offsetX, offsetY, mouseX, mouseY);
 
-        int baseX = offsetX + LIST_X;
-        int baseY = offsetY + LIST_Y + TITLE_HEIGHT;
+        // renderLabels 的 pose 已由 vanilla 平移到 (leftPos, topPos)，这里必须用裸局部坐标：
+        // 再加 offsetX/offsetY 会把整个 GUI 原点算第二遍，表格内容整体右下偏移一格到数格（AE2 自家
+        // drawFG 同样用裸坐标，如 VibrationChamberScreen 的 dest(80, 20 + ...)）。
+        // 注意传入的 mouseX/mouseY 是绝对屏幕坐标（命中测试因此要减 leftPos/topPos，本类已如此）。
+        int baseX = LIST_X;
+        int baseY = LIST_Y + TITLE_HEIGHT;
         int textColor = 0xFF404040;
 
         for (int i = 0; i < VISIBLE_ROWS; i++) {
