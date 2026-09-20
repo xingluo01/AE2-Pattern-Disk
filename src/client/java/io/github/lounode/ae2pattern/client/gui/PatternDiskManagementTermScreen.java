@@ -75,10 +75,11 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
      */
     private static final int TEXTURE_SIZE = 512;
 
-    // 表格区几何：按贴图实测（描边带 x0..7，填充区从 x8 开始；标题条 y0..17）。
-    // 行按 36px 一块：块内上半 18px 是空行带，下半 16px 是格带（17 格，格距 18），格带只出现在 y36..51 /
-    // 72..87 / 108..123 ⇒ 表格区正好 3 块。物品必须落在格带里，所以行的「内容线」是块首 +19（CELL_Y_INSET）。
-    // 落点口径同 AE2 槽位：格子的 x/y 就是「物品左上角」，底图画在它 −1 处。所以绘制时统一 +1——
+    // 表格区几何：按贴图实测（描边带 x0..7，填充区从 x8 开始；表头 y0..16）。
+    // 行分配同 AE2 的样板访问终端（PatternAccessTermScreen.drawBG）：一行 18px，按「行类型」从贴图取行带——
+    // 文本带 y17/53/89（无格子框，给主机名这类纯文本行）与物品带 y35/71/107（有 17 格框，给磁盘/样板行），
+    // 三份分别对应可见窗口的首行/中间行/末行（该屏的 ROW_TEXT_/ROW_INVENTORY_TOP|MIDDLE|BOTTOM_BBOX 同值）。
+    // 落点口径同 AE2 槽位：格子的 x/y 就是「物品左上角」，底图画在它 −1 处，所以绘制时统一 +1——
     // LIST_X 取 7 时物品落在贴图实测的 x=8。
     private static final int PANEL_WIDTH = 340;
     /**
@@ -92,30 +93,38 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     /** 填充区宽：17 格 × 18px。贴图填充区实测到 x=311，再右是滚动条区（本屏只用滚轮，不画它）。 */
     private static final int LIST_WIDTH = 306;
 
-    /** 标题条高：贴图里是 y0..17，共 18px。 */
-    private static final int TITLE_HEIGHT = 18;
-    /** 行块高：贴图里一行带 36px（18px 空行带 + 16px 格带 + 2px 底边），格带就是行的内容线。 */
-    private static final int ROW_HEIGHT = 36;
+    /** 表头高：贴图 y0..16，与 AE2 的 GUI_HEADER_HEIGHT（17）同值。 */
+    private static final int TITLE_HEIGHT = 17;
+    /** 行高：与 AE2 一致的一行 18px（贴图里每种行带也都是 18px 高）。 */
+    private static final int ROW_HEIGHT = 18;
 
     /**
-     * 行块内「内容线」的纵向起点：块首 18px 是空行带，格带上沿在 +18、内部从 +19 起（贴图实测格带内部 37..51）；
-     * 横向只有 1px 边框，所以横向内缩另计（见绘制处的 +1）。
+     * 行内「内容线」的纵向起点：物品带上沿在 +1、内部从 +2 起（贴图实测物品带内部 37..51，带顶 35）；横向只
+     * 有 1px 边框，所以横向内缩另计（见绘制处的 +1）。
      */
-    private static final int CELL_Y_INSET = 19;
+    private static final int CELL_Y_INSET = 2;
     private static final int COLUMNS = 17;
-    /** 表格区（y18..125）只放得下 3 块 36px 的行；滚动由滚轮驱动。 */
-    private static final int VISIBLE_ROWS = 3;
+    /** 可见行数：表格区 y17..124 共 108px ÷ 18 = 6 行；滚动由滚轮驱动。 */
+    private static final int VISIBLE_ROWS = 6;
     /** 视口外多要一行内容：滚一格时不至于先闪一帧空行。 */
     private static final int CONTENT_MARGIN_ROWS = 1;
 
-    // 三个静态 Blitter：UV 按 512 算（见 TEXTURE_SIZE），每帧不新建对象。
+    // 静态 Blitter：UV 按 512 算（见 TEXTURE_SIZE），每帧不新建对象。
     // 注意它们是可变对象：每次使用必须紧接 dest(...) + blit(...)，不要缓存引用到别处再画。
     private static final Blitter BACKGROUND = Blitter.texture(TEXTURE, TEXTURE_SIZE, TEXTURE_SIZE)
             .src(0, 0, PANEL_WIDTH, PANEL_HEIGHT);
-    private static final Blitter LIST_TITLE = Blitter.texture(TEXTURE, TEXTURE_SIZE, TEXTURE_SIZE)
-            .src(LIST_X, LIST_Y, LIST_WIDTH, TITLE_HEIGHT);
-    private static final Blitter LIST_ROW = Blitter.texture(TEXTURE, TEXTURE_SIZE, TEXTURE_SIZE)
-            .src(LIST_X, LIST_Y + TITLE_HEIGHT, LIST_WIDTH, ROW_HEIGHT);
+
+    // 六条行带，与 AE2 的 ROW_TEXT_/ROW_INVENTORY_TOP|MIDDLE|BOTTOM_BBOX 同一分区（本屏贴图与它同源）。
+    private static final Blitter ROW_TEXT_TOP = rowBand(17);
+    private static final Blitter ROW_INVENTORY_TOP = rowBand(35);
+    private static final Blitter ROW_TEXT_MIDDLE = rowBand(53);
+    private static final Blitter ROW_INVENTORY_MIDDLE = rowBand(71);
+    private static final Blitter ROW_TEXT_BOTTOM = rowBand(89);
+    private static final Blitter ROW_INVENTORY_BOTTOM = rowBand(107);
+
+    private static Blitter rowBand(int srcY) {
+        return Blitter.texture(TEXTURE, TEXTURE_SIZE, TEXTURE_SIZE).src(LIST_X, srcY, LIST_WIDTH, ROW_HEIGHT);
+    }
 
     /**
      * 可见集合没变也重报一次的间隔（tick）。
@@ -310,17 +319,33 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         blit(BACKGROUND, guiGraphics, offsetX, offsetY);
 
         int x = offsetX + LIST_X;
-        int y = offsetY + LIST_Y;
-        blit(LIST_TITLE, guiGraphics, x, y);
-        // 贴图只画了一行，按行高重复出整片滚动区；磁盘行首格再压一层浅绿
+        int y = offsetY + LIST_Y + TITLE_HEIGHT;
+
+        // 行分配同 AE2：每行先铺「文本带」作底，磁盘/样板行再叠「物品带」（带高 18，宽度只到 17 格）。
         for (int i = 0; i < VISIBLE_ROWS; i++) {
-            int rowY = y + TITLE_HEIGHT + i * ROW_HEIGHT;
-            blit(LIST_ROW, guiGraphics, x, rowY);
+            boolean firstLine = i == 0;
+            boolean lastLine = i == VISIBLE_ROWS - 1;
+            int rowY = y + i * ROW_HEIGHT;
+
+            blit(selectRowBand(false, firstLine, lastLine), guiGraphics, x, rowY);
             int rowIndex = scrollOffset + i;
             if (rowIndex < rows.size() && rows.get(rowIndex) instanceof DiskRow) {
+                blit(selectRowBand(true, firstLine, lastLine), guiGraphics, x, rowY);
+                // 磁盘行首格再压一层浅绿，位置与 drawFG 的磁盘图标同一点。
                 guiGraphics.fill(x + 1, rowY + CELL_Y_INSET, x + 1 + 16, rowY + CELL_Y_INSET + 16, DISK_SLOT_TINT);
             }
         }
+    }
+
+    /**
+     * 行带的选择与 AE2 的 {@code PatternAccessTermScreen#selectRowBackgroundBox} 同口径：可见窗口的首行取 TOP、
+     * 末行取 BOTTOM、其余取 MIDDLE。
+     */
+    private static Blitter selectRowBand(boolean inventoryLine, boolean firstLine, boolean lastLine) {
+        if (inventoryLine) {
+            return firstLine ? ROW_INVENTORY_TOP : lastLine ? ROW_INVENTORY_BOTTOM : ROW_INVENTORY_MIDDLE;
+        }
+        return firstLine ? ROW_TEXT_TOP : lastLine ? ROW_TEXT_BOTTOM : ROW_TEXT_MIDDLE;
     }
 
     private static void blit(Blitter blitter, GuiGraphics guiGraphics, int destX, int destY) {
