@@ -19,8 +19,9 @@ import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
  * Clientbound packet carrying the pattern disks grouped by the machine that holds them.
  *
  * <p>The plain {@link DiskListPayload} says "these disks exist on the grid"; this one adds what the
- * management terminal's table needs to put them under headers: a stable key per host (its position and
- * identity salt), a display name and an icon. Everything else the screen shows is derived from the disk
+ * management terminal's table needs to put them under headers: a group key (the display name the header
+ * prints - several containers can share it, which is how same-named machines collapse into one row), a
+ * display name and an icon. Everything else the screen shows is derived from the disk
  * stacks themselves, which travel in {@link Entry} exactly as they do in the flat list.</p>
  *
  * <p>Serials match the ones in {@link DiskListPayload}: both are assigned by
@@ -76,9 +77,11 @@ public record DiskHostListPayload(List<HostGroup> hosts, ShowPatternProviders sh
     }
 
     /**
-     * One machine's row of the table: its key (for the show/hide toggle), a display name and icon, the
-     * disks it holds in the order the server enumerated them, and how many of its slots are still empty -
-     * the terminal's “hide empty slots” toggle folds those into a single cell.
+     * One row of the table: its group key (the display name printed in the header, also what the show/hide
+     * toggle stores - same-named containers share it and collapse into one row), a display name and icon
+     * again for the header, the disks the group holds in the order the server enumerated them, and how many
+     * of its slots are still empty (the sum over the merged containers) - the terminal's “hide empty slots”
+     * toggle folds those into a single cell.
      */
     public record HostGroup(String key, String name, ItemStack icon, List<Entry> disks, int emptySlots) {
 

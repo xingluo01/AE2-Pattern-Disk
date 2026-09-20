@@ -19,7 +19,7 @@ A cable-attached terminal that lays out **every pattern disk on the network** at
 
 | Part | What it shows |
 | --- | --- |
-| Header row | One machine: icon, name with coordinates, disk count `(n)`, and a show/hide toggle at the right end |
+| Header row | One machine (containers sharing a name are merged into one row): icon, name, disk count `(n)`, and a show/hide toggle at the right end |
 | Disk row | Cell 1 is the disk, cells 2-17 are the first 16 patterns stored on it (slot order); more continue on the rows below, where all 17 cells are patterns |
 
 - **Search** works like the encoding terminal's: by disk name, or `#`-prefixed for marks.
@@ -30,6 +30,7 @@ A cable-attached terminal that lays out **every pattern disk on the network** at
 - Patterns that cannot be decoded get a red overlay, same as the encoding terminal.
 - **Disk tooltip**: hovering a disk cell shows the same information the encoding terminal's disk list shows - name, used/capacity, mark (plus the raw mark id with vanilla advanced tooltips on), and the cell's four gestures.
 - The table lists **every container on the current network that takes pattern disks** (both forms of this mod's provider, plus other machines registered through the API) - including ones with no disk inserted: how many it takes and how many slots are still free are visible, and pulling a disk back out does not make the group disappear. While the search box has text, machines with no matching disk are left out (otherwise a search would fill the table with empty machines).
+- A header shows the icon and name of **the machine the container is attached to or points at** (the same rule AE2's pattern access terminal uses); a provider that a player named shows that name, and one with nothing attached - or attached to several different machines at once - shows itself. **Containers with the same name are merged into one row**, which is why the table no longer prints coordinates.
 
 > This screen has no network item grid, so **shift-clicking in your inventory does not send items into the ME network** (they would leave your sight with no way to get them back), and it does **not drop anything into the crafting grid or the processing slots** either - those are encoding slots, set by clicking them or dragging in from JEI. Shift + left click in your inventory only picks up pattern disks (storing them into the container the selected disk sits in); every other item goes neither into the network nor into an encoding slot (an already encoded pattern still returns to the pattern editing slot as usual).
 

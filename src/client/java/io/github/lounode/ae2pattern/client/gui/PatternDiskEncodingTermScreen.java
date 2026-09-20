@@ -367,16 +367,17 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             this.showUnmarkedButton.setState(menu.isShowUnmarkedDisks());
         }
 
-        // 附加排序开关：只在「按 mod」时露面（其它档位下它没有意义）。提示语第一行是点下去会做什么，
-        // 后两行把两条附加规则各自说清楚；文本只在切换时重建，显隐每帧照旧。
+        // 附加排序开关：只在「按 mod」时露面（其它档位下它没有意义）。提示语第一行写的是**当前状态**
+        //（与「隐藏槽位」那几个开关一个口径），后两行把两条附加规则各自说清楚；文本只在切换时重建，
+        // 显隐每帧照旧。
         if (this.naturalSortButton != null) {
             this.naturalSortButton.setVisibility(getSortBy() == SortOrder.MOD);
             if (this.tooltipNaturalSort == null || this.tooltipNaturalSort != this.naturalSort) {
                 this.tooltipNaturalSort = this.naturalSort;
                 this.naturalSortButton.setTooltip(List.of(
                         Component.translatable(this.naturalSort
-                                ? "gui.ae2_pattern_disk.sort.additional.disable"
-                                : "gui.ae2_pattern_disk.sort.additional.enable"),
+                                ? "gui.ae2_pattern_disk.sort.additional.enable"
+                                : "gui.ae2_pattern_disk.sort.additional.disable"),
                         Component.translatable("gui.ae2_pattern_disk.sort.additional.rule.group"),
                         Component.translatable("gui.ae2_pattern_disk.sort.additional.rule.numeric")));
             }

@@ -245,22 +245,22 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     private sealed interface Row permits HostRow, DiskRow, FreeSlotsRow {
     }
 
-    /** 组头行：一台宿主机器。{@code diskCount} 是当前过滤/显示口径下的磁盘数。 */
-    private record HostRow(String key, String name, ItemStack icon, int diskCount) implements Row {
+    /** 组头行：一台（或几台同名合并的）宿主机器。{@code diskCount} 是当前过滤/显示口径下的磁盘数。 */
+    private record HostRow(String groupName, String name, ItemStack icon, int diskCount) implements Row {
     }
 
     /**
      * 磁盘行。{@code from == 0} 是首行：第 0 格是磁盘本身、后面 16 格是它里面的样板；{@code from > 0} 是续行：
      * 17 格全是样板，{@code from} 是这一行第 0 格对应的样板序号（续行从第一格开始接）。
      */
-    private record DiskRow(String hostKey, long serial, ItemStack disk, int from) implements Row {
+    private record DiskRow(String groupName, long serial, ItemStack disk, int from) implements Row {
     }
 
     /**
-     * 供应器剩余的一个空槽，一行一格、竖着排在第一列。{@code foldedCount} &gt; 0 时这一行代表整台机器的全部空槽，
+     * 供应器剩余的一个空槽，一行一格、竖着排在第一列。{@code foldedCount} &gt; 0 时这一行代表整组的全部空槽，
      * 数字写在格的右上角。
      */
-    private record FreeSlotsRow(String hostKey, int foldedCount) implements Row {
+    private record FreeSlotsRow(String groupName, int foldedCount) implements Row {
     }
 
     private final List<Row> rows = new ArrayList<>();
@@ -463,25 +463,25 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     }
 
     /**
-     * 给刚数完的那台机器补「剩余槽位」行。
+     * 给刚数完的那一组补「剩余槽位」行。
      *
-     * <p>空槽数直接取服务端在分组里报的「真正的空格数」：搜索框筛掉部分盘、主机行开关隐藏整台都不会让它变化，
-     * 槽位与别的物品共用（NEO ECO 把样板盘与已编码样板放在同一批槽里）也不会被算错。</p>
+     * <p>空槽数直接取服务端在分组里报的「真正的空格数」（同名几台是它们的和）：搜索框筛掉部分盘、主机行开关隐藏
+     * 整组都不会让它变化，槽位与别的物品共用（NEO ECO 把样板盘与已编码样板放在同一批槽里）也不会被算错。</p>
      *
-     * <p>收起时整台只留一行，行上写它代表多少空槽；展开时每个空槽一行，竖着排在第一列。</p>
+     * <p>收起时整组只留一行，行上写它代表多少空槽；展开时每个空槽一行，竖着排在第一列。</p>
      */
-    private void appendFreeSlots(List<Row> out, String hostKey, int empty) {
-        if (empty <= 0 || hostKey == null || hostKey.isEmpty()) {
+    private void appendFreeSlots(List<Row> out, String groupName, int empty) {
+        if (empty <= 0 || groupName == null || groupName.isEmpty()) {
             return;
         }
 
         if (hideEmptySlots) {
-            out.add(new FreeSlotsRow(hostKey, empty));
+            out.add(new FreeSlotsRow(groupName, empty));
             return;
         }
         // 展开：一格一行，竖着排在第一列——空槽不是“盘里的内容”，不铺满整行。
         for (int i = 0; i < empty; i++) {
-            out.add(new FreeSlotsRow(hostKey, 0));
+            out.add(new FreeSlotsRow(groupName, 0));
         }
     }
 
@@ -658,7 +658,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
                             : host.name();
                     guiGraphics.drawString(font, font.plainSubstrByWidth(label, 16 * 18 - TOGGLE_SIZE - 22),
                             baseX + 21, rowY + ROW_TEXT_Y_INSET + 4, textColor, false);
-                    drawHostToggle(guiGraphics, baseX, rowY, host.key());
+                    drawHostToggle(guiGraphics, baseX, rowY, host.groupName());
                 }
                 case DiskRow disk -> drawDiskRow(guiGraphics, baseX, rowY, disk);
                 case FreeSlotsRow free -> drawFreeSlotsRow(guiGraphics, baseX, rowY, free);
@@ -769,8 +769,8 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         var row = rows.get(rowIndex);
         if (row instanceof HostRow host) {
             if (btn == 0 && hostToggleAt(xCoord, yCoord)) {
-                if (!hiddenHosts.remove(host.key())) {
-                    hiddenHosts.add(host.key());
+                if (!hiddenHosts.remove(host.groupName())) {
+                    hiddenHosts.add(host.groupName());
                 }
                 return true;
             }
@@ -781,7 +781,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         // 「把背包里的盘存进某台容器」不挂在这里，而是 Shift+左键背包里的那张盘（见 slotClicked）。
         if (row instanceof FreeSlotsRow free) {
             if (btn == 0 && !hasShiftDown() && holdingDisk()) {
-                getMenu().insertDisk(new PatternDiskManagementTermMenu.InsertDiskRequest(free.hostKey()));
+                getMenu().insertDisk(new PatternDiskManagementTermMenu.InsertDiskRequest(free.groupName()));
             }
             return true;
         }

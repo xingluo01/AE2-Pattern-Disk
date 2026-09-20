@@ -22,6 +22,8 @@ import it.unimi.dsi.fastutil.longs.LongSet;
 import appeng.api.config.Actionable;
 import appeng.api.config.Settings;
 import appeng.api.config.ShowPatternProviders;
+import appeng.api.implementations.blockentities.PatternContainerGroup;
+import appeng.helpers.patternprovider.PatternContainer;
 import appeng.menu.implementations.MenuTypeBuilder;
 
 import io.github.lounode.ae2pattern.api.IPatternDiskHost;
@@ -41,7 +43,9 @@ import io.github.lounode.ae2pattern.network.VisibleDisksPayload;
  * <ul>
  *   <li><b>Grouping.</b> {@link #onDiskListRebuilt} turns the flat list into
  *       {@link DiskHostListPayload.HostGroup}s using the serial → host mapping the parent keeps, so the table
- *       can print a header per machine without the server having to send host objects.</li>
+ *       can print a header per machine without the server having to send host objects. Containers that display
+ *       under the same name (the machine they point at, or several identical providers with nothing attached)
+ *       collapse into one header - which is also why the table no longer prints coordinates.</li>
  *   <li><b>Contents on demand.</b> A disk holds up to 1024 patterns, and the table draws many disks at once,
  *       so contents are not part of the list. The client reports which serials it is showing
  *       ({@link VisibleDisksPayload}) and the server pushes those disks' patterns, skipping any disk whose
@@ -68,7 +72,8 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
     private static final String ACTION_STORE_INVENTORY_DISK = "storeInventoryDisk";
 
     /** 分组键 → 宿主，与推给客户端的清单同一份口径：客户端只拿得到键，存入时得靠它找回宿主。 */
-    private final Map<String, IPatternDiskHost> hostsByKey = new HashMap<>();
+    /** 分组键（显示名）→ 该组里所有能收下盘的宿主：同名容器合成一组，存盘时要从组里挑一台还有空槽的。 */
+    private final Map<String, List<IPatternDiskHost>> hostsByName = new HashMap<>();
 
     /** 客户端侧：按序列号缓存的磁盘内容（Screen 每帧读）。 */
     private final Long2ObjectOpenHashMap<List<ItemStack>> diskContents = new Long2ObjectOpenHashMap<>();
@@ -112,11 +117,12 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
             return; // 改造过的客户端可以发空参数；宁可什么都不做，也不掉 NPE
         }
 
-        var host = hostsByKey.get(request.hostKey);
-        if (host == null) {
+        var hosts = hostsByName.get(request.groupName);
+        if (hosts == null || hosts.isEmpty()) {
             notifyPlayer(false, "gui.ae2_pattern_disk.management_terminal.disk_store.no_host");
             return;
         }
+        var host = hostWithFreeSlot(hosts);
 
         // 只认光标上那张盘：这一条手势就是「把手上这张放进去」。
         var carried = getCarried();
@@ -240,19 +246,23 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
     }
 
     /**
-     * 把父类的扁平清单按「序列号 → 宿主」分好组推给客户端。分组键取宿主的方块坐标与身份盐——同一根线缆上的
-     * 多块面板靠盐区分，与父类的指纹口径一致。
+     * 把父类的扁平清单按「显示名」分组推给客户端。
+     *
+     * <p>分组键从「坐标＋身份盐」换成了显示名（见 {@link #displayNameOf}）：指向同一台机器、或同型号但什么都
+     * 没接的几台机器本来就是同一个条目，以前它们占好几行、靠坐标后缀区分，现在合成一行，坐标也就不必再写。</p>
      *
      * <p>「显示模式」在服务端生效：{@code VISIBLE} 档只留
      * {@link IPatternDiskHost#isVisibleInPatternAccessTerminal()} 为真的宿主，{@code ALL} 档全留。开关本身就是
      * AE2 样板访问终端用的那一个键，两个终端共用同一份设置。</p>
+     *
+     * <p>一个名字下可能有好几台宿主，所以空槽数是它们之和，图标取第一台的——同名却不同图标基本不会出现。</p>
      */
     private void pushHostList(List<DiskListPayload.DiskEntry> entries) {
         var mode = getShownProviders();
 
         var builders = new LinkedHashMap<String, HostBuilder>();
-        // 同名重建映射：客户端只报分组键，存入时要能看到此刻的宿主对象。
-        hostsByKey.clear();
+        // 同名重建映射：客户端只报显示名，存入时要能看到此刻这组里的宿主对象。
+        hostsByName.clear();
 
         // 先给每一台“支持样板磁盘的宿主”开户：没插盘、或盘被抽空的机器也在表里（表要能看出它在、还有几个
         // 空槽）。开完户再把磁盘按槽位挂回去。
@@ -260,10 +270,14 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
             if (!isShown(host, mode)) {
                 continue;
             }
-            var key = hostKey(host);
-            hostsByKey.put(key, host);
-            builders.computeIfAbsent(key,
-                    key2 -> new HostBuilder(key2, describeHost(host), iconOf(host), countEmptySlots(host)));
+            var name = displayNameOf(host);
+            hostsByName.computeIfAbsent(name, key -> new ArrayList<>()).add(host);
+            var builder = builders.get(name);
+            if (builder == null) {
+                builders.put(name, new HostBuilder(name, name, iconOf(host), countEmptySlots(host)));
+            } else {
+                builder.emptySlots += countEmptySlots(host);
+            }
         }
 
         for (var entry : entries) {
@@ -271,14 +285,17 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
             if (host == null || !isShown(host, mode)) {
                 continue;
             }
-            var key = hostKey(host);
-            hostsByKey.put(key, host);
-            var builder = builders.get(key);
+            var name = displayNameOf(host);
+            var hosts = hostsByName.computeIfAbsent(name, key -> new ArrayList<>());
+            if (!hosts.contains(host)) {
+                hosts.add(host);
+            }
+            var builder = builders.get(name);
             if (builder == null) {
                 // 没能在宿主名单里找到它（例如插件给的是每帧新建的适配器，没进 lastDiskHosts）：
                 // 仍旧给它开一组，一张盘不该因为宿主不在名单里就从表里消失。
-                builder = new HostBuilder(key, describeHost(host), iconOf(host), countEmptySlots(host));
-                builders.put(key, builder);
+                builder = new HostBuilder(name, name, iconOf(host), countEmptySlots(host));
+                builders.put(name, builder);
             }
             builder.disks.add(new DiskHostListPayload.Entry(entry.serial(), entry.stack(),
                     patternCountOf(entry.stack())));
@@ -443,23 +460,48 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
         return hash;
     }
 
-    // ---- 服务端侧：宿主的分组键、名字与图标 ----
+    // ---- 服务端侧：宿主的显示名与图标 ----
 
-    private static String hostKey(IPatternDiskHost host) {
-        return host.getBlockPos().asLong() + "#" + host.getIdentitySalt();
+    /**
+     * 组头名字：直接取 AE2 样板访问终端那一套（{@code PatternContainer#getTerminalGroup}）。于是：玩家把供应器
+     * 命名过 ⇒ 用命名的名字；供应器贴着/指向某台机器 ⇒ 用那台机器的名字；什么都没挨着 ⇒ 用它自己。
+     *
+     * <p>不自己去看邻居方块：「指着某台机器」的口径由 AE2 的供应器逻辑算，本屏跟着它，免得上下两处理解不一致。</p>
+     */
+    private String displayNameOf(IPatternDiskHost host) {
+        var group = terminalGroupOf(host);
+        if (group != null) {
+            var name = group.name().getString();
+            if (!name.isBlank()) {
+                return name;
+            }
+        }
+        // 不是 AE2 系宿主（没实现 PatternContainer，或它此刻报不出名字）时退回方块名。
+        return getPlayer().level().getBlockState(host.getBlockPos()).getBlock().getName().getString();
+    }
+
+    /** 宿主自报的终端分组（名字、图标、补充说明）；不是 AE2 系宿主时为 {@code null}。 */
+    private static @Nullable PatternContainerGroup terminalGroupOf(IPatternDiskHost host) {
+        return host instanceof PatternContainer container ? container.getTerminalGroup() : null;
     }
 
     /**
-     * 宿主的显示名：方块自己的名字 + 坐标。
-     *
-     * <p>{@link IPatternDiskHost} 只说得出位置，说不出自己叫什么，所以名字取自该位置的方块；坐标后缀是为了
-     * 同一种机器摆了好几台时能分清是哪一台——组头就靠它区分，光写方块名会看到两行一模一样的标题。</p>
+     * 回执里用的写法：显示名 + 坐标。表格里不写坐标（同名容器已合成一行，坐标反而打架），但聊天栏里需要它——
+     * 同名机器存进了哪一台，看坐标才知道。
      */
     private String describeHost(IPatternDiskHost host) {
         var pos = host.getBlockPos();
-        var level = getPlayer().level();
-        var name = level.getBlockState(pos).getBlock().getName().getString();
-        return name + " (" + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + ")";
+        return displayNameOf(host) + " (" + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + ")";
+    }
+
+    /** 一组同名宿主里挑一台还能收下盘的；都满了就给第一台（让「没有空的磁盘槽了」照旧能报出来）。 */
+    private static IPatternDiskHost hostWithFreeSlot(List<IPatternDiskHost> hosts) {
+        for (var host : hosts) {
+            if (countEmptySlots(host) > 0) {
+                return host;
+            }
+        }
+        return hosts.get(0);
     }
 
     /** 这张盘里有多少张样板：表格靠它决定一张盘占几行（内容本身只对屏幕上的盘下发）。 */
@@ -482,8 +524,16 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
         return empty;
     }
 
-    /** 组头图标：方块对应的物品；方块没有物品形态（比如某些线缆面板）时留空，屏幕会退回只画名字。 */
+    /**
+     * 组头图标：优先用宿主自报的那个（与名字同一份数据，指向机器时就是那台机器的图标）；报不出来时退回方块
+     * 对应的物品，方块没有物品形态（比如某些线缆面板）就留空，屏幕会退回只画名字。
+     */
     private ItemStack iconOf(IPatternDiskHost host) {
+        var group = terminalGroupOf(host);
+        if (group != null && group.icon() != null && !group.icon().getReadOnlyStack().isEmpty()) {
+            // getReadOnlyStack() 明说了不许改，所以拷一份带走（这份要写进包）。
+            return group.icon().getReadOnlyStack().copy();
+        }
         var level = getPlayer().level();
         var item = level.getBlockState(host.getBlockPos()).getBlock().asItem();
         if (item == net.minecraft.world.item.Items.AIR) {
@@ -496,14 +546,14 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
      * 「存入」动作的参数。AE2 的客户端动作把参数当 JSON 传，所以用公开字段加无参构造器，而不是 record。
      */
     public static final class InsertDiskRequest {
-        /** 目标容器的分组键（客户端从表格分组里拿到的那个）。 */
-        public String hostKey = "";
+        /** 目标分组的显示名（客户端从表格组头拿到的那个）；同名容器归一组，服务端从组里挑一台有空槽的。 */
+        public String groupName = "";
 
         public InsertDiskRequest() {
         }
 
-        public InsertDiskRequest(String hostKey) {
-            this.hostKey = hostKey;
+        public InsertDiskRequest(String groupName) {
+            this.groupName = groupName;
         }
     }
 
@@ -530,8 +580,8 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
         private final String key;
         private final String name;
         private final ItemStack icon;
-        /** 该宿主还剩多少个空槽；终端「隐藏槽位」把这些槽叠成一格。 */
-        private final int emptySlots;
+        /** 该组还剩多少个空槽（同名几台是它们的和）；终端「隐藏槽位」把这些槽叠成一格。 */
+        private int emptySlots;
         private final List<DiskHostListPayload.Entry> disks = new ArrayList<>();
 
         private HostBuilder(String key, String name, ItemStack icon, int emptySlots) {

@@ -336,8 +336,8 @@
   },
   "tableScrollbar": {
    "$comment": "表格自己的滚动条（行带右缘、表头下方；高度随行数每帧 setHeight，所以这里不给 height）。上面那个 scrollbar 是 AE2 给物品网格留的，本屏不显示物品网格，所以保持 park 在屏外。",
-   "left": 316,
-   "top": 17
+   "left": 319,
+   "top": 18
   }
  }
 }
