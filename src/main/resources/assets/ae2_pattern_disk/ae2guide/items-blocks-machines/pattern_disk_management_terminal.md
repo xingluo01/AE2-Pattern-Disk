@@ -31,7 +31,7 @@ A cable-attached terminal that lays out **every pattern disk on the network** at
 - **Disk tooltip**: hovering a disk cell shows the same information the encoding terminal's disk list shows - name, used/capacity, mark (plus the raw mark id with vanilla advanced tooltips on), and the cell's four gestures.
 - The table lists **every container on the current network that takes pattern disks** (both forms of this mod's provider, plus other machines registered through the API) - including ones with no disk inserted: how many it takes and how many slots are still free are visible, and pulling a disk back out does not make the group disappear. While the search box has text, machines with no matching disk are left out (otherwise a search would fill the table with empty machines).
 
-> This screen has no network item grid, so **shift-clicking in your inventory does not send items into the ME network** (they would leave your sight with no way to get them back); quick-moving between the terminal's own slots is unaffected.
+> This screen has no network item grid, so **shift-clicking in your inventory does not send items into the ME network** (they would leave your sight with no way to get them back), and it does **not drop anything into the crafting grid or the processing slots** either - those are encoding slots, set by clicking them or dragging in from JEI. Shift + left click in your inventory only picks up pattern disks (storing them into the container the selected disk sits in); every other item goes neither into the network nor into an encoding slot (an already encoded pattern still returns to the pattern editing slot as usual).
 
 ## Controls
 

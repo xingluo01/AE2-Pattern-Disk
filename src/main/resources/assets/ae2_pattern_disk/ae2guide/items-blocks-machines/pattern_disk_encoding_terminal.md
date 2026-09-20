@@ -63,6 +63,8 @@ Each button does something different on a disk:
 - **Shift + right click**: write the search bar's text onto the disk as its mark; an empty search bar clears the disk's mark instead.
 - **Middle click**: rename the disk after the work block its mark stands for.
 
+> **Shift + left click** in your inventory no longer drops anything into the crafting grid or the processing slots - those are encoding slots, set by clicking them or dragging in from JEI (it used to leave a non-consuming "ghost" in the first empty one). The rest behaves as in AE2: an already encoded pattern goes back into the pattern editing slot, plain items go into the ME network (this screen has an item grid, so you can see them arrive), and when the network cannot take them they simply stay put. The "store into the container of the selected disk" gesture lives on the management terminal.
+
 ### Write results
 
 Every write reports back in chat. Success names the disk the pattern went to; failure gives the reason — the disk is full, it is locked to another pattern type, it already holds a recipe with the same output, this pattern's type cannot be resolved, or the target disk is no longer in the list.

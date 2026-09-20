@@ -233,9 +233,9 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
 
     @Override
     protected int transferStackToMenu(ItemStack input) {
-        // 本屏没有网络物品栏：从背包 Shift+点击不该把东西塞进 ME 网络——那会让物品从视线里消失，
-        // 而这里既没网格能拿回来、也没有任何提示。拦的就是「快捷进网络」这一条（终端自己槽位之间
-        // 的快捷移动照旧，走 AE2 原来的按槽位分配）。
+        // 本屏不进 ME 网络：这里把网络物品栏换成了磁盘表，从背包 Shift+点击塞进去等于让物品从视线里消失，
+        // 既没地方拿回来、也没有任何提示。返回 0 之后，玩家侧的快捷移动就只剩「编码输出槽」那一条
+        //（见父类的 quickMoveStack），其余一律原地不动——也不再会落到 AE2 那条往 FakeSlot 塞鬼影的回退上。
         return 0;
     }
 

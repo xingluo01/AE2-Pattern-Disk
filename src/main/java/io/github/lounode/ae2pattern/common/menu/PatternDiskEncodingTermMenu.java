@@ -21,6 +21,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
@@ -1674,12 +1675,58 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
         if (isClientSide()) sendClientAction("setStonecuttingRecipeId", id); else this.encodingLogic.setStonecuttingRecipeId(id);
     }
 
+    /**
+     * 玩家侧槽位的快捷移动（Shift+左键）。
+     *
+     * <p>AE2 的父类在「菜单里找不到真正的目标槽」时会退化成把物品写进第一个空 {@code FakeSlot}（不看
+     * {@code mayPlace}，也不看那个槽当前是不是活的）——那条回退是给过滤器槽准备的（存储总线配置那种）。
+     * 本屏的 FakeSlot 全是合成格、处理输入/输出、切石与锻造，写进去就是一份不消耗原物的鬼影，还会落到
+     * 当前编码模式并不在用的槽里。这里把它挡掉：没有真目标槽时只走 {@code transferStackToMenu} 那条看得见的
+     * 去处（编码终端＝已编码样板进编辑槽、其余进 ME 网络；管理终端＝什么都不收），其余留在原处。</p>
+     *
+     * <p>另有真目标槽时仍旧交给父类，它会按槽位语义的优先级分配；菜单侧往背包的移动也照旧。</p>
+     */
+    @Override
+    public ItemStack quickMoveStack(Player player, int idx) {
+        if (isClientSide()) {
+            return ItemStack.EMPTY; // 与服务端同一口径：这一下不由客户端自己算，等包回来（父类也这么拦）
+        }
+        if (idx < 0 || idx >= this.slots.size()) {
+            return ItemStack.EMPTY; // 越界的槽号（改造过的客户端）什么都不做
+        }
+        var source = this.slots.get(idx);
+        if (!isPlayerSideSlot(source) || source.getItem().isEmpty()) {
+            return super.quickMoveStack(player, idx);
+        }
+        if (!source.mayPickup(player)) {
+            return ItemStack.EMPTY;
+        }
+
+        var stack = source.getItem();
+        if (!getQuickMoveDestinationSlots(stack, true).isEmpty()) {
+            return super.quickMoveStack(player, idx);
+        }
+
+        // 别走父类那条回退：只走 transferStackToMenu 这条看得见的去处
+        // （编码终端＝已编码样板进编辑槽、其余进 ME 网络；管理终端＝什么都不收），其余留在原处。
+        int transferred = transferStackToMenu(stack.copy());
+        if (transferred > 0) {
+            source.remove(transferred);
+        }
+        return ItemStack.EMPTY;
+    }
+
     @Override
     protected int transferStackToMenu(ItemStack input) {
+        // 已编码的样板优先回编辑槽（AE2 的老规矩：拿着编好的样板 Shift+左键＝接着改它）；其余的照常规
+        // 进 ME 网络——本屏有物品网格，送进去看得见（与 AE2 原版编码终端一致）。那个编码槽只吃
+        // **已编码**样板，空白样板不在此列。管理终端把这条改成了 0（那边没有网络物品栏）。
         int initialCount = input.getCount();
         if (encodedPatternSlot.mayPlace(input)) {
             input = encodedPatternSlot.safeInsert(input);
-            if (input.isEmpty()) return initialCount;
+            if (input.isEmpty()) {
+                return initialCount;
+            }
         }
         int transferred = initialCount - input.getCount();
         return transferred + super.transferStackToMenu(input);
