@@ -76,16 +76,18 @@ public record DiskHostListPayload(List<HostGroup> hosts, ShowPatternProviders sh
     }
 
     /**
-     * One machine's row of the table: its key (for the show/hide toggle), a display name and icon, and the
-     * disks it holds in the order the server enumerated them.
+     * One machine's row of the table: its key (for the show/hide toggle), a display name and icon, the
+     * disks it holds in the order the server enumerated them, and how many of its slots are still empty -
+     * the terminal's “hide empty slots” toggle folds those into a single cell.
      */
-    public record HostGroup(String key, String name, ItemStack icon, List<Entry> disks) {
+    public record HostGroup(String key, String name, ItemStack icon, List<Entry> disks, int emptySlots) {
 
         public static final StreamCodec<RegistryFriendlyByteBuf, HostGroup> STREAM_CODEC = StreamCodec.composite(
                 ByteBufCodecs.STRING_UTF8, HostGroup::key,
                 ByteBufCodecs.STRING_UTF8, HostGroup::name,
                 ItemStack.OPTIONAL_STREAM_CODEC, HostGroup::icon,
                 Entry.STREAM_CODEC.apply(ByteBufCodecs.list()), HostGroup::disks,
+                ByteBufCodecs.VAR_INT, HostGroup::emptySlots,
                 HostGroup::new);
     }
 

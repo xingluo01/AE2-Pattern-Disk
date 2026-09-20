@@ -4,8 +4,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
+import appeng.client.gui.Icon;
 import appeng.client.gui.me.common.RepoSlot;
 
 import org.jetbrains.annotations.Nullable;
@@ -24,12 +26,12 @@ import it.unimi.dsi.fastutil.longs.LongSet;
 import appeng.api.config.Settings;
 import appeng.api.config.ShowPatternProviders;
 import appeng.client.gui.style.Blitter;
-import appeng.client.gui.style.PaletteColor;
 import appeng.client.gui.style.ScreenStyle;
 import appeng.client.gui.widgets.ActionButton;
 import appeng.client.gui.widgets.IconButton;
 import appeng.client.gui.widgets.ServerSettingToggleButton;
 import appeng.client.gui.widgets.SettingToggleButton;
+import appeng.client.gui.widgets.ToggleButton;
 import appeng.core.localization.ButtonToolTips;
 
 import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
@@ -85,6 +87,12 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     /** 「显示模式」按钮：与 AE2 样板访问终端共用同一个服务端设置。 */
     private final ServerSettingToggleButton<ShowPatternProviders> showProvidersButton;
 
+    /** 「隐藏槽位/显示槽位」按钮：只影响本屏的行模型，不涉服务端。按下时要回写状态，所以不是 final。 */
+    private ToggleButton hideSlotsButton;
+
+    /** 当前是否收起空槽。默认收起：表的常规观感保持紧凑，想看全槽布局再展开。 */
+    private boolean hideEmptySlots = true;
+
     // 表格区几何：按贴图实测（描边带 x0..7，填充区从 x8 开始；表头 y0..16）。
     // 行分配同 AE2 的样板访问终端（PatternAccessTermScreen.drawBG）：一行 18px，按「行类型」从贴图取行带——
     // 文本带 y17/53/89（无格子框，给主机名这类纯文本行）与物品带 y35/71/107（有 17 格框，给磁盘/样板行），
@@ -93,18 +101,18 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     // LIST_X 取 7 时物品落在贴图实测的 x=8。
     private static final int PANEL_WIDTH = 340;
     /**
-     * 面板高，与 style JSON 的 terminalStyle 算出的 imageHeight 一致（header 17 + firstRow 18 + lastRow 18 +
-     * bottom 167 = 220）。贴图实际画到 y=219，面板按它收，底部不留空白。
+     * 面板高度不是常量：它由终端风格档位算出的行数决定（表头 + 行×18 + 尾饰）。这里的常量是它的三块组成，
+     * 以及“一行也不显示”时的高度（17 + 0 + 95 = 112）。
      */
-    private static final int PANEL_HEIGHT = 220;
+    private static final int HEADER_HEIGHT = 17;
+    /** 尾饰带高：贴图 y125..219。编码区、背包都在这一段，它跟着面板底部走。 */
+    private static final int FOOTER_HEIGHT = 95;
     private static final int LIST_X = 7;
     private static final int LIST_Y = 0;
 
     /** 填充区宽：17 格 × 18px。贴图填充区实测到 x=311，再右是滚动条区（本屏只用滚轮，不画它）。 */
     private static final int LIST_WIDTH = 306;
 
-    /** 表头高：贴图 y0..16，与 AE2 的 GUI_HEADER_HEIGHT（17）同值。 */
-    private static final int TITLE_HEIGHT = 17;
     /** 行高：与 AE2 一致的一行 18px（贴图里每种行带也都是 18px 高）。 */
     private static final int ROW_HEIGHT = 18;
 
@@ -114,15 +122,24 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
      */
     private static final int CELL_Y_INSET = 2;
     private static final int COLUMNS = 17;
-    /** 可见行数：表格区 y17..124 共 108px ÷ 18 = 6 行；滚动由滚轮驱动。 */
-    private static final int VISIBLE_ROWS = 6;
+    /** 上下最小留白保留给 AE2 自己的终端样式链用（本屏不自己算行数），这里不再重复它的常量。 */
     /** 视口外多要一行内容：滚一格时不至于先闪一帧空行。 */
     private static final int CONTENT_MARGIN_ROWS = 1;
 
+    /**
+     * 当前可见行数：由终端风格档位与窗口高度共同决定，数值就是父类按 terminalStyle 算好的 imageHeight 反推来的，
+     * {@code init()} 里赋。屏幕不随 resize 重建，但 init() 会在 resize 后被调用，所以这一个字段就够。
+     */
+    private int visibleRows = 6;
+
     // 静态 Blitter：UV 按 512 算（见 TEXTURE_SIZE），每帧不新建对象。
     // 注意它们是可变对象：每次使用必须紧接 dest(...) + blit(...)，不要缓存引用到别处再画。
-    private static final Blitter BACKGROUND = Blitter.texture(TEXTURE, TEXTURE_SIZE, TEXTURE_SIZE)
-            .src(0, 0, PANEL_WIDTH, PANEL_HEIGHT);
+    private static final Blitter HEADER_BAND = band(0, HEADER_HEIGHT);
+    private static final Blitter FOOTER_BAND = band(125, FOOTER_HEIGHT);
+
+    /** 空槽格的底图：贴图里「空白样板」那一格，宽高正好是 18×18 的槽位框。 */
+    private static final Blitter BLANK_CELL = Blitter.texture(TEXTURE, TEXTURE_SIZE, TEXTURE_SIZE)
+            .src(304, 144, 18, 18);
 
     // 六条行带，与 AE2 的 ROW_TEXT_/ROW_INVENTORY_TOP|MIDDLE|BOTTOM_BBOX 同一分区（本屏贴图与它同源）。
     private static final Blitter ROW_TEXT_TOP = rowBand(17);
@@ -132,8 +149,13 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     private static final Blitter ROW_TEXT_BOTTOM = rowBand(89);
     private static final Blitter ROW_INVENTORY_BOTTOM = rowBand(107);
 
+    /** 整条带（含面板左右边框）：行带要盖住 x0..6 的描边，否则多行铺出来会留下重影。 */
+    private static Blitter band(int srcY, int height) {
+        return Blitter.texture(TEXTURE, TEXTURE_SIZE, TEXTURE_SIZE).src(0, srcY, PANEL_WIDTH, height);
+    }
+
     private static Blitter rowBand(int srcY) {
-        return Blitter.texture(TEXTURE, TEXTURE_SIZE, TEXTURE_SIZE).src(LIST_X, srcY, LIST_WIDTH, ROW_HEIGHT);
+        return band(srcY, ROW_HEIGHT);
     }
 
     /**
@@ -153,7 +175,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
      */
     private static final int DISK_SLOT_TINT = 0x66B9F6CA;
 
-    private sealed interface Row permits HostRow, DiskRow {
+    private sealed interface Row permits HostRow, DiskRow, FreeSlotsRow {
     }
 
     /** 组头行：一台宿主机器。{@code diskCount} 是当前过滤/显示口径下的磁盘数。 */
@@ -162,6 +184,13 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
 
     /** 磁盘行：首格是磁盘本身，其余 16 格是它里面的样板。 */
     private record DiskRow(String hostKey, long serial, ItemStack disk) implements Row {
+    }
+
+    /**
+     * 供应器剩余的（空）槽。{@code cells} 是本行要画几格（收起时恒为 1）；{@code foldedCount} &gt; 0 时在那一格右上角
+     * 写它代表多少空槽。
+     */
+    private record FreeSlotsRow(int cells, int foldedCount) implements Row {
     }
 
     private final List<Row> rows = new ArrayList<>();
@@ -180,6 +209,25 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         this.showProvidersButton = new ServerSettingToggleButton<>(
                 Settings.TERMINAL_SHOW_PATTERN_PROVIDERS, ShowPatternProviders.VISIBLE);
         addToLeftToolbar(this.showProvidersButton);
+
+        // 「隐藏槽位」只改客户端的行模型（空槽条数由服务端在分组里带出的槽位总数算出），所以是本屏自己的开关。
+        // 状态由本屏维护并回写，不依赖按钮自身的翻转时机。
+        this.hideSlotsButton = new ToggleButton(
+                Icon.ARROW_UP,
+                Icon.ARROW_DOWN,
+                state -> {
+                    // 不依赖按钮传入的状态：本屏自己翻转并回写，按几次都不会错位。
+                    this.hideEmptySlots = !this.hideEmptySlots;
+                    this.hideSlotsButton.setState(this.hideEmptySlots);
+                });
+        this.hideSlotsButton.setTooltipOn(List.of(
+                Component.translatable("gui.ae2_pattern_disk.management_terminal.hide_slots"),
+                Component.translatable("gui.ae2_pattern_disk.management_terminal.hide_slots_hint")));
+        this.hideSlotsButton.setTooltipOff(List.of(
+                Component.translatable("gui.ae2_pattern_disk.management_terminal.show_slots"),
+                Component.translatable("gui.ae2_pattern_disk.management_terminal.show_slots_hint")));
+        this.hideSlotsButton.setState(this.hideEmptySlots);
+        addToLeftToolbar(this.hideSlotsButton);
     }
 
     @Override
@@ -196,12 +244,21 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     @Override
     public void init() {
         super.init();
+
+        // 行数由父类按 style 的 terminalStyle 算好（imageHeight 就是它的产物：表头 + 行×18 + 尾饰），这里反推
+        // 回来用，保证行带与父类摆好的槽位/控件用的是同一个值——自己再算一遍公式只会引入偏差。
+        this.visibleRows = Math.max(1, (imageHeight - HEADER_HEIGHT - FOOTER_HEIGHT) / ROW_HEIGHT);
+
         // MEStorageScreen.init() 给终端网格加了 RepoSlot；我们用自定义表格，不需要它们。
         this.menu.slots.removeIf(slot -> slot instanceof RepoSlot);
         // 父类把初始焦点给了 ME 搜索框，但本屏不显示物品网格，那个框在 JSON 里被移出面板；
         // 玩家打字应该进磁盘表的搜索框，否则键会走进一个看不见的输入框。
         setInitialFocus(miniSearchField());
         hideIrrelevantToolbarButtons();
+
+        // 风格档位可能把面板改矮：清单没变时 rebuildRows 不会夹偏移，这里补一次，免得顶部留白。
+        // （前提：JSON 的 header=17、firstRow/lastRow=18、bottom=95，即 imageHeight = 18×行 + 112；改那几处要同步这里。）
+        clampScroll();
     }
 
     /**
@@ -254,6 +311,11 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         }
 
         var diskCounts = new HashMap<String, Integer>();
+        var emptySlots = new HashMap<String, Integer>();
+        for (var group : menu.getHostList()) {
+            emptySlots.put(group.key(), group.emptySlots());
+        }
+
         var rebuilt = new ArrayList<Row>();
         String currentHost = null;
         for (int i = 0; super.diskEntryAt(i) != null; i++) {
@@ -266,6 +328,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
 
             diskCounts.merge(key, 1, Integer::sum);
             if (!key.equals(currentHost)) {
+                appendFreeSlots(rebuilt, currentHost, emptySlots);
                 currentHost = key;
                 rebuilt.add(new HostRow(key,
                         group == null ? Component.translatable("gui.ae2_pattern_disk.management_terminal.unknown_host").getString() : group.name(),
@@ -274,6 +337,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
             }
             rebuilt.add(new DiskRow(key, entry.serial(), entry.stack()));
         }
+        appendFreeSlots(rebuilt, currentHost, emptySlots);
 
         // 组头的张数要等本组数完才知道，回填一遍（行数很少，代价可以忽略）。
         for (int i = 0; i < rebuilt.size(); i++) {
@@ -291,8 +355,34 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         requestVisibleContents(false);
     }
 
+    /**
+     * 给刚数完的那台机器补「剩余槽位」行。
+     *
+     * <p>空槽数直接取服务端在分组里报的「真正的空格数」：搜索框筛掉部分盘、主机行开关隐藏整台都不会让它变化，
+     * 槽位与别的物品共用（NEO ECO 把样板盘与已编码样板放在同一批槽里）也不会被算错。</p>
+     *
+     * <p>收起时整台只留一格，格上写它代表多少空槽；展开时按每行 {@link #COLUMNS} 格铺开。</p>
+     */
+    private void appendFreeSlots(List<Row> out, String hostKey, Map<String, Integer> emptySlots) {
+        if (hostKey == null || hostKey.isEmpty()) {
+            return;
+        }
+        var empty = emptySlots.get(hostKey);
+        if (empty == null || empty <= 0) {
+            return;
+        }
+
+        if (hideEmptySlots) {
+            out.add(new FreeSlotsRow(1, empty));
+            return;
+        }
+        for (int left = empty; left > 0; left -= COLUMNS) {
+            out.add(new FreeSlotsRow(Math.min(COLUMNS, left), 0));
+        }
+    }
+
     private void clampScroll() {
-        int max = Math.max(0, rows.size() - VISIBLE_ROWS);
+        int max = Math.max(0, rows.size() - visibleRows);
         scrollOffset = Math.max(0, Math.min(scrollOffset, max));
     }
 
@@ -328,7 +418,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     private void requestVisibleContents(boolean force) {
         var wanted = new LongOpenHashSet();
         int first = Math.max(0, scrollOffset - CONTENT_MARGIN_ROWS);
-        int last = Math.min(rows.size(), scrollOffset + VISIBLE_ROWS + CONTENT_MARGIN_ROWS);
+        int last = Math.min(rows.size(), scrollOffset + visibleRows + CONTENT_MARGIN_ROWS);
         for (int i = first; i < last; i++) {
             if (rows.get(i) instanceof DiskRow disk) {
                 wanted.add(disk.serial());
@@ -363,28 +453,42 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     @Override
     public void drawBG(GuiGraphics guiGraphics, int offsetX, int offsetY, int mouseX, int mouseY,
             float partialTicks) {
-        // 不调 super.drawBG：父类的终端样式链会把 lastRow/bottom 推到面板高之外（row srcRect 高 1000 的
-        // hack 会导致 2 行之后跳 +2017px），改用固定贴图直接 blit。跳过它的代价是 AE2 物品网格的 pinned
-        // 行覆盖层与那次手写 searchField.render——本屏不显示那个网格，而搜索框仍由 widget 容器正常渲染。
-        blit(BACKGROUND, guiGraphics, offsetX, offsetY);
+        // 不调 super.drawBG：那张底图是一整块固定高度的贴图，而本表的面板高随终端风格档位变化，所以这里自己拼
+        // 面板：表头带 + 可见行带 + 尾饰带（行数见 visibleRows）。跳过它的代价是 AE2 物品网格的 pinned 行覆盖层
+        // 与那次手写 searchField.render——本屏不显示那个网格，而搜索框仍由 widget 容器正常渲染。
+        blit(HEADER_BAND, guiGraphics, offsetX, offsetY);
 
-        int x = offsetX + LIST_X;
-        int y = offsetY + LIST_Y + TITLE_HEIGHT;
+        int y = offsetY + HEADER_HEIGHT;
 
-        // 行分配同 AE2：每行先铺「文本带」作底，磁盘/样板行再叠「物品带」（带高 18，宽度只到 17 格）。
-        for (int i = 0; i < VISIBLE_ROWS; i++) {
+        // 行分配同 AE2：每行先铺「文本带」作底，含物品格的行再叠「物品带」；带是整条的（含左右边框）。
+        for (int i = 0; i < visibleRows; i++) {
             boolean firstLine = i == 0;
-            boolean lastLine = i == VISIBLE_ROWS - 1;
+            boolean lastLine = i == visibleRows - 1;
             int rowY = y + i * ROW_HEIGHT;
+            boolean slotsRow = rowKindAt(scrollOffset + i) == RowKind.SLOTS;
 
-            blit(selectRowBand(false, firstLine, lastLine), guiGraphics, x, rowY);
-            int rowIndex = scrollOffset + i;
-            if (rowIndex < rows.size() && rows.get(rowIndex) instanceof DiskRow) {
-                blit(selectRowBand(true, firstLine, lastLine), guiGraphics, x, rowY);
-                // 磁盘行首格再压一层浅绿，位置与 drawFG 的磁盘图标同一点。
-                guiGraphics.fill(x + 1, rowY + CELL_Y_INSET, x + 1 + 16, rowY + CELL_Y_INSET + 16, DISK_SLOT_TINT);
+            blit(selectRowBand(false, firstLine, lastLine), guiGraphics, offsetX, rowY);
+            if (slotsRow) {
+                blit(selectRowBand(true, firstLine, lastLine), guiGraphics, offsetX, rowY);
+            }
+            // 磁盘行首格再压一层浅绿，位置与 drawFG 的磁盘图标同一点。
+            if (scrollOffset + i < rows.size() && rows.get(scrollOffset + i) instanceof DiskRow) {
+                int cellX = offsetX + LIST_X + 1;
+                guiGraphics.fill(cellX, rowY + CELL_Y_INSET, cellX + 16, rowY + CELL_Y_INSET + 16, DISK_SLOT_TINT);
             }
         }
+
+        blit(FOOTER_BAND, guiGraphics, offsetX, offsetY + HEADER_HEIGHT + visibleRows * ROW_HEIGHT);
+    }
+
+    /** 一行在贴图上该用哪条带：纯文本行（主机名）用文本带，含物品格的行用物品带。 */
+    private enum RowKind { TEXT, SLOTS }
+
+    private RowKind rowKindAt(int rowIndex) {
+        if (rowIndex < 0 || rowIndex >= rows.size()) {
+            return RowKind.TEXT;
+        }
+        return rows.get(rowIndex) instanceof HostRow ? RowKind.TEXT : RowKind.SLOTS;
     }
 
     /**
@@ -411,10 +515,10 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         // drawFG 同样用裸坐标，如 VibrationChamberScreen 的 dest(80, 20 + ...)）。
         // 注意传入的 mouseX/mouseY 是绝对屏幕坐标（命中测试因此要减 leftPos/topPos，本类已如此）。
         int baseX = LIST_X;
-        int baseY = LIST_Y + TITLE_HEIGHT;
+        int baseY = LIST_Y + HEADER_HEIGHT;
         int textColor = 0xFF404040;
 
-        for (int i = 0; i < VISIBLE_ROWS; i++) {
+        for (int i = 0; i < visibleRows; i++) {
             int rowIndex = scrollOffset + i;
             if (rowIndex >= rows.size()) {
                 break;
@@ -434,6 +538,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
                     drawHostToggle(guiGraphics, baseX, rowY, host.key());
                 }
                 case DiskRow disk -> drawDiskRow(guiGraphics, baseX, rowY, disk);
+                case FreeSlotsRow free -> drawFreeSlotsRow(guiGraphics, baseX, rowY, free);
             }
         }
     }
@@ -471,6 +576,23 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
                 guiGraphics.fill(cellX, cellY, cellX + 16, cellY + 16, 0x7fff0000);
             }
         }
+    }
+
+    /**
+     * 剩余槽位行：把空槽画成空格，收起时在唯一那格右上角写上它代表多少空槽。
+     */
+    private void drawFreeSlotsRow(GuiGraphics guiGraphics, int baseX, int rowY, FreeSlotsRow row) {
+        int cellY = rowY + CELL_Y_INSET;
+        for (int i = 0; i < row.cells(); i++) {
+            blit(BLANK_CELL, guiGraphics, baseX + 1 + i * ROW_HEIGHT, cellY);
+        }
+
+        if (row.foldedCount() <= 0) {
+            return;
+        }
+        var count = Integer.toString(row.foldedCount());
+        // 右上角：与那格右/上边线各留 1px。
+        guiGraphics.drawString(font, count, baseX + 1 + 16 - font.width(count), cellY + 1, 0xFF3F3F3F, false);
     }
 
     /**
@@ -544,7 +666,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
 
     @Override
     public boolean mouseScrolled(double xCoord, double yCoord, double scrollX, double scrollY) {
-        int max = Math.max(0, rows.size() - VISIBLE_ROWS);
+        int max = Math.max(0, rows.size() - visibleRows);
         if (max > 0 && scrollY != 0) {
             scrollOffset = Math.max(0, Math.min(max, scrollOffset - (int) Math.signum(scrollY)));
             requestVisibleContents(false);
@@ -575,12 +697,12 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
 
     private int rowIndexAt(double mouseX, double mouseY) {
         int relX = (int) mouseX - leftPos - LIST_X;
-        int relY = (int) mouseY - topPos - LIST_Y - TITLE_HEIGHT;
+        int relY = (int) mouseY - topPos - LIST_Y - HEADER_HEIGHT;
         if (relX < 0 || relX >= LIST_WIDTH || relY < 0) {
             return -1;
         }
         int slotRow = relY / ROW_HEIGHT;
-        if (slotRow < 0 || slotRow >= VISIBLE_ROWS) {
+        if (slotRow < 0 || slotRow >= visibleRows) {
             return -1;
         }
         int rowIndex = scrollOffset + slotRow;

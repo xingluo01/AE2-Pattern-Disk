@@ -101,5 +101,9 @@
   "jade.ae2_pattern_disk.batch_assembler.state.unresolvable_pattern": "队列中有无法解析的样板",
   "jade.ae2_pattern_disk.batch_assembler.state.waiting_for_material": "等待材料安静（攒批中）",
   "jade.ae2_pattern_disk.batch_assembler.state.working": "批处理合成中",
-  "jade.ae2_pattern_disk.batch_assembler.waiting": "距开做：%s tick"
+  "jade.ae2_pattern_disk.batch_assembler.waiting": "距开做：%s tick",
+  "gui.ae2_pattern_disk.management_terminal.hide_slots": "隐藏槽位",
+  "gui.ae2_pattern_disk.management_terminal.hide_slots_hint": "把供应器剩余的空磁盘槽收成一格，数字是折叠掉的槽位数",
+  "gui.ae2_pattern_disk.management_terminal.show_slots": "显示槽位",
+  "gui.ae2_pattern_disk.management_terminal.show_slots_hint": "展开供应器剩余的空磁盘槽"
 }

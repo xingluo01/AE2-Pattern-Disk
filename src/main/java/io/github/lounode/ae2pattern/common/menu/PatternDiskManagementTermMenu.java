@@ -114,7 +114,7 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
             var key = hostKey(host);
             var builder = builders.get(key);
             if (builder == null) {
-                builder = new HostBuilder(key, describeHost(host), iconOf(host));
+                builder = new HostBuilder(key, describeHost(host), iconOf(host), countEmptySlots(host));
                 builders.put(key, builder);
             }
             builder.disks.add(new DiskHostListPayload.Entry(entry.serial(), entry.stack()));
@@ -123,7 +123,7 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
         var groups = new ArrayList<DiskHostListPayload.HostGroup>(builders.size());
         for (var builder : builders.values()) {
             groups.add(new DiskHostListPayload.HostGroup(builder.key, builder.name, builder.icon,
-                    List.copyOf(builder.disks)));
+                    List.copyOf(builder.disks), builder.emptySlots));
         }
         sendPacketToClient(new DiskHostListPayload(groups, mode));
     }
@@ -298,6 +298,21 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
         return name + " (" + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + ")";
     }
 
+    /**
+     * 该宿主还剩多少个真正的空槽。只数空格、不用「总槽数 − 盘数」：有些宿主的槽位是共用的
+     * （NEO ECO 的样板总线把样板盘与已编码样板放在同一批槽里），那样算出来的差值会把被别人占掉的槽当成空槽。
+     */
+    private static int countEmptySlots(IPatternDiskHost host) {
+        var inventory = host.getDiskInventory();
+        int empty = 0;
+        for (int i = 0; i < inventory.size(); i++) {
+            if (inventory.getStackInSlot(i).isEmpty()) {
+                empty++;
+            }
+        }
+        return empty;
+    }
+
     /** 组头图标：方块对应的物品；方块没有物品形态（比如某些线缆面板）时留空，屏幕会退回只画名字。 */
     private ItemStack iconOf(IPatternDiskHost host) {
         var level = getPlayer().level();
@@ -313,12 +328,15 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
         private final String key;
         private final String name;
         private final ItemStack icon;
+        /** 该宿主还剩多少个空槽；终端「隐藏槽位」把这些槽叠成一格。 */
+        private final int emptySlots;
         private final List<DiskHostListPayload.Entry> disks = new ArrayList<>();
 
-        private HostBuilder(String key, String name, ItemStack icon) {
+        private HostBuilder(String key, String name, ItemStack icon, int emptySlots) {
             this.key = key;
             this.name = name;
             this.icon = icon;
+            this.emptySlots = emptySlots;
         }
     }
 }

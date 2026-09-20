@@ -101,5 +101,9 @@
   "jade.ae2_pattern_disk.batch_assembler.state.unresolvable_pattern": "A queued pattern could not be resolved",
   "jade.ae2_pattern_disk.batch_assembler.state.waiting_for_material": "Waiting for material to settle",
   "jade.ae2_pattern_disk.batch_assembler.state.working": "Assembling a batch",
-  "jade.ae2_pattern_disk.batch_assembler.waiting": "Starts in: %s ticks"
+  "jade.ae2_pattern_disk.batch_assembler.waiting": "Starts in: %s ticks",
+  "gui.ae2_pattern_disk.management_terminal.hide_slots": "Hide Empty Slots",
+  "gui.ae2_pattern_disk.management_terminal.hide_slots_hint": "Fold the providers’ empty disk slots into a single cell; the number counts the folded slots",
+  "gui.ae2_pattern_disk.management_terminal.show_slots": "Show Empty Slots",
+  "gui.ae2_pattern_disk.management_terminal.show_slots_hint": "Expand the providers’ empty disk slots"
 }

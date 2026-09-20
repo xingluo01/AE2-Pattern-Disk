@@ -33,12 +33,12 @@
   },
   "row": {
    "texture": "ae2_pattern_disk:textures/guis/pattern_disk_management_terminal.png",
-   "$comment": "srcRect 高 1000 越界是故意的：它只被 getSrcHeight() 消费，用来把 rows 锁在 2、面板高恒为 220。本屏覆写 drawBG 跳过了终端样式链，这块从不绘制；一旦有人改成调 super.drawBG，v 方向 UV 会到约 1.99 而花屏。",
+   "$comment": "srcRect 高 18（一行高）：终端样式链用 getSrcHeight() 算窗口能放几行，进而决定面板高 = 表头 + 行×18 + 尾饰。以前这里是 1000，靠把 getPossibleRows 压成 0 来把面板钉在 220；行数改成动态后不再需要。本屏不走 super.drawBG，行带由屏幕自己按类型贴。",
    "srcRect": [
     0,
     17,
     340,
-    1000
+    18
    ],
    "textureWidth": 512,
    "textureHeight": 512
@@ -58,9 +58,9 @@
    "texture": "ae2_pattern_disk:textures/guis/pattern_disk_management_terminal.png",
    "srcRect": [
     0,
-    35,
+    125,
     340,
-    167
+    95
    ],
    "textureWidth": 512,
    "textureHeight": 512
@@ -80,66 +80,66 @@
  "slots": {
   "CRAFTING_GRID": {
    "left": 181,
-   "top": 151,
+   "bottom": 69,
    "grid": "BREAK_AFTER_3COLS"
   },
   "CRAFTING_RESULT": {
    "left": 264,
-   "top": 169
+   "bottom": 51
   },
   "PROCESSING_INPUTS": {
    "left": 190,
-   "top": 152,
+   "bottom": 68,
    "grid": "BREAK_AFTER_3COLS"
   },
   "PROCESSING_OUTPUTS": {
    "left": 267,
-   "top": 152,
+   "bottom": 68,
    "grid": "VERTICAL"
   },
   "SMITHING_TABLE_TEMPLATE": {
    "left": 182,
-   "top": 170
+   "bottom": 50
   },
   "SMITHING_TABLE_BASE": {
    "left": 200,
-   "top": 170
+   "bottom": 50
   },
   "SMITHING_TABLE_ADDITION": {
    "left": 218,
-   "top": 170
+   "bottom": 50
   },
   "SMITHING_TABLE_RESULT": {
    "left": 267,
-   "top": 170
+   "bottom": 50
   },
   "STONECUTTING_INPUT": {
    "left": 182,
-   "top": 171
+   "bottom": 49
   },
   "BLANK_PATTERN": {
    "left": 305,
-   "top": 145
+   "bottom": 75
   },
   "ENCODED_PATTERN": {
    "left": 305,
-   "top": 192
+   "bottom": 28
   },
   "PLAYER_INVENTORY": {
    "left": 8,
-   "top": 138,
+   "bottom": 82,
    "grid": "BREAK_AFTER_9COLS"
   },
   "PLAYER_HOTBAR": {
    "left": 8,
-   "top": 196,
+   "bottom": 24,
    "grid": "HORIZONTAL"
   }
  },
  "tooltips": {
   "processing-primary-output": {
    "left": 266,
-   "top": 151,
+   "bottom": 69,
    "width": 18,
    "height": 18,
    "tooltip": [
@@ -154,7 +154,7 @@
   },
   "processing-optional-output1": {
    "left": 266,
-   "top": 151,
+   "bottom": 69,
    "width": 18,
    "height": 18,
    "tooltip": [
@@ -169,7 +169,7 @@
   },
   "processing-optional-output2": {
    "left": 266,
-   "top": 169,
+   "bottom": 51,
    "width": 18,
    "height": 18,
    "tooltip": [
@@ -184,7 +184,7 @@
   },
   "processing-optional-output3": {
    "left": 266,
-   "top": 187,
+   "bottom": 33,
    "width": 18,
    "height": 18,
    "tooltip": [
@@ -214,7 +214,7 @@
    },
    "position": {
     "left": 8,
-    "top": 127
+    "bottom": 93
    }
   },
   "encoding_title": {
@@ -223,91 +223,91 @@
    },
    "position": {
     "left": 175,
-    "top": 133
+    "bottom": 87
    }
   }
  },
  "widgets": {
   "modePanel0": {
    "left": 175,
-   "top": 145,
+   "bottom": 75,
    "width": 115,
    "height": 66
   },
   "modePanel1": {
    "left": 175,
-   "top": 145,
+   "bottom": 75,
    "width": 115,
    "height": 66
   },
   "modePanel2": {
    "left": 175,
-   "top": 145,
+   "bottom": 75,
    "width": 115,
    "height": 66
   },
   "modePanel3": {
    "left": 175,
-   "top": 145,
+   "bottom": 75,
    "width": 115,
    "height": 66
   },
   "encodePattern": {
    "left": 305,
-   "top": 165
+   "bottom": 55
   },
   "craftingClearPattern": {
    "left": 237,
-   "top": 151
+   "bottom": 69
   },
   "craftingSubstitutions": {
    "left": 247,
-   "top": 151
+   "bottom": 69
   },
   "craftingFluidSubstitutions": {
    "left": 257,
-   "top": 151
+   "bottom": 69
   },
   "processingPatternModeScrollbar": {
    "left": 180,
-   "top": 151,
+   "bottom": 69,
    "height": 54
   },
   "processingClearPattern": {
    "left": 246,
-   "top": 151
+   "bottom": 69
   },
   "processingMergeItems": {
    "left": 256,
-   "top": 161
+   "bottom": 59
   },
   "processingRotatePrimary": {
    "left": 256,
-   "top": 151
+   "bottom": 69
   },
   "processingSubstitutions": {
    "left": 246,
-   "top": 161
+   "bottom": 59
   },
   "processingMultiply": {
    "left": 246,
-   "top": 197
+   "bottom": 23
   },
   "processingDivide": {
    "left": 256,
-   "top": 197
+   "bottom": 23
   },
   "smithingTableSubstitutions": {
    "left": 191,
-   "top": 159
+   "bottom": 61
   },
   "smithingTableClearPattern": {
    "left": 181,
-   "top": 159
+   "bottom": 61
   },
   "stonecuttingPatternModeScrollbar": {
    "left": 278,
-   "top": 150,
+   "bottom": 70,
    "height": 56
   },
   "miniSearch": {
