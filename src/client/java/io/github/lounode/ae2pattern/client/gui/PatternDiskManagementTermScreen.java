@@ -93,6 +93,12 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     /** 标题条高：贴图里是 y0..17，共 18px（原来取 17，会让行条切片多含标题末行、丢掉 y=35 的分隔线）。 */
     private static final int TITLE_HEIGHT = 18;
     private static final int ROW_HEIGHT = 18;
+
+    /**
+     * 行带内部的纵向起点。贴图行带（18px）顶部是 2px 深色边框（实测 y18..19），内容从第 3 行开始；横向只有 1px
+     * 边框，所以横向内缩另计（见绘制处的 +1）。
+     */
+    private static final int CELL_Y_INSET = 2;
     private static final int COLUMNS = 17;
     private static final int VISIBLE_ROWS = 6;
     /** 视口外多要一行内容：滚一格时不至于先闪一帧空行。 */
@@ -308,7 +314,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
             blit(LIST_ROW, guiGraphics, x, rowY);
             int rowIndex = scrollOffset + i;
             if (rowIndex < rows.size() && rows.get(rowIndex) instanceof DiskRow) {
-                guiGraphics.fill(x + 1, rowY + 1, x + 1 + 16, rowY + 1 + 16, DISK_SLOT_TINT);
+                guiGraphics.fill(x + 1, rowY + CELL_Y_INSET, x + 1 + 16, rowY + CELL_Y_INSET + 16, DISK_SLOT_TINT);
             }
         }
     }
@@ -335,13 +341,13 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
             switch (rows.get(rowIndex)) {
                 case HostRow host -> {
                     if (!host.icon().isEmpty()) {
-                        guiGraphics.renderItem(host.icon(), baseX + 1, rowY + 1);
+                        guiGraphics.renderItem(host.icon(), baseX + 1, rowY + CELL_Y_INSET);
                     }
                     var label = host.diskCount() > 1
                             ? host.name() + " (" + host.diskCount() + ")"
                             : host.name();
                     guiGraphics.drawString(font, font.plainSubstrByWidth(label, 16 * 18 - TOGGLE_SIZE - 22),
-                            baseX + 21, rowY + 5, textColor, false);
+                            baseX + 21, rowY + CELL_Y_INSET + 4, textColor, false);
                     drawHostToggle(guiGraphics, baseX, rowY, host.key());
                 }
                 case DiskRow disk -> drawDiskRow(guiGraphics, baseX, rowY, disk);
@@ -351,8 +357,8 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
 
     /** 磁盘行：第 0 格是磁盘，第 1..16 格是盘内样板（内容到达前只画磁盘）。 */
     private void drawDiskRow(GuiGraphics guiGraphics, int baseX, int rowY, DiskRow row) {
-        guiGraphics.renderItem(row.disk(), baseX + 1, rowY + 1);
-        guiGraphics.renderItemDecorations(font, row.disk(), baseX + 1, rowY + 1);
+        guiGraphics.renderItem(row.disk(), baseX + 1, rowY + CELL_Y_INSET);
+        guiGraphics.renderItemDecorations(font, row.disk(), baseX + 1, rowY + CELL_Y_INSET);
 
         var patterns = getMenu().getDiskContents(row.serial());
         if (patterns == null) {
@@ -367,7 +373,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
             }
 
             int cellX = baseX + (i + 1) * 18 + 1;
-            int cellY = rowY + 1;
+            int cellY = rowY + CELL_Y_INSET;
 
             // 显示主产物，而不是样板本体：与 AE2 样板访问终端同口径（它的 PatternSlot.getDisplayStack 用
             // EncodedPatternItem#getOutput 换掉槽位显示）。任何类型的产物都直接显示——那个方法对流体等
@@ -405,7 +411,8 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     /** 组头的显示/隐藏开关：一个小方块，隐藏时画成暗底。 */
     private void drawHostToggle(GuiGraphics guiGraphics, int baseX, int rowY, String key) {
         int x = baseX + LIST_WIDTH - TOGGLE_SIZE - 3;
-        int y = rowY + (ROW_HEIGHT - TOGGLE_SIZE) / 2;
+        // 行带内部自 CELL_Y_INSET 起、底部留 1px 边框，开关在这段里居中。
+        int y = rowY + CELL_Y_INSET + (ROW_HEIGHT - CELL_Y_INSET - 1 - TOGGLE_SIZE) / 2;
         boolean shown = !hiddenHosts.contains(key);
         guiGraphics.fill(x, y, x + TOGGLE_SIZE, y + TOGGLE_SIZE, shown ? 0xff9a9a9a : 0xff4a4a4a);
         guiGraphics.fill(x + 1, y + 1, x + TOGGLE_SIZE - 1, y + TOGGLE_SIZE - 1, shown ? 0xffcfcfcf : 0xff2a2a2a);

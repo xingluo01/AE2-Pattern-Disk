@@ -125,12 +125,12 @@
    "top": 192
   },
   "PLAYER_INVENTORY": {
-   "left": 7,
+   "left": 8,
    "top": 136,
    "grid": "BREAK_AFTER_9COLS"
   },
   "PLAYER_HOTBAR": {
-   "left": 7,
+   "left": 8,
    "top": 194,
    "grid": "HORIZONTAL"
   }
@@ -212,7 +212,7 @@
     "translate": "container.inventory"
    },
    "position": {
-    "left": 7,
+    "left": 8,
     "top": 127
    }
   },
