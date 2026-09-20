@@ -38,7 +38,9 @@ import io.github.lounode.ae2pattern.common.menu.PatternDiskAssemblerMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternTransfererMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
+import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
 import io.github.lounode.ae2pattern.common.part.PatternDiskEncodingTerminalPart;
+import io.github.lounode.ae2pattern.common.part.PatternDiskManagementTerminalPart;
 import io.github.lounode.ae2pattern.common.part.PatternDiskProviderPart;
 import io.github.lounode.ae2pattern.common.pattern.PatternDiskContents;
 import io.github.lounode.ae2pattern.common.pattern.PatternDiskTier;
@@ -68,6 +70,21 @@ public final class AEPatternRegistries {
     public static final DeferredItem<PatternDiskItem> ITEM_DISK_256K = disk(PatternDiskTier.SIZE_256K);
 
     public static final DeferredItem<PartItem<PatternDiskEncodingTerminalPart>> ITEM_PATTERN_DISK_ENCODING_TERMINAL = createEncodingTerminal();
+
+    /**
+     * 样板磁盘管理终端：与编码终端同一套逻辑与资源，只是开自己的菜单、用自己那对模型（模型文件暂指向编码终端的
+     * 部件贴图，等专用美术出来再换）。
+     */
+    public static final DeferredItem<PartItem<PatternDiskManagementTerminalPart>> ITEM_PATTERN_DISK_MANAGEMENT_TERMINAL = createManagementTerminal();
+
+    private static DeferredItem<PartItem<PatternDiskManagementTerminalPart>> createManagementTerminal() {
+        PartModels.registerModels(
+                PatternDiskManagementTerminalPart.MODEL_OFF,
+                PatternDiskManagementTerminalPart.MODEL_ON);
+        return ITEMS.registerItem("pattern_disk_management_terminal",
+                props -> new PartItem<>(props, PatternDiskManagementTerminalPart.class,
+                        PatternDiskManagementTerminalPart::new));
+    }
 
     private static DeferredItem<PartItem<PatternDiskEncodingTerminalPart>> createEncodingTerminal() {
         PartModels.registerModels(
@@ -190,6 +207,9 @@ public final class AEPatternRegistries {
     public static final DeferredHolder<MenuType<?>, MenuType<PatternDiskEncodingTermMenu>> MENU_PATTERN_DISK_ENCODING_TERMINAL = MENUS
             .register("pattern_disk_encoding_terminal", () -> PatternDiskEncodingTermMenu.TYPE);
 
+    public static final DeferredHolder<MenuType<?>, MenuType<PatternDiskManagementTermMenu>> MENU_PATTERN_DISK_MANAGEMENT_TERMINAL = MENUS
+            .register("pattern_disk_management_terminal", () -> PatternDiskManagementTermMenu.TYPE);
+
     // ---- Data components -----------------------------------------------------
 
     public static final DeferredRegister.DataComponents COMPONENTS = DeferredRegister.createDataComponents(
@@ -241,6 +261,7 @@ public final class AEPatternRegistries {
                         output.accept(ITEM_ASSEMBLER.get());
                         output.accept(ITEM_BATCH_ASSEMBLER.get());
                         output.accept(ITEM_PATTERN_DISK_ENCODING_TERMINAL.get());
+        output.accept(ITEM_PATTERN_DISK_MANAGEMENT_TERMINAL.get());
                         output.accept(ITEM_CABLE_PATTERN_DISK_PROVIDER.get());
                     })
                     .build());

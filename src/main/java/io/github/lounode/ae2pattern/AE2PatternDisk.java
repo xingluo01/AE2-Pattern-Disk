@@ -10,6 +10,10 @@ import net.neoforged.neoforge.registries.RegisterEvent;
 
 import io.github.lounode.ae2pattern.network.AssemblerAnimationPayload;
 import io.github.lounode.ae2pattern.network.DiskListPayload;
+import io.github.lounode.ae2pattern.network.DiskContentPayload;
+import io.github.lounode.ae2pattern.network.DiskHostListPayload;
+import io.github.lounode.ae2pattern.network.VisibleDisksPayload;
+import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
 
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskAssemblerBlockEntity;
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskProviderBlockEntity;
@@ -147,6 +151,26 @@ public class AE2PatternDisk {
                 DiskListPayload.TYPE,
                 DiskListPayload.STREAM_CODEC,
                 (payload, context) -> payload.handleOnClient(context));
+        // 管理终端的表格：分组清单与「按需的盘内内容」。内容走单独一条包，因为一张盘最多 1024 张样板，
+        // 不能跟着列表一起发（见 DiskContentPayload 的注释）。
+        registrar.playToClient(
+                DiskHostListPayload.TYPE,
+                DiskHostListPayload.STREAM_CODEC,
+                (payload, context) -> payload.handleOnClient(context));
+        registrar.playToClient(
+                DiskContentPayload.TYPE,
+                DiskContentPayload.STREAM_CODEC,
+                (payload, context) -> payload.handleOnClient(context));
+        // 客户端上报「表格当前显示哪些盘」；服务端不猜视口，只按它答内容。
+        registrar.playToServer(
+                VisibleDisksPayload.TYPE,
+                VisibleDisksPayload.STREAM_CODEC,
+                (payload, context) -> context.enqueueWork(() -> {
+                    var player = context.player();
+                    if (player != null && player.containerMenu instanceof PatternDiskManagementTermMenu menu) {
+                        payload.handleOnServer(menu);
+                    }
+                }));
     }
 
     private void commonSetup(FMLCommonSetupEvent event) {

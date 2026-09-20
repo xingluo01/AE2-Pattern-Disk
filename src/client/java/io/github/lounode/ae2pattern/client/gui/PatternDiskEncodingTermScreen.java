@@ -141,9 +141,11 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             modePanels.put(mode, panel);
         }
 
-        // 注册磁盘列表面板
+        // 注册磁盘列表面板（管理终端不要这个面板：它把磁盘铺进自己的表里，复用面板只为共享搜索状态）
         this.diskListPanel = new DiskListPanel();
-        widgets.add("diskList", this.diskListPanel);
+        if (usesDiskListPanel()) {
+            widgets.add("diskList", this.diskListPanel);
+        }
 
         // 磁盘列表点击回调
         this.diskListPanel.setOnClick(this::onDiskClick);
@@ -198,6 +200,17 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             menu.encode();
         });
         widgets.add("encodePattern", encodeBtn);
+    }
+
+    /**
+     * 是否把这个屏幕的磁盘列表面板接进界面。
+     *
+     * <p>管理终端把磁盘铺进自己的表格，不要那个 24×66 的竖列表；但它的迷你搜索框、筛选口径、选中/写盘目标
+     * 逻辑都靠这个面板对象承载，所以面板本身照建（见使用处），只是不接进 widgets——不接进 widgets 就不会被绘制、
+     * 也收不到鼠标事件，等于一个只存状态的容器。</p>
+     */
+    protected boolean usesDiskListPanel() {
+        return true;
     }
 
     /**
@@ -407,7 +420,22 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     /**
      * 左键点击磁盘：把当前编码的样板写入该磁盘。
      */
-    private void onDiskClick(int index) {
+    /** 子类（管理终端）用：把「磁盘序列号」映射到本屏幕列表里的下标，好复用下面的点击交互。 */
+    protected int indexOfDisk(long serial) {
+        for (int i = 0; i < diskEntries.size(); i++) {
+            if (diskEntries.get(i).serial() == serial) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /** 子类用：过滤后列表里第 {@code index} 张盘的条目；越界返回 {@code null}。 */
+    protected @Nullable DiskEntry diskEntryAt(int index) {
+        return index >= 0 && index < diskEntries.size() ? diskEntries.get(index) : null;
+    }
+
+    protected void onDiskClick(int index) {
         var entry = getDiskEntryAt(index);
         if (entry != null) {
             menu.transferToDisk(entry.serial());
@@ -422,7 +450,7 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
      * 清掉）。光标上那件认不出类别时退回刚导入的配方类别；两样都没有就干脆不写——写下去只会是模式标记，而
      * 清空/改写标记是 Shift+右键的活。写没写成由服务端在聊天栏回执（见 Menu#bindPrefix）。</p>
      */
-    private void onDiskRightClick(int index) {
+    protected void onDiskRightClick(int index) {
         var entry = getDiskEntryAt(index);
         if (entry == null) {
             return;
@@ -494,7 +522,7 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
      * Shift+右键：把搜索栏里写的那个标记打到这张盘上。它不依赖“当前导入的配方类型”，所以玩家可以先搜出
      * 某类磁盘，再把同一个标记标到别的盘上。搜索栏为空时反过来清掉这张盘的标记。
      */
-    private void onDiskShiftRightClick(int index) {
+    protected void onDiskShiftRightClick(int index) {
         var entry = getDiskEntryAt(index);
         if (entry == null) {
             return;
@@ -509,7 +537,7 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
      * 中键：把磁盘重命名为其标记所属机器的名称。标记可能刚被右键覆写过而客户端还没收到，所以先要一次
      * 权威列表，等它回来后用磁盘上真正的标记算名字（见 {@link #renameDiskBySerial(long)}）。
      */
-    private void onDiskMiddleClick(int index) {
+    protected void onDiskMiddleClick(int index) {
         var entry = getDiskEntryAt(index);
         if (entry == null) {
             return;

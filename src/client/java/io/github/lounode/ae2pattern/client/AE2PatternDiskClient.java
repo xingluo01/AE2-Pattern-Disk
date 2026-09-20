@@ -77,6 +77,26 @@ public class AE2PatternDiskClient {
         event.register(AEPatternRegistries.MENU_ASSEMBLER.get(), PatternDiskAssemblerScreen::new);
         event.register(AEPatternRegistries.MENU_BATCH_ASSEMBLER.get(), BatchAssemblerScreen::new);
         registerEncodingTerminalScreen(event);
+        registerManagementTerminalScreen(event);
+    }
+
+    private void registerManagementTerminalScreen(RegisterMenuScreensEvent event) {
+        var type = AEPatternRegistries.MENU_PATTERN_DISK_MANAGEMENT_TERMINAL.get();
+        // 用父菜单类型登记：新屏幕的菜单类型写死在继承签名里（AEBaseScreen<PatternDiskEncodingTermMenu>），而
+        // ScreenConstructor 的屏幕类型参数要求与菜单类型配套。注册的菜单类型只有一个，转换必定成立。
+        event.register(type,
+                new net.minecraft.client.gui.screens.MenuScreens.ScreenConstructor<PatternDiskEncodingTermMenu, PatternDiskEncodingTermScreen>() {
+                    @Override
+                    public PatternDiskEncodingTermScreen create(PatternDiskEncodingTermMenu menu,
+                            net.minecraft.world.entity.player.Inventory playerInventory,
+                            net.minecraft.network.chat.Component title) {
+                        appeng.client.gui.style.ScreenStyle style = appeng.client.gui.style.StyleManager
+                                .loadStyleDoc("/screens/ae2_pattern_disk/pattern_disk_management_terminal.json");
+                        return new io.github.lounode.ae2pattern.client.gui.PatternDiskManagementTermScreen(
+                                (io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu) menu,
+                                playerInventory, title, style);
+                    }
+                });
     }
 
     private void registerEncodingTerminalScreen(RegisterMenuScreensEvent event) {

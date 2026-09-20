@@ -1115,6 +1115,25 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
             entries.add(new DiskListPayload.DiskEntry(serial, stack.copy()));
         }
         sendPacketToClient(new DiskListPayload(entries));
+        onDiskListRebuilt(entries);
+    }
+
+    /**
+     * 子类扩展点：磁盘列表（连同序列号 ↔ 宿主映射）刚重建完。父类发的是扁平清单，子类可以再发它自己的视图数据。
+     */
+    protected void onDiskListRebuilt(java.util.List<DiskListPayload.DiskEntry> entries) {
+    }
+
+    /** 子类用：磁盘序列号对应的宿主；未知返回 {@code null}。父类的 diskRefs 是私有的，这里只开只读口。 */
+    protected @org.jetbrains.annotations.Nullable IPatternDiskHost diskHostOf(long serial) {
+        var ref = diskRefs.get(serial);
+        return ref == null ? null : ref.host();
+    }
+
+    /** 子类用：磁盘序列号在宿主库存里的槽位；未知返回 -1。 */
+    protected int diskSlotOf(long serial) {
+        var ref = diskRefs.get(serial);
+        return ref == null ? -1 : ref.slot();
     }
 
     /**
