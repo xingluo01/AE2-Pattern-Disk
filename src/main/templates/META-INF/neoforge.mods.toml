@@ -61,17 +61,6 @@ versionRange="*"
 ordering="AFTER"
 side="BOTH"
 
-# ExtendedAE Plus is optional and both-sided: our menu/screen implement its terminal upload contract, but only
-# in adapter subclasses that are instantiated when the contract interfaces are really there (probed by class,
-# see ExtendedAEPlusCompat.hasUploadContract) - a build without them would otherwise fail to link.
-# 1.6.2 is the build this mod is developed against; the release carrying the contract is still pending.
-[[dependencies.${mod_id}]]
-modId="extendedae_plus"
-type="optional"
-versionRange="[1.6.2,)"
-ordering="AFTER"
-side="BOTH"
-
 # Jade is optional and has real code on our side (integration/jade), so the relationship is declared instead of
 # being left to the dev runtime. 15.10.6 is the API this mod compiles against. CLIENT because that plugin is a
 # display integration Jade discovers on its own; a server that happens to run Jade is not checked (AE2 declares

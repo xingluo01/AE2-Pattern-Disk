@@ -181,7 +181,12 @@ public final class MachineRecipeTypes {
 
     /** 查看器重新装载（JEI 的运行时对象每次装载都会换一个）后丢弃索引，下一次重新反查。 */
     public static void invalidate() {
-        JeiMarkNames.invalidateMachineIndex();
+        // 两扇门各探各的可选依赖：本类是「总是加载」的，所以两边都必须先确认对方在场再去碰它的类。
+        // JeiMarkNames 没有静态初始化器、IJeiRuntime 只出现在字段/方法描述符里，不探也当場不崩；但那是
+        // 「碰巧安全」，不是规则——规则见 PatternDiskEncodingTermMenu 工厂上那段不变量注释。
+        if (ModList.get().isLoaded("jei")) {
+            JeiMarkNames.invalidateMachineIndex();
+        }
         if (ModList.get().isLoaded("emi")) {
             // EMI 缺席时不必去碰它的类（虽然那条路径不动 EMI 类型，少一次类加载更干净）。
             EmiMarkNames.invalidateMachineIndex();

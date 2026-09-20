@@ -1,6 +1,13 @@
 package io.github.lounode.ae2pattern.integration.extendedae_plus;
 
+import net.minecraft.world.entity.player.Inventory;
 import net.neoforged.fml.ModList;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
+import io.github.lounode.ae2pattern.common.part.PatternDiskEncodingTerminalPart;
 
 /**
  * Integration shim for ExtendedAE Plus ({@code extendedae_plus}).
@@ -17,20 +24,29 @@ import net.neoforged.fml.ModList;
  */
 public final class ExtendedAEPlusCompat {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger("ae2_pattern_disk.integration.extendedae_plus");
+
     /** Mod id of the uploader. Product code never references its classes, only this string. */
     public static final String MOD_ID = "extendedae_plus";
 
-    /**
-     * Marker for the builds of that mod that carry its third-party terminal upload contract. It exists on its
+    /** Marker for the builds of that mod that carry its third-party terminal upload contract. It exists on its
      * 1.21.1 branch so far (issue #154), not in the release on Modrinth, hence a class probe rather than a
-     * version comparison.
+     * version comparison. The upload side has two interfaces and our two adapters implement one each, so both
+     * are probed: a build carrying only one of them would leave the other adapter unlinkable. */
+    private static final String UPLOAD_MENU_CONTRACT_CLASS = "com.extendedae_plus.api.upload.IPatternUploadMenu";
+
+    private static final String UPLOAD_TERMINAL_CONTRACT_CLASS = "com.extendedae_plus.api.upload.IPatternUploadTerminal";
+
+    /**
+     * Name of our adapter subclass, kept as a string on purpose - see {@link #createUploadMenu}.
      */
-    private static final String UPLOAD_CONTRACT_CLASS = "com.extendedae_plus.api.upload.IPatternUploadMenu";
+    private static final String UPLOAD_MENU_CLASS = "io.github.lounode.ae2pattern.integration.extendedae_plus.ExtendedAEPlusUploadMenu";
 
-    /** Resolved once, and only once the mod list is there to ask. */
-    private static Boolean present;
+    /** 解析结果缓存。volatile：RegisterEvent 阶段是多线程派发，两次并发探测会算出同一个值，但共享字段仍要走
+     *  正常的可见性语义，不能靠「反正值一样」省掉。 */
+    private static volatile Boolean present;
 
-    private static Boolean uploadContract;
+    private static volatile Boolean uploadContract;
 
     private ExtendedAEPlusCompat() {
     }
@@ -61,7 +77,9 @@ public final class ExtendedAEPlusCompat {
                 return false;
             }
             try {
-                Class.forName(UPLOAD_CONTRACT_CLASS, false, ExtendedAEPlusCompat.class.getClassLoader());
+                var loader = ExtendedAEPlusCompat.class.getClassLoader();
+                Class.forName(UPLOAD_MENU_CONTRACT_CLASS, false, loader);
+                Class.forName(UPLOAD_TERMINAL_CONTRACT_CLASS, false, loader);
                 uploadContract = true;
             } catch (Throwable ignored) {
                 return false;
@@ -71,7 +89,62 @@ public final class ExtendedAEPlusCompat {
     }
 
     /**
+     * Creates the upload adapter menu, or the base menu when the installed ExtendedAE Plus has no contract.
+     *
+     * <p><b>This indirection is load-bearing, not stylistic.</b> The adapter implements an interface that only
+     * exists in builds of that mod carrying the contract, and a class is linked the moment it is loaded - an
+     * {@code if} guard stops <i>execution</i>, never <i>loading</i>: loading a class resolves the interfaces it
+     * implements, so naming the adapter from a class that is always loaded (the menu class is initialized while
+     * the menu registry resolves its supplier, during {@code RegisterEvent}) ends in
+     * {@code NoClassDefFoundError: com/extendedae_plus/api/upload/IPatternUploadMenu} whenever that interface
+     * is absent. That is exactly how 0.4.0 crashed on startup without ExtendedAE Plus. The adapter is therefore
+     * reached through a class name string and reflection only, so no always-loaded class carries a reference to
+     * it. Same rule for {@link #uploadMenuClasses()} and for the client-side screen adapter.</p>
+     */
+    public static PatternDiskEncodingTermMenu createUploadMenu(int containerId, Inventory playerInventory,
+            PatternDiskEncodingTerminalPart host) {
+        try {
+            return (PatternDiskEncodingTermMenu) Class
+                    .forName(UPLOAD_MENU_CLASS, true, ExtendedAEPlusCompat.class.getClassLoader())
+                    .getConstructor(int.class, Inventory.class, PatternDiskEncodingTerminalPart.class)
+                    .newInstance(containerId, playerInventory, host);
+        } catch (ReflectiveOperationException e) {
+            // 不接 LinkageError/ExceptionInInitializerError：走到这里说明构建与运行时错配（契约在，适配类却载不起来），
+            // 这种情况应当响亮失败，不要把加载期错误揉成运行期异常。
+            LOGGER.error("ExtendedAE Plus upload menu adapter failed to load", e);
+            throw new IllegalStateException("ExtendedAE Plus upload menu adapter failed to load", e);
+        }
+    }
+
+    /**
+     * The concrete menu classes this terminal can actually be instantiated as: the base class, plus the adapter
+     * when the contract is there. Callers look up integrations by runtime class, so a missing entry means a
+     * silently absent feature.
+     *
+     * <p>Reflection for the adapter, same reason as {@link #createUploadMenu}.</p>
+     */
+    public static java.util.List<Class<? extends PatternDiskEncodingTermMenu>> uploadMenuClasses() {
+        var classes = new java.util.ArrayList<Class<? extends PatternDiskEncodingTermMenu>>(2);
+        classes.add(PatternDiskEncodingTermMenu.class);
+        if (hasUploadContract()) {
+            try {
+                classes.add(Class.forName(UPLOAD_MENU_CLASS, false, ExtendedAEPlusCompat.class.getClassLoader())
+                        .asSubclass(PatternDiskEncodingTermMenu.class));
+            } catch (ClassNotFoundException e) {
+                // hasUploadContract() 已确认契约在场，却取不到适配类：构建与运行时不同步。只列基类可以，但要说一声——
+                // JEI 按运行时类精确查表，少登记一个类就是「编写样板」按钮静默消失。
+                LOGGER.warn("Upload menu adapter class is missing although the contract probe was positive; "
+                        + "JEI will not offer pattern writing for the adapter menu.", e);
+            }
+        }
+        return java.util.List.copyOf(classes);
+    }
+
+    /**
      * Whether a provider view should advertise a free row to that mod's row scan.
+     *
+     * <p>只看对方在不在场，不看终端上传契约：这条路径对对应的是 EAE+ 发布版就具备的供应器侧上传能力，
+     * 与适配子类实现的那个终端契约无关。两者口径不同是设计，不是就该“统一”。</p>
      *
      * <p>A view that cannot resolve a level can never accept an upload - decoding a pattern needs one -
      * and a view whose disks are all full has nothing to offer the caller.</p>

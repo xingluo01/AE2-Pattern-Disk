@@ -4,6 +4,12 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循语义化版本。
 
+## [未发布]
+
+### 修复
+
+- **修掉 0.4.0 引入的可选依赖硬引用**：编码终端的菜单/界面适配子类被「总是加载」的类直接引用，而类一被加载就会解析它 `implements` 的 ExtendedAE Plus 接口——`if` 守卫只挡执行、不挡加载，于是没装 EAE+（或装着不含该契约的版本，包括在架的 1.6.2）的客户端会在启动注册阶段直接崩在 `NoClassDefFoundError: com/extendedae_plus/api/upload/IPatternUploadMenu`。现在两个适配子类只经反射按类名创建（`ExtendedAEPlusCompat` / `ClientExtendedAEPlusCompat`），总是加载的类里不再出现它们的名字。顺带删掉 `mods.toml` 里那条凭空生出的 EAE+ 依赖声明：代码对它的版本零要求，真正要认的是「那两个接口类在不在」。契约探测同时检查上传菜单与上传终端两个接口，只带其中一个的构建会整体退回基类，不会出现「一半能用」的状态。
+
 ## [0.4.0] - 2026-09-20
 
 ### 新增

@@ -90,12 +90,12 @@ public class AE2PatternDiskClient {
                         appeng.client.gui.style.ScreenStyle style = appeng.client.gui.style.StyleManager
                                 .loadStyleDoc("/screens/ae2_pattern_disk/pattern_disk_encoding_terminal.json");
                         // 装了带终端上传契约的 EAE+ 时用它认得的子类（实现它的上传终端接口，好让上传按钮
-                        // 注入进来），否则基类。子类只在为真时才被加载，契约不在（含在架的 1.6.2）时它引用的
-                        // 接口不会被解析。
+                        // 注入进来），否则基类。子类必须经 ClientExtendedAEPlusCompat 反射创建：类一被加载
+                        // 就会解析它 implements 的接口，守卫只挡执行不挡加载（0.4.0 的启动崩溃即此）。
                         if (io.github.lounode.ae2pattern.integration.extendedae_plus.ExtendedAEPlusCompat
                                 .hasUploadContract()) {
-                            return new io.github.lounode.ae2pattern.client.integration.extendedae_plus.ExtendedAEPlusUploadScreen(
-                                    menu, playerInventory, title, style);
+                            return io.github.lounode.ae2pattern.client.integration.extendedae_plus.ClientExtendedAEPlusCompat
+                                    .createUploadScreen(menu, playerInventory, title, style);
                         }
                         return new PatternDiskEncodingTermScreen(menu, playerInventory, title, style);
                     }

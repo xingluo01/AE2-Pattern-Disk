@@ -18,7 +18,8 @@ import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
  * 让 EAE+ 往本终端注入它的「上传到供应器」按钮，并把按钮摆到 NEO ECO 上传按钮的正下方（间隙 0px）。
  *
  * <p>接口单独落在子类上，理由同 {@code ExtendedAEPlusUploadMenu}：EAE+ 缺席时它的接口类不存在，
- * 而屏幕类会在客户端注册界面时就被加载。本类只在 EAE+ 在场时由界面工厂实例化。</p>
+ * 而屏幕类会在客户端注册界面时就被加载。因为界面工厂只能经
+ * {@code ClientExtendedAEPlusCompat.createUploadScreen} 反射造本类，**本类与它的构造器必须保持 public**。</p>
  */
 public class ExtendedAEPlusUploadScreen extends PatternDiskEncodingTermScreen implements IPatternUploadTerminal {
 

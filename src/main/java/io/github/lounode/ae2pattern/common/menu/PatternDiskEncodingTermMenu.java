@@ -106,17 +106,21 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
             .buildUnregistered(net.minecraft.resources.ResourceLocation.parse("ae2_pattern_disk:pattern_disk_encoding_terminal"));
 
     /**
-     * 菜单工厂：装了 ExtendedAE Plus 时返回带它上传接口的子类，否则返回本类。
+     * 菜单工厂：装了带上传契约的 ExtendedAE Plus 时返回它的适配子类，否则返回本类。
      *
-     * <p>子类只在 {@link io.github.lounode.ae2pattern.integration.extendedae_plus.ExtendedAEPlusCompat#hasUploadContract()}
-     * 为真时才走到（契约类不在的构建——包括在架的 1.6.2——同样走基类），所以它引用的那几个 EAE+ 接口类
-     * 不会被解析；菜单类本身是每次开界面都要加载的，接口不能写在它的签名上。</p>
+     * <p>适配子类**只能经 {@code ExtendedAEPlusCompat.createUploadMenu} 的反射入口创建**，本类字节码里
+     * 不出现它的名字。光有守卫不够：守卫挡的是「执行」，挡不住「加载」——类被加载时会连带解析它 implements
+     * 的接口，接口不在（EAE+ 缺席，或装着没有契约的构建，包括在架的 1.6.2）就是 {@code NoClassDefFoundError}。
+     * 0.4.0 在 RegisterEvent 期间崩在 {@code IPatternUploadMenu} 上，正是因为这里直接 {@code new} 了那个子类
+     * （菜单类在菜单注册表解析 supplier 时就被初始化，而那是 RegisterEvent 阶段）。结论：实现对方接口的类
+     * 只能在字符串里出现，绝不能写在签名、字段、局部变量类型或 {@code X.class} 里；也**不得在静态初始化器或
+     * mod 构造期调用反射入口**——那时对方可能还没就绪，而反射入口会真去加载并初始化它的接口。</p>
      */
     private static PatternDiskEncodingTermMenu createForHost(int containerId, Inventory playerInventory,
             PatternDiskEncodingTerminalPart host) {
         if (io.github.lounode.ae2pattern.integration.extendedae_plus.ExtendedAEPlusCompat.hasUploadContract()) {
-            return new io.github.lounode.ae2pattern.integration.extendedae_plus.ExtendedAEPlusUploadMenu(
-                    containerId, playerInventory, host);
+            return io.github.lounode.ae2pattern.integration.extendedae_plus.ExtendedAEPlusCompat
+                    .createUploadMenu(containerId, playerInventory, host);
         }
         return new PatternDiskEncodingTermMenu(containerId, playerInventory, host);
     }
@@ -129,12 +133,12 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
      * 环境下的「编写样板」按钮就整个不出现，而且不报任何错。</p>
      *
      * <p>条件与 {@link #createForHost} 必须一致（同一个 {@code hasUploadContract()}）：工厂现在能造出的
-     * 具体类，这里就得列全，改一处必须同步另一处。</p>
+     * 具体类，这里就得列全，改一处必须同步另一处。适配子类同样经反射取（理由见本类工厂的注释），所以本类
+     * 的常量池里不会出现它。</p>
      */
     public static java.util.List<Class<? extends PatternDiskEncodingTermMenu>> concreteMenuClasses() {
         if (io.github.lounode.ae2pattern.integration.extendedae_plus.ExtendedAEPlusCompat.hasUploadContract()) {
-            return java.util.List.of(PatternDiskEncodingTermMenu.class,
-                    io.github.lounode.ae2pattern.integration.extendedae_plus.ExtendedAEPlusUploadMenu.class);
+            return io.github.lounode.ae2pattern.integration.extendedae_plus.ExtendedAEPlusCompat.uploadMenuClasses();
         }
         return java.util.List.of(PatternDiskEncodingTermMenu.class);
     }
