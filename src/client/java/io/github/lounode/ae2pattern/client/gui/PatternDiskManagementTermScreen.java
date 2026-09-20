@@ -75,9 +75,11 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
      */
     private static final int TEXTURE_SIZE = 512;
 
-    // 表格区几何：按贴图实测（描边带 x0..7，填充区从 x8 开始；标题条 y0..17；行条 y18..35，其中 y=35 是 1px 分隔）。
+    // 表格区几何：按贴图实测（描边带 x0..7，填充区从 x8 开始；标题条 y0..17）。
+    // 行按 36px 一块：块内上半 18px 是空行带，下半 16px 是格带（17 格，格距 18），格带只出现在 y36..51 /
+    // 72..87 / 108..123 ⇒ 表格区正好 3 块。物品必须落在格带里，所以行的「内容线」是块首 +19（CELL_Y_INSET）。
     // 落点口径同 AE2 槽位：格子的 x/y 就是「物品左上角」，底图画在它 −1 处。所以绘制时统一 +1——
-    // LIST_X 取 7 时物品落在贴图实测的 x=8，行首物品落在 y=19（= LIST_Y + TITLE_HEIGHT + 1）。
+    // LIST_X 取 7 时物品落在贴图实测的 x=8。
     private static final int PANEL_WIDTH = 340;
     /**
      * 面板高，与 style JSON 的 terminalStyle 算出的 imageHeight 一致（header 17 + firstRow 18 + lastRow 18 +
@@ -90,17 +92,19 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     /** 填充区宽：17 格 × 18px。贴图填充区实测到 x=311，再右是滚动条区（本屏只用滚轮，不画它）。 */
     private static final int LIST_WIDTH = 306;
 
-    /** 标题条高：贴图里是 y0..17，共 18px（原来取 17，会让行条切片多含标题末行、丢掉 y=35 的分隔线）。 */
+    /** 标题条高：贴图里是 y0..17，共 18px。 */
     private static final int TITLE_HEIGHT = 18;
-    private static final int ROW_HEIGHT = 18;
+    /** 行块高：贴图里一行带 36px（18px 空行带 + 16px 格带 + 2px 底边），格带就是行的内容线。 */
+    private static final int ROW_HEIGHT = 36;
 
     /**
-     * 行带内部的纵向起点。贴图行带（18px）顶部是 2px 深色边框（实测 y18..19），内容从第 3 行开始；横向只有 1px
-     * 边框，所以横向内缩另计（见绘制处的 +1）。
+     * 行块内「内容线」的纵向起点：块首 18px 是空行带，格带上沿在 +18、内部从 +19 起（贴图实测格带内部 37..51）；
+     * 横向只有 1px 边框，所以横向内缩另计（见绘制处的 +1）。
      */
-    private static final int CELL_Y_INSET = 2;
+    private static final int CELL_Y_INSET = 19;
     private static final int COLUMNS = 17;
-    private static final int VISIBLE_ROWS = 6;
+    /** 表格区（y18..125）只放得下 3 块 36px 的行；滚动由滚轮驱动。 */
+    private static final int VISIBLE_ROWS = 3;
     /** 视口外多要一行内容：滚一格时不至于先闪一帧空行。 */
     private static final int CONTENT_MARGIN_ROWS = 1;
 
