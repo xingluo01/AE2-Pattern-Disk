@@ -20,9 +20,9 @@ import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
  *
  * <p>Everything that is not the table comes from {@link PatternDiskEncodingTerminalPart}: the disk-holding
  * logic, the NBT, the drops, the terminal part behaviour. Only two things differ, and both are data: which
- * menu it opens, and which models it shows. The model files point at the encoding terminal's textures for
- * now (its own artwork is not drawn yet), so a placed management terminal looks like an encoding terminal
- * until those are replaced.</p>
+ * menu it opens, and which models it shows. Those models carry their own copy of the panel textures (today
+ * a copy of the encoding terminal's three, until dedicated artwork replaces them), so re-skinning one
+ * terminal no longer changes the other; the shared monitor shell stays common.</p>
  */
 public class PatternDiskManagementTerminalPart extends PatternDiskEncodingTerminalPart {
 

@@ -4,9 +4,9 @@
     "sides": "ae2_pattern_disk:part/monitor_sides",
     "back": "ae2_pattern_disk:part/monitor_back",
     "front_base": "ae2_pattern_disk:part/monitor_front",
-    "front_bright": "ae2_pattern_disk:part/pattern_disk_encoding_terminal_bright",
-    "front_medium": "ae2_pattern_disk:part/pattern_disk_encoding_terminal_medium",
-    "front_dark": "ae2_pattern_disk:part/pattern_disk_encoding_terminal_dark",
+    "front_bright": "ae2_pattern_disk:part/pattern_disk_management_terminal_bright",
+    "front_medium": "ae2_pattern_disk:part/pattern_disk_management_terminal_medium",
+    "front_dark": "ae2_pattern_disk:part/pattern_disk_management_terminal_dark",
     "front_medium_bright": "ae2_pattern_disk:part/monitor_colored"
   }
 }

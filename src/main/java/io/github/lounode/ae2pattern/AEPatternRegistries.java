@@ -72,8 +72,8 @@ public final class AEPatternRegistries {
     public static final DeferredItem<PartItem<PatternDiskEncodingTerminalPart>> ITEM_PATTERN_DISK_ENCODING_TERMINAL = createEncodingTerminal();
 
     /**
-     * 样板磁盘管理终端：与编码终端同一套逻辑与资源，只是开自己的菜单、用自己那对模型（模型文件暂指向编码终端的
-     * 部件贴图，等专用美术出来再换）。
+     * 样板磁盘管理终端：与编码终端同一套逻辑，只是开自己的菜单、用自己那对模型。那对模型的部件贴图已在模组命名
+     * 空间下单独存了一份（当前是编码终端那三张的副本，等专用美术出来再换，两边不再互相影响）。
      */
     public static final DeferredItem<PartItem<PatternDiskManagementTerminalPart>> ITEM_PATTERN_DISK_MANAGEMENT_TERMINAL = createManagementTerminal();
 

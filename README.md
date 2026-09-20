@@ -263,6 +263,9 @@ This mod is an addon for **[Applied Energistics 2](https://github.com/AppliedEne
 | `assets/ae2_pattern_disk/textures/part/pattern_disk_encoding_terminal_bright.png` | `assets/ae2/textures/part/pattern_encoding_terminal_bright.png` |
 | `assets/ae2_pattern_disk/textures/part/pattern_disk_encoding_terminal_medium.png` | `assets/ae2/textures/part/pattern_encoding_terminal_medium.png` |
 | `assets/ae2_pattern_disk/textures/part/pattern_disk_encoding_terminal_dark.png` | `assets/ae2/textures/part/pattern_encoding_terminal_dark.png` |
+| `assets/ae2_pattern_disk/textures/part/pattern_disk_management_terminal_bright.png` | byte-identical copy of this mod's `pattern_disk_encoding_terminal_bright.png` (row above) |
+| `assets/ae2_pattern_disk/textures/part/pattern_disk_management_terminal_medium.png` | byte-identical copy of this mod's `pattern_disk_encoding_terminal_medium.png` (row above) |
+| `assets/ae2_pattern_disk/textures/part/pattern_disk_management_terminal_dark.png` | byte-identical copy of this mod's `pattern_disk_encoding_terminal_dark.png` (row above) |
 | `assets/ae2_pattern_disk/textures/part/monitor_front.png` | `assets/ae2/textures/part/monitor_front.png` |
 | `assets/ae2_pattern_disk/textures/part/monitor_sides.png` | `assets/ae2/textures/part/monitor_sides.png` |
 | `assets/ae2_pattern_disk/textures/part/monitor_back.png` | `assets/ae2/textures/part/monitor_back.png` |
