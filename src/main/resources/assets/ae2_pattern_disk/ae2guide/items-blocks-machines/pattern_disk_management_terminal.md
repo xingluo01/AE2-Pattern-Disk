@@ -30,20 +30,27 @@ A cable-attached terminal that lays out **every pattern disk on the network** at
 
 ## Controls
 
-Identical to the encoding terminal, and always acting on the disk under the cursor:
+Everything acts on the cell under the cursor:
 
 | Input | Effect |
 | --- | --- |
-| Left click a disk | Makes it this terminal's encoding target; the encode button writes into it |
+| Left click a disk | Takes the disk onto the cursor (whatever is stored on it goes along) |
+| Shift + left click a disk | Moves the disk into your inventory |
+| Right click a disk | Selects it; right click again to deselect. The selected disk is where "encode" writes (its first cell gets a highlight) |
 | Right click a disk (holding a work block) | Overwrites the mark with that block's recipe type |
 | Shift + right click a disk | Overwrites the mark with the search box contents (empty clears it) |
 | Middle click a disk | Renames it after the work block its mark names |
+| Left click a pattern | Takes it onto the cursor |
+| Shift + left click a pattern | Moves it into your inventory |
+| Right click a pattern | Puts it into the pattern editing slot (i.e. "keep editing this one") |
 
+> Patterns are materialised: taking one out of a disk spends **one blank pattern** from the ME network (the same accounting the pattern access terminal uses when you pull a row out), and a disk holding nothing to spare simply refuses; writing a pattern back to a disk returns that blank pattern to the network. A disk itself is just an item, so taking one out costs nothing.
+> While you are holding a work block, right clicking marks rather than selects - put the block down (empty-handed, or holding anything else) to select a disk.
 > Disks without a mark take part in name searches only; a `#` mark search has nothing to match for them, and the toggle next to the search box keeps them in regardless. With an empty search box nothing is filtered.
 
 ## Encoding area
 
-The lower half is the pattern disk encoding terminal's: mode cycling (crafting / processing / smithing / stonecutting), the filter slots, substitution, output multipliers and the rest, encoding into the selected disk. When a search narrows the list down to a single disk, "encode" writes straight into it.
+The lower half is the pattern disk encoding terminal's: mode cycling (crafting / processing / smithing / stonecutting), the filter slots, substitution, output multipliers and the rest, encoding into **the disk you selected with a right click**. With nothing selected, a search that narrows the list down to a single disk writes straight into it. If the pattern editing slot already holds a written pattern, clicking "encode" writes that one into the selected disk instead of clearing it - although with something in the grid, encoding still replaces the pattern sitting in that slot (same as AE2's pattern encoding terminal).
 
 ## How it differs from the encoding terminal
 

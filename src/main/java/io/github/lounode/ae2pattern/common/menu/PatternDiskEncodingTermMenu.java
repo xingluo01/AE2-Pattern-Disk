@@ -85,6 +85,41 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
     private static final String ACTION_MULTIPLY_OUTPUT = "multiplyOutput";
     private static final String ACTION_DIVIDE_OUTPUT = "divideOutput";
     private static final String ACTION_TRANSFER_TO_DISK = "transferToDisk";
+    private static final String ACTION_EXTRACT_FROM_DISK = "extractFromDisk";
+
+    /** {@link ExtractRequest#index} 取这个值表示「整张磁盘」，而不是盘里第几张样板。 */
+    public static final int WHOLE_DISK = -1;
+
+    /** 从磁盘取出来的东西放哪。 */
+    public enum ExtractTarget {
+        /** 光标上（左键）。 */
+        CURSOR,
+        /** 玩家背包（Shift+左键）。 */
+        INVENTORY,
+        /** 样板编辑槽（右键一张样板）。 */
+        ENCODED_SLOT
+    }
+
+    /**
+     * 「从磁盘取东西」的客户端动作参数。
+     *
+     * <p>AE2 的客户端动作把参数当 JSON 传（见 {@code AEBaseMenu#registerClientAction}），所以这里用一组公开
+     * 字段加无参构造器，而不是 record：不依赖 GSON 对 record 的支持。</p>
+     */
+    public static final class ExtractRequest {
+        public long serial;
+        public int index;
+        public ExtractTarget target;
+
+        public ExtractRequest() {
+        }
+
+        public ExtractRequest(long serial, int index, ExtractTarget target) {
+            this.serial = serial;
+            this.index = index;
+            this.target = target;
+        }
+    }
     private static final String ACTION_BIND_PREFIX = "bindPrefix";
     private static final String ACTION_RENAME_DISK = "renameDisk";
     private static final String ACTION_UPLOAD_PATTERN = "neoecoae:uploadPattern";
@@ -300,6 +335,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
         registerClientAction("setStonecuttingRecipeId", ResourceLocation.class,
                 encodingLogic::setStonecuttingRecipeId);
         registerClientAction(ACTION_TRANSFER_TO_DISK, Long.class, this::transferToDisk);
+        registerClientAction(ACTION_EXTRACT_FROM_DISK, ExtractRequest.class, this::handleExtractFromDisk);
         registerClientAction(ACTION_BIND_PREFIX, Long.class, this::bindPrefix);
         registerClientAction("setPendingRecipeCategory", String.class, this::setPendingRecipeCategory);
         registerClientAction("setPendingAutoDisk", Long.class, this::setPendingAutoDisk);
@@ -384,6 +420,17 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
                 transferToDisk(auto);
             }
         } else {
+            // 网格里没有可编码的东西时，如果编码槽里正停着一枚写好的样板，「编写样板」的意图就是把它写进目标
+            // 磁盘（管理终端选中盘之后的快捷上传）。没有唯一目标时什么也不做：原来这里会把它清成空白样板，
+            // 等于把玩家手里的样板销毁掉。
+            var existing = this.encodedPatternSlot.getItem();
+            if (PatternDetailsHelper.isEncodedPattern(existing)) {
+                if (autoCount == 1) {
+                    // 走既有的写盘路径：写进去、清空编码槽、退回空白样板，一处口径。
+                    transferToDisk(auto);
+                }
+                return;
+            }
             clearPattern();
         }
     }
@@ -690,6 +737,129 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
         if (getPlayer() instanceof ServerPlayer player) {
             player.sendSystemMessage(Component.translatable(
                     "gui.ae2_pattern_disk.encoding_terminal.disk_refused.stale_target"));
+        }
+    }
+
+    // ---- 从磁盘取东西（管理终端的左键/Shift+左键/右键）--------------------------------------
+
+    /** 把某张磁盘整张取出来（管理终端左键）。 */
+    public void extractDisk(long serial, ExtractTarget target) {
+        requestExtract(serial, WHOLE_DISK, target);
+    }
+
+    /** 把某张盘里第 {@code index} 张样板取出来（管理终端左键 / Shift+左键 / 右键）。 */
+    public void extractPattern(long serial, int index, ExtractTarget target) {
+        requestExtract(serial, index, target);
+    }
+
+    private void requestExtract(long serial, int index, ExtractTarget target) {
+        if (isClientSide()) {
+            sendClientAction(ACTION_EXTRACT_FROM_DISK, new ExtractRequest(serial, index, target));
+        } else {
+            handleExtractFromDisk(new ExtractRequest(serial, index, target));
+        }
+    }
+
+    /**
+     * 服务端：从磁盘里取出一张样板，或者整张磁盘。
+     *
+     * <p>样板是「物化」出来的：按本模组一贯口径，把一张样板带出磁盘要消耗网络里的一张空白样板（与样板访问
+     * 终端取走同一个账）；磁盘本身只是件物品，不扣。落点腾不出位置、或网络里没有空白样板时，整件事都不做：
+     * 既不扣空白样板，也不动磁盘。</p>
+     */
+    private void handleExtractFromDisk(ExtractRequest request) {
+        // 畸形的客户端可能送来缺字段的请求；这里不报错也不改任何东西。
+        if (request == null || request.target == null) {
+            return;
+        }
+        var ref = diskRefs.get(request.serial);
+        if (ref == null) {
+            notifyStaleTarget();
+            return;
+        }
+        var inv = ref.host().getDiskInventory();
+        var stack = inv.getStackInSlot(ref.slot());
+        if (stack.isEmpty() || !(stack.getItem() instanceof PatternDiskItem disk)) {
+            notifyStaleTarget();
+            return;
+        }
+
+        if (request.index == WHOLE_DISK) {
+            // 编辑槽只收样板，整张磁盘不进它（客户端不会这么请，防的是改造过的客户端）。
+            if (request.target == ExtractTarget.ENCODED_SLOT || !hasRoomFor(request.target)) {
+                notifyNoRoom(request.target);
+                return;
+            }
+            inv.setItemDirect(ref.slot(), ItemStack.EMPTY);
+            syncDiskList(true);
+            deliverExtracted(stack.copy(), request.target);
+            return;
+        }
+
+        var patterns = disk.contents(stack).patterns();
+        if (request.index < 0 || request.index >= patterns.size()) {
+            // 盘里的张数与客户端看到的不一致（刚被写入/取走）。不是「落点」也不是「网络缺料」，说清楚。
+            notifyContentChanged();
+            return;
+        }
+        if (patterns.get(request.index).isEmpty()) {
+            return;
+        }
+        if (!hasRoomFor(request.target)) {
+            notifyNoRoom(request.target);
+            return;
+        }
+        if (!consumeNetworkBlankPattern()) {
+            notifyNoBlankPattern();
+            return;
+        }
+
+        var extracted = patterns.get(request.index).copy();
+        var updated = stack.copy();
+        disk.removeAt(updated, request.index);
+        writeDiskSlot(inv, ref.slot(), updated);
+        deliverExtracted(extracted, request.target);
+    }
+
+    /** 取出来的东西有没有地方放。 */
+    private boolean hasRoomFor(ExtractTarget target) {
+        return switch (target) {
+            case CURSOR -> getCarried().isEmpty();
+            case INVENTORY -> getPlayer().getInventory().getFreeSlot() >= 0;
+            case ENCODED_SLOT -> encodedPatternSlot.getItem().isEmpty();
+        };
+    }
+
+    private void deliverExtracted(ItemStack stack, ExtractTarget target) {
+        switch (target) {
+            case CURSOR -> setCarried(stack);
+            case INVENTORY -> {
+                // 预检过有空位；万一还是整件塞不下，丢在玩家脚下也不让它凭空消失。
+                if (!getPlayer().getInventory().add(stack)) {
+                    getPlayer().drop(stack, false);
+                }
+            }
+            // 走到这里的只能是样板：handler 已挡住「整张磁盘进编辑槽」，取出来的单张也必定是编码样板。
+            case ENCODED_SLOT -> encodedPatternSlot.set(stack);
+        }
+        // 推一次：槽位内容与光标上的东西都靠这一个包到客户端（光标的同步在 broadcastChanges 里，见原版菜单）。
+        broadcastChanges();
+    }
+
+    /** 落点满/被占时说明一句，否则玩家只看到点了没反应。 */
+    private void notifyNoRoom(ExtractTarget target) {
+        if (getPlayer() instanceof ServerPlayer player) {
+            player.sendSystemMessage(Component.translatable(
+                    "gui.ae2_pattern_disk.encoding_terminal.no_room."
+                            + target.name().toLowerCase(java.util.Locale.ROOT)));
+        }
+    }
+
+    /** 盘里那张样板的序号已经无效（内容刚变过）时说明一句：不是落点问题，也不是网络缺料。 */
+    private void notifyContentChanged() {
+        if (getPlayer() instanceof ServerPlayer player) {
+            player.sendSystemMessage(Component.translatable(
+                    "gui.ae2_pattern_disk.encoding_terminal.content_changed"));
         }
     }
 

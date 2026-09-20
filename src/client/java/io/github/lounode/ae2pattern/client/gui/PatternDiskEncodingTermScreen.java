@@ -561,6 +561,25 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     }
 
     /**
+     * 光标上那一件是不是某个配方类别的工作方块。
+     *
+     * <p>管理终端用它决定右键是「打标」还是「选中」：打标需要手里拿着工作方块，
+     * 空手（或拿着别的）才把右键让给选中。</p>
+     */
+    protected boolean isHoldingWorkBlock() {
+        var held = menu.getCarried();
+        if (held.isEmpty()) {
+            return false;
+        }
+        try {
+            return MachineRecipeTypes.forHeldMachine(held, menu.getPendingRecipeCategory()) != null;
+        } catch (Throwable failed) {
+            // 配方查看器还没就绪时按「不是工作方块」处理：右键退回选中，而不是打一个写不出去的标记。
+            return false;
+        }
+    }
+
+    /**
      * Shift+右键：把搜索栏里写的那个标记打到这张盘上。它不依赖“当前导入的配方类型”，所以玩家可以先搜出
      * 某类磁盘，再把同一个标记标到别的盘上。搜索栏为空时反过来清掉这张盘的标记。
      */

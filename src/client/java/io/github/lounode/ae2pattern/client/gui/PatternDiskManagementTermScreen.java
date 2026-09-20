@@ -32,6 +32,7 @@ import appeng.client.gui.widgets.ServerSettingToggleButton;
 import appeng.client.gui.widgets.SettingToggleButton;
 import appeng.core.localization.ButtonToolTips;
 
+import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
 import io.github.lounode.ae2pattern.network.DiskHostListPayload;
 import io.github.lounode.ae2pattern.network.VisibleDisksPayload;
@@ -90,6 +91,13 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
 
     /** 当前是否收起空槽。默认收起：表的常规观感保持紧凑，想看全槽布局再展开。 */
     private boolean hideEmptySlots = true;
+
+    /**
+     * 右键选中的磁盘（「编写样板」的写盘目标）；0 = 没选。
+     *
+     * <p>serial 从 {@code Long.MIN_VALUE} 起自增、恒为负（见菜单里的说明），所以 0 可以安全地当「没选」。</p>
+     */
+    private long selectedSerial;
 
     // 表格区几何：按贴图实测（描边带 x0..7，填充区从 x8 开始；表头 y0..16）。
     // 行分配同 AE2 的样板访问终端（PatternAccessTermScreen.drawBG）：一行 18px，按「行类型」从贴图取行带——
@@ -175,6 +183,9 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
      * <p>与盘内样板的格子在视觉上分开：一眼能看出哪一格是磁盘本身。带 alpha，底下的槽位描边与棋盘格仍透着。</p>
      */
     private static final int DISK_SLOT_TINT = 0x66B9F6CA;
+
+    /** 右键选中的那张盘：给它的首格描一圈高亮，一眼看出「编写样板」会写进谁。 */
+    private static final int DISK_SELECTED_TINT = 0xCCFFD54F;
 
     // 「显示槽位 / 隐藏槽位」按钮的图标：states.png (64,32) 四格 = 展开、扫(80,32) 单格 = 收起（就在「标准/极速」
     // 图标右侧、同一行，同一套 16×16 规格与配色）。按钮背景同本模组其他自绘按钮。
@@ -463,8 +474,18 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
             contentRefreshCooldown = CONTENT_REFRESH_INTERVAL_TICKS;
             requestVisibleContents(true);
         }
-        // 写盘目标按表里的口径算：父类算的是整份列表，这里把被隐藏的机器刨掉。
-        getMenu().setClientAutoDisk(visibleDiskCount(), soleVisibleDisk());
+        // 写盘目标：右键选中的那张盘优先（它还在表里才算数），否则沿用「只剩一张就写它」的口径。
+        if (selectedSerial != 0) {
+            if (containsDisk(selectedSerial)) {
+                getMenu().setClientAutoDisk(1, selectedSerial);
+            } else {
+                // 那张盘被取走、或搜索把它筛出去了，选择跟着失效。
+                selectedSerial = 0;
+            }
+        }
+        if (selectedSerial == 0) {
+            getMenu().setClientAutoDisk(visibleDiskCount(), soleVisibleDisk());
+        }
     }
 
     // ---- 绘制 ----
@@ -495,6 +516,11 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
                     && diskRow.from() == 0) {
                 int cellX = offsetX + LIST_X + 1;
                 guiGraphics.fill(cellX, rowY + CELL_Y_INSET, cellX + 16, rowY + CELL_Y_INSET + 16, DISK_SLOT_TINT);
+            }
+            // 选中的那张盘：首格格框描一圈高亮。
+            if (scrollOffset + i < rows.size() && rows.get(scrollOffset + i) instanceof DiskRow selected
+                    && selected.from() == 0 && selected.serial() == selectedSerial) {
+                outlineCell(guiGraphics, offsetX + LIST_X, rowY);
             }
         }
 
@@ -680,16 +706,36 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
             if (index < 0) {
                 return true;
             }
-            if (btn == 0) {
-                onDiskClick(index);
+            if (btn == 0 && hasShiftDown()) {
+                getMenu().extractDisk(disk.serial(), PatternDiskEncodingTermMenu.ExtractTarget.INVENTORY);
+            } else if (btn == 0) {
+                getMenu().extractDisk(disk.serial(), PatternDiskEncodingTermMenu.ExtractTarget.CURSOR);
             } else if (btn == 1 && hasShiftDown()) {
                 onDiskShiftRightClick(index);
-            } else if (btn == 1) {
+            } else if (btn == 1 && isHoldingWorkBlock()) {
+                // 手里拿着工作方块右键仍是既有的「以该方块打标」；空手或拿着别的东西才轮到选中。
                 onDiskRightClick(index);
+            } else if (btn == 1) {
+                this.selectedSerial = this.selectedSerial == disk.serial() ? 0 : disk.serial();
             } else if (btn == 2) {
                 onDiskMiddleClick(index);
             }
             return true;
+        }
+
+        // 样板格（含续行整行）：左键取到光标、Shift+左键取到背包、右键填进样板编辑槽。
+        if (row instanceof DiskRow disk) {
+            int pattern = patternIndexAt(rowIndexAt(xCoord, yCoord), columnAt(xCoord));
+            if (pattern >= 0) {
+                var target = btn == 1
+                        ? PatternDiskEncodingTermMenu.ExtractTarget.ENCODED_SLOT
+                        : (hasShiftDown() ? PatternDiskEncodingTermMenu.ExtractTarget.INVENTORY
+                                : PatternDiskEncodingTermMenu.ExtractTarget.CURSOR);
+                if (btn == 0 || btn == 1) {
+                    getMenu().extractPattern(disk.serial(), pattern, target);
+                }
+                return true;
+            }
         }
 
         return true;
@@ -759,16 +805,57 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
             return null;
         }
         if (rows.get(rowIndex) instanceof DiskRow disk) {
-            int firstColumn = disk.from() == 0 ? 1 : 0;
-            if (column < firstColumn) {
-                return disk.disk();
+            int index = patternIndexAt(rowIndex, column);
+            if (index >= 0) {
+                return getMenu().getDiskContents(disk.serial()).get(index);
             }
-            var patterns = getMenu().getDiskContents(disk.serial());
-            int index = disk.from() - firstColumn + column;
-            if (patterns != null && index >= 0 && index < patterns.size()) {
-                return patterns.get(index);
+            if (disk.from() == 0 && column == 0) {
+                return disk.disk();
             }
         }
         return null;
+    }
+
+    /** 表里（当前过滤/显示口径下）有没有这张盘。 */
+    private boolean containsDisk(long serial) {
+        for (var row : rows) {
+            if (row instanceof DiskRow disk && disk.from() == 0 && disk.serial() == serial) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 命中位置对应的样板序号（盘内内容的平坦序号）；不在样板格上返回 -1。
+     *
+     * <p>空槽、越界、不在磁盘行上一并算作 -1：取件、tooltip 与点击因此共用同一套判定。</p>
+     */
+    private int patternIndexAt(int rowIndex, int column) {
+        if (rowIndex < 0 || rowIndex >= rows.size() || column < 0 || column >= COLUMNS) {
+            return -1;
+        }
+        if (!(rows.get(rowIndex) instanceof DiskRow disk)) {
+            return -1;
+        }
+        int firstColumn = disk.from() == 0 ? 1 : 0;
+        if (column < firstColumn) {
+            return -1; // 首行第 0 格是磁盘本身
+        }
+        var patterns = getMenu().getDiskContents(disk.serial());
+        int index = disk.from() - firstColumn + column;
+        if (patterns == null || index < 0 || index >= patterns.size() || patterns.get(index).isEmpty()) {
+            return -1;
+        }
+        return index;
+    }
+
+    /** 给某个格位（18×18 槽框）描一圈高亮：画在框线上，不盖住格内内容。 */
+    private static void outlineCell(GuiGraphics guiGraphics, int cellX, int rowY) {
+        guiGraphics.fill(cellX, rowY, cellX + ROW_HEIGHT, rowY + 1, DISK_SELECTED_TINT);
+        guiGraphics.fill(cellX, rowY + ROW_HEIGHT - 1, cellX + ROW_HEIGHT, rowY + ROW_HEIGHT, DISK_SELECTED_TINT);
+        guiGraphics.fill(cellX, rowY + 1, cellX + 1, rowY + ROW_HEIGHT - 1, DISK_SELECTED_TINT);
+        guiGraphics.fill(cellX + ROW_HEIGHT - 1, rowY + 1, cellX + ROW_HEIGHT, rowY + ROW_HEIGHT - 1,
+                DISK_SELECTED_TINT);
     }
 }
