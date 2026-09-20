@@ -1,11 +1,14 @@
 package io.github.lounode.ae2pattern.common.menu;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.jetbrains.annotations.Nullable;
 
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.MenuType;
@@ -16,6 +19,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 
+import appeng.api.config.Actionable;
 import appeng.api.config.Settings;
 import appeng.api.config.ShowPatternProviders;
 import appeng.menu.implementations.MenuTypeBuilder;
@@ -60,6 +64,11 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
     /** 客户端侧：服务端最近一次是按哪种显示模式筛的清单，屏幕用它回显按钮图标。 */
     private ShowPatternProviders shownProviders = ShowPatternProviders.VISIBLE;
 
+    private static final String ACTION_INSERT_DISK = "insertDisk";
+
+    /** 分组键 → 宿主，与推给客户端的清单同一份口径：客户端只拿得到键，存入时得靠它找回宿主。 */
+    private final Map<String, IPatternDiskHost> hostsByKey = new HashMap<>();
+
     /** 客户端侧：按序列号缓存的磁盘内容（Screen 每帧读）。 */
     private final Long2ObjectOpenHashMap<List<ItemStack>> diskContents = new Long2ObjectOpenHashMap<>();
 
@@ -83,6 +92,87 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
         // 必须显式传本类的 TYPE：走父类那个只收 (id, ip, host) 的构造器会拿到编码终端的菜单类型，
         // 客户端据此查到的是编码终端的屏幕。
         super(TYPE, id, ip, host);
+        registerClientAction(ACTION_INSERT_DISK, InsertDiskRequest.class, this::insertDisk);
+    }
+
+    /**
+     * 把光标上（或背包里）的一张样板磁盘放进指定宿主的空磁盘槽。
+     *
+     * <p>客户端只报「哪台机器」，具体哪个槽位由服务端挑第一个收得下的：客户端手上的清单本来就可能
+     * 落后一帧，让客户端报槽位反而容易写错地方。放进去之后立刻重推磁盘清单，表与内容跟着更新。</p>
+     */
+    public void insertDisk(InsertDiskRequest request) {
+        if (isClientSide()) {
+            sendClientAction(ACTION_INSERT_DISK, request);
+            return;
+        }
+        if (request == null) {
+            return; // 改造过的客户端可以发空参数；宁可什么都不做，也不掉 NPE
+        }
+
+        var host = hostsByKey.get(request.hostKey);
+        if (host == null) {
+            notifyPlayer(false, "gui.ae2_pattern_disk.management_terminal.disk_store.no_host");
+            return;
+        }
+
+        // 源优先级：光标 → 背包（只看 allowInventory 档，普通左键就是「把手上这张放进去」）。
+        var player = getPlayer();
+        var carried = getCarried();
+        var fromCarried = carried.getItem() instanceof PatternDiskItem;
+        var source = fromCarried ? carried : findDiskInInventory(player, request.allowInventory);
+        if (source.isEmpty()) {
+            notifyPlayer(false, "gui.ae2_pattern_disk.management_terminal.disk_store.no_disk");
+            return;
+        }
+
+        var inventory = host.getDiskInventory();
+        for (int slot = 0; slot < inventory.size(); slot++) {
+            var remainder = inventory.insertItem(slot, source.copy(), false);
+            if (remainder.getCount() == source.getCount()) {
+                continue; // 这个槽没收下（被占了或装不了）
+            }
+            int moved = source.getCount() - remainder.getCount();
+            source.shrink(moved);
+            if (fromCarried) {
+                setCarried(carried.isEmpty() ? ItemStack.EMPTY : carried);
+            } else {
+                // 背包那份是活的 Inventory 对象（不在槽位包自动同步的范围里），得主动推一次，
+                // 否则物品会看起来还在背包里，直到下一次别的原因触发同步。
+            }
+            // 光标那份同理：菜单光标的同步在 broadcastChanges 里（本仓其它修改光标的动作也都显式推一次），
+            // 不然客户端会同时看到「容器里多一张」与「鼠标上还拿着那张」。
+            broadcastChanges();
+            refreshDiskList(); // 表与盘内容立即跟上（不等下一次扫描）
+            notifyPlayer(true, "gui.ae2_pattern_disk.management_terminal.disk_store.ok", describeHost(host));
+            return;
+        }
+        notifyPlayer(false, "gui.ae2_pattern_disk.management_terminal.disk_store.no_room", describeHost(host));
+    }
+
+    /** 背包里第一张样板磁盘；{@code allowInventory} 为假时不找（光标上那张才作数）。 */
+    private static ItemStack findDiskInInventory(net.minecraft.world.entity.player.Player player, boolean allowInventory) {
+        if (player == null || !allowInventory) {
+            return ItemStack.EMPTY;
+        }
+        var inventory = player.getInventory();
+        for (int i = 0; i < inventory.getContainerSize(); i++) {
+            var stack = inventory.getItem(i);
+            if (stack.getItem() instanceof PatternDiskItem) {
+                return stack;
+            }
+        }
+        return ItemStack.EMPTY;
+    }
+
+    /**
+     * 回执。失败走聊天栏（要说清原因），成功走动作栏：Shift+左键是可连点的手势，每条都往聊天栏写会刷屏。
+     */
+    private void notifyPlayer(boolean actionBar, String key, Object... args) {
+        var player = getPlayer();
+        if (player != null) {
+            player.displayClientMessage(Component.translatable(key, args), actionBar);
+        }
     }
 
     @Override
@@ -120,6 +210,8 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
         var mode = getShownProviders();
 
         var builders = new LinkedHashMap<String, HostBuilder>();
+        // 同名重建映射：客户端只报分组键，存入时要能看到此刻的宿主对象。
+        hostsByKey.clear();
 
         // 先给每一台“支持样板磁盘的宿主”开户：没插盘、或盘被抽空的机器也在表里（表要能看出它在、还有几个
         // 空槽）。开完户再把磁盘按槽位挂回去。
@@ -127,8 +219,10 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
             if (!isShown(host, mode)) {
                 continue;
             }
-            builders.computeIfAbsent(hostKey(host),
-                    key -> new HostBuilder(key, describeHost(host), iconOf(host), countEmptySlots(host)));
+            var key = hostKey(host);
+            hostsByKey.put(key, host);
+            builders.computeIfAbsent(key,
+                    key2 -> new HostBuilder(key2, describeHost(host), iconOf(host), countEmptySlots(host)));
         }
 
         for (var entry : entries) {
@@ -137,6 +231,7 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
                 continue;
             }
             var key = hostKey(host);
+            hostsByKey.put(key, host);
             var builder = builders.get(key);
             if (builder == null) {
                 // 没能在宿主名单里找到它（例如插件给的是每帧新建的适配器，没进 lastDiskHosts）：
@@ -354,6 +449,26 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
             return ItemStack.EMPTY;
         }
         return new ItemStack(item);
+    }
+
+    /**
+     * 「存入」动作的参数。AE2 的客户端动作把参数当 JSON 传，所以用公开字段加无参构造器，
+     * 而不是 record。
+     *
+     * <p>{@code allowInventory}：普通左键只认光标上那张盘（玩家是“把手上这张放进去”），
+     * Shift+左键才连背包一起找（“快速存一张进去”）。</p>
+     */
+    public static final class InsertDiskRequest {
+        public String hostKey = "";
+        public boolean allowInventory;
+
+        public InsertDiskRequest() {
+        }
+
+        public InsertDiskRequest(String hostKey, boolean allowInventory) {
+            this.hostKey = hostKey;
+            this.allowInventory = allowInventory;
+        }
     }
 
     /** 分组清单在构造过程中的可变形态，建完就转成不可变的 {@link DiskHostListPayload.HostGroup}。 */

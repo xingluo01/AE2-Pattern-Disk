@@ -256,7 +256,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
      * 供应器剩余的一个空槽，一行一格、竖着排在第一列。{@code foldedCount} &gt; 0 时这一行代表整台机器的全部空槽，
      * 数字写在格的右上角。
      */
-    private record FreeSlotsRow(int foldedCount) implements Row {
+    private record FreeSlotsRow(String hostKey, int foldedCount) implements Row {
     }
 
     private final List<Row> rows = new ArrayList<>();
@@ -441,7 +441,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
                     rebuilt.add(new DiskRow(group.key(), disk.serial(), ItemStack.EMPTY, from));
                 }
             }
-            appendFreeSlots(rebuilt, group.emptySlots());
+            appendFreeSlots(rebuilt, group.key(), group.emptySlots());
         }
 
         if (!rows.equals(rebuilt)) {
@@ -466,18 +466,18 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
      *
      * <p>收起时整台只留一行，行上写它代表多少空槽；展开时每个空槽一行，竖着排在第一列。</p>
      */
-    private void appendFreeSlots(List<Row> out, int empty) {
-        if (empty <= 0) {
+    private void appendFreeSlots(List<Row> out, String hostKey, int empty) {
+        if (empty <= 0 || hostKey == null || hostKey.isEmpty()) {
             return;
         }
 
         if (hideEmptySlots) {
-            out.add(new FreeSlotsRow(empty));
+            out.add(new FreeSlotsRow(hostKey, empty));
             return;
         }
         // 展开：一格一行，竖着排在第一列——空槽不是“盘里的内容”，不铺满整行。
         for (int i = 0; i < empty; i++) {
-            out.add(new FreeSlotsRow(0));
+            out.add(new FreeSlotsRow(hostKey, 0));
         }
     }
 
@@ -770,6 +770,21 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
                 }
                 return true;
             }
+            // Shift+左键组头：快速存一张盘进这台容器（光标优先，其次背包）。
+            if (btn == 0 && hasShiftDown() && canStoreDisk(true)) {
+                getMenu().insertDisk(new PatternDiskManagementTermMenu.InsertDiskRequest(host.key(), true));
+            }
+            return true;
+        }
+
+        // 空磁盘槽格：左键＝把光标上那张放进去（服务端挑第一个空槽）；Shift+左键＝连背包一起找。
+        if (row instanceof FreeSlotsRow free) {
+            if (btn == 0) {
+                boolean shift = hasShiftDown();
+                if (canStoreDisk(shift)) {
+                    getMenu().insertDisk(new PatternDiskManagementTermMenu.InsertDiskRequest(free.hostKey(), shift));
+                }
+            }
             return true;
         }
 
@@ -815,6 +830,27 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         return true;
     }
 
+    /** 手上（或背包）有没有可存入的样板磁盘；没有就不发动作，免得白跑一趟服务端、还弹一句“没有盘”。 */
+    private boolean canStoreDisk(boolean allowInventory) {
+        if (getMenu().getCarried().getItem() instanceof PatternDiskItem) {
+            return true;
+        }
+        if (!allowInventory) {
+            return false;
+        }
+        var player = Minecraft.getInstance().player;
+        if (player == null) {
+            return false;
+        }
+        var inventory = player.getInventory();
+        for (int i = 0; i < inventory.getContainerSize(); i++) {
+            if (inventory.getItem(i).getItem() instanceof PatternDiskItem) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * 把行数告诉滚动条，再把滚动条的位置抄回 {@code scrollOffset}。
      *
@@ -837,6 +873,16 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         int rowIndex = rowIndexAt(x, y);
         if (rowIndex >= 0) {
             var row = rows.get(rowIndex);
+            // 空磁盘槽格：两条存入手势写在这里（这格本来什么都不做，提示与手势一一对应）。
+            if (row instanceof FreeSlotsRow) {
+                guiGraphics.renderComponentTooltip(font, List.of(
+                        Component.translatable("gui.ae2_pattern_disk.management_terminal.tooltip.free_slot.click")
+                                .withStyle(ChatFormatting.WHITE),
+                        Component.translatable("gui.ae2_pattern_disk.management_terminal.tooltip.free_slot.shift_click")
+                                .withStyle(ChatFormatting.GRAY)),
+                        x, y);
+                return;
+            }
             // 磁盘格（首行第 0 格）：给与编码终端磁盘列表同一套信息（容量、标记、手势），而不是只报物品名。
             if (row instanceof DiskRow disk && disk.from() == 0 && columnAt(x) == 0) {
                 renderDiskTooltip(guiGraphics, disk, x, y);
