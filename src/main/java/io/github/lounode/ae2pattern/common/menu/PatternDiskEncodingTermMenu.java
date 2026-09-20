@@ -222,7 +222,17 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
     private final List<RecipeHolder<StonecutterRecipe>> stonecuttingRecipes = new java.util.ArrayList<>();
 
     public PatternDiskEncodingTermMenu(int id, Inventory ip, PatternDiskEncodingTerminalPart host) {
-        super(TYPE, id, ip, host, true);
+        this(TYPE, id, ip, host);
+    }
+
+    /**
+     * 子类（管理终端）用：菜单实例的类型会被服务端写进开界面的包，客户端据此挑屏幕。父类的公开构造器传的是
+     * {@link #TYPE}，子类若沿用，客户端会开出编码终端的界面，而菜单数据来自子类，形成界面与数据错位。所以这里
+     * 把类型开成参数，子类显式传自己的 {@code TYPE}。
+     */
+    protected PatternDiskEncodingTermMenu(MenuType<?> menuType, int id, Inventory ip,
+            PatternDiskEncodingTerminalPart host) {
+        super(menuType, id, ip, host, true);
         this.host = host;
         this.encodingLogic = host.getLogic();
         this.encodedInputsInv = encodingLogic.getEncodedInputInv();

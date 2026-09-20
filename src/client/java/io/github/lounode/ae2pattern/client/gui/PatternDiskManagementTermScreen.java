@@ -147,6 +147,12 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     }
 
     @Override
+    protected boolean usesNeoEcoUploadButton() {
+        // 管理终端走标记路线，不挂 NEO ECO 的上传按钮（EAE+ 那条本来就不在管理类型下）。
+        return false;
+    }
+
+    @Override
     public void init() {
         super.init();
         // MEStorageScreen.init() 给终端网格加了 RepoSlot；我们用自定义表格，不需要它们。

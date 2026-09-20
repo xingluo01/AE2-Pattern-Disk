@@ -65,7 +65,9 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
     private final Long2IntOpenHashMap sentContentFingerprints = new Long2IntOpenHashMap();
 
     public PatternDiskManagementTermMenu(int id, Inventory ip, PatternDiskManagementTerminalPart host) {
-        super(id, ip, host);
+        // 必须显式传本类的 TYPE：走父类那个只收 (id, ip, host) 的构造器会拿到编码终端的菜单类型，
+        // 客户端据此查到的是编码终端的屏幕。
+        super(TYPE, id, ip, host);
     }
 
     @Override

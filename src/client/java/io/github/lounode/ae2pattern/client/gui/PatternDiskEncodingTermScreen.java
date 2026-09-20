@@ -220,6 +220,16 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     }
 
     /**
+     * 是否给这个屏幕挂 NEO ECO 的上传按钮（neoecoae 在场时才真的出现）。
+     *
+     * <p>管理终端走标记路线，不提供上传入口——它不把样板上传到网络。ECO 与 ExtendedAE Plus 两条口径必须
+     * 一致：EAE+ 那条挂在编码类型下，管理终端天然不会拿到；ECO 这条由本钩子挡掉。</p>
+     */
+    protected boolean usesNeoEcoUploadButton() {
+        return true;
+    }
+
+    /**
      * NEO ECO 上传按钮在屏幕上的绝对位置与尺寸（该按钮固定 18×20，见 neoecoae 的 UploadButton）。
      *
      * <p>{@link #init()} 造按钮与 ExtendedAE Plus 的适配屏幕取锚点都走这一份算式，免得两处位置漂移。</p>
@@ -233,10 +243,12 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     @Override
     public void init() {
         super.init();
-        var ecoUpload = neoEcoUploadButtonBounds();
         var search = this.miniSearchField;
-        io.github.lounode.ae2pattern.client.integration.neoecoae.NeoECOClientIntegration.addUploadButtonIfPresent(this,
-                ecoUpload.getX(), ecoUpload.getY());
+        if (usesNeoEcoUploadButton()) {
+            var ecoUpload = neoEcoUploadButtonBounds();
+            io.github.lounode.ae2pattern.client.integration.neoecoae.NeoECOClientIntegration.addUploadButtonIfPresent(this,
+                    ecoUpload.getX(), ecoUpload.getY());
+        }
 
         // 无标记磁盘的显示开关，贴在搜索栏右边 2px（搜索栏的可见宽度含内边距，所以要用它的 tooltip 区域），
         // 与它同高：搜索栏高 8，按钮也是 8x8，顶对齐即居中。
