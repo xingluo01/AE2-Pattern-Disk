@@ -2,6 +2,11 @@ modLoader="javafml"
 loaderVersion="${loader_version_range}"
 license="${mod_license}"
 
+# 本模组的 mixin 只有一个：AE2 终端的「按 mod」排序在组内换成数值序（见 KeySortersMixin）。
+# 文件名与 modId 同名只是跟隔壁几个姊妹模组保持一致；FML 仍需要这一段才会加载它。
+[[mixins]]
+config = "${mod_id}.mixins.json"
+
 [[mods]]
 modId="${mod_id}"
 version="${mod_version}"

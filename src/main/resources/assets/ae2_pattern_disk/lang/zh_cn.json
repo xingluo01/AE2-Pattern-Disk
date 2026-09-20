@@ -109,5 +109,14 @@
   "gui.ae2_pattern_disk.management_terminal.hide_slots": "隐藏槽位",
   "gui.ae2_pattern_disk.management_terminal.hide_slots_hint": "把供应器剩余的空磁盘槽收成一格，数字是折叠掉的槽位数",
   "gui.ae2_pattern_disk.management_terminal.show_slots": "显示槽位",
-  "gui.ae2_pattern_disk.management_terminal.show_slots_hint": "展开供应器剩余的空磁盘槽"
+  "gui.ae2_pattern_disk.management_terminal.show_slots_hint": "展开供应器剩余的空磁盘槽",
+  "gui.ae2_pattern_disk.management_terminal.tooltip.disk.click": "左键：取到光标上",
+  "gui.ae2_pattern_disk.management_terminal.tooltip.disk.shift_click": "Shift+左键：取进背包",
+  "gui.ae2_pattern_disk.management_terminal.tooltip.disk.right_click": "右键：选中它作为「编写样板」的写入目标（手里拿工作方块时为打标）",
+  "gui.ae2_pattern_disk.management_terminal.tooltip.disk.middle_click": "中键：以该样板磁盘标记所属工作方块的名字重命名",
+  "gui.ae2_pattern_disk.sort.natural.on": "二级排序：数值序（1k < 4k < 16k < 64k < 256k < 1M，只在按 mod 排序时生效）——点击改为字面序",
+  "gui.ae2_pattern_disk.sort.natural.off": "二级排序：字面序（16k 会排在 1k 前面）——点击改为数值序",
+  "gui.ae2_pattern_disk.pattern_disk_provider.push_direction": "推入方向：%s",
+  "gui.ae2_pattern_disk.pattern_disk_provider.push_direction.all": "全向",
+  "gui.ae2_pattern_disk.pattern_disk_provider.push_direction.side": "%s面"
 }

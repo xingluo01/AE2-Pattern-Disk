@@ -38,6 +38,8 @@ Tools unique to processing mode, for tuning the recipe multiplier of large autom
 
 The lower part of the interface lists the network's pattern disks. **With nothing in the search bar every disk is listed** (unmarked ones included); while you type, the list is filtered by what you typed - by name (unmarked disks have names too and take part like any other), or by mark when prefixed with `#` (unmarked disks have no mark to match). The toggle next to the search bar keeps unmarked disks in regardless of the search. A mark records which kind of recipe a disk belongs to (see [Pattern Disks](pattern_disks.md)).
 
+When this terminal's **item grid** sorts by mod, an extra secondary-sort toggle shows up (on by default): with it on, mod groups are ordered by the numbers in the name (`1k < 4k < 16k < 64k < 256k < 1M`, `4 < 16 < 64 < 256 < 1024`, with a trailing k/M/G/T/P/E counted as a power of 1024); with it off, AE2's literal order is kept. It stays hidden in the other two sort modes, which do not have that problem. The same toggle drives the patterns inside each disk on the management terminal.
+
 ### Search
 
 The search bar filters in two ways:

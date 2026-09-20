@@ -30,6 +30,7 @@ import guideme.PageAnchor;
 
 import appeng.api.behaviors.ContainerItemStrategies;
 import appeng.api.behaviors.EmptyingAction;
+import appeng.api.config.SortOrder;
 import appeng.api.stacks.GenericStack;
 import appeng.client.gui.me.common.MEStorageScreen;
 import appeng.client.gui.me.common.StackSizeRenderer;
@@ -45,6 +46,7 @@ import appeng.parts.encoding.EncodingMode;
 
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 import io.github.lounode.ae2pattern.client.integration.MachineRecipeTypes;
+import io.github.lounode.ae2pattern.client.sort.NaturalSort;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
 import io.github.lounode.ae2pattern.client.gui.DiskListPanel.DiskEntry;
@@ -58,8 +60,17 @@ import io.github.lounode.ae2pattern.client.gui.DiskListPanel.DiskEntry;
  * </ul>
  * 模式切换使用轮换按钮（左侧工具栏），而非右侧标签页。
  */
-public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEncodingTermMenu> {
+public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEncodingTermMenu>
+        implements NaturalSort.Provider {
 
+    // 二级排序开关的两枚图标：本模组 states.png 里新画的一对（(96,32) = 1/4 比大小 = 数值序，
+    // (112,32) = 叉 = 关）。
+    private static final Blitter ICON_SORT_NATURAL = Blitter
+            .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/states.png"))
+            .src(96, 32, 16, 16);
+    private static final Blitter ICON_SORT_LITERAL = Blitter
+            .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/states.png"))
+            .src(112, 32, 16, 16);
     // states.png (0,16,64,16) 四模式图标：合成/处理/锻造/切石
     /** NEO ECO 上传按钮的尺寸（neoecoae 的 UploadButton 构造里写死的 18×20）。 */
     static final int NEO_ECO_UPLOAD_BUTTON_WIDTH = 18;
@@ -96,6 +107,18 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     private final Map<EncodingMode, DiskEncodingModePanel> modePanels = new EnumMap<>(EncodingMode.class);
     private final DiskListPanel diskListPanel;
     private final StatesIconButton modeCycleButton;
+
+    /**
+     * 「数值排序」开关（按 mod 排序时出现的二级排序）：默认开。开了以后 mod 组内按名字里的数值排
+     * （1k &lt; 4k &lt; 16k &lt; 64k &lt; 256k &lt; 1M），关了就是 AE2 原本的字面序。
+     *
+     * <p>纯客户端视图状态，不写服务端设置：它只改本屏物品网格的比较器（见
+     * {@link io.github.lounode.ae2pattern.mixin.KeySortersMixin}），换屏即失效。按钮本身只在
+     * 「按 mod」那一档显示。</p>
+     */
+    private boolean naturalSort = true;
+
+    private StatesIconButton naturalSortButton;
     private final AETextField miniSearchField;
 
     /** 磁盘列表的搜索框（子屏要给它焦点，或者按自己的布局重新定位时读它）。 */
@@ -179,6 +202,17 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         // states.png (208,224,36,20)：左半常态背景，右半光标选中背景
         this.modeCycleButton.setBackground(BG_MODE_NORMAL, BG_MODE_HOVER);
         addToLeftToolbar(this.modeCycleButton);
+
+        // 二级排序开关：贴在 AE2 那三枚排序按钮后面，只在「按 mod」那一档显示（见 updateBeforeRender）。
+        this.naturalSortButton = new StatesIconButton(
+                () -> this.naturalSort ? ICON_SORT_NATURAL : ICON_SORT_LITERAL,
+                button -> {
+                    this.naturalSort = !this.naturalSort;
+                    // 比较器换了要重排一遍；updateView 是 AE2 自己换排序档位后走的同一条路。
+                    repo.updateView();
+                });
+        this.naturalSortButton.setBackground(BG_MODE_NORMAL, BG_MODE_HOVER);
+        addToLeftToolbar(this.naturalSortButton);
 
         // 编码/保存按钮
         // 编码/保存按钮：网络里没有空白样板就不必白跑一趟服务端，直接说清楚原因。
@@ -313,6 +347,14 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             this.showUnmarkedButton.setState(menu.isShowUnmarkedDisks());
         }
 
+        // 二级排序开关：只在「按 mod」时露面（其它档位下它没有意义），提示语随开关状态走。
+        if (this.naturalSortButton != null) {
+            this.naturalSortButton.setVisibility(getSortBy() == SortOrder.MOD);
+            this.naturalSortButton.setMessage(Component.translatable(this.naturalSort
+                    ? "gui.ae2_pattern_disk.sort.natural.on"
+                    : "gui.ae2_pattern_disk.sort.natural.off"));
+        }
+
         // 根据当前模式切换面板可见性
         var currentMode = menu.getMode();
         for (var entry : modePanels.entrySet()) {
@@ -335,6 +377,15 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         }
 
         updateDiskEntries();
+    }
+
+    /**
+     * 「数值排序」当前是否打开；物品网格的比较器（{@code KeySortersMixin}）只认这一处，
+     * 屏幕一关就跟着失效。
+     */
+    @Override
+    public boolean naturalSortEnabled() {
+        return this.naturalSort;
     }
 
     // ---- 磁盘列表数据 --------------------------------------------------------

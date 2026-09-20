@@ -73,6 +73,10 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
     private ShowPatternProviders lastShowPatternProviders = ShowPatternProviders.VISIBLE;
 
     /** 服务端侧：最近一次的扁平磁盘清单，换档时按它重新分组（清单本身没变，没必要重新扫网）。 */
+    /** 服务端侧：与磁盘清单同一刻采到的宿主名单；分组的骨架就是它（含没插盘的机器）。 */
+    private List<IPatternDiskHost> lastDiskHosts = List.of();
+
+    /** 服务端最近一次推给客户端的磁盘清单，用来重推分组（例如「显示模式」换档时）。 */
     private List<DiskListPayload.DiskEntry> lastDiskEntries = List.of();
 
     public PatternDiskManagementTermMenu(int id, Inventory ip, PatternDiskManagementTerminalPart host) {
@@ -84,6 +88,8 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
     @Override
     protected void onDiskListRebuilt(List<DiskListPayload.DiskEntry> entries) {
         this.lastDiskEntries = List.copyOf(entries);
+        // 宿主名单跟磁盘清单同一刻采：管理终端要连“一张盘都没插”的机器也列出来，不能只看盘。
+        this.lastDiskHosts = collectDiskHosts();
 
         pushHostList(entries);
 
@@ -106,6 +112,17 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
         var mode = getShownProviders();
 
         var builders = new LinkedHashMap<String, HostBuilder>();
+
+        // 先给每一台“支持样板磁盘的宿主”开户：没插盘、或盘被抽空的机器也在表里（表要能看出它在、还有几个
+        // 空槽）。开完户再把磁盘按槽位挂回去。
+        for (var host : lastDiskHosts) {
+            if (!isShown(host, mode)) {
+                continue;
+            }
+            builders.computeIfAbsent(hostKey(host),
+                    key -> new HostBuilder(key, describeHost(host), iconOf(host), countEmptySlots(host)));
+        }
+
         for (var entry : entries) {
             var host = diskHostOf(entry.serial());
             if (host == null || !isShown(host, mode)) {
@@ -114,6 +131,8 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
             var key = hostKey(host);
             var builder = builders.get(key);
             if (builder == null) {
+                // 没能在宿主名单里找到它（例如插件给的是每帧新建的适配器，没进 lastDiskHosts）：
+                // 仍旧给它开一组，一张盘不该因为宿主不在名单里就从表里消失。
                 builder = new HostBuilder(key, describeHost(host), iconOf(host), countEmptySlots(host));
                 builders.put(key, builder);
             }

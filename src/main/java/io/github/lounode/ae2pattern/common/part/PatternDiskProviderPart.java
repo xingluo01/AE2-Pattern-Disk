@@ -10,7 +10,9 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.component.DataComponentMap;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.item.ItemStack;
@@ -25,12 +27,14 @@ import appeng.api.parts.IPartItem;
 import appeng.api.parts.IPartModel;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.util.AECableType;
+import appeng.block.crafting.PushDirection;
 import appeng.helpers.patternprovider.PatternProviderLogic;
 import appeng.items.parts.PartModels;
 import appeng.menu.MenuOpener;
 import appeng.menu.locator.MenuLocators;
 import appeng.parts.AEBasePart;
 import appeng.parts.PartModel;
+import appeng.util.InteractionUtil;
 import appeng.util.SettingsFrom;
 import appeng.util.inv.AppEngInternalInventory;
 import appeng.util.inv.InternalInventoryHost;
@@ -49,9 +53,13 @@ import io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu;
  * <p>Everything that makes the provider a provider lives in {@link PatternDiskProviderLogic}, which
  * only needs a {@code PatternProviderLogicHost}. This part therefore stores nothing but the disk
  * inventory and hands the same logic the block entity uses; the menu is likewise shared, because
- * {@link PatternDiskProviderHost} is the only host type either of them asks for. The look and push
- * direction mirror AE2's cable pattern provider: it pushes only towards the side it is attached
- * to.</p>
+ * {@link PatternDiskProviderHost} is the only host type either of them asks for.</p>
+ *
+ * <p><b>Push direction.</b> Untouched, it pushes only towards the side it is attached to (the behaviour
+ * it always had). A wrench in rotate mode cycles it in a fixed order: the attached side (the default),
+ * omnidirectional, then the six faces one by one, then back to the attached side. The block form takes
+ * the same AE2 gesture of clicking a face, so the two forms differ here; the panel has no arrow model
+ * yet either, so the new setting is announced in chat.</p>
  */
 public class PatternDiskProviderPart extends AEBasePart
         implements PatternDiskProviderHost, InternalInventoryHost {
@@ -75,6 +83,14 @@ public class PatternDiskProviderPart extends AEBasePart
             () -> getMainNode().getGrid(), this, this::markTerminalChanged, this::getLevel);
 
     protected final PatternProviderLogic logic = createLogic();
+
+    /**
+     * 推入方向（扳手可调）。{@code null} = 没被扳手动过，保持旧行为：只朝自己贴附的那一面推。
+     * 一旦动过就按 AE2 那套档位走：{@code ALL} = 六面都推，其余 = 只推那一面。
+     */
+    private @Nullable PushDirection pushDirection;
+
+    private static final String NBT_PUSH_DIRECTION = "pushDirection";
 
     public PatternDiskProviderPart(IPartItem<?> partItem) {
         super(partItem);
@@ -112,8 +128,12 @@ public class PatternDiskProviderPart extends AEBasePart
 
     @Override
     public EnumSet<Direction> getTargets() {
-        // A panel only pushes towards the side it is mounted on, like AE2's cable pattern provider.
-        return EnumSet.of(getSide());
+        // 没被扳手调过：沿用旧行为——只朝自己贴附的那一面推。调过之后：全向 = 六面都推，定向 = 只推那一面。
+        if (pushDirection == null) {
+            return EnumSet.of(getSide());
+        }
+        var single = pushDirection.getDirection();
+        return single == null ? EnumSet.allOf(Direction.class) : EnumSet.of(single);
     }
 
     @Override
@@ -201,6 +221,7 @@ public class PatternDiskProviderPart extends AEBasePart
         super.readFromNBT(data, registries);
         this.logic.readFromNBT(data, registries);
         diskInventory.readFromNBT(data, "disks", registries);
+        this.pushDirection = parsePushDirection(data.getString(NBT_PUSH_DIRECTION));
         refreshFromDisks();
     }
 
@@ -209,6 +230,9 @@ public class PatternDiskProviderPart extends AEBasePart
         super.writeToNBT(data, registries);
         this.logic.writeToNBT(data, registries);
         diskInventory.writeToNBT(data, "disks", registries);
+        if (pushDirection != null) {
+            data.putString(NBT_PUSH_DIRECTION, pushDirection.getSerializedName());
+        }
     }
 
     @Override
@@ -293,5 +317,73 @@ public class PatternDiskProviderPart extends AEBasePart
             MenuOpener.open(PatternDiskProviderMenu.TYPE, p, MenuLocators.forPart(this));
         }
         return true;
+    }
+
+    /**
+     * 扳手切「全向 / 定向」，与方块形态同一套手势。面板没有箭头模型，所以换档后在动作栏报一声，
+     * 否则玩家根本看不出这一扳手做了什么。
+     */
+    @Override
+    public boolean onUseItemOn(ItemStack heldItem, Player player, InteractionHand hand, Vec3 pos) {
+        if (InteractionUtil.canWrenchRotate(heldItem) && !InteractionUtil.isInAlternateUseMode(player)) {
+            if (!player.level().isClientSide()) {
+                var next = nextPushDirection();
+                this.pushDirection = next;
+                saveChanges();
+                player.displayClientMessage(
+                        Component.translatable("gui.ae2_pattern_disk.pattern_disk_provider.push_direction",
+                                directionLabel(next)),
+                        true);
+            }
+            return true;
+        }
+        return super.onUseItemOn(heldItem, player, hand, pos);
+    }
+
+    /**
+     * 下一档。顺序是固定的，且不依赖点的哪个面（面板没有“点某一面”这回事）：
+     * 贴附面（默认档）→ 全向 → 其余五个面逐个 → 回贴附面。
+     */
+    private PushDirection nextPushDirection() {
+        var cycle = pushDirectionCycle();
+        var current = pushDirection == null ? cycle.get(0) : pushDirection;
+        int index = cycle.indexOf(current);
+        return cycle.get(index < 0 ? 0 : (index + 1) % cycle.size());
+    }
+
+    private List<PushDirection> pushDirectionCycle() {
+        var mounting = PushDirection.fromDirection(getSide());
+        var cycle = new java.util.ArrayList<PushDirection>();
+        cycle.add(mounting);
+        cycle.add(PushDirection.ALL);
+        for (var direction : Direction.values()) {
+            var candidate = PushDirection.fromDirection(direction);
+            if (candidate != mounting) {
+                cycle.add(candidate);
+            }
+        }
+        return cycle;
+    }
+
+    /** 档位的可读名；{@code ALL} 说成「全向」，其余说成那个面。 */
+    private static Component directionLabel(PushDirection direction) {
+        var single = direction.getDirection();
+        if (single == null) {
+            return Component.translatable("gui.ae2_pattern_disk.pattern_disk_provider.push_direction.all");
+        }
+        return Component.translatable("gui.ae2_pattern_disk.pattern_disk_provider.push_direction.side",
+                single.getName());
+    }
+
+    /** 存档里的档位；认不出（含空串）就当作没调过。 */
+    private static @Nullable PushDirection parsePushDirection(String stored) {
+        if (stored == null || stored.isEmpty()) {
+            return null;
+        }
+        if (PushDirection.ALL.getSerializedName().equals(stored)) {
+            return PushDirection.ALL;
+        }
+        var side = Direction.byName(stored);
+        return side == null ? null : PushDirection.fromDirection(side);
     }
 }

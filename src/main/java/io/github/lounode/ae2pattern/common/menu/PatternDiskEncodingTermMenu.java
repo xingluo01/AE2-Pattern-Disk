@@ -1257,27 +1257,15 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
      */
     private void syncDiskList(boolean force) {
         // 收集当前网格中所有磁盘宿主的磁盘槽（item 类型为 PatternDiskItem 的非空槽）
-        var grid = getGrid();
+        var hosts = collectDiskHosts();
         var slots = new java.util.ArrayList<DiskRef>();
-        if (grid != null) {
-            for (var machineClass : grid.getMachineClasses()) {
-                if (machineClass == null || !IPatternDiskHost.class.isAssignableFrom(machineClass)) {
-                    continue;
-                }
-                for (var machine : grid.getActiveMachines(machineClass)) {
-                    if (!(machine instanceof IPatternDiskHost host)) continue;
-                    collectHostDisks(host, slots);
-                }
-            }
-
-            // Hosts contributed by integrations: machines from other mods cannot implement
-            // IPatternDiskHost at compile time, so they register a collector instead.
-            for (var host : PatternDiskHostRegistry.collectExtra(grid)) {
-                collectHostDisks(host, slots);
-            }
+        for (var host : hosts) {
+            collectHostDisks(host, slots);
         }
 
-        int fingerprint = computeDiskFingerprint(slots);
+        // 宿主名单也进指纹：新插一台还没插盘的供应器、或把最后一盘抽走，"磁盘槽"那部分指纹一点没变，
+        // 但表要跟着变（管理终端要能看见没插盘的机器以及它还剩多少空槽）。
+        int fingerprint = computeDiskFingerprint(slots, hosts);
         if (!force && fingerprintInitialized && fingerprint == lastDiskFingerprint) {
             return; // unchanged: skip full resend
         }
@@ -1336,6 +1324,44 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
         syncDiskList(true);
     }
 
+    /**
+     * 网格上所有支持样板磁盘的宿主：实现了 {@link IPatternDiskHost} 的机器，加上插件注册进来的收集器给出的
+     * 宿主（“能把样板磁盘当内容物收着”的机器也算）。
+     *
+     * <p>同一个宿主只给一次（按身份去重）：插件给的是每帧新建的适配器对象，那样去不掉重，但同一次收集里重复
+     * 给出的同一个对象能去掉。磁盘槽收集与管理终端的分组都走这里，两张表看到的是同一批机器。</p>
+     *
+     * <p>子类可读：管理终端要连“一张盘都没插”的机器一起列出来，所以不能只依赖磁盘清单。</p>
+     */
+    protected List<IPatternDiskHost> collectDiskHosts() {
+        var grid = getGrid();
+        if (grid == null) {
+            return List.of();
+        }
+
+        var seen = java.util.Collections
+                .newSetFromMap(new java.util.IdentityHashMap<IPatternDiskHost, Boolean>());
+        var hosts = new java.util.ArrayList<IPatternDiskHost>();
+
+        for (var machineClass : grid.getMachineClasses()) {
+            if (machineClass == null || !IPatternDiskHost.class.isAssignableFrom(machineClass)) {
+                continue;
+            }
+            for (var machine : grid.getActiveMachines(machineClass)) {
+                if (machine instanceof IPatternDiskHost host && seen.add(host)) {
+                    hosts.add(host);
+                }
+            }
+        }
+
+        for (var host : PatternDiskHostRegistry.collectExtra(grid)) {
+            if (host != null && seen.add(host)) {
+                hosts.add(host);
+            }
+        }
+        return hosts;
+    }
+
     /** Appends every pattern disk currently sitting in {@code host}'s disk inventory. */
     private static void collectHostDisks(IPatternDiskHost host, List<DiskRef> slots) {
         var inv = host.getDiskInventory();
@@ -1350,8 +1376,13 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
      * Fingerprint over the set of disk slots: item id, slot index, host position and the host's own
      * identity salt (two panels on one cable share a position).
      */
-    private static int computeDiskFingerprint(List<DiskRef> slots) {
+    private static int computeDiskFingerprint(List<DiskRef> slots, List<IPatternDiskHost> hosts) {
         int hash = 1;
+        for (var host : hosts) {
+            // 位置 + 身份盐就认定了宿主（同一根电缆上的两个面板位置相同、盐不同）。
+            hash = 31 * hash + host.getBlockPos().hashCode();
+            hash = 31 * hash + host.getIdentitySalt();
+        }
         for (var ref : slots) {
             var stack = ref.host().getDiskInventory().getStackInSlot(ref.slot());
             hash = 31 * hash + net.minecraft.core.registries.BuiltInRegistries.ITEM.getId(stack.getItem());

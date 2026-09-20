@@ -109,5 +109,14 @@
   "gui.ae2_pattern_disk.management_terminal.hide_slots": "Hide Empty Slots",
   "gui.ae2_pattern_disk.management_terminal.hide_slots_hint": "Fold the providers’ empty disk slots into a single cell; the number counts the folded slots",
   "gui.ae2_pattern_disk.management_terminal.show_slots": "Show Empty Slots",
-  "gui.ae2_pattern_disk.management_terminal.show_slots_hint": "Expand the providers’ empty disk slots"
+  "gui.ae2_pattern_disk.management_terminal.show_slots_hint": "Expand the providers’ empty disk slots",
+  "gui.ae2_pattern_disk.management_terminal.tooltip.disk.click": "Left click: take it onto the cursor",
+  "gui.ae2_pattern_disk.management_terminal.tooltip.disk.shift_click": "Shift + left click: take it into your inventory",
+  "gui.ae2_pattern_disk.management_terminal.tooltip.disk.right_click": "Right click: select it as the target the Encode button writes to (with a work block in hand: mark it instead)",
+  "gui.ae2_pattern_disk.management_terminal.tooltip.disk.middle_click": "Middle click: rename it after the work block its mark belongs to",
+  "gui.ae2_pattern_disk.sort.natural.on": "Secondary sort: numeric (1k < 4k < 16k < 64k < 256k < 1M, only while sorting by mod) - click for literal order",
+  "gui.ae2_pattern_disk.sort.natural.off": "Secondary sort: literal (16k comes before 1k) - click for numeric order",
+  "gui.ae2_pattern_disk.pattern_disk_provider.push_direction": "Push direction: %s",
+  "gui.ae2_pattern_disk.pattern_disk_provider.push_direction.all": "omnidirectional",
+  "gui.ae2_pattern_disk.pattern_disk_provider.push_direction.side": "%s side"
 }

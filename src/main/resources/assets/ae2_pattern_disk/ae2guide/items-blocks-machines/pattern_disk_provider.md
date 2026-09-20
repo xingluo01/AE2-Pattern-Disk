@@ -27,9 +27,23 @@ Finished items can come back to the provider's return slots. The disks are the s
 
 ## Panel form
 
-Mounted on an ME cable it becomes a panel: same disk slots, interface, pattern logic and return-slot interface as the block form. The difference is that it only pushes patterns out of the face it is attached to, which suits tighter cabling.
+Mounted on an ME cable it becomes a panel: same disk slots, interface, pattern logic and return-slot interface as the block form. Left untouched, it pushes patterns out of the face it is attached to (the panel behaviour it always had).
 
 The two forms convert into each other: a shapeless craft in a crafting grid swaps one for the other, with no extra materials.
+
+## Push direction (wrench)
+
+Both forms take it, but not with the same gesture - a panel has no face to click, it sits on a cable:
+
+| Form | Gesture and order |
+| --- | --- |
+| Block | Wrench (rotate mode) on a face: omnidirectional pushes away from that face; on the face it already pushes towards, back to omnidirectional; on any other face, rotates one step around |
+| Panel | Wrench (rotate mode) walks a fixed cycle: the attached side (default), omnidirectional, the other five faces one by one, then back to the attached side |
+
+- Omnidirectional means all six sides; directional means that one side only. The block form swaps its model to match (the faces showing the arrow are the ones it pushes into).
+- The panel form has no arrow model yet, so it announces the new setting on the action bar.
+- Each form stores its own setting (the block in its block state, the panel in its own NBT): same meaning, no effect on each other.
+- A wrench in another mode (such as dismantling) leaves it alone.
 
 ## Upload button (ExtendedAE Plus / AE2:Utility)
 

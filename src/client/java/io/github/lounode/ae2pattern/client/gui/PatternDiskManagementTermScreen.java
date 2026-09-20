@@ -1,6 +1,8 @@
 package io.github.lounode.ae2pattern.client.gui;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -13,6 +15,7 @@ import org.jetbrains.annotations.Nullable;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
@@ -24,14 +27,17 @@ import it.unimi.dsi.fastutil.longs.LongSet;
 
 import appeng.api.config.Settings;
 import appeng.api.config.ShowPatternProviders;
+import appeng.api.config.SortDir;
+import appeng.api.config.SortOrder;
 import appeng.client.gui.style.Blitter;
 import appeng.client.gui.style.ScreenStyle;
 import appeng.client.gui.widgets.ActionButton;
 import appeng.client.gui.widgets.IconButton;
 import appeng.client.gui.widgets.ServerSettingToggleButton;
-import appeng.client.gui.widgets.SettingToggleButton;
 import appeng.core.localization.ButtonToolTips;
 
+import io.github.lounode.ae2pattern.client.sort.NaturalSort;
+import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
 import io.github.lounode.ae2pattern.network.DiskHostListPayload;
@@ -140,6 +146,29 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
      * {@code init()} 里赋。屏幕不随 resize 重建，但 init() 会在 resize 后被调用，所以这一个字段就够。
      */
     private int visibleRows = 6;
+
+    /**
+     * 每张盘的「显示顺序」：显示位次 → 盘内存储序号。
+     *
+     * <p>盘里的样板原来按写入次序铺，而写入次序对玩家没什么意义（按名字找一张合成表要一行行扫）。这里按
+     * 终端的排序档位排一遍：名称档按格子显示的那个名字，mod 档先按它的 mod 分组；「数量」档没有可比的东西
+     * （一枚样板就是一件），保持原顺序。开关打开时名字按数值比，于是 1k/16k/256k 与 4/16/64 排得对。</p>
+     *
+     * <p>存的是序号数组而不是排好的堆：格子画什么、点下去取哪一枚，都得回到服务端的存储序号上（取件按
+     * 序号说话），排堆会把那层对应关系拆散。
+     */
+    private final Map<Long, DisplayOrder> displayOrders = new HashMap<>();
+
+    private static final int[] NO_ORDER = new int[0];
+
+    /** 一次排序的结果；内容或排序口径一变就重算（拿内容列表的引用比，服务端每次推送会换一个新列表）。 */
+    private record DisplayOrder(List<ItemStack> contents, SortOrder order, SortDir dir, boolean natural,
+            int[] storageIndexes) {
+
+        boolean stillMatches(List<ItemStack> contents, SortOrder order, SortDir dir, boolean natural) {
+            return this.contents == contents && this.order == order && this.dir == dir && this.natural == natural;
+        }
+    }
 
     // 静态 Blitter：UV 按 512 算（见 TEXTURE_SIZE），每帧不新建对象。
     // 注意它们是可变对象：每次使用必须紧接 dest(...) + blit(...)，不要缓存引用到别处再画。
@@ -284,8 +313,8 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     }
 
     /**
-     * 隐藏 AE2 标准终端工具栏里对本屏无意义的按钮：「排序顺序」（本表顺序由服务端的宿主分组决定）与
-     * 「终端设置」（它的设置页全是物品网格的项）。
+     * 隐藏 AE2 标准终端工具栏里对本屏无意义的按钮：「终端设置」（它的设置页全是物品网格的项）。排序按钮
+     * 现在留着了——本表的行内样板顺序就按它的档位排（见 {@link #displayOrder(long)}）。
      *
      * <p>AE2 对这两枚都是无条件添加：字段 private、按钮条（{@code VerticalButtonBar}）只有 add 没有移除接口、
      * 也没有可覆写的开关，所以在 super.init() 之后按控件身份精确匹配再关掉——排序顺序读
@@ -304,11 +333,9 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
             if (!(listener instanceof IconButton button)) {
                 continue;
             }
-            boolean isSortDirection = button instanceof SettingToggleButton<?> toggle
-                    && toggle.getSetting() == Settings.SORT_DIRECTION;
             boolean isTerminalSettings = button.getTooltipMessage().stream()
                     .anyMatch(line -> line.getString().contains(terminalSettings));
-            if (isSortDirection || isTerminalSettings) {
+            if (isTerminalSettings) {
                 button.setVisibility(false);
             }
         }
@@ -339,6 +366,9 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         for (var group : menu.getHostList()) {
             emptySlots.put(group.key(), group.emptySlots());
         }
+
+        // 盘内顺序缓存跟着当下的盘集合走：被取走、被搜索筛掉的盘不再留条目（连同它那份旧 contents 列表）。
+        displayOrders.keySet().retainAll(serialToGroup.keySet());
 
         var rebuilt = new ArrayList<Row>();
         String currentHost = null;
@@ -603,16 +633,17 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         if (patterns == null) {
             return;
         }
+        var order = displayOrder(row.serial());
 
-        // 这一行第 0 格对应的样板序号：首行被磁盘占了第 0 格，所以减 1。
+        // 这一行第 0 格对应的样板位次：首行被磁盘占了第 0 格，所以减 1。
         int patternBase = row.from() - firstColumn;
         var level = Minecraft.getInstance().level;
         for (int column = firstColumn; column < COLUMNS; column++) {
-            int index = patternBase + column;
-            if (index < 0 || index >= patterns.size()) {
+            int position = patternBase + column;
+            if (position < 0 || position >= order.length) {
                 break;
             }
-            var pattern = patterns.get(index);
+            var pattern = patterns.get(order[position]);
             if (pattern.isEmpty()) {
                 continue;
             }
@@ -756,6 +787,12 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     protected void renderTooltip(GuiGraphics guiGraphics, int x, int y) {
         int rowIndex = rowIndexAt(x, y);
         if (rowIndex >= 0) {
+            var row = rows.get(rowIndex);
+            // 磁盘格（首行第 0 格）：给与编码终端磁盘列表同一套信息（容量、标记、手势），而不是只报物品名。
+            if (row instanceof DiskRow disk && disk.from() == 0 && columnAt(x) == 0) {
+                renderDiskTooltip(guiGraphics, disk, x, y);
+                return;
+            }
             var stack = itemAt(rowIndex, columnAt(x));
             if (stack != null && !stack.isEmpty()) {
                 guiGraphics.renderTooltip(font, stack, x, y);
@@ -763,6 +800,48 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
             }
         }
         super.renderTooltip(guiGraphics, x, y);
+    }
+
+    /**
+     * 磁盘格的信息：名字、已用/容量、标记（原版高级信息下多一行原始 id），以及这一格上的四种手势。
+     *
+     * <p>与编码终端磁盘列表用同一套用词与语言键（它们说的是同一张盘），只把手势换成管理终端自己的。
+     */
+    private void renderDiskTooltip(GuiGraphics guiGraphics, DiskRow row, int x, int y) {
+        var stack = row.disk();
+        var lines = new ArrayList<Component>();
+        lines.add(Component.literal(stack.getHoverName().getString()));
+
+        if (stack.getItem() instanceof PatternDiskItem disk) {
+            var contents = disk.contents(stack);
+            lines.add(Component.translatable("ae2_pattern_disk.tooltip.capacity", contents.used(), contents.capacity()));
+        }
+
+        var mark = PatternDiskMarks.displayName(stack);
+        if (mark != null) {
+            lines.add(Component.translatable("ae2_pattern_disk.tooltip.mark", mark));
+            if (Minecraft.getInstance().options.advancedItemTooltips) {
+                var raw = PatternDiskMarks.rawMark(stack);
+                if (raw != null) {
+                    lines.add(Component.translatable("ae2_pattern_disk.tooltip.mark.raw", raw)
+                            .withStyle(ChatFormatting.DARK_GRAY));
+                }
+            }
+        }
+
+        lines.add(Component.translatable("gui.ae2_pattern_disk.management_terminal.tooltip.disk.click")
+                .withStyle(ChatFormatting.GRAY));
+        lines.add(Component.translatable("gui.ae2_pattern_disk.management_terminal.tooltip.disk.shift_click")
+                .withStyle(ChatFormatting.GRAY));
+        lines.add(Component.translatable("gui.ae2_pattern_disk.management_terminal.tooltip.disk.right_click")
+                .withStyle(ChatFormatting.GRAY));
+        // Shift+右键 这条直接复用编码终端磁盘列表那句话：两个终端上它是同一件事（拿搜索框里的内容打标）。
+        lines.add(Component.translatable("ae2_pattern_disk.tooltip.disk.shift_right_click")
+                .withStyle(ChatFormatting.GRAY));
+        lines.add(Component.translatable("gui.ae2_pattern_disk.management_terminal.tooltip.disk.middle_click")
+                .withStyle(ChatFormatting.GRAY));
+
+        guiGraphics.renderComponentTooltip(font, lines, x, y);
     }
 
     @Override
@@ -843,12 +922,84 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
             return -1; // 首行第 0 格是磁盘本身
         }
         var patterns = getMenu().getDiskContents(disk.serial());
-        int index = disk.from() - firstColumn + column;
-        if (patterns == null || index < 0 || index >= patterns.size() || patterns.get(index).isEmpty()) {
+        var order = displayOrder(disk.serial());
+        int position = disk.from() - firstColumn + column;
+        if (patterns == null || position < 0 || position >= order.length) {
+            return -1;
+        }
+        // 回到存储序号：取件、换槽都是按它与服务端对话的，所以命中的是排好的那一位、拿到的是盘里的那一位。
+        int index = order[position];
+        if (index < 0 || index >= patterns.size() || patterns.get(index).isEmpty()) {
             return -1;
         }
         return index;
     }
+
+    /**
+     * 盘内样板的显示顺序（显示位次 → 存储序号）；内容与排序口径没变就直接用上次算的。
+     *
+     * <p>拿内容列表的引用做缓存键：服务端每次推送内容都会换一个新列表对象，引用一变就说明该重算了。</p>
+     */
+    private int[] displayOrder(long serial) {
+        var contents = getMenu().getDiskContents(serial);
+        if (contents == null || contents.isEmpty()) {
+            return NO_ORDER;
+        }
+
+        var order = getSortBy();
+        var dir = getSortDir();
+        boolean natural = naturalSortEnabled();
+        var cached = displayOrders.get(serial);
+        if (cached != null && cached.stillMatches(contents, order, dir, natural)) {
+            return cached.storageIndexes();
+        }
+
+        var indexes = new Integer[contents.size()];
+        for (int i = 0; i < indexes.length; i++) {
+            indexes[i] = i;
+        }
+        var comparator = patternComparator(order, dir, natural);
+        // 排序号而不是排堆：n log n，且不丢“显示位次 ↔ 存储序号”的对应（满盘 1024 张也不会在帧里抖）。
+        Arrays.sort(indexes, (left, right) -> comparator.compare(contents.get(left), contents.get(right)));
+
+        var storageIndexes = new int[indexes.length];
+        for (int i = 0; i < indexes.length; i++) {
+            storageIndexes[i] = indexes[i];
+        }
+
+        displayOrders.put(serial, new DisplayOrder(contents, order, dir, natural, storageIndexes));
+        return storageIndexes;
+    }
+
+    /**
+     * 盘内样板的排序口径。
+     *
+     * <p>比的是格子里显示的那个名字（样板的主产物），不是样板本体：玩家在格子看到的是产物，按产物排才找得到
+     * 东西。mod 档同理，比的是产物所属的 mod。名字档的两个口径（字面/数值）由「数值排序」开关决定。</p>
+     */
+    private Comparator<ItemStack> patternComparator(SortOrder order, SortDir dir, boolean natural) {
+        return switch (order) {
+            case MOD -> Comparator.comparing(displayedItemModId, String::compareToIgnoreCase)
+                    .thenComparing(this::displayedItemName, NaturalSort.names(dir, natural));
+            // 名称档走字面序，与 AE2 原生口径、以及同一屏物品网格的名称档一致；数值序只在按 mod 时生效
+            // （它就是为了修 mod 分组内部那一档）。
+            case NAME -> Comparator.comparing(this::displayedItemName, NaturalSort.names(dir, false));
+            // 数量档：一枚样板就是一件，没有可比的东西，保持盘里的原顺序。
+            case AMOUNT -> (left, right) -> 0;
+        };
+    }
+
+    /** 格子里的名字：能解出主产物就用产物，解不出就用样板本体。 */
+    private String displayedItemName(ItemStack pattern) {
+        var output = patternOutputOf(pattern);
+        return (output.isEmpty() ? pattern : output).getHoverName().getString();
+    }
+
+    /** 格子所属的 mod：同上，取产物那一侧。 */
+    private static final java.util.function.Function<ItemStack, String> displayedItemModId = pattern -> {
+        var output = patternOutputOf(pattern);
+        return NaturalSort.modIdOf(output.isEmpty() ? pattern : output);
+    };
 
     /** 给某个格位（18×18 槽框）描一圈高亮：画在框线上，不盖住格内内容。 */
     private static void outlineCell(GuiGraphics guiGraphics, int cellX, int rowY) {

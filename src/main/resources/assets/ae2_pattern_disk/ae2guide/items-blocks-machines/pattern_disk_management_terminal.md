@@ -23,10 +23,13 @@ A cable-attached terminal that lays out **every pattern disk on the network** at
 | Disk row | Cell 1 is the disk, cells 2-17 are the first 16 patterns stored on it (slot order); more continue on the rows below, where all 17 cells are patterns |
 
 - **Search** works like the encoding terminal's: by disk name, or `#`-prefixed for marks.
+- **Sorting**: the two AE2 sort buttons in the toolbar now act on **the patterns inside each disk** - "by name" compares the name shown in the cell (the output's name), "by mod" groups by the output's mod first and then compares names within the group, and "by amount" has nothing to compare (one pattern is one item), so the disk's own order is kept. The arrow button flips ascending/descending.
+- **Numeric sort**: while sorting by mod an extra toggle appears (on by default) and makes the within-group comparison numeric: `1k < 4k < 16k < 64k < 256k < 1M`, `4 < 16 < 64 < 256 < 1024` (a trailing k/M/G/T/P/E counts as a power of 1024). Turning it off goes back to literal order (`16k` before `1k`). The same toggle also governs the encoding terminal's item grid when it sorts by mod.
 - **Scroll** with the mouse wheel. A disk holding more than 16 patterns continues on the rows below, starting at the first cell (those rows have no disk cell).
 - **Empty slots**: the slots the machine has no disk in are listed after that machine's disks, one cell per row. The "hide slots / show slots" button in the left toolbar folds them into a single row (with the folded count written in its top-right corner) or spreads them back out, one row per slot.
 - Patterns that cannot be decoded get a red overlay, same as the encoding terminal.
-- The table only lists disks on **the current network**; a broken or removed machine takes its group with it.
+- **Disk tooltip**: hovering a disk cell shows the same information the encoding terminal's disk list shows - name, used/capacity, mark (plus the raw mark id with vanilla advanced tooltips on), and the cell's four gestures.
+- The table lists **every container on the current network that takes pattern disks** (both forms of this mod's provider, plus other machines registered through the API) - including ones with no disk inserted: how many it takes and how many slots are still free are visible, and pulling a disk back out does not make the group disappear.
 
 ## Controls
 
