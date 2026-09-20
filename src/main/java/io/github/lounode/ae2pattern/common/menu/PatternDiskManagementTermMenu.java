@@ -65,6 +65,7 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
     private ShowPatternProviders shownProviders = ShowPatternProviders.VISIBLE;
 
     private static final String ACTION_INSERT_DISK = "insertDisk";
+    private static final String ACTION_STORE_INVENTORY_DISK = "storeInventoryDisk";
 
     /** 分组键 → 宿主，与推给客户端的清单同一份口径：客户端只拿得到键，存入时得靠它找回宿主。 */
     private final Map<String, IPatternDiskHost> hostsByKey = new HashMap<>();
@@ -93,10 +94,11 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
         // 客户端据此查到的是编码终端的屏幕。
         super(TYPE, id, ip, host);
         registerClientAction(ACTION_INSERT_DISK, InsertDiskRequest.class, this::insertDisk);
+        registerClientAction(ACTION_STORE_INVENTORY_DISK, StoreInventoryDiskRequest.class, this::storeInventoryDisk);
     }
 
     /**
-     * 把光标上（或背包里）的一张样板磁盘放进指定宿主的空磁盘槽。
+     * 把光标上那张样板磁盘放进指定宿主的空磁盘槽。
      *
      * <p>客户端只报「哪台机器」，具体哪个槽位由服务端挑第一个收得下的：客户端手上的清单本来就可能
      * 落后一帧，让客户端报槽位反而容易写错地方。放进去之后立刻重推磁盘清单，表与内容跟着更新。</p>
@@ -116,53 +118,92 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
             return;
         }
 
-        // 源优先级：光标 → 背包（只看 allowInventory 档，普通左键就是「把手上这张放进去」）。
-        var player = getPlayer();
+        // 只认光标上那张盘：这一条手势就是「把手上这张放进去」。
         var carried = getCarried();
-        var fromCarried = carried.getItem() instanceof PatternDiskItem;
-        var source = fromCarried ? carried : findDiskInInventory(player, request.allowInventory);
-        if (source.isEmpty()) {
+        if (!(carried.getItem() instanceof PatternDiskItem)) {
             notifyPlayer(false, "gui.ae2_pattern_disk.management_terminal.disk_store.no_disk");
             return;
         }
 
+        if (!tryInsertIntoHost(host, carried)) {
+            notifyPlayer(false, "gui.ae2_pattern_disk.management_terminal.disk_store.no_room", describeHost(host));
+            return;
+        }
+        setCarried(carried.isEmpty() ? ItemStack.EMPTY : carried);
+        // 菜单光标的同步在 broadcastChanges 里（本仓其它修改光标的动作也都显式推一次），不然客户端会同时
+        // 看到「容器里多一张」与「鼠标上还拿着那张」。
+        broadcastChanges();
+        afterDiskStored(host);
+    }
+
+    /**
+     * 「把背包里的某一张盘放进选中的那张盘所在的容器」：Shift+左键背包里的样板磁盘。
+     *
+     * <p>目标容器不取鼠标下的格子，而取**被选中的那张盘**（右键选中/打标）所在的宿主——这条手势的意思
+     * 就是「跟这张盘放一起」，而光标此刻在背包上，没有提供容器的位置。</p>
+     */
+    public void storeInventoryDisk(StoreInventoryDiskRequest request) {
+        if (isClientSide()) {
+            sendClientAction(ACTION_STORE_INVENTORY_DISK, request);
+            return;
+        }
+        if (request == null) {
+            return;
+        }
+
+        // 宿主从被选中的那张盘反查（与磁盘清单同一份映射），客户端只报序列号。查不到就是那张盘已经不在了：
+        // 这里的宿主是“由盘推出来”的，盘没了自然也没容器可存。
+        var host = diskHostOf(request.targetDiskSerial);
+        if (host == null) {
+            notifyPlayer(false, "gui.ae2_pattern_disk.management_terminal.disk_store.disk_gone");
+            return;
+        }
+
+        var player = getPlayer();
+        var inventory = player.getInventory();
+        if (request.containerSlot < 0 || request.containerSlot >= inventory.getContainerSize()) {
+            notifyPlayer(false, "gui.ae2_pattern_disk.management_terminal.disk_store.slot_changed");
+            return;
+        }
+        var source = inventory.getItem(request.containerSlot);
+        if (!(source.getItem() instanceof PatternDiskItem)) {
+            notifyPlayer(false, "gui.ae2_pattern_disk.management_terminal.disk_store.slot_changed");
+            return;
+        }
+
+        // 减源只由 tryInsertIntoHost 做一次（它按实际插入量减）；这里再减会多扣一张。
+        if (!tryInsertIntoHost(host, source)) {
+            notifyPlayer(false, "gui.ae2_pattern_disk.management_terminal.disk_store.no_room", describeHost(host));
+            return;
+        }
+        // 背包那份是活的 Inventory 对象（不在槽位包自动同步的范围里），得主动推一次。
+        broadcastChanges();
+        afterDiskStored(host);
+    }
+
+    /**
+     * 把 {@code source} 的一张盘写进宿主第一个能收下的空槽；收下了返回 {@code true}（并已就地减掉 source）。
+     *
+     * <p>「收下了」的判据是返回值里的剩余量真的变少了：AE2 的接口默认实现对拒收的槽会原样返回同一堆栈。
+     * 槽位由服务端自己挑（不信任客户端报的槽号：客户端的磁盘清单可能落后一帧）。</p>
+     */
+    private static boolean tryInsertIntoHost(IPatternDiskHost host, ItemStack source) {
         var inventory = host.getDiskInventory();
         for (int slot = 0; slot < inventory.size(); slot++) {
             var remainder = inventory.insertItem(slot, source.copy(), false);
             if (remainder.getCount() == source.getCount()) {
                 continue; // 这个槽没收下（被占了或装不了）
             }
-            int moved = source.getCount() - remainder.getCount();
-            source.shrink(moved);
-            if (fromCarried) {
-                setCarried(carried.isEmpty() ? ItemStack.EMPTY : carried);
-            } else {
-                // 背包那份是活的 Inventory 对象（不在槽位包自动同步的范围里），得主动推一次，
-                // 否则物品会看起来还在背包里，直到下一次别的原因触发同步。
-            }
-            // 光标那份同理：菜单光标的同步在 broadcastChanges 里（本仓其它修改光标的动作也都显式推一次），
-            // 不然客户端会同时看到「容器里多一张」与「鼠标上还拿着那张」。
-            broadcastChanges();
-            refreshDiskList(); // 表与盘内容立即跟上（不等下一次扫描）
-            notifyPlayer(true, "gui.ae2_pattern_disk.management_terminal.disk_store.ok", describeHost(host));
-            return;
+            source.shrink(source.getCount() - remainder.getCount());
+            return true;
         }
-        notifyPlayer(false, "gui.ae2_pattern_disk.management_terminal.disk_store.no_room", describeHost(host));
+        return false;
     }
 
-    /** 背包里第一张样板磁盘；{@code allowInventory} 为假时不找（光标上那张才作数）。 */
-    private static ItemStack findDiskInInventory(net.minecraft.world.entity.player.Player player, boolean allowInventory) {
-        if (player == null || !allowInventory) {
-            return ItemStack.EMPTY;
-        }
-        var inventory = player.getInventory();
-        for (int i = 0; i < inventory.getContainerSize(); i++) {
-            var stack = inventory.getItem(i);
-            if (stack.getItem() instanceof PatternDiskItem) {
-                return stack;
-            }
-        }
-        return ItemStack.EMPTY;
+    /** 存入成功后的收尾：重推清单（表、空槽数与盘内容同一拍更新）并报一声。 */
+    private void afterDiskStored(IPatternDiskHost host) {
+        refreshDiskList(); // 不等下一次扫描
+        notifyPlayer(true, "gui.ae2_pattern_disk.management_terminal.disk_store.ok", describeHost(host));
     }
 
     /**
@@ -452,22 +493,35 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
     }
 
     /**
-     * 「存入」动作的参数。AE2 的客户端动作把参数当 JSON 传，所以用公开字段加无参构造器，
-     * 而不是 record。
-     *
-     * <p>{@code allowInventory}：普通左键只认光标上那张盘（玩家是“把手上这张放进去”），
-     * Shift+左键才连背包一起找（“快速存一张进去”）。</p>
+     * 「存入」动作的参数。AE2 的客户端动作把参数当 JSON 传，所以用公开字段加无参构造器，而不是 record。
      */
     public static final class InsertDiskRequest {
+        /** 目标容器的分组键（客户端从表格分组里拿到的那个）。 */
         public String hostKey = "";
-        public boolean allowInventory;
 
         public InsertDiskRequest() {
         }
 
-        public InsertDiskRequest(String hostKey, boolean allowInventory) {
+        public InsertDiskRequest(String hostKey) {
             this.hostKey = hostKey;
-            this.allowInventory = allowInventory;
+        }
+    }
+
+    /**
+     * 「把背包里的盘存进选中盘所在容器」的参数：只报两张盘的标识（目标＝选中那张的序列号，源＝背包槽号）。
+     */
+    public static final class StoreInventoryDiskRequest {
+        /** 右键选中那张盘的序列号；服务端靠它反查目标容器。 */
+        public long targetDiskSerial;
+        /** 源盘在玩家背包里的槽号（{@code Slot#getContainerSlot()}）。 */
+        public int containerSlot;
+
+        public StoreInventoryDiskRequest() {
+        }
+
+        public StoreInventoryDiskRequest(long targetDiskSerial, int containerSlot) {
+            this.targetDiskSerial = targetDiskSerial;
+            this.containerSlot = containerSlot;
         }
     }
 

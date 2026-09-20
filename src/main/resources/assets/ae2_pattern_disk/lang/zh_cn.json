@@ -115,16 +115,19 @@
   "gui.ae2_pattern_disk.management_terminal.tooltip.disk.right_click": "右键：选中它作为「编写样板」的写入目标（手里拿工作方块时为打标）",
   "gui.ae2_pattern_disk.management_terminal.tooltip.disk.middle_click": "中键：以该样板磁盘标记所属工作方块的名字重命名",
   "gui.ae2_pattern_disk.management_terminal.tooltip.free_slot.click": "左键：把光标上的样板磁盘放进这个容器",
-  "gui.ae2_pattern_disk.management_terminal.tooltip.free_slot.shift_click": "Shift+左键：把一张样板磁盘快速存进这个容器（光标上没有就从背包找）",
+  "gui.ae2_pattern_disk.management_terminal.tooltip.free_slot.inventory": "在背包格上 Shift+左键一张样板磁盘：存进当前选中那张盘所在的容器",
   "gui.ae2_pattern_disk.management_terminal.disk_store.ok": "已存入一张样板磁盘：%s",
-  "gui.ae2_pattern_disk.management_terminal.disk_store.no_disk": "没有可存入的样板磁盘：光标上没有，背包里也没有",
+  "gui.ae2_pattern_disk.management_terminal.disk_store.no_disk": "光标上没拿着样板磁盘",
   "gui.ae2_pattern_disk.management_terminal.disk_store.no_room": "%s 没有空的磁盘槽了",
   "gui.ae2_pattern_disk.management_terminal.disk_store.no_host": "那台容器已经不在网格上了",
+  "gui.ae2_pattern_disk.management_terminal.disk_store.select_first": "先右键选中一张磁盘，再 Shift+左键背包里的样板磁盘（会存进同一台容器）",
   "gui.ae2_pattern_disk.sort.additional.enable": "启用附加排序",
   "gui.ae2_pattern_disk.sort.additional.disable": "关闭附加排序",
   "gui.ae2_pattern_disk.sort.additional.rule.group": "一级（分组）：去掉数字后名称相同的归为一组，1k存储元件与4k存储元件同组，1k存储组件另成一组",
   "gui.ae2_pattern_disk.sort.additional.rule.numeric": "二级（组内）：按名称里的数值排——1k < 4k < 16k < 64k < 256k < 1M",
   "gui.ae2_pattern_disk.pattern_disk_provider.push_direction": "推入方向：%s",
   "gui.ae2_pattern_disk.pattern_disk_provider.push_direction.all": "全向",
-  "gui.ae2_pattern_disk.pattern_disk_provider.push_direction.side": "%s面"
+  "gui.ae2_pattern_disk.pattern_disk_provider.push_direction.side": "%s面",
+  "gui.ae2_pattern_disk.management_terminal.disk_store.disk_gone": "选中的那张样板磁盘已经不在了",
+  "gui.ae2_pattern_disk.management_terminal.disk_store.slot_changed": "那一格里的样板磁盘已经不在原位了"
 }

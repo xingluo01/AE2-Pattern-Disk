@@ -49,9 +49,9 @@ Everything acts on the cell under the cursor:
 | Shift + left click a pattern | Moves it into your inventory |
 | Right click a pattern | Puts it into the pattern editing slot (i.e. "keep editing this one") |
 | Left click a "free slots" cell (holding a pattern disk) | Puts that disk into a free disk slot on that container; the table and its contents refresh right away |
-| Shift + left click a free-slot cell / a machine header | Stashes one pattern disk into that container: the cursor first, then your inventory |
+| Shift + left click a pattern disk in your inventory | Stores it into **the container the selected disk sits in** (right-click a disk to select it first; without a selection the chat says so) |
 
-> Which slot it lands in is decided by the server (the first free one) - the client's list can be a frame behind, so letting it name a slot would be the easier way to write to the wrong place. An occupied disk cell keeps its existing gesture (left click takes it), no swapping; "nothing to store", "no free slot" and "that container is gone" each report in chat; a successful store only announces on the action bar, so quick repeated clicks do not spam chat.
+> Which slot it lands in is decided by the server (the first free one) - the client's list can be a frame behind, so letting it name a slot would be the easier way to write to the wrong place. An occupied disk cell keeps its existing gesture (left click takes it), no swapping; "nothing to store", "no free slot", "that container is gone" and "no disk selected yet" each report in chat; a successful store only announces on the action bar, so quick repeated clicks do not spam chat.
 
 > Patterns are materialised: taking one out of a disk spends **one blank pattern** from the ME network (the same accounting the pattern access terminal uses when you pull a row out), and a disk holding nothing to spare simply refuses; writing a pattern back to a disk returns that blank pattern to the network. A disk itself is just an item, so taking one out costs nothing.
 > While you are holding a work block, right clicking marks rather than selects - put the block down (empty-handed, or holding anything else) to select a disk.

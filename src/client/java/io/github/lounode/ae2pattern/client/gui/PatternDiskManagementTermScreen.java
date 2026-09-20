@@ -19,6 +19,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.Slot;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
@@ -32,6 +34,8 @@ import appeng.api.config.ShowPatternProviders;
 import appeng.api.config.SortDir;
 import appeng.api.config.SortOrder;
 import appeng.client.gui.me.common.MEStorageScreen;
+import appeng.menu.SlotSemantics;
+import appeng.menu.slot.DisabledSlot;
 import appeng.client.gui.style.Blitter;
 import appeng.client.gui.style.ScreenStyle;
 import appeng.client.gui.widgets.ActionButton;
@@ -770,20 +774,14 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
                 }
                 return true;
             }
-            // Shift+左键组头：快速存一张盘进这台容器（光标优先，其次背包）。
-            if (btn == 0 && hasShiftDown() && canStoreDisk(true)) {
-                getMenu().insertDisk(new PatternDiskManagementTermMenu.InsertDiskRequest(host.key(), true));
-            }
             return true;
         }
 
-        // 空磁盘槽格：左键＝把光标上那张放进去（服务端挑第一个空槽）；Shift+左键＝连背包一起找。
+        // 空磁盘槽格：左键＝把光标上那张放进去（服务端挑第一个空槽）。
+        // 「把背包里的盘存进某台容器」不挂在这里，而是 Shift+左键背包里的那张盘（见 slotClicked）。
         if (row instanceof FreeSlotsRow free) {
-            if (btn == 0) {
-                boolean shift = hasShiftDown();
-                if (canStoreDisk(shift)) {
-                    getMenu().insertDisk(new PatternDiskManagementTermMenu.InsertDiskRequest(free.hostKey(), shift));
-                }
+            if (btn == 0 && !hasShiftDown() && holdingDisk()) {
+                getMenu().insertDisk(new PatternDiskManagementTermMenu.InsertDiskRequest(free.hostKey()));
             }
             return true;
         }
@@ -830,25 +828,42 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         return true;
     }
 
-    /** 手上（或背包）有没有可存入的样板磁盘；没有就不发动作，免得白跑一趟服务端、还弹一句“没有盘”。 */
-    private boolean canStoreDisk(boolean allowInventory) {
-        if (getMenu().getCarried().getItem() instanceof PatternDiskItem) {
-            return true;
-        }
-        if (!allowInventory) {
-            return false;
-        }
-        var player = Minecraft.getInstance().player;
-        if (player == null) {
-            return false;
-        }
-        var inventory = player.getInventory();
-        for (int i = 0; i < inventory.getContainerSize(); i++) {
-            if (inventory.getItem(i).getItem() instanceof PatternDiskItem) {
-                return true;
+    /** 光标上是不是拿着一块样板磁盘（只影响要不要发动作，真伪由服务端再判一次）。 */
+    private boolean holdingDisk() {
+        return getMenu().getCarried().getItem() instanceof PatternDiskItem;
+    }
+
+    /**
+     * Shift+左键**背包里**的样板磁盘：把它存进「右键选中那张盘」所在的容器。
+     *
+     * <p>拦在 {@code super} 之前：这一下原本会走普通的快捷移动——本屏已经把进网络那条堵了，而 AE2 还有一条
+     * “没目标槽位就塞进空 FakeSlot”的回退，会往合成格里放一份不消耗原物的鬼影；拦下来既避免了那一下，
+     * 也把这条手势拿来做正事。目标容器不取鼠标下的位置——此刻鼠标在背包上——而取选中的那张盘：
+     * 这条手势的意思就是「跟它放一起」。</p>
+     */
+    @Override
+    protected void slotClicked(@Nullable Slot slot, int slotIdx, int mouseButton, ClickType clickType) {
+        if (clickType == ClickType.QUICK_MOVE && slot != null && !(slot instanceof DisabledSlot)
+                && slot.getItem().getItem() instanceof PatternDiskItem && isPlayerSideSlot(slot)) {
+            if (this.selectedSerial == 0) {
+                var player = Minecraft.getInstance().player;
+                if (player != null) {
+                    player.displayClientMessage(Component.translatable(
+                            "gui.ae2_pattern_disk.management_terminal.disk_store.select_first"), false);
+                }
+                return;
             }
+            getMenu().storeInventoryDisk(new PatternDiskManagementTermMenu.StoreInventoryDiskRequest(
+                    this.selectedSerial, slot.getContainerSlot()));
+            return;
         }
-        return false;
+        super.slotClicked(slot, slotIdx, mouseButton, clickType);
+    }
+
+    /** 这个槽位是不是玩家背包那批（背包容量的槽号在服务端才用得着）。 */
+    private boolean isPlayerSideSlot(Slot slot) {
+        var semantic = getMenu().getSlotSemantic(slot);
+        return semantic == SlotSemantics.PLAYER_INVENTORY || semantic == SlotSemantics.PLAYER_HOTBAR;
     }
 
     /**
@@ -878,7 +893,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
                 guiGraphics.renderComponentTooltip(font, List.of(
                         Component.translatable("gui.ae2_pattern_disk.management_terminal.tooltip.free_slot.click")
                                 .withStyle(ChatFormatting.WHITE),
-                        Component.translatable("gui.ae2_pattern_disk.management_terminal.tooltip.free_slot.shift_click")
+                        Component.translatable("gui.ae2_pattern_disk.management_terminal.tooltip.free_slot.inventory")
                                 .withStyle(ChatFormatting.GRAY)),
                         x, y);
                 return;
