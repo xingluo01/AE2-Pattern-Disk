@@ -109,7 +109,7 @@ public class JeiDiskEncodeRecipeHandler implements IUniversalRecipeTransferHandl
     }
 
     /** One entry per input slot, each holding every variant JEI offers for that slot. */
-    private static List<List<GenericStack>> collectInputs(IRecipeSlotsView recipeSlots) {
+    static List<List<GenericStack>> collectInputs(IRecipeSlotsView recipeSlots) {
         var inputs = new ArrayList<List<GenericStack>>();
         for (var slotView : recipeSlots.getSlotViews()) {
             if (slotView.getRole() != RecipeIngredientRole.INPUT) {
@@ -130,7 +130,7 @@ public class JeiDiskEncodeRecipeHandler implements IUniversalRecipeTransferHandl
     }
 
     /** One entry per output slot: the encoder expects a single candidate per output. */
-    private static List<GenericStack> collectOutputs(IRecipeSlotsView recipeSlots) {
+    static List<GenericStack> collectOutputs(IRecipeSlotsView recipeSlots) {
         var outputs = new ArrayList<GenericStack>();
         for (var slotView : recipeSlots.getSlotViews()) {
             if (slotView.getRole() != RecipeIngredientRole.OUTPUT) {
