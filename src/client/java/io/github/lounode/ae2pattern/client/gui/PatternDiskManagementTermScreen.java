@@ -34,8 +34,9 @@ import io.github.lounode.ae2pattern.network.VisibleDisksPayload;
  *
  * <p>Layout comes from {@code Sprite-0001} (the texture this screen slices): a title strip and 17 columns of
  * 18px cells on top, then the player inventory on the left and the encoding area - the very same widgets the
- * encoding terminal builds in its constructor - on the right. The panel height (268px) is set by the style JSON's
- * {@code terminalStyle}; the current painted art ends earlier, and the extra strip at the bottom is plain background.</p>
+ * encoding terminal builds in its constructor - on the right. Every position in the style JSON is
+ * {@code top}-anchored, so the panel height (see the style JSON's {@code terminalStyle}) no longer moves
+ * anything on screen.</p>
  *
  * <p><b>Rows.</b> One row per machine (a header carrying its icon, name and disk count, plus a show/hide
  * toggle), then one row per disk: cell 0 is the disk itself, the remaining 16 cells are the patterns stored on
@@ -66,8 +67,11 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
 
     // 与贴图切片对齐的几何（Sprite-0001：0,0,339,133 是表格区；17 格 × 18px）
     private static final int PANEL_WIDTH = 340;
-    /** 面板高，与 style JSON 的 terminalStyle 算出的 imageHeight 一致（17+18+18+215）。 */
-    private static final int PANEL_HEIGHT = 268;
+    /**
+     * 面板高，与 style JSON 的 terminalStyle 算出的 imageHeight 一致（header 17 + firstRow 18 + lastRow 18 +
+     * bottom 167 = 220）。贴图实际画到 y=219，面板按它收，底部不留空白。
+     */
+    private static final int PANEL_HEIGHT = 220;
     private static final int LIST_X = 1;
     private static final int LIST_Y = 1;
     private static final int LIST_WIDTH = 339;
