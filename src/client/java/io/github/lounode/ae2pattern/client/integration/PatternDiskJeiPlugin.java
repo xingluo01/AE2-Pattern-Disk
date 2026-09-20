@@ -53,7 +53,7 @@ public class PatternDiskJeiPlugin implements IModPlugin {
 
     @Override
     public void registerGuiHandlers(IGuiHandlerRegistration registration) {
-        // 拖拽与 Shift+点击两个入口都在同一个幽灵物品处理器里（见 JeiEncodingGhostHandler）。
+        // 拖拽入口在幽灵物品处理器里（见 JeiEncodingGhostHandler）：每个活动的 FakeSlot 各是一个目标。
         // 管理终端是编码终端的子类，处理器表按屏幕 class 查、父类登记也能命中，但这里的实例只依赖
         // getMenu()/getGuiLeft()，多登一条零成本，还能避免“最近的一层”被别家（比如 AE2 的 JEI 集成给
         // AEBaseScreen 登的那条）抢在前头。
@@ -72,16 +72,15 @@ public class PatternDiskJeiPlugin implements IModPlugin {
     public void onRuntimeAvailable(IJeiRuntime jeiRuntime) {
         // 标记的显示名与机器名要按类别 id 反查，运行时对象是唯一入口（见 JeiMarkNames）。
         JeiMarkNames.setRuntime(jeiRuntime);
-        // Shift+点击要按物品查配方树，同样只能从运行时对象拿。
-        JeiEncodingGhostHandler.setRuntime(jeiRuntime);
         // 换了一个运行时对象就说明配方树重建了（重载资源也会走到这里），机器→类别索引必须跟着重建。
         MachineRecipeTypes.invalidate();
     }
 
     @Override
     public void onRuntimeUnavailable() {
-        // 旧的运行时对象已经作废：丢下它，别让下一次 Shift+点击拿着一个死对象去查配方。
-        JeiEncodingGhostHandler.setRuntime(null);
+        // JEI 丢掉旧运行时了：别让标记那边还拿着一个已失效的对象去反查（下一次 onRuntimeAvailable
+        // 会立刻填上新的）。
+        JeiMarkNames.setRuntime(null);
     }
 
     /**
