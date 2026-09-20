@@ -66,7 +66,8 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
 
     // 与贴图切片对齐的几何（Sprite-0001：0,0,339,133 是表格区；17 格 × 18px）
     private static final int PANEL_WIDTH = 340;
-    private static final int PANEL_HEIGHT = 251;
+    /** 面板高，与 style JSON 的 terminalStyle 算出的 imageHeight 一致（17+18+18+215）。 */
+    private static final int PANEL_HEIGHT = 268;
     private static final int LIST_X = 1;
     private static final int LIST_Y = 1;
     private static final int LIST_WIDTH = 339;
@@ -255,7 +256,9 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     @Override
     public void drawBG(GuiGraphics guiGraphics, int offsetX, int offsetY, int mouseX, int mouseY,
             float partialTicks) {
-        super.drawBG(guiGraphics, offsetX, offsetY, mouseX, mouseY, partialTicks);
+        // 不调 super.drawBG：父类的终端样式链会把 lastRow/bottom 推到面板高之外（row srcRect 高 1000 的
+        // hack 会导致 2 行之后跳 +2017px），改用固定贴图直接 blit。
+        guiGraphics.blit(TEXTURE, offsetX, offsetY, 0, 0, PANEL_WIDTH, PANEL_HEIGHT);
 
         int x = offsetX + LIST_X;
         int y = offsetY + LIST_Y;

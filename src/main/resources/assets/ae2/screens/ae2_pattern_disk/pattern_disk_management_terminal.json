@@ -66,66 +66,66 @@
  "slots": {
   "CRAFTING_GRID": {
    "left": 181,
-   "bottom": 108,
+   "top": 142,
    "grid": "BREAK_AFTER_3COLS"
   },
   "CRAFTING_RESULT": {
    "left": 264,
-   "bottom": 40
+   "top": 217
   },
   "PROCESSING_INPUTS": {
    "left": 190,
-   "bottom": 107,
+   "top": 143,
    "grid": "BREAK_AFTER_3COLS"
   },
   "PROCESSING_OUTPUTS": {
    "left": 267,
-   "bottom": 107,
+   "top": 143,
    "grid": "VERTICAL"
   },
   "SMITHING_TABLE_TEMPLATE": {
    "left": 182,
-   "bottom": 89
+   "top": 161
   },
   "SMITHING_TABLE_BASE": {
    "left": 200,
-   "bottom": 89
+   "top": 161
   },
   "SMITHING_TABLE_ADDITION": {
    "left": 218,
-   "bottom": 89
+   "top": 161
   },
   "SMITHING_TABLE_RESULT": {
    "left": 267,
-   "bottom": 89
+   "top": 161
   },
   "STONECUTTING_INPUT": {
    "left": 182,
-   "bottom": 88
+   "top": 162
   },
   "BLANK_PATTERN": {
    "left": 305,
-   "bottom": 114
+   "top": 136
   },
   "ENCODED_PATTERN": {
    "left": 305,
-   "bottom": 67
+   "top": 183
   },
   "PLAYER_INVENTORY": {
    "left": 7,
-   "bottom": 78,
+   "top": 136,
    "grid": "BREAK_AFTER_9COLS"
   },
   "PLAYER_HOTBAR": {
    "left": 7,
-   "bottom": 56,
+   "top": 194,
    "grid": "HORIZONTAL"
   }
  },
  "tooltips": {
   "processing-primary-output": {
    "left": 266,
-   "bottom": 108,
+   "top": 142,
    "width": 18,
    "height": 18,
    "tooltip": [
@@ -140,7 +140,7 @@
   },
   "processing-optional-output1": {
    "left": 266,
-   "bottom": 108,
+   "top": 142,
    "width": 18,
    "height": 18,
    "tooltip": [
@@ -155,7 +155,7 @@
   },
   "processing-optional-output2": {
    "left": 266,
-   "bottom": 90,
+   "top": 160,
    "width": 18,
    "height": 18,
    "tooltip": [
@@ -170,7 +170,7 @@
   },
   "processing-optional-output3": {
    "left": 266,
-   "bottom": 72,
+   "top": 178,
    "width": 18,
    "height": 18,
    "tooltip": [
@@ -200,7 +200,7 @@
    },
    "position": {
     "left": 7,
-    "bottom": 73
+    "top": 127
    }
   },
   "encoding_title": {
@@ -209,96 +209,96 @@
    },
    "position": {
     "left": 175,
-    "bottom": 132
+    "top": 136
    }
   }
  },
  "widgets": {
   "modePanel0": {
    "left": 175,
-   "bottom": 57,
+   "top": 145,
    "width": 115,
    "height": 66
   },
   "modePanel1": {
    "left": 175,
-   "bottom": 57,
+   "top": 145,
    "width": 115,
    "height": 66
   },
   "modePanel2": {
    "left": 175,
-   "bottom": 57,
+   "top": 145,
    "width": 115,
    "height": 66
   },
   "modePanel3": {
    "left": 175,
-   "bottom": 57,
+   "top": 145,
    "width": 115,
    "height": 66
   },
   "encodePattern": {
    "left": 305,
-   "bottom": 94
+   "top": 174
   },
   "craftingClearPattern": {
    "left": 237,
-   "bottom": 108
+   "top": 160
   },
   "craftingSubstitutions": {
    "left": 247,
-   "bottom": 108
+   "top": 160
   },
   "craftingFluidSubstitutions": {
    "left": 257,
-   "bottom": 108
+   "top": 160
   },
   "processingPatternModeScrollbar": {
    "left": 180,
-   "bottom": 108,
+   "top": 106,
    "height": 54
   },
   "processingClearPattern": {
    "left": 246,
-   "bottom": 108
+   "top": 160
   },
   "processingMergeItems": {
    "left": 256,
-   "bottom": 98
+   "top": 170
   },
   "processingRotatePrimary": {
    "left": 256,
-   "bottom": 108
+   "top": 160
   },
   "processingSubstitutions": {
    "left": 246,
-   "bottom": 98
+   "top": 170
   },
   "processingMultiply": {
    "left": 246,
-   "bottom": 62
+   "top": 206
   },
   "processingDivide": {
    "left": 256,
-   "bottom": 62
+   "top": 206
   },
   "smithingTableSubstitutions": {
    "left": 191,
-   "bottom": 100
+   "top": 168
   },
   "smithingTableClearPattern": {
    "left": 181,
-   "bottom": 100
+   "top": 168
   },
   "stonecuttingPatternModeScrollbar": {
    "left": 278,
-   "bottom": 109,
+   "top": 103,
    "height": 56
   },
   "miniSearch": {
    "left": 185,
-   "bottom": 128,
+   "top": 132,
    "width": 66,
    "height": 8
   },

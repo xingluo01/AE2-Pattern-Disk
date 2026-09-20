@@ -24,6 +24,7 @@ import appeng.core.localization.ItemModText;
 
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
+import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
 
 /**
  * JEI counterpart of {@link DiskEncodePatternHandler}: fills the pattern disk encoding terminal's encoding
@@ -63,7 +64,10 @@ public class JeiDiskEncodeRecipeHandler implements IUniversalRecipeTransferHandl
 
     @Override
     public Optional<MenuType<PatternDiskEncodingTermMenu>> getMenuType() {
-        return Optional.of(AEPatternRegistries.MENU_PATTERN_DISK_ENCODING_TERMINAL.get());
+        if (PatternDiskManagementTermMenu.class.isAssignableFrom(containerClass)) {
+            return Optional.of((MenuType) AEPatternRegistries.MENU_PATTERN_DISK_MANAGEMENT_TERMINAL.get());
+        }
+        return Optional.of((MenuType) AEPatternRegistries.MENU_PATTERN_DISK_ENCODING_TERMINAL.get());
     }
 
     @Override

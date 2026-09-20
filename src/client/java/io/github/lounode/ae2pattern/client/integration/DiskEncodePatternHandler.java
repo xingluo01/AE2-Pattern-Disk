@@ -28,6 +28,15 @@ public class DiskEncodePatternHandler extends AbstractDiskRecipeHandler<PatternD
         super(PatternDiskEncodingTermMenu.class);
     }
 
+    /**
+     * 绑定管理终端的菜单类：它与编码菜单共用同一套转移逻辑（管理菜单继承编码菜单），但 EMI 的
+     * 登记键要精确到具体类，所以单独传一个。
+     */
+    @SuppressWarnings("unchecked")
+    public DiskEncodePatternHandler(Class<? extends PatternDiskEncodingTermMenu> containerClass) {
+        super((Class<PatternDiskEncodingTermMenu>) containerClass);
+    }
+
     @Override
     protected Result transferRecipe(PatternDiskEncodingTermMenu menu, RecipeHolder<?> holder, EmiRecipe emiRecipe,
             boolean doTransfer) {
