@@ -1,6 +1,6 @@
 # AE2 Pattern Disk
 
-An addon for [Applied Energistics 2](https://github.com/AppliedEnergistics/Applied-Energistics-2) that adds high-capacity pattern disks, a disk-backed pattern provider, a pattern transferer, an efficient parallel molecular assembler, a batch assembler, and a pattern disk encoding terminal.
+An addon for [Applied Energistics 2](https://github.com/AppliedEnergistics/Applied-Energistics-2) that adds high-capacity pattern disks, a disk-backed pattern provider, a pattern transferer, an efficient parallel molecular assembler, a batch assembler, a pattern disk encoding terminal and a pattern disk management terminal.
 
 **Minecraft 1.21.1 · NeoForge · AE2 19 or newer · Java 21**
 
@@ -50,6 +50,16 @@ A panel that mounts on an ME cable and ties pattern encoding to pattern disks. I
 
 **NEO ECO integration.** With a NEO ECO AE Extension build that carries the pattern-disk integration hooks, an upload button appears that sends the encoded pattern to its computation cluster and returns a blank pattern in the order network → inventory → encoded slot. A build without those hooks simply has no button — nothing else about the mod changes.
 
+### ME Pattern Disk Management Terminal
+
+The second panel for the same cable, built for looking after disks rather than making patterns. It lists **every pattern disk on the network, grouped by the machine holding it** — each group header carries that machine's icon and name, how many disks it holds, and a toggle that hides the whole group. A disk starts a row: the disk cell first, then the patterns inside it; a disk with more patterns than fit continues on the following rows, which are pattern cells all the way. Pattern cells show the pattern's primary output, the same way the pattern access terminal does, so a pattern is readable without holding Shift; a pattern whose output cannot be resolved is flagged in red. Panel height follows the terminal-style option, as on the encoding terminal.
+
+**Finding things.** The search bar works like the encoding terminal's — by name, or by mark when prefixed with `#`. The sort buttons order the patterns *inside* the disks (by the displayed name, or by the mod of their output), and the extra sort option groups a series and orders by the number in it (`1k < 4k < 16k …`). The display mode button, shared with AE2's pattern access terminal, narrows the list to disks that are visible or to those with free slots; the hide/show slots button folds a machine's free slots into a single cell carrying the count, so a machine with no disks takes one row.
+
+**Take and put in place.** A disk: left click takes it onto the cursor, Shift + left click stows it into your inventory, right click selects it — the selected disk is where Encode writes, and its cell gets a highlight. Shift + right click writes the search bar's text as its mark, middle click renames it. The patterns inside a disk behave the same way, and right clicking one drops it into the pattern editing slot. Taking a pattern spends one blank pattern from the ME network and writing it back returns it, the same accounting the pattern access terminal uses; the disk itself costs nothing.
+
+**Storing a disk back into a container.** With a disk on the cursor, left click a machine's free-slot cell to store it there; or Shift + left click a disk in your inventory to store it into the container of the disk you currently have selected. The server picks the free slot, and the terminal reports in chat when there is nothing to store, no free slot, the container is gone, or no disk is selected yet.
+
 ### Efficient Molecular Assembler
 
 A parallel molecular assembler with **eight independent execution threads**. It accepts crafting jobs pushed by AE2 pattern providers and runs them concurrently. Each thread owns a 3×3 molecular assembler grid, an output slot, and independent progress.
@@ -88,7 +98,7 @@ Everything this mod adds is listed in the creative tab **AE2 Pattern Disk**, and
 
 ## In-game guide
 
-A GuideME guide ships with the mod, reachable from the AE2 guide book. It covers the pattern disks (all five tiers on one page), the pattern disk provider in both of its forms, the pattern transferer, the efficient molecular assembler, the batch assembler and the encoding terminal. It is available in English and Simplified Chinese. Of the five machine GUIs, the encoding terminal links to its guide page straight from the screen.
+A GuideME guide ships with the mod, reachable from the AE2 guide book. It covers the pattern disks (all five tiers on one page), the pattern disk provider in both of its forms, the pattern transferer, the efficient molecular assembler, the batch assembler, and the encoding and management terminals. It is available in English and Simplified Chinese. Of the six machine GUIs, the encoding terminal links to its guide page straight from the screen.
 
 ## Dependencies
 

@@ -17,6 +17,7 @@ name: Release
 #             CURSEFORGE_PROJECT_ID  CurseForge 数字项目 id（不是 slug）
 #             NEOECOAE_JAR_URL       libs/neoecoae-21.2.0-beta3.jar 的下载地址（见下方说明）
 #             MODDEVMCP_JAR_URL     libs/moddevmcp-0.3.jar 的下载地址（同为本地专属依赖，见下方说明）
+#             EAEPLUS_JAR_URL       libs/extendedae_plus-1.6.2-dev.jar 的下载地址（缺它 fetch 步骤会硬失败，见下方说明）
 #
 # 两个平台都要求项目先存在：Modrinth 项目要已创建；CurseForge 项目必须人工在站点创建（自动化只能传文件，
 # 建不了项目），且首个文件要过人工审核才对玩家可见。

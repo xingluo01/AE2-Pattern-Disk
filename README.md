@@ -111,6 +111,7 @@ Up to **four AE2 Speed Cards** add worker threads (2 / 4 / 8 / 16): those thread
 | `ae2_pattern_disk:pattern_disk_64k` | 64k Pattern Disk | Item |
 | `ae2_pattern_disk:pattern_disk_256k` | 256k Pattern Disk | Item |
 | `ae2_pattern_disk:pattern_disk_encoding_terminal` | ME Pattern Disk Encoding Terminal | Item (part) |
+| `ae2_pattern_disk:pattern_disk_management_terminal` | ME Pattern Disk Management Terminal | Item (part) |
 | `ae2_pattern_disk:pattern_transferer` | ME Pattern Transferer | Block |
 | `ae2_pattern_disk:pattern_disk_provider` | ME Pattern Disk Provider | Block |
 | `ae2_pattern_disk:cable_pattern_disk_provider` | ME Pattern Disk Provider | Item (part) |
@@ -263,9 +264,9 @@ This mod is an addon for **[Applied Energistics 2](https://github.com/AppliedEne
 | `assets/ae2_pattern_disk/textures/part/pattern_disk_encoding_terminal_bright.png` | `assets/ae2/textures/part/pattern_encoding_terminal_bright.png` |
 | `assets/ae2_pattern_disk/textures/part/pattern_disk_encoding_terminal_medium.png` | `assets/ae2/textures/part/pattern_encoding_terminal_medium.png` |
 | `assets/ae2_pattern_disk/textures/part/pattern_disk_encoding_terminal_dark.png` | `assets/ae2/textures/part/pattern_encoding_terminal_dark.png` |
-| `assets/ae2_pattern_disk/textures/part/pattern_disk_management_terminal_bright.png` | byte-identical copy of this mod's `pattern_disk_encoding_terminal_bright.png` (row above) |
+| `assets/ae2_pattern_disk/textures/part/pattern_disk_management_terminal_bright.png` | locally edited (2026-09-21) derivative of this mod's `pattern_disk_encoding_terminal_bright.png` (row above) |
 | `assets/ae2_pattern_disk/textures/part/pattern_disk_management_terminal_medium.png` | byte-identical copy of this mod's `pattern_disk_encoding_terminal_medium.png` (row above) |
-| `assets/ae2_pattern_disk/textures/part/pattern_disk_management_terminal_dark.png` | byte-identical copy of this mod's `pattern_disk_encoding_terminal_dark.png` (row above) |
+| `assets/ae2_pattern_disk/textures/part/pattern_disk_management_terminal_dark.png` | locally edited (2026-09-21) derivative of this mod's `pattern_disk_encoding_terminal_dark.png` (row above) |
 | `assets/ae2_pattern_disk/textures/part/monitor_front.png` | `assets/ae2/textures/part/monitor_front.png` |
 | `assets/ae2_pattern_disk/textures/part/monitor_sides.png` | `assets/ae2/textures/part/monitor_sides.png` |
 | `assets/ae2_pattern_disk/textures/part/monitor_back.png` | `assets/ae2/textures/part/monitor_back.png` |
