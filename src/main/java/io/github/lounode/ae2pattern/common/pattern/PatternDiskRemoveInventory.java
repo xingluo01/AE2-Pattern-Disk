@@ -60,7 +60,10 @@ public class PatternDiskRemoveInventory implements InternalInventory {
 
         /**
          * Read-only check: whether the attached ME network currently holds at least {@code count}
-         * blank patterns. Defaults to {@code true} (compatible with sinks without a pre-check).
+         * blank patterns ({@code = "can we draw?"}). Defaults to {@code true} (compatible with sinks
+         * without a pre-check).
+         *
+         * @see #hasRoomForBlankPatterns(int) the opposite question - can the network *take one back*
          */
         default boolean hasBlankPatterns(int count) {
             return true;
@@ -72,6 +75,19 @@ public class PatternDiskRemoveInventory implements InternalInventory {
          * Defaults to a no-op for sinks without a restore path.
          */
         default boolean returnBlankPatterns(int count) {
+            return true;
+        }
+
+        /**
+         * Read-only check: whether the attached ME network could take {@code count} blank patterns right
+         * now ({@code = "could we return one?"}). Write paths that owe the network a blank pattern ask this
+         * <em>before</em> mutating anything, so a network that cannot take it back makes the write fail
+         * instead of quietly eating the pattern. Defaults to {@code true} (compatible with sinks without a
+         * pre-check).
+         *
+         * @see #hasBlankPatterns(int) the opposite question - does the network *hold* one to draw
+         */
+        default boolean hasRoomForBlankPatterns(int count) {
             return true;
         }
     }
@@ -221,6 +237,12 @@ public class PatternDiskRemoveInventory implements InternalInventory {
         if (level == null) {
             return stack; // not in a level yet: there is no disk state to decode a pattern against
         }
+        // Writing a pattern onto a disk owes the ME network one blank pattern back (the accounting every
+        // write path here follows). Ask first: a network that cannot take it back makes this upload fail
+        // with the pattern still in the caller's hands, rather than letting the blank pattern evaporate.
+        if (blankPatternSink != null && !blankPatternSink.hasRoomForBlankPatterns(1)) {
+            return stack;
+        }
         // The first disk that takes it wins, in slot order: a disk-backed provider decides where a pattern
         // lands, and the upload path offers no way to say otherwise.
         for (int slot = 0; slot < diskInventory.size(); slot++) {
@@ -248,8 +270,14 @@ public class PatternDiskRemoveInventory implements InternalInventory {
 
     /**
      * Returns one blank pattern this view owes the ME network, logging the loss when the network will not
-     * take it back. Best effort by design: whatever freed the pattern is already done and is not rolled
-     * back, since the caller offers no fallback destination for it.
+     * take it back.
+     *
+     * <p><b>This last-resort branch is not the upload path.</b> {@link #insertItem} asks
+     * {@link BlankPatternSink#hasRoomForBlankPatterns} before it writes anything, so an upload can never
+     * reach this log; what can is a swap restore (where refusing to restore would lose the disk's own
+     * pattern instead - the worse trade) and the tiny window between that pre-check and the real insert.
+     * Best effort by design: whatever freed the pattern is already done and is not rolled back, since the
+     * caller offers no fallback destination for it.</p>
      *
      * @param diskSlot the disk involved, for the log line
      */

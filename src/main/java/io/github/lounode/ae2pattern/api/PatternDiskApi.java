@@ -86,6 +86,11 @@ public final class PatternDiskApi {
      * disk. The returned view caches its row layout, so call {@link PatternDiskTerminalView#invalidate()}
      * when the disks change.</p>
      *
+     * <p>Its write path (a pattern being uploaded onto a disk) first checks that the network can take the
+     * blank pattern that write frees, and <b>refuses the write</b> when it cannot - so an upload can fail
+     * for a full or offline network, and the pattern stays with the caller instead of the blank pattern
+     * being lost.</p>
+     *
      * @param diskSlots  the slots holding pattern disks (slots holding anything else are ignored). The
      *                   view writes back through {@code setItemDirect} whenever a pattern is taken,
      *                   uploaded or rolled back, so the inventory must actually persist writes

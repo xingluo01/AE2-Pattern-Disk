@@ -105,4 +105,16 @@ public final class PatternDiskTerminalView implements PatternDiskRemoveInventory
         var blank = AEItemKey.of(AEItems.BLANK_PATTERN);
         return storage.insert(blank, count, Actionable.MODULATE, actionSource) == count;
     }
+
+    @Override
+    public boolean hasRoomForBlankPatterns(int count) {
+        var grid = gridSupplier.get();
+        if (grid == null || count <= 0) {
+            return false;
+        }
+        var storage = grid.getStorageService().getInventory();
+        var blank = AEItemKey.of(AEItems.BLANK_PATTERN);
+        // 与真正退还同一套参数，只是不动库存：写入路径靠这一问决定“写不写”，问错了才会吞掉那张空白样板。
+        return storage.insert(blank, count, Actionable.SIMULATE, actionSource) == count;
+    }
 }

@@ -31,9 +31,11 @@ Mounted on an ME cable it becomes a panel: same disk slots, interface, pattern l
 
 The two forms convert into each other: a shapeless craft in a crafting grid swaps one for the other, with no extra materials.
 
-## Upload button (ExtendedAE Plus)
+## Upload button (ExtendedAE Plus / AE2:Utility)
 
-With ExtendedAE Plus installed, its "upload pattern to a provider" button works on this provider too. The provider has no pattern slots of its own, so an uploaded pattern lands in a free space on one of the disks it holds.
+With ExtendedAE Plus installed, its "upload pattern to a provider" button works on this provider too. The provider has no pattern slots of its own, so an uploaded pattern lands in a free space on one of the disks it holds. **AE2:Utility** goes through the same upload API, so its automatic upload lands here as well.
+
+Storing a pattern on a disk returns the blank pattern it freed to the ME network - the accounting this mod always applies (pulling a pattern back out of a disk spends one, the other way round). A network that is gone or full simply refuses the write: better a failed upload (with the pattern still in the uploader's hands) than a blank pattern that quietly vanishes.
 
 ## Recipes
 
