@@ -299,12 +299,12 @@
   "miniSearch": {
    "left": 230,
    "top": 4,
-   "width": 88,
+   "width": 66,
    "height": 12
   },
   "search": {
    "left": 1000,
-   "top": 0
+   "top": -1000
   },
   "craftingStatus": {
    "left": 310,

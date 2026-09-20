@@ -260,8 +260,8 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     public void drawBG(GuiGraphics guiGraphics, int offsetX, int offsetY, int mouseX, int mouseY,
             float partialTicks) {
         // 不调 super.drawBG：父类的终端样式链会把 lastRow/bottom 推到面板高之外（row srcRect 高 1000 的
-        // hack 会导致 2 行之后跳 +2017px），改用固定贴图直接 blit。跳过它的唯一代价是 AE2 物品网格的
-        // pinned 行覆盖层——本屏不显示那个网格，本来就不需要。
+        // hack 会导致 2 行之后跳 +2017px），改用固定贴图直接 blit。跳过它的代价是 AE2 物品网格的 pinned
+        // 行覆盖层与那次手写 searchField.render——本屏不显示那个网格，而搜索框仍由 widget 容器正常渲染。
         guiGraphics.blit(TEXTURE, offsetX, offsetY, 0, 0, PANEL_WIDTH, PANEL_HEIGHT);
 
         int x = offsetX + LIST_X;

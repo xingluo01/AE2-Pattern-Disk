@@ -11,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import org.lwjgl.glfw.GLFW;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.Util;
@@ -254,6 +255,33 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
                 Component.translatable("gui.ae2_pattern_disk.encoding_terminal.show_unmarked.off")));
         addRenderableWidget(showUnmarked);
         this.showUnmarkedButton = showUnmarked;
+    }
+
+    /**
+     * 磁盘搜索框聚焦时直接转给它，绕开 {@code MEStorageScreen.charTyped} 的“搜索框为空时吞掉空格”。
+     *
+     * <p>那条特例是给物品网格搜索用的（空格在那边是快捷操作），但磁盘名里就有空格，所以磁盘搜索框必须收得下。</p>
+     */
+    @Override
+    public boolean charTyped(char character, int modifiers) {
+        if (miniSearchField.isFocused()) {
+            return miniSearchField.charTyped(character, modifiers);
+        }
+        return super.charTyped(character, modifiers);
+    }
+
+    /**
+     * 同理：父类的回车分支只认物品网格搜索框，磁盘搜索框里的回车会落到 super，行为不定。
+     * 这里按同一口径处理：回车收起焦点。
+     */
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (miniSearchField.isFocused() && keyCode == GLFW.GLFW_KEY_ENTER) {
+            miniSearchField.setFocused(false);
+            setFocused(null);
+            return true;
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
     private void cycleMode() {
