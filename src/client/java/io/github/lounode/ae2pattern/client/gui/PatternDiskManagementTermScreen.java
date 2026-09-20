@@ -93,6 +93,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     private static final int CONTENT_MARGIN_ROWS = 1;
 
     // 三个静态 Blitter：UV 按 512 算（见 TEXTURE_SIZE），每帧不新建对象。
+    // 注意它们是可变对象：每次使用必须紧接 dest(...) + blit(...)，不要缓存引用到别处再画。
     private static final Blitter BACKGROUND = Blitter.texture(TEXTURE, TEXTURE_SIZE, TEXTURE_SIZE)
             .src(0, 0, PANEL_WIDTH, PANEL_HEIGHT);
     private static final Blitter LIST_TITLE = Blitter.texture(TEXTURE, TEXTURE_SIZE, TEXTURE_SIZE)

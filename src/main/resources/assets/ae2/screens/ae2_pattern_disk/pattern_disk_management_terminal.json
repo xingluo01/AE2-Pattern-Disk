@@ -32,6 +32,7 @@
   },
   "row": {
    "texture": "ae2_pattern_disk:textures/guis/pattern_disk_management_terminal.png",
+   "$comment": "srcRect 高 1000 越界是故意的：它只被 getSrcHeight() 消费，用来把 rows 锁在 2、面板高恒为 220。本屏覆写 drawBG 跳过了终端样式链，这块从不绘制；一旦有人改成调 super.drawBG，v 方向 UV 会到约 1.99 而花屏。",
    "srcRect": [
     0,
     17,
