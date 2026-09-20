@@ -44,6 +44,8 @@ public class DiskEncodingLogic implements InternalInventoryHost {
     private EncodingMode mode = EncodingMode.CRAFTING;
     private boolean substitute = false;
     private boolean substituteFluids = true;
+    private boolean mergeSameItems = true;
+    private boolean showUnmarkedDisks = false;
     private boolean isLoading = false;
     @Nullable
     private ResourceLocation stonecuttingRecipeId;
@@ -134,6 +136,20 @@ public class DiskEncodingLogic implements InternalInventoryHost {
     public void setSubstitution(boolean v) { this.substitute = v; saveChanges(); }
     public boolean isFluidSubstitution() { return substituteFluids; }
     public void setFluidSubstitution(boolean v) { this.substituteFluids = v; saveChanges(); }
+
+    /**
+     * 处理模式下的「合并相同物品」。和替换一样存在宿主部件自己的 NBT 里：终端就是部件，开关就是它的设置，
+     * 重开终端不该把它忘掉。
+     */
+    public boolean isMergeSameItems() { return mergeSameItems; }
+    public void setMergeSameItems(boolean v) { this.mergeSameItems = v; saveChanges(); }
+
+    /**
+     * 「强制列出无标记的样板磁盘」。本身只是客户端的过滤口径，但同样存进宿主 NBT——玩家的诉求是“别每次开
+     * 终端重调”，按终端记住即可。
+     */
+    public boolean isShowUnmarkedDisks() { return showUnmarkedDisks; }
+    public void setShowUnmarkedDisks(boolean v) { this.showUnmarkedDisks = v; saveChanges(); }
     public @Nullable ResourceLocation getStonecuttingRecipeId() { return stonecuttingRecipeId; }
     public void setStonecuttingRecipeId(@Nullable ResourceLocation id) { this.stonecuttingRecipeId = id; saveChanges(); }
 
@@ -148,6 +164,10 @@ public class DiskEncodingLogic implements InternalInventoryHost {
             try { this.mode = EncodingMode.valueOf(data.getString("mode")); } catch (IllegalArgumentException ignored) { this.mode = EncodingMode.CRAFTING; }
             this.substitute = data.getBoolean("substitute");
             this.substituteFluids = data.getBoolean("substituteFluids");
+            // 这两个键是后加的：旧存档里没有。缺键时必须落到各自的默认值（合并默认开、无标记默认不列），
+            // 不能直接 getBoolean——那会把缺失读成 false，把开关反过来。
+            this.mergeSameItems = !data.contains("mergeSameItems") || data.getBoolean("mergeSameItems");
+            this.showUnmarkedDisks = data.contains("showUnmarkedDisks") && data.getBoolean("showUnmarkedDisks");
             if (data.contains("stonecuttingRecipeId", net.minecraft.nbt.Tag.TAG_STRING)) {
                 this.stonecuttingRecipeId = ResourceLocation.parse(data.getString("stonecuttingRecipeId"));
             } else { this.stonecuttingRecipeId = null; }
@@ -162,6 +182,8 @@ public class DiskEncodingLogic implements InternalInventoryHost {
         data.putString("mode", this.mode.name());
         data.putBoolean("substitute", this.substitute);
         data.putBoolean("substituteFluids", this.substituteFluids);
+        data.putBoolean("mergeSameItems", this.mergeSameItems);
+        data.putBoolean("showUnmarkedDisks", this.showUnmarkedDisks);
         if (this.stonecuttingRecipeId != null) data.putString("stonecuttingRecipeId", this.stonecuttingRecipeId.toString());
         blankPatternInv.writeToNBT(data, "blankPattern", registries);
         encodedPatternInv.writeToNBT(data, "encodedPattern", registries);

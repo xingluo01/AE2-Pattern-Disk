@@ -112,10 +112,7 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     /** 已经填过的那次导入（菜单里的导入修订号）：搜索栏只在导入发生时填，见 updateBeforeRender。 */
     private int seenImportRevision;
 
-    /** 是否把无标记的磁盘也列出来。默认否；按钮的状态跟着它走（init 会被多次调用）。 */
-    private boolean showUnmarkedDisks;
-
-    /** 无标记磁盘的显示开关；每帧回写状态，否则点下去图标不会变。 */
+    /** 无标记磁盘的显示开关；每帧回写状态，否则点下去图标不会变。状态本体在菜单字段（服务端从宿主 logic 回读）。 */
     private StatesToggleButton showUnmarkedButton;
 
     /** 中键待改名的磁盘。serial 从 Long.MIN_VALUE 起自增、恒为负，所以不能拿它当“无待办”的哨兵。 */
@@ -253,14 +250,14 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         // 无标记磁盘的显示开关，贴在搜索栏右边 2px（搜索栏的可见宽度含内边距，所以要用它的 tooltip 区域），
         // 与它同高：搜索栏高 8，按钮也是 8x8，顶对齐即居中。
         var showUnmarked = new StatesToggleButton(ICON_SHOW_UNMARKED_ON, ICON_SHOW_UNMARKED_OFF,
-                state -> this.showUnmarkedDisks = state);
+                menu::setShowUnmarkedDisks);
         showUnmarked.setHalfSize(true);
         // 不要 hover 下压动画：开关的两种状态对应同一枚图标，悬停时下移 1px 会让它看起来在跳。
         showUnmarked.setPressAnimation(false);
         var searchArea = search.getTooltipArea();
         showUnmarked.setX(searchArea.getX() + searchArea.getWidth() + 2);
         showUnmarked.setY(search.getY());
-        showUnmarked.setState(showUnmarkedDisks);
+        showUnmarked.setState(menu.isShowUnmarkedDisks());
         showUnmarked.setTooltipOn(List.of(
                 Component.translatable("gui.ae2_pattern_disk.encoding_terminal.show_unmarked.on")));
         showUnmarked.setTooltipOff(List.of(
@@ -311,9 +308,9 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     protected void updateBeforeRender() {
         super.updateBeforeRender();
 
-        // 开关状态以字段为准回写：按钮自己只会翻转它内部那个 state，不回写就永远停在初始态。
+        // 开关状态每帧从菜单回写：权威值在部件的 logic 里，服务端每 tick 把它回读进菜单字段。
         if (this.showUnmarkedButton != null) {
-            this.showUnmarkedButton.setState(showUnmarkedDisks);
+            this.showUnmarkedButton.setState(menu.isShowUnmarkedDisks());
         }
 
         // 根据当前模式切换面板可见性
@@ -380,7 +377,7 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             diskEntries.removeIf(d -> {
                 if (!hasMark(d)) {
                     // 无标记：开关打开时一律留下；常态下仅在标记搜索里被筛掉（它没有标记可匹配）。
-                    return !showUnmarkedDisks && markSearch;
+                    return !menu.isShowUnmarkedDisks() && markSearch;
                 }
                 return !matchesSearch(d, matchNeedle, markSearch);
             });

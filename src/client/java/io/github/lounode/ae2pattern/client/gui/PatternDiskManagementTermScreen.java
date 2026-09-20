@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import appeng.client.gui.Icon;
 import appeng.client.gui.me.common.RepoSlot;
 
 import org.jetbrains.annotations.Nullable;
@@ -31,7 +30,6 @@ import appeng.client.gui.widgets.ActionButton;
 import appeng.client.gui.widgets.IconButton;
 import appeng.client.gui.widgets.ServerSettingToggleButton;
 import appeng.client.gui.widgets.SettingToggleButton;
-import appeng.client.gui.widgets.ToggleButton;
 import appeng.core.localization.ButtonToolTips;
 
 import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
@@ -44,9 +42,8 @@ import io.github.lounode.ae2pattern.network.VisibleDisksPayload;
  *
  * <p>Layout comes from {@code Sprite-0001} (the texture this screen slices): a title strip and 17 columns of
  * 18px cells on top, then the player inventory on the left and the encoding area - the very same widgets the
- * encoding terminal builds in its constructor - on the right. Every position in the style JSON is
- * {@code top}-anchored, so the panel height (see the style JSON's {@code terminalStyle}) no longer moves
- * anything on screen.</p>
+ * encoding terminal builds in its constructor - on the right. The footer entries in the style JSON are
+ * {@code bottom}-anchored, so they follow the panel height that {@code terminalStyle} produces.</p>
  *
  * <p><b>Rows.</b> One row per machine (a header carrying its icon, name and disk count, plus a show/hide
  * toggle), then one row per disk: cell 0 is the disk itself, the remaining 16 cells are the patterns stored on
@@ -88,7 +85,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     private final ServerSettingToggleButton<ShowPatternProviders> showProvidersButton;
 
     /** 「隐藏槽位/显示槽位」按钮：只影响本屏的行模型，不涉服务端。按下时要回写状态，所以不是 final。 */
-    private ToggleButton hideSlotsButton;
+    private StatesToggleButton hideSlotsButton;
 
     /** 当前是否收起空槽。默认收起：表的常规观感保持紧凑，想看全槽布局再展开。 */
     private boolean hideEmptySlots = true;
@@ -117,12 +114,15 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     private static final int ROW_HEIGHT = 18;
 
     /**
-     * 行内「内容线」的纵向起点：物品带上沿在 +1、内部从 +2 起（贴图实测物品带内部 37..51，带顶 35）；横向只
-     * 有 1px 边框，所以横向内缩另计（见绘制处的 +1）。
+     * 槽位内容的纵向起点：行带里格框的填充区从带上沿 +1 开始（横向同理，见各绘制处的 +1）。物品与槽底都从这里
+     * 画，不然会比格框低 1px、底下露出一道缝。
      */
-    private static final int CELL_Y_INSET = 2;
+    private static final int CELL_Y_INSET = 1;
+    /**
+     * 纯文本行（组头）的纵向起点：那一行没有格框，图标/文字/开关按自己的观感取 +2，不跟着槽位一起上移。
+     */
+    private static final int ROW_TEXT_Y_INSET = 2;
     private static final int COLUMNS = 17;
-    /** 上下最小留白保留给 AE2 自己的终端样式链用（本屏不自己算行数），这里不再重复它的常量。 */
     /** 视口外多要一行内容：滚一格时不至于先闪一帧空行。 */
     private static final int CONTENT_MARGIN_ROWS = 1;
 
@@ -175,6 +175,15 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
      */
     private static final int DISK_SLOT_TINT = 0x66B9F6CA;
 
+    // 「显示槽位 / 隐藏槽位」按钮的图标：states.png (64,32) 四格 = 展开、扫(80,32) 单格 = 收起（就在「标准/极速」
+    // 图标右侧、同一行，同一套 16×16 规格与配色）。按钮背景同本模组其他自绘按钮。
+    private static final ResourceLocation STATES = ResourceLocation
+            .parse("ae2_pattern_disk:textures/guis/states.png");
+    private static final Blitter ICON_SHOW_SLOTS = Blitter.texture(STATES).src(64, 32, 16, 16);
+    private static final Blitter ICON_HIDE_SLOTS = Blitter.texture(STATES).src(80, 32, 16, 16);
+    private static final Blitter BUTTON_BG_NORMAL = Blitter.texture(STATES).src(208, 224, 18, 20);
+    private static final Blitter BUTTON_BG_HOVER = Blitter.texture(STATES).src(226, 224, 18, 20);
+
     private sealed interface Row permits HostRow, DiskRow, FreeSlotsRow {
     }
 
@@ -210,16 +219,14 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
                 Settings.TERMINAL_SHOW_PATTERN_PROVIDERS, ShowPatternProviders.VISIBLE);
         addToLeftToolbar(this.showProvidersButton);
 
-        // 「隐藏槽位」只改客户端的行模型（空槽条数由服务端在分组里带出的槽位总数算出），所以是本屏自己的开关。
-        // 状态由本屏维护并回写，不依赖按钮自身的翻转时机。
-        this.hideSlotsButton = new ToggleButton(
-                Icon.ARROW_UP,
-                Icon.ARROW_DOWN,
-                state -> {
-                    // 不依赖按钮传入的状态：本屏自己翻转并回写，按几次都不会错位。
-                    this.hideEmptySlots = !this.hideEmptySlots;
-                    this.hideSlotsButton.setState(this.hideEmptySlots);
-                });
+        // 「隐藏槽位」只改客户端的行模型（空槽数由服务端在分组里带出），所以是本屏自己的开关。状态由本屏维护
+        // 并回写，不依赖按钮自身的翻转时机——按钮只负责把“按了一下”告诉监听器，图标由 setState 决定。
+        // 状态为 true（收起）时画单格图标，为 false（展开）时画四格图标，与「标准/极速」的排列一致。
+        this.hideSlotsButton = new StatesToggleButton(ICON_HIDE_SLOTS, ICON_SHOW_SLOTS, state -> {
+            this.hideEmptySlots = !this.hideEmptySlots;
+            this.hideSlotsButton.setState(this.hideEmptySlots);
+        });
+        this.hideSlotsButton.setBackground(BUTTON_BG_NORMAL, BUTTON_BG_HOVER);
         this.hideSlotsButton.setTooltipOn(List.of(
                 Component.translatable("gui.ae2_pattern_disk.management_terminal.hide_slots"),
                 Component.translatable("gui.ae2_pattern_disk.management_terminal.hide_slots_hint")));
@@ -528,13 +535,13 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
             switch (rows.get(rowIndex)) {
                 case HostRow host -> {
                     if (!host.icon().isEmpty()) {
-                        guiGraphics.renderItem(host.icon(), baseX + 1, rowY + CELL_Y_INSET);
+                        guiGraphics.renderItem(host.icon(), baseX + 1, rowY + ROW_TEXT_Y_INSET);
                     }
                     var label = host.diskCount() > 1
                             ? host.name() + " (" + host.diskCount() + ")"
                             : host.name();
                     guiGraphics.drawString(font, font.plainSubstrByWidth(label, 16 * 18 - TOGGLE_SIZE - 22),
-                            baseX + 21, rowY + CELL_Y_INSET + 4, textColor, false);
+                            baseX + 21, rowY + ROW_TEXT_Y_INSET + 4, textColor, false);
                     drawHostToggle(guiGraphics, baseX, rowY, host.key());
                 }
                 case DiskRow disk -> drawDiskRow(guiGraphics, baseX, rowY, disk);
@@ -582,17 +589,18 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
      * 剩余槽位行：把空槽画成空格，收起时在唯一那格右上角写上它代表多少空槽。
      */
     private void drawFreeSlotsRow(GuiGraphics guiGraphics, int baseX, int rowY, FreeSlotsRow row) {
-        int cellY = rowY + CELL_Y_INSET;
+        // BLANK_CELL 是 18×18 的槽框（自带 1px 边框），落点与行带本身的格框同格位——框对框，它内部就自然落在
+        // +1，与同排物品格的内容线一致（物品画在 +CELL_Y_INSET）。
         for (int i = 0; i < row.cells(); i++) {
-            blit(BLANK_CELL, guiGraphics, baseX + 1 + i * ROW_HEIGHT, cellY);
+            blit(BLANK_CELL, guiGraphics, baseX + i * ROW_HEIGHT, rowY);
         }
 
         if (row.foldedCount() <= 0) {
             return;
         }
         var count = Integer.toString(row.foldedCount());
-        // 右上角：与那格右/上边线各留 1px。
-        guiGraphics.drawString(font, count, baseX + 1 + 16 - font.width(count), cellY + 1, 0xFF3F3F3F, false);
+        // 右上角：与那格右/上边线各留 1px（格内从框 +1 起）。
+        guiGraphics.drawString(font, count, baseX + 1 + 16 - font.width(count), rowY + 2, 0xFF3F3F3F, false);
     }
 
     /**
@@ -616,8 +624,8 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     /** 组头的显示/隐藏开关：一个小方块，隐藏时画成暗底。 */
     private void drawHostToggle(GuiGraphics guiGraphics, int baseX, int rowY, String key) {
         int x = baseX + LIST_WIDTH - TOGGLE_SIZE - 3;
-        // 行带内部自 CELL_Y_INSET 起、底部留 1px 边框，开关在这段里居中。
-        int y = rowY + CELL_Y_INSET + (ROW_HEIGHT - CELL_Y_INSET - 1 - TOGGLE_SIZE) / 2;
+        // 行带内部自 ROW_TEXT_Y_INSET 起、底部留 1px 边框，开关在这段里居中。
+        int y = rowY + ROW_TEXT_Y_INSET + (ROW_HEIGHT - ROW_TEXT_Y_INSET - 1 - TOGGLE_SIZE) / 2;
         boolean shown = !hiddenHosts.contains(key);
         guiGraphics.fill(x, y, x + TOGGLE_SIZE, y + TOGGLE_SIZE, shown ? 0xff9a9a9a : 0xff4a4a4a);
         guiGraphics.fill(x + 1, y + 1, x + TOGGLE_SIZE - 1, y + TOGGLE_SIZE - 1, shown ? 0xffcfcfcf : 0xff2a2a2a);

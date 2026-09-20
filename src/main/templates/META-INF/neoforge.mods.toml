@@ -31,13 +31,16 @@ versionRange="[19.0.0,)"
 ordering="NONE"
 side="BOTH"
 
-# JEI integration is optional, but needs JEI 19.56.0 or newer when present. That is the compile baseline of
-# both this mod and ExtendedAE Plus, so a pack cannot end up with a JEI that one accepts and the other rejects.
-# The recipe-transfer listener hook the disk-mark lookup uses would only need 19.52.0.
+# JEI integration is optional, and the only thing this mod needs from it is the recipe-transfer listener
+# hook: IRecipeTransferListener / IRecipeTransferContext / RecipeTransferResult appeared in 19.52.0, so that
+# is the floor. The ceiling is the 19.x line itself: 20.0.0 targets another Minecraft version and replaces
+# RecipeType with IRecipeType, which the disk-mark lookup still uses. A newer JEI than the floor is only
+# what ExtendedAE Plus asks for, and that mod declares its own requirement - packs without it do not have to
+# drag JEI up past 19.52.0. The compile baseline stays 19.56.0 (see gradle/libs.versions.toml).
 [[dependencies.${mod_id}]]
 modId="jei"
 type="optional"
-versionRange="[19.56.0,)"
+versionRange="[19.52.0,20.0.0)"
 ordering="AFTER"
 side="CLIENT"
 

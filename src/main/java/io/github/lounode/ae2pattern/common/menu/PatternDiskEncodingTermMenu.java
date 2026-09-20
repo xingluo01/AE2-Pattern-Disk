@@ -176,9 +176,16 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
     @GuiSync(93)
     public String recipePrefix = "";
 
-    /** 处理模式下同物品合并开关（true=启用，false=禁用）。 */
+    /** 处理模式下同物品合并开关（true=启用，false=禁用）。权威值在宿主 logic 里，这里是回读的镜像。 */
     @GuiSync(92)
     public boolean mergeSameItems = true;
+
+    /**
+     * 是否把无标记的样板磁盘也列出来。与「替换」同款：权威值在宿主部件自己的 logic 上（随部件 NBT 持久化），
+     * 服务端每 tick 把它回读进这个镜像字段，客户端按钮跟着它走。
+     */
+    @GuiSync(91)
+    public boolean showUnmarkedDisks;
 
     /**
      * 客户端侧：最近一次从 EMI/JEI 导入的配方类别 id。绑定标记时优先用它——它才是「这是一台什么
@@ -303,6 +310,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
         registerClientAction("refreshDiskList", this::refreshDiskList);
         registerClientAction(ACTION_RENAME_DISK, Long.class, this::renameDisk);
         registerClientAction("setMergeSameItems", Boolean.class, this::setMergeSameItems);
+        registerClientAction("setShowUnmarkedDisks", Boolean.class, this::setShowUnmarkedDisks);
         registerClientAction(ACTION_UPLOAD_PATTERN, this::uploadPattern);
 
         updateStonecuttingRecipes();
@@ -1257,6 +1265,9 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
             }
             this.substitute = encodingLogic.isSubstitution();
             this.substituteFluids = encodingLogic.isFluidSubstitution();
+            // 两个开关的权威值在部件自己的 logic 里（与替换同款），服务端每 tick 回读进菜单字段再下发客户端。
+            this.mergeSameItems = encodingLogic.isMergeSameItems();
+            this.showUnmarkedDisks = encodingLogic.isShowUnmarkedDisks();
             this.stonecuttingRecipeId = encodingLogic.getStonecuttingRecipeId();
             this.recipePrefix = Objects.toString(resolveCurrentRecipePrefix(), "");
             syncDiskList();
@@ -1450,11 +1461,12 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
     }
     public boolean isMergeSameItems() { return this.mergeSameItems; }
     public void setMergeSameItems(boolean v) {
-        if (isClientSide()) {
-            sendClientAction("setMergeSameItems", v);
-        } else {
-            this.mergeSameItems = v;
-        }
+        // 与替换同款：值落在宿主 logic 上并即时存盘，菜单字段只是镜像（服务端每 tick 回读）。
+        if (isClientSide()) sendClientAction("setMergeSameItems", v); else this.encodingLogic.setMergeSameItems(v);
+    }
+    public boolean isShowUnmarkedDisks() { return this.showUnmarkedDisks; }
+    public void setShowUnmarkedDisks(boolean v) {
+        if (isClientSide()) sendClientAction("setShowUnmarkedDisks", v); else this.encodingLogic.setShowUnmarkedDisks(v);
     }
     public @Nullable ResourceLocation getStonecuttingRecipeId() { return stonecuttingRecipeId; }
     public void setStonecuttingRecipeId(ResourceLocation id) {
