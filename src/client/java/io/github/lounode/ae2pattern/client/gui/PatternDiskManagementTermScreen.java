@@ -21,9 +21,16 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 
+import appeng.api.config.Settings;
+import appeng.api.config.ShowPatternProviders;
 import appeng.client.gui.style.Blitter;
 import appeng.client.gui.style.PaletteColor;
 import appeng.client.gui.style.ScreenStyle;
+import appeng.client.gui.widgets.ActionButton;
+import appeng.client.gui.widgets.IconButton;
+import appeng.client.gui.widgets.ServerSettingToggleButton;
+import appeng.client.gui.widgets.SettingToggleButton;
+import appeng.core.localization.ButtonToolTips;
 
 import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
 import io.github.lounode.ae2pattern.network.DiskHostListPayload;
@@ -74,6 +81,9 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
      * 同一块 srcRect 会到 2 倍坐标处取样，整块背景都是错的。</p>
      */
     private static final int TEXTURE_SIZE = 512;
+
+    /** 「显示模式」按钮：与 AE2 样板访问终端共用同一个服务端设置。 */
+    private final ServerSettingToggleButton<ShowPatternProviders> showProvidersButton;
 
     // 表格区几何：按贴图实测（描边带 x0..7，填充区从 x8 开始；表头 y0..16）。
     // 行分配同 AE2 的样板访问终端（PatternAccessTermScreen.drawBG）：一行 18px，按「行类型」从贴图取行带——
@@ -164,6 +174,12 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     public PatternDiskManagementTermScreen(PatternDiskManagementTermMenu menu, Inventory playerInventory,
             Component title, ScreenStyle style) {
         super(menu, playerInventory, title, style);
+
+        // 「显示模式」与 AE2 样板访问终端共用同一个服务端设置：同一套取值、同一份持久化。按钮的图标与提示由
+        // AE2 的 SettingToggleButton 静态注册表提供，本模组不需要自带资源。
+        this.showProvidersButton = new ServerSettingToggleButton<>(
+                Settings.TERMINAL_SHOW_PATTERN_PROVIDERS, ShowPatternProviders.VISIBLE);
+        addToLeftToolbar(this.showProvidersButton);
     }
 
     @Override
@@ -185,6 +201,38 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         // 父类把初始焦点给了 ME 搜索框，但本屏不显示物品网格，那个框在 JSON 里被移出面板；
         // 玩家打字应该进磁盘表的搜索框，否则键会走进一个看不见的输入框。
         setInitialFocus(miniSearchField());
+        hideIrrelevantToolbarButtons();
+    }
+
+    /**
+     * 隐藏 AE2 标准终端工具栏里对本屏无意义的按钮：「排序顺序」（本表顺序由服务端的宿主分组决定）与
+     * 「终端设置」（它的设置页全是物品网格的项）。
+     *
+     * <p>AE2 对这两枚都是无条件添加：字段 private、按钮条（{@code VerticalButtonBar}）只有 add 没有移除接口、
+     * 也没有可覆写的开关，所以在 super.init() 之后按控件身份精确匹配再关掉——排序顺序读
+     * {@link SettingToggleButton#getSetting()}，终端设置比对它自己的 tooltip 常量
+     * （{@link ButtonToolTips#TerminalSettings}，AE2 自带的语言键）。本屏自己的「编码」「清空」按钮虽然也是
+     * {@link ActionButton}，但 tooltip 是 Encode / ClearSettings，不会被误伤。</p>
+     *
+     * <p>{@code setVisibility(false)} 同时关掉 visible 与 active，TAB 焦点路径也取不到它；按钮条只排布可见
+     * 按钮，隐藏后不留空位。</p>
+     */
+    private void hideIrrelevantToolbarButtons() {
+        // 比字符串而非 Component：按钮的消息是已解析的字面文本，语言键形式的 Component 永远不等于它。
+        // 两边都走同一份语言文件，中英任何一种语言下都成立。
+        var terminalSettings = ButtonToolTips.TerminalSettings.text().getString();
+        for (var listener : this.children()) {
+            if (!(listener instanceof IconButton button)) {
+                continue;
+            }
+            boolean isSortDirection = button instanceof SettingToggleButton<?> toggle
+                    && toggle.getSetting() == Settings.SORT_DIRECTION;
+            boolean isTerminalSettings = button.getTooltipMessage().stream()
+                    .anyMatch(line -> line.getString().contains(terminalSettings));
+            if (isSortDirection || isTerminalSettings) {
+                button.setVisibility(false);
+            }
+        }
     }
 
     // ---- 行模型 ----
@@ -299,6 +347,8 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     @Override
     protected void updateBeforeRender() {
         super.updateBeforeRender();
+        // 显示模式按钮的档位回显：换档后服务端会重推分组清单，档位跟着清单回来。
+        this.showProvidersButton.set(getMenu().shownProviders());
         rebuildRows();
         if (--contentRefreshCooldown <= 0) {
             contentRefreshCooldown = CONTENT_REFRESH_INTERVAL_TICKS;

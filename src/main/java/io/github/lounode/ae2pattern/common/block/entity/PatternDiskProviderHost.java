@@ -40,4 +40,13 @@ public interface PatternDiskProviderHost extends PatternProviderLogicHost, IPatt
     default void openMenu(Player player, MenuHostLocator locator) {
         MenuOpener.open(PatternDiskProviderMenu.TYPE, player, locator);
     }
+
+    /**
+     * AE2 的 {@code PatternProviderLogicHost} 已经是 {@code PatternContainer}，直接转发它自己的实现——即 AE2 在
+     * 供应器界面上那个「在样板访问终端中显示」开关，本屏的「显示可见供应器」读的就是这个值。
+     */
+    @Override
+    default boolean isVisibleInPatternAccessTerminal() {
+        return isVisibleInTerminal();
+    }
 }

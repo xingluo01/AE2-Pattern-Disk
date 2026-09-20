@@ -16,6 +16,8 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 
+import appeng.api.config.Settings;
+import appeng.api.config.ShowPatternProviders;
 import appeng.menu.implementations.MenuTypeBuilder;
 
 import io.github.lounode.ae2pattern.api.IPatternDiskHost;
@@ -55,6 +57,9 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
     /** 客户端侧：服务端推送的分组清单（Screen 每帧读）。 */
     private List<DiskHostListPayload.HostGroup> hostList = List.of();
 
+    /** 客户端侧：服务端最近一次是按哪种显示模式筛的清单，屏幕用它回显按钮图标。 */
+    private ShowPatternProviders shownProviders = ShowPatternProviders.VISIBLE;
+
     /** 客户端侧：按序列号缓存的磁盘内容（Screen 每帧读）。 */
     private final Long2ObjectOpenHashMap<List<ItemStack>> diskContents = new Long2ObjectOpenHashMap<>();
 
@@ -64,6 +69,12 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
     /** 服务端侧：上次推送内容时的指纹，用来避免滚动一下就把整盘重发一遍。 */
     private final Long2IntOpenHashMap sentContentFingerprints = new Long2IntOpenHashMap();
 
+    /** 服务端侧：上次推送分组清单时的显示模式，换档就重推一次。 */
+    private ShowPatternProviders lastShowPatternProviders = ShowPatternProviders.VISIBLE;
+
+    /** 服务端侧：最近一次的扁平磁盘清单，换档时按它重新分组（清单本身没变，没必要重新扫网）。 */
+    private List<DiskListPayload.DiskEntry> lastDiskEntries = List.of();
+
     public PatternDiskManagementTermMenu(int id, Inventory ip, PatternDiskManagementTerminalPart host) {
         // 必须显式传本类的 TYPE：走父类那个只收 (id, ip, host) 的构造器会拿到编码终端的菜单类型，
         // 客户端据此查到的是编码终端的屏幕。
@@ -72,12 +83,32 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
 
     @Override
     protected void onDiskListRebuilt(List<DiskListPayload.DiskEntry> entries) {
-        // 父类的扁平列表按「序列号 → 宿主」重新分组：分组键取宿主的方块坐标与身份盐，同一根线缆上的
-        // 多块面板靠盐区分，与父类的指纹口径一致。
+        this.lastDiskEntries = List.copyOf(entries);
+
+        pushHostList(entries);
+
+        // 清单变了（换盘、加机器）：内容指纹作废，免得新盘拿旧内容顶数。
+        sentContentFingerprints.clear();
+        if (!isClientSide()) {
+            syncVisibleDiskContents();
+        }
+    }
+
+    /**
+     * 把父类的扁平清单按「序列号 → 宿主」分好组推给客户端。分组键取宿主的方块坐标与身份盐——同一根线缆上的
+     * 多块面板靠盐区分，与父类的指纹口径一致。
+     *
+     * <p>「显示模式」在服务端生效：{@code VISIBLE} 档只留
+     * {@link IPatternDiskHost#isVisibleInPatternAccessTerminal()} 为真的宿主，{@code ALL} 档全留。开关本身就是
+     * AE2 样板访问终端用的那一个键，两个终端共用同一份设置。</p>
+     */
+    private void pushHostList(List<DiskListPayload.DiskEntry> entries) {
+        var mode = getShownProviders();
+
         var builders = new LinkedHashMap<String, HostBuilder>();
         for (var entry : entries) {
             var host = diskHostOf(entry.serial());
-            if (host == null) {
+            if (host == null || !isShown(host, mode)) {
                 continue;
             }
             var key = hostKey(host);
@@ -94,27 +125,78 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
             groups.add(new DiskHostListPayload.HostGroup(builder.key, builder.name, builder.icon,
                     List.copyOf(builder.disks)));
         }
-        sendPacketToClient(new DiskHostListPayload(groups));
+        sendPacketToClient(new DiskHostListPayload(groups, mode));
+    }
 
-        // 清单变了（换盘、加机器）：内容指纹作废，免得新盘拿旧内容顶数。
-        sentContentFingerprints.clear();
-        if (!isClientSide()) {
-            syncVisibleDiskContents();
+    /**
+     * 与 AE2 样板访问终端同一口径（{@code PatternAccessTermMenu#isVisible}）：{@code VISIBLE} 只看宿主自己的
+     * 「在样板访问终端中显示」开关；{@code NOT_FULL} 再要求它还有空磁盘槽；{@code ALL} 全留。
+     *
+     * <p>AE2 那个终端还为 {@code NOT_FULL} 维护一份「打开终端时就已经可见」的宿主白名单，本屏没有对应 UI，
+     * 所以只按“是否已满”判断——语义一致，只是少那层保留。</p>
+     */
+    private static boolean isShown(IPatternDiskHost host, ShowPatternProviders mode) {
+        if (!host.isVisibleInPatternAccessTerminal()) {
+            return mode == ShowPatternProviders.ALL;
         }
+        return mode != ShowPatternProviders.NOT_FULL || !isFull(host);
+    }
+
+    /** 磁盘槽全插满了才算满：{@code NOT_FULL} 档就是靠它把满盘机器收起来。 */
+    private static boolean isFull(IPatternDiskHost host) {
+        var disks = host.getDiskInventory();
+        for (int slot = 0; slot < disks.size(); slot++) {
+            if (disks.getStackInSlot(slot).isEmpty()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 显示模式的当前档位；设置由本终端的部件注册（{@code PatternDiskManagementTerminalPart#registerSettings}），
+     * 与 AE2 样板访问终端同一个键，读的也是同一份实例。
+     */
+    public ShowPatternProviders getShownProviders() {
+        return getHost().getConfigManager().getSetting(Settings.TERMINAL_SHOW_PATTERN_PROVIDERS);
+    }
+
+    @Override
+    public boolean canConfigureTypeFilter() {
+        // 本屏没有物品网格，「配置可见类型」筛的是网格里的物品，这里没有可筛的东西，按钮去掉。
+        return false;
     }
 
     @Override
     public void broadcastChanges() {
-        super.broadcastChanges();
-        if (!isClientSide()) {
-            syncVisibleDiskContents();
+        if (isClientSide()) {
+            return;
         }
+
+        super.broadcastChanges();
+
+        // 显示模式换档：按同一份清单重新分组推送（顺带把新档位带回客户端回显图标）。
+        var shownProviders = getShownProviders();
+        if (lastShowPatternProviders != shownProviders) {
+            lastShowPatternProviders = shownProviders;
+            if (!lastDiskEntries.isEmpty()) {
+                pushHostList(lastDiskEntries);
+            }
+        }
+
+        syncVisibleDiskContents();
     }
 
     // ---- 客户端侧：接收 ----
 
-    public void receiveHostList(List<DiskHostListPayload.HostGroup> hosts) {
+    public void receiveHostList(List<DiskHostListPayload.HostGroup> hosts, ShowPatternProviders shownProviders) {
         this.hostList = List.copyOf(hosts);
+        this.shownProviders = shownProviders;
+    }
+
+    /** 服务端最近一次筛清单用的显示模式；屏幕拿它回显按钮图标。 */
+    public ShowPatternProviders shownProviders() {
+        return shownProviders;
     }
 
     public List<DiskHostListPayload.HostGroup> getHostList() {

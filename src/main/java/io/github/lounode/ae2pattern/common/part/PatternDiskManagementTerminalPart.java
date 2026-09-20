@@ -4,8 +4,11 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.MenuType;
 
+import appeng.api.config.Settings;
+import appeng.api.config.ShowPatternProviders;
 import appeng.api.parts.IPartItem;
 import appeng.api.parts.IPartModel;
+import appeng.api.util.IConfigManagerBuilder;
 import appeng.items.parts.PartModels;
 import appeng.parts.PartModel;
 
@@ -37,6 +40,13 @@ public class PatternDiskManagementTerminalPart extends PatternDiskEncodingTermin
 
     public PatternDiskManagementTerminalPart(IPartItem<?> partItem) {
         super(partItem);
+    }
+
+    @Override
+    protected void registerSettings(IConfigManagerBuilder builder) {
+        super.registerSettings(builder);
+        // 「显示模式」直接复用 AE2 样板访问终端的同一个设置：同一套取值、同一份语义，默认也与它一致。
+        builder.registerSetting(Settings.TERMINAL_SHOW_PATTERN_PROVIDERS, ShowPatternProviders.VISIBLE);
     }
 
     @Override

@@ -6,7 +6,8 @@
  ],
  "helpTopic": "ae2_pattern_disk:ae2guide/items-blocks-machines/pattern_disk_management_terminal.md",
  "terminalStyle": {
-  "supportsAutoCrafting": true,
+  "supportsAutoCrafting": false,
+  "sortable": false,
   "slotsPerRow": 9,
   "header": {
    "texture": "ae2_pattern_disk:textures/guis/pattern_disk_management_terminal.png",

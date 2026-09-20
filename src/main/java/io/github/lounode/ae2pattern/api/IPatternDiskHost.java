@@ -27,4 +27,15 @@ public interface IPatternDiskHost {
     default int getIdentitySalt() {
         return 0;
     }
+
+    /**
+     * AE2 样板访问终端的「可见」口径：为 {@code false} 的宿主在「显示可见供应器」模式下不进表，与 AE2 那个终端
+     * 共用同一个开关（取值为 {@code ShowPatternProviders}）。
+     *
+     * <p>默认可见：外部模组注册的宿主未必有这个概念，由它们自行覆盖；AE2 系宿主（都已实现
+     * {@code PatternContainer}）会转发到 AE2 自己的开关。</p>
+     */
+    default boolean isVisibleInPatternAccessTerminal() {
+        return true;
+    }
 }

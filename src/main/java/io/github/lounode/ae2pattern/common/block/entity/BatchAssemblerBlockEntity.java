@@ -352,6 +352,12 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         return diskInv;
     }
 
+    /** 与供应器同口径：本机也是 {@code PatternContainer}，直接转发 AE2 那个「在样板访问终端中显示」开关。 */
+    @Override
+    public boolean isVisibleInPatternAccessTerminal() {
+        return isVisibleInTerminal();
+    }
+
     /**
      * Rebuilds the cached {@link StorageCell} for every slot. The cached handler points at the live
      * {@link ItemStack} in the slot; it therefore has to be dropped whenever a cell enters or leaves a
