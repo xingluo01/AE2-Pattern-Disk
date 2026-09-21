@@ -4,6 +4,13 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循语义化版本。
 
+## [0.6.1] - 2026-09-22
+
+### 修复
+
+- **修掉 0.6.0 会导致游戏启动崩溃的问题（严重，建议先升级）**：0.6.0 新增的 mixin 配置插件在启动早期去**校验** NEO ECO 的接口签名，而校验动作会把 AE2 的 `KeyCounter` 类提前定义进 JVM——比所有模组的 mixin 都早。于是**任何针对 `KeyCounter` 写了 mixin 的整合包**都会以 `MixinTargetAlreadyLoadedException` 直接启动失败（典型报错文本：模组 X 的 `KeyCounterMixin` 要修改 `appeng.api.stacks.KeyCounter`，但该类在它执行前已被 JVM 加载完毕）。现已把该插件改成**只按类文件是否存在做探测、全程不定义任何类**，启动不再受影响；代价是老版本 ECO（有接口但缺方法）会在运行时局报错，而不是启动崩溃。
+- **仍保留原行为**：装了 ECO 时一次交接**一整套配方输入 × N 份**，ECO 不在场时机器行为与从前完全一致。
+
 ## [0.6.0] - 2026-09-22
 
 ### 变更
