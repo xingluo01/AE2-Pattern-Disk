@@ -98,7 +98,7 @@ jobs:
           curl -fL --retry 3 --retry-delay 5 -o libs/extendedae_plus-1.6.2-dev.jar "$EAEPLUS_JAR_URL"
           # 校验下载内容：Gradle 对 files() 里不存在的文件是静默跳过，靠这里把“下错文件”挡在构建前。
           # 若日后替换 deps-v1 上的同名 jar，必须同步更新下面三条哈希。
-          echo "c7113167eb0d42bbb4000c6e2f388a897d69909c144409905778639008a33e8a  libs/neoecoae-21.2.0-beta5.jar" | sha256sum -c -
+          echo "07a6eeddf533bf14f40842ca825ce9a576169058e29bd4ebebc14cd5c55c6921  libs/neoecoae-21.2.0-beta5.jar" | sha256sum -c -
           echo "ce22ff7266a8462e1ae7062d17df1fdbdd06bdf29e5501c2f6d6ded6daf33789  libs/moddevmcp-0.3.jar" | sha256sum -c -
           echo "f789723bde98d709885501184f5335ae06a84a9ad6ad5a4c51366eabb3a2fcd1  libs/extendedae_plus-1.6.2-dev.jar" | sha256sum -c -
           ls -l libs

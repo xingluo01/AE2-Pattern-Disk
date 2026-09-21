@@ -126,7 +126,7 @@
   但该构件只在本机可解析（`settings.gradle:18-39` 的 composite-build 替换 / mavenLocal 里的 `0.3`），
   Central / NeoForged / modmaven / BlameJared 均无此构件 → CI 上 `compileJava` 必然失败。
   现已改为 `implementation files('libs/moddevmcp-0.3.jar')`，由 CI 按变量 `MODDEVMCP_JAR_URL` 下载（`libs/*.jar` 被 gitignore）。
-- **私有 jar 供给（已解决）**：两个 maven 取不到的 jar——`neoecoae-21.2.0-beta5.jar`（4,862,981 B，sha256 `c7113167…`，从 fork 分支构建，版号与官方同名但内容不同）
+- **私有 jar 供给（已解决）**：两个 maven 取不到的 jar——`neoecoae-21.2.0-beta5.jar`（4,863,005 B，sha256 `07a6eedd…`，从 fork 分支构建，版号与官方同名但内容不同；2026-09-22 为修一处构造期 NPE 重建过一次，哈希随之变化，`release.yml` 里那条校验已同步更新）
   与 `moddevmcp-0.3.jar`（583,588 B，sha256 `ce22ff72…`）——托管于本仓库 release `deps-v1`，对应
   `NEOECOAE_JAR_URL` / `MODDEVMCP_JAR_URL`。注意该 release 的 tag 落在 `v0.2.1^` 上，故 changelog 步骤已加
   `--match 'v[0-9]*'`，避开它被 `git describe` 当成上一个版本而把发布说明截成一行。
