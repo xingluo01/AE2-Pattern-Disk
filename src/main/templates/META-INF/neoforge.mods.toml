@@ -104,3 +104,26 @@ type="optional"
 versionRange="*"
 ordering="BEFORE"
 side="BOTH"
+
+# GuideME is the guidebook library AE2's help hooks are built on: this mod overrides
+# AEBaseScreen#getHelpTopic() - whose return type is guideme.PageAnchor - on its four screens. AE2 itself
+# declares guideme as a required dependency, so no pack can reach us without it; this entry only makes the
+# relationship visible instead of leaving it implicit in an overridden method signature.
+[[dependencies.${mod_id}]]
+modId="guideme"
+type="required"
+versionRange="*"
+ordering="NONE"
+side="BOTH"
+
+# ExtendedAE Plus is optional: its terminal-upload contract is one this mod implements (a screen subclass and
+# a menu subclass), and both are created through reflection so their classes only load when the contract is
+# there. No version bound of our own - the published 1.6.2 lacks the interface, the 1.21.1 branch has it, and
+# the integration stands down when the lookup fails. AFTER matches the other optional entries: they are the
+# ones we reach into.
+[[dependencies.${mod_id}]]
+modId="extendedae_plus"
+type="optional"
+versionRange="*"
+ordering="AFTER"
+side="BOTH"
