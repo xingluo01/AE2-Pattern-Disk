@@ -13,6 +13,9 @@ out/
 .DS_Store
 Thumbs.db
 
+# Windows shortcuts dropped into the repo root while working on the sibling checkouts
+*.lnk
+
 # Local
 logs/
 *.log
