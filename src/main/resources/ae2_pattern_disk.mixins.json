@@ -3,11 +3,14 @@
   "minVersion": "0.8",
   "package": "io.github.lounode.ae2pattern.mixin",
   "compatibilityLevel": "JAVA_21",
+  "plugin": "io.github.lounode.ae2pattern.mixin.AEPDMixinPlugin",
   "injectors": {
     "defaultRequire": 1
   },
   "client": [
     "KeySortersMixin"
   ],
-  "mixins": []
+  "mixins": [
+    "BatchAssemblerEcoParallelMixin"
+  ]
 }

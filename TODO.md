@@ -79,6 +79,21 @@
 - **样板清单容量 1024 待补文档**：`PatternDiskProviderLogic` 构造时把内部样板清单固定为 1024 槽（`super(mainNode, host, 1024)`）；多张磁盘的样板总数超过该上限时的行为：代码为 `i < all.size() && i < patternInv.size()` 填充镜像 → **静默截断**（超出的样板不提供给合成系统，既不报错也不提示）→ 稍后把这个上限与截断行为补进 README/指南
 - ✅ **代码收敛已完成**：`BatchAssemblerBlockEntity` 原先自建了一份 `PatternDiskRemoveInventory` + 匿名 sink，现已改用与方块/面板共用的 `PatternDiskTerminalView`——核心的"取走样板要扣网络空样板并真删磁盘配方"逻辑（`PatternDiskRemoveInventory`）全仓只剩一份；NeoECO 反射适配器（`NeoECOBusTerminalView`/`NeoECOBusDisks`）仍保留自带的空样板抽取，因为那条总线不是 action host，其抽取刻意不归属任何玩家
 
+### G. 批处理装配室：允许一个 multiplier 由多个变体拼够（对齐 AE2）— P3 ⬜（2026-09 记录）
+
+- 现状：`BatchAssemblerBlockEntity.resolveVariant` 要求**单个 key 覆盖整个 multiplier**；缓冲不足时直接判 `INPUTS_UNAVAILABLE`、把样板留在队列。
+- AE2 原生语义不同：`CraftingCpuHelper.extractPatternInputs`（19.2.17）**遍历同一输入槽的多个合法模板**，每个抽多少算多少（`remainingMultiplier -= extracted`），允许多个变体拼够一个 multiplier ⇒ 同一槽可能混用多个变体。
+- 影响：样板要 4 把工具而缓冲里是「2 新 + 2 磨损」时，AE2 分子装配室能跑，本模组的批处理装配室会卡住不接单。
+- 改动面：`resolveVariant`（单 key 判定）+ `consumeInputs`（按 key 分桶）→ 返回使用记录而非单个 key；余料须按**实际使用的每个变体**分别记账（`IInput.getRemainingKey` 是按变体算的）。
+- 验证要求：多变体混合缓冲 + 磨损工具样板，核对①网络收到的产物/余料 ②CPU `waitingFor` 是否被满足 ③机器内无残留。
+
+### H. （既存）`AEItemKey.hasComponents()` 语义与命名相反，可能影响 AE2 的替换判定 — P3 ⬜（待报上游，2026-09 记录）
+
+- 现象：AE2 19.2.17 的 `AEItemKey.hasComponents()` 实现为 `return stack.getComponents().isEmpty();` —— **组件为空时返回 true**，与名字含义相反。
+- 消费点：`AECraftingPattern.getTestResult` 用它决定是否走「按物品」的替换缓存（缓存键为 `what.getItem()`）。按当前实现，**带组件的输入反而可能命中按物品的缓存**，替换判定存在出错可能。
+- 本项目策略：批处理装配室**不要**用该方法判组件；需要时直接用 `!stack.getComponents().isEmpty()`。
+- 待办：整理最小复现（带组件输入 + 可替换配方）后报 AE2 上游。
+
 ## 四、执行约束
 - 目标：NeoForge 21.1.241 / MC 1.21.1 / JDK 21 / AE2 19.2.17（编译依赖口径；`gradle.properties` 中的 `ae2_version=19.2.8` 为未使用的历史键）
 - 只用 AE2 公共 API；机器美术资源统一放本项目 `assets/ae2_pattern_disk/textures/`，不直接引用 `ae2:` 纹理（借用的复制件见 README 授权表；零件/物品显示模型仍继承 `ae2:item/display_base`、`ae2:part/display_off`、`ae2:item/cable_interface`）
