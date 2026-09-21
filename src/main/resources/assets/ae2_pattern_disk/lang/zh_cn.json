@@ -36,6 +36,7 @@
   "gui.ae2_pattern_disk.encoding_terminal.disk_refused.unknown": "样板磁盘 %s 拒绝了这份样板",
   "gui.ae2_pattern_disk.encoding_terminal.disk_refused.unresolvable": "这份样板无法解析出类型，写不进 %s",
   "gui.ae2_pattern_disk.encoding_terminal.disk_search": "搜索样板磁盘",
+  "gui.ae2_pattern_disk.encoding_terminal.disk_search.clear_hint": "右键清空搜索内容",
   "gui.ae2_pattern_disk.encoding_terminal.disk_search.mark_hint": "用 # 按磁盘标记搜索",
   "gui.ae2_pattern_disk.encoding_terminal.disk_search.title": "按磁盘名称搜索",
   "gui.ae2_pattern_disk.encoding_terminal.divide": "倍除",

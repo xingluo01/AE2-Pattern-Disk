@@ -48,6 +48,7 @@ import appeng.menu.SlotSemantics;
 import appeng.parts.encoding.EncodingMode;
 
 import io.github.lounode.ae2pattern.AEPatternRegistries;
+import io.github.lounode.ae2pattern.client.integration.JechPinyin;
 import io.github.lounode.ae2pattern.client.integration.MachineRecipeTypes;
 import io.github.lounode.ae2pattern.client.sort.NaturalSort;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
@@ -193,7 +194,8 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         // 并自动把第一行刷白、其余行刷灰，与 AE2 终端搜索框完全一致。
         this.miniSearchField.setTooltipMessage(List.of(
                 Component.translatable("gui.ae2_pattern_disk.encoding_terminal.disk_search.title"),
-                Component.translatable("gui.ae2_pattern_disk.encoding_terminal.disk_search.mark_hint")));
+                Component.translatable("gui.ae2_pattern_disk.encoding_terminal.disk_search.mark_hint"),
+                Component.translatable("gui.ae2_pattern_disk.encoding_terminal.disk_search.clear_hint")));
         this.miniSearchField.setResponder(text -> diskListPanel.setSearchText(text));
 
         // 模式轮换按钮（左侧工具栏）—— states.png 项目内图标
@@ -280,6 +282,9 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     @Override
     public void init() {
         super.init();
+        // 磁盘搜索栏不抢开局焦点：它是磁盘列表的局部筛子，先看列表再决定要不要搜。
+        // （AE2 自己的容器搜索框拿不拿焦点仍由父类决定，本屏不干预。）
+        this.miniSearchField.setFocused(false);
         var search = this.miniSearchField;
         if (usesNeoEcoUploadButton()) {
             var ecoUpload = neoEcoUploadButtonBounds();
@@ -522,7 +527,8 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         if (markSearch) {
             return matchesMark(entry, needle);
         }
-        return entry.displayName().toLowerCase(Locale.ROOT).contains(needle);
+        // 走 JechPinyin：装了 JECH 时中文名可用拼音/首字母搜，没装就是小写子串（见那个类）。
+        return JechPinyin.contains(entry.displayName(), needle);
     }
 
     private static boolean hasMark(DiskEntry entry) {
@@ -563,7 +569,7 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             return true;
         }
         var label = PatternDiskMarks.displayName(entry.stack());
-        return label != null && label.getString().toLowerCase(Locale.ROOT).contains(needle);
+        return label != null && JechPinyin.contains(label.getString(), needle);
     }
 
     // ---- 磁盘列表交互 --------------------------------------------------------
@@ -783,9 +789,17 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         return super.getEmptyingAction(slot, carried);
     }
 
-    /** 中键落在过滤槽上时打开数量对话框（与 AE2 样板编码终端同款）；其余中键仍交给基类。 */
+    /**
+     * 磁盘搜索栏右键清空（与 AE2 顶部搜索框同款手势）；中键落在过滤槽上时打开数量对话框（与 AE2 样板
+     * 编码终端同款），其余按键仍交给基类。
+     */
     @Override
     public boolean mouseClicked(double xCoord, double yCoord, int btn) {
+        // 清空后不 return：这一下照旧交给父类，让搜索框拿到焦点（AE2 自己也是这么干的）。
+        if (btn == InputConstants.MOUSE_BUTTON_RIGHT && miniSearchField.isMouseOver(xCoord, yCoord)) {
+            miniSearchField.setValue("");
+        }
+
         if (minecraft != null && minecraft.options.keyPickItem.matchesMouse(btn)) {
             var slot = processingPatternSlotAt(xCoord, yCoord);
             if (menu.canModifyAmountForSlot(slot)) {

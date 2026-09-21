@@ -42,9 +42,9 @@ When this terminal's **item grid** sorts by mod, an extra "additional sort" togg
 
 ### Search
 
-The search bar filters in two ways:
+The search bar filters in two ways (**right-click** it to clear it):
 
-- **Plain text**: matches the disk's name.
+- **Plain text**: matches the disk's name (with JECH installed, Chinese names also match by pinyin and initials).
 - **Text starting with `#`**: matches the disk's mark. A mark records which work block the disk belongs to: a right-click binds the recipe category of the work block on your cursor, and only without such a work block does it fall back to the imported recipe's category; with neither, that right click writes nothing. Crafting, smithing and stonecutting marks fold onto their category name, so a hand-encoded disk and one written from an imported recipe of the same kind carry the same name and answer the same search. Processing has no single category — each machine has its own — so a hand-encoded processing disk keeps the name "Processing pattern"; search for "processing" to find it.
 
 ### Showing unmarked disks

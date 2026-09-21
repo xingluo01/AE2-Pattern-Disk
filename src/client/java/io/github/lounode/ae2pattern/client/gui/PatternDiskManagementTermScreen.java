@@ -4,10 +4,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import appeng.client.gui.me.common.RepoSlot;
 
@@ -49,7 +47,6 @@ import io.github.lounode.ae2pattern.client.sort.NaturalSort;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
-import io.github.lounode.ae2pattern.network.DiskHostListPayload;
 import io.github.lounode.ae2pattern.network.VisibleDisksPayload;
 
 /**
@@ -61,8 +58,8 @@ import io.github.lounode.ae2pattern.network.VisibleDisksPayload;
  * encoding terminal builds in its constructor - on the right. The footer entries in the style JSON are
  * {@code bottom}-anchored, so they follow the panel height that {@code terminalStyle} produces.</p>
  *
- * <p><b>Rows.</b> One row per machine (a header carrying its icon, name and disk count, plus a show/hide
- * toggle), then one row per disk: cell 0 is the disk itself, the remaining 16 cells are the patterns stored on
+ * <p><b>Rows.</b> One row per machine (a header carrying its icon, name and disk count), then one row per
+ * disk: cell 0 is the disk itself, the remaining 16 cells are the patterns stored on
  * it. A disk holding more than 16 patterns continues on the rows below, where all 17 cells are patterns.
  * Disk-level clicks go through the inherited {@code onDisk*Click} handlers, so selecting, marking and
  * renaming a disk behave exactly as in the encoding terminal.</p>
@@ -221,8 +218,6 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
      */
     private static final int CONTENT_REFRESH_INTERVAL_TICKS = 20;
 
-    private static final int TOGGLE_SIZE = 9;
-
     /**
      * 磁盘槽的浅绿色底色（纯上色，不走纹理资源）。
      *
@@ -264,7 +259,6 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     }
 
     private final List<Row> rows = new ArrayList<>();
-    private final Set<String> hiddenHosts = new HashSet<>();
     private final LongSet requestedContents = new LongOpenHashSet();
 
     private int scrollOffset;
@@ -347,9 +341,13 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
 
         // MEStorageScreen.init() 给终端网格加了 RepoSlot；我们用自定义表格，不需要它们。
         this.menu.slots.removeIf(slot -> slot instanceof RepoSlot);
-        // 父类把初始焦点给了 ME 搜索框，但本屏不显示物品网格，那个框在 JSON 里被移出面板；
-        // 玩家打字应该进磁盘表的搜索框，否则键会走进一个看不见的输入框。
-        setInitialFocus(miniSearchField());
+        // 父类把初始焦点给了 ME 搜索框，但本屏不显示物品网格，那个框在 JSON 里被移出面板——让它拿着焦点
+        // 等于把玩家的按键送进一个看不见的输入框。所以清掉初始焦点：开局谁也不选中，要用搜索框自己点。
+        //
+        // 用 setFocused(null) 而不是 setInitialFocus(null)：后者的实现要先拿参数解引用去算焦点路径，传 null
+        // 直接 NPE，而且抛在 init() 里会连带把整个开屏打断（NeoForge 报 "Failed to handle advanced open
+        // screen from server"，客户端被断开）。setFocused 才是 null 安全的那个。
+        setFocused(null);
         hideIrrelevantToolbarButtons();
         // 本模组自己的按钮排到 AE2 自带的之后，次序：显示模式 → 显示槽位 → 模式轮换
         //（附加排序已在父类里贴到了「排序按」后面）。
@@ -422,10 +420,6 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
 
         var rebuilt = new ArrayList<Row>();
         for (var group : menu.getHostList()) {
-            if (hiddenHosts.contains(group.key())) {
-                continue;
-            }
-
             var groupDisks = new ArrayList<DiskListPanel.DiskEntry>();
             for (var disk : group.disks()) {
                 var visible = visibleDisks.get(disk.serial());
@@ -490,7 +484,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         scrollOffset = Math.max(0, Math.min(scrollOffset, max));
     }
 
-    /** @return 当前表里磁盘的张数（不含被隐藏的机器），用于「只剩一张就自动落到它」的判断。 */
+    /** @return 当前表里磁盘的张数，用于「只剩一张就自动落到它」的判断。 */
     private int visibleDiskCount() {
         int count = 0;
         for (var row : rows) {
@@ -656,9 +650,8 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
                     var label = host.diskCount() > 1
                             ? host.name() + " (" + host.diskCount() + ")"
                             : host.name();
-                    guiGraphics.drawString(font, font.plainSubstrByWidth(label, 16 * 18 - TOGGLE_SIZE - 22),
+                    guiGraphics.drawString(font, font.plainSubstrByWidth(label, 16 * 18 - 22),
                             baseX + 21, rowY + ROW_TEXT_Y_INSET + 4, textColor, false);
-                    drawHostToggle(guiGraphics, baseX, rowY, host.groupName());
                 }
                 case DiskRow disk -> drawDiskRow(guiGraphics, baseX, rowY, disk);
                 case FreeSlotsRow free -> drawFreeSlotsRow(guiGraphics, baseX, rowY, free);
@@ -747,16 +740,6 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         }
     }
 
-    /** 组头的显示/隐藏开关：一个小方块，隐藏时画成暗底。 */
-    private void drawHostToggle(GuiGraphics guiGraphics, int baseX, int rowY, String key) {
-        int x = baseX + LIST_WIDTH - TOGGLE_SIZE - 3;
-        // 行带内部自 ROW_TEXT_Y_INSET 起、底部留 1px 边框，开关在这段里居中。
-        int y = rowY + ROW_TEXT_Y_INSET + (ROW_HEIGHT - ROW_TEXT_Y_INSET - 1 - TOGGLE_SIZE) / 2;
-        boolean shown = !hiddenHosts.contains(key);
-        guiGraphics.fill(x, y, x + TOGGLE_SIZE, y + TOGGLE_SIZE, shown ? 0xff9a9a9a : 0xff4a4a4a);
-        guiGraphics.fill(x + 1, y + 1, x + TOGGLE_SIZE - 1, y + TOGGLE_SIZE - 1, shown ? 0xffcfcfcf : 0xff2a2a2a);
-    }
-
     // ---- 交互 ----
 
     @Override
@@ -767,13 +750,8 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         }
 
         var row = rows.get(rowIndex);
-        if (row instanceof HostRow host) {
-            if (btn == 0 && hostToggleAt(xCoord, yCoord)) {
-                if (!hiddenHosts.remove(host.groupName())) {
-                    hiddenHosts.add(host.groupName());
-                }
-                return true;
-            }
+        if (row instanceof HostRow) {
+            // 组头行只是一条分隔 + 标签，没有可点的东西：吃掉这一下，别漏给底下的控件。
             return true;
         }
 
@@ -977,15 +955,6 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
 
     private int columnAt(double mouseX) {
         return ((int) mouseX - leftPos - LIST_X) / 18;
-    }
-
-    private boolean hostToggleAt(double mouseX, double mouseY) {
-        int relX = (int) mouseX - leftPos - LIST_X;
-        int rowIndex = rowIndexAt(mouseX, mouseY);
-        if (rowIndex < 0 || relX < LIST_WIDTH - TOGGLE_SIZE - 3) {
-            return false;
-        }
-        return rows.get(rowIndex) instanceof HostRow;
     }
 
     @Nullable

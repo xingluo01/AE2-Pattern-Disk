@@ -36,6 +36,7 @@
   "gui.ae2_pattern_disk.encoding_terminal.disk_refused.unknown": "%s refused this pattern",
   "gui.ae2_pattern_disk.encoding_terminal.disk_refused.unresolvable": "This pattern's type could not be resolved, so %s cannot take it",
   "gui.ae2_pattern_disk.encoding_terminal.disk_search": "Search pattern disks",
+  "gui.ae2_pattern_disk.encoding_terminal.disk_search.clear_hint": "Right-click to clear the search",
   "gui.ae2_pattern_disk.encoding_terminal.disk_search.mark_hint": "Use # to search by disk mark",
   "gui.ae2_pattern_disk.encoding_terminal.disk_search.title": "Search by disk name",
   "gui.ae2_pattern_disk.encoding_terminal.divide": "Divide",

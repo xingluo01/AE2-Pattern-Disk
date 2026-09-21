@@ -25,7 +25,7 @@ Finished items go first to the configured container beside the machine. Whatever
 
 ## Manual patterns
 
-Each lane's page has a pattern slot. Put an encoded crafting pattern in by hand and that page turns self-driving: it keeps pulling the materials it needs from the ME network, crafting continuously, and sending products and leftover containers to the neighbouring container or the ME network. It keeps going as long as the pattern stays in the slot and the network has materials.
+Each lane's page has a pattern slot. Put an encoded crafting pattern in by hand and that page turns self-driving: it keeps pulling the materials it needs from the ME network, crafting continuously, and sending products and leftover containers to the neighbouring container or the ME network. It keeps going as long as the pattern stays in the slot and the network has materials. Materials are drawn as a whole set: when the network cannot cover every ingredient of the recipe, the page pulls nothing at all (no half-set is taken out of the network), so it never ends up holding materials it cannot assemble.
 
 A lane holding a pattern will not take jobs pushed by a pattern provider, so the machine only accepts work while at least one lane is completely idle. Take the pattern out and the lane returns whatever is left on its grid, then goes back to being an idle lane.
 

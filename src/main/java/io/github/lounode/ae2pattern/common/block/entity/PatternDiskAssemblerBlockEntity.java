@@ -1,6 +1,5 @@
 package io.github.lounode.ae2pattern.common.block.entity;
 
-import java.util.ArrayList;
 import java.util.List;
 
 import org.jetbrains.annotations.Nullable;
@@ -22,7 +21,6 @@ import appeng.api.config.Actionable;
 import appeng.api.crafting.PatternDetailsHelper;
 import appeng.api.networking.IGridNode;
 import appeng.api.networking.IGridNodeListener;
-import appeng.api.networking.IManagedGridNode;
 import appeng.api.networking.security.IActionSource;
 import appeng.api.networking.ticking.IGridTickable;
 import appeng.api.networking.ticking.TickRateModulation;
@@ -291,62 +289,102 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
     }
 
     /**
-     * Extracts this unit's pattern inputs from the ME network into its crafting grid. Used only for
-     * self-executing pages (a pattern manually inserted into the unit's pattern slot). Missing inputs
-     * are simply left empty; the caller re-checks readiness via {@link #canAssemble}.
+     * Tops this unit's crafting grid up from the ME network for a self-executing page (a pattern
+     * manually inserted into the unit's pattern slot), and reports whether the grid can now be
+     * assembled.
      *
      * <p>The sparse 3x3 slot mapping is resolved through
      * {@link IMolecularAssemblerSupportedPattern#fillCraftingGrid}, because the compressed input list
-     * returned by {@code IPatternDetails#getInputs()} does not expose recipe slot indices. Items are
-     * extracted from the network before they are placed into the grid, so the grid never contains
-     * items that were not actually removed from ME storage.</p>
+     * returned by {@code IPatternDetails#getInputs()} does not expose recipe slot indices.</p>
+     *
+     * <p><b>为什么是「要么补齐、要么一格不放」.</b> AE2 的样板在 {@code assemble} 里第一件事就是拿传入
+     * 网格的裁剪尺寸与样板自己的裁剪尺寸比对，不等就返回空（{@code AECraftingPattern#assemble}），而传入的
+     * 尺寸来自网格里非空物品的最小包围盒。所以只要有一次只填进去一部分原料、或某一格被不属于样板的物品占住，
+     * 包围盒的形状就与样板不同，{@code canAssemble} 会永远为假——机器表现为「第二次把料拉进网格后就不再
+     * 合成」，而料还留在网格里。这里因此先探测全部输入、再一次性抽取；凑不齐时连样板自己的格子也清空，让网格
+     * 回到「干净地等料」，而不是留下一个形状不对的半成品。</p>
      */
-    private void tryFillGridFromNetwork(CraftUnit unit) {
+    private boolean tryFillGridFromNetwork(CraftUnit unit) {
         var plan = unit.plan;
         if (plan == null) {
-            return;
+            return false;
         }
         var grid = this.getMainNode().getGrid();
         if (grid == null) {
-            return;
+            return false;
         }
         var storage = grid.getStorageService().getInventory();
         var inputs = plan.getInputs();
         if (inputs.length == 0) {
-            return;
+            return false;
+        }
+        // 网格已经能合成：别动它，让这一轮进度照常累完。
+        if (canAssemble(unit)) {
+            return true;
         }
 
-        // Availability probe per input: the table only has to be large enough for the sparse slots
-        // the pattern maps onto it, so availability of a single item is checked and GRID_SIZE offered.
-        var table = new KeyCounter[inputs.length];
+        // 每个输入挑一个「网络现在就能给」的候选；给不了也要留一个占位候选，好知道它该落在哪一格。
+        var chosen = new AEItemKey[inputs.length];
+        var shape = new KeyCounter[inputs.length];
+        boolean allAvailable = true;
         for (int i = 0; i < inputs.length; i++) {
-            table[i] = new KeyCounter();
+            shape[i] = new KeyCounter();
             var input = inputs[i];
             if (input == null) {
+                // 样板自己的空占位：不参与可用性判断。
                 continue;
             }
+            AEItemKey first = null;
             for (var possible : input.getPossibleInputs()) {
                 if (possible == null || !(possible.what() instanceof AEItemKey itemKey)) {
                     continue;
                 }
+                if (first == null) {
+                    first = itemKey;
+                }
                 if (storage.extract(itemKey, 1, Actionable.SIMULATE, actionSource) > 0) {
-                    table[i].add(itemKey, GRID_SIZE);
+                    chosen[i] = itemKey;
                     break;
                 }
             }
+            var candidate = chosen[i] != null ? chosen[i] : first;
+            if (candidate != null) {
+                shape[i].add(candidate, GRID_SIZE);
+            }
+            allAvailable &= chosen[i] != null;
         }
 
-        // Resolve which sparse slot requires which item without touching the real grid first:
-        // fillCraftingGrid writes each required input into its sparse slot, captured here.
+        // 哪个输入落在哪一格由样板自己算（捕获它的写入即可）：我们只需要知道哪些格位属于这颗样板。
+        var needed = new boolean[GRID_SIZE];
         var target = new ItemStack[GRID_SIZE];
-        plan.fillCraftingGrid(table, (slot, stack) -> {
+        plan.fillCraftingGrid(shape, (slot, stack) -> {
             if (slot >= 0 && slot < GRID_SIZE) {
+                needed[slot] = true;
                 target[slot] = stack;
             }
         });
 
-        // Extract for real, but only for slots that are still empty.
+        // 清掉不该留在网格里的：不在样板里的格位、格位对但物品不对的；凑不齐时连样板自己的格子也清空
+        // （半成品的包围盒与样板形状不等，留着只会把这一页钉死）。
         boolean changed = false;
+        for (int slot = 0; slot < GRID_SIZE; slot++) {
+            var current = unit.grid.getStackInSlot(slot);
+            if (current.isEmpty()) {
+                continue;
+            }
+            if (allAvailable && needed[slot] && plan.isItemValid(slot, AEItemKey.of(current), level)) {
+                continue;
+            }
+            changed |= ejectGridSlot(unit, slot);
+        }
+        if (changed) {
+            saveChanges();
+        }
+        if (!allAvailable) {
+            return false;
+        }
+
+        // 真抽：每个输入都已经 SIMULATE 过，正常不会再失败；真失败就停手等下一 tick，不留半成品。
         for (int slot = 0; slot < GRID_SIZE; slot++) {
             var stack = target[slot];
             if (stack == null || stack.isEmpty() || !unit.grid.getStackInSlot(slot).isEmpty()) {
@@ -358,9 +396,8 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
             }
             // A crafting grid slot holds exactly one item, even if a third-party pattern wrote a
             // larger stack into the probe table.
-            long extracted = storage.extract(key, 1, Actionable.MODULATE, actionSource);
-            if (extracted <= 0) {
-                continue;
+            if (storage.extract(key, 1, Actionable.MODULATE, actionSource) <= 0) {
+                return canAssemble(unit);
             }
             unit.grid.setItemDirect(slot, key.toStack(1));
             changed = true;
@@ -368,6 +405,32 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
         if (changed) {
             saveChanges();
         }
+        return canAssemble(unit);
+    }
+
+    /**
+     * 把一格物品送出网格：先走相邻容器 → ME 网络（与产物、余料同一条路），送不掉的部分才落到输出槽兜底。
+     *
+     * @return 这一格是否已经清空
+     */
+    private boolean ejectGridSlot(CraftUnit unit, int slot) {
+        var stack = unit.grid.getStackInSlot(slot);
+        if (stack.isEmpty()) {
+            return true;
+        }
+        var left = pushItemOut(unit, stack.copy());
+        if (left.isEmpty()) {
+            unit.grid.setItemDirect(slot, ItemStack.EMPTY);
+            return true;
+        }
+        if (!unit.grid.getStackInSlot(OUTPUT_SLOT).isEmpty()) {
+            // 输出槽也占着：把没送出去的部分放回原格，这一格下一轮再清（而不是把它丢掉）。
+            unit.grid.setItemDirect(slot, left);
+            return false;
+        }
+        unit.grid.setItemDirect(slot, ItemStack.EMPTY);
+        unit.grid.setItemDirect(OUTPUT_SLOT, left);
+        return true;
     }
 
     /** True when the unit's grid can already assemble its plan into a non-empty result. */
@@ -458,13 +521,9 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
 
         // Self-executing page guard: never accumulate progress unless the grid can actually be
         // assembled, so a material shortage can not consume progress or destroy partial inputs.
-        if (!unit.patternInv.isEmpty() && !canAssemble(unit)) {
-            // Drop anything the pattern no longer uses before topping the grid up from the network.
-            ejectHeldItems(unit);
-            tryFillGridFromNetwork(unit);
-            if (!canAssemble(unit)) {
-                return true;
-            }
+        // tryFillGridFromNetwork 的填充是原子的（要么补齐、要么一格不放），见那里的注释。
+        if (!unit.patternInv.isEmpty() && !tryFillGridFromNetwork(unit)) {
+            return true;
         }
 
         int speedCards = upgrades.getInstalledUpgrades(AEItems.SPEED_CARD);
@@ -567,14 +626,15 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
     }
 
     /**
-     * Moves one grid item that is no longer a valid input for the unit's current pattern into the
-     * output slot (when free), so it can be pushed out instead of blocking the unit forever. Mirrors
-     * AE2's ejection of stale crafting-grid items after pattern changes and craft completion.
+     * Moves one grid item that is no longer a valid input for the unit's current pattern out of the grid,
+     * so it can not block the unit forever. Mirrors AE2's ejection of stale crafting-grid items after
+     * pattern changes and craft completion.
+     *
+     * <p>早先这里是「挪进输出槽、等下一轮回送」，但输出槽一被占住整个方法就早退，于是该清的东西永远
+     * 清不掉、网格的包围盒形状也就此定型（AE2 的样板按裁剪尺寸严格校验，见 tryFillGridFromNetwork）。
+     * 现在直接走回送路径（相邻容器 → ME 网络），输出槽只是兜底落点。</p>
      */
     private void ejectHeldItems(CraftUnit unit) {
-        if (!unit.grid.getStackInSlot(OUTPUT_SLOT).isEmpty()) {
-            return;
-        }
         var plan = unit.plan;
         for (int i = 0; i < GRID_SIZE; i++) {
             var stack = unit.grid.getStackInSlot(i);
@@ -585,8 +645,7 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
             if (plan != null && key != null && plan.isItemValid(i, key, level)) {
                 continue;
             }
-            unit.grid.setItemDirect(OUTPUT_SLOT, stack);
-            unit.grid.setItemDirect(i, ItemStack.EMPTY);
+            ejectGridSlot(unit, i);
             saveChanges();
             return;
         }

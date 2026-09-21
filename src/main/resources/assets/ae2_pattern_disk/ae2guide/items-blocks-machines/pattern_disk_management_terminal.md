@@ -19,10 +19,10 @@ A cable-attached terminal that lays out **every pattern disk on the network** at
 
 | Part | What it shows |
 | --- | --- |
-| Header row | One machine (containers sharing a name are merged into one row): icon, name, disk count `(n)`, and a show/hide toggle at the right end |
+| Header row | One machine (containers sharing a name are merged into one row): icon, name, disk count `(n)` |
 | Disk row | Cell 1 is the disk, cells 2-17 are the first 16 patterns stored on it (slot order); more continue on the rows below, where all 17 cells are patterns |
 
-- **Search** works like the encoding terminal's: by disk name, or `#`-prefixed for marks.
+- **Search** works like the encoding terminal's: by disk name, or `#`-prefixed for marks. With JECH installed the name and mark are matched by pinyin and initials too; right-click the search bar to clear it.
 - **Sorting**: the two AE2 sort buttons in the toolbar act on **the patterns inside each disk** - "by name" compares the name shown in the cell (the output's name), "by mod" groups by the output's mod first and then compares names within the group, and "by amount" has nothing to compare (one pattern is one item), so the disk's own order is kept. The arrow button flips ascending/descending.
 - **Additional sort**: while sorting by mod an extra toggle appears (on by default, right below that mode's button). Turning it on turns on two levels at once: names that match once the numbers are removed share a group (`1k Storage Component` and `4k Storage Component` together, `1k Storage Housing` on its own), and within a group the numbers decide the order (`1k < 4k < 16k < 64k < 256k < 1M`, `4 < 16 < 64 < 256 < 1024`, with a trailing k/M/G/T/P/E counted as a power of 1024); turning it off falls back to AE2's original two levels (mod, then literal name), where `16k` comes before `1k` again. It stays hidden in the other sort modes. The same toggle also governs the encoding terminal's item grid when it sorts by mod.
 - **Scroll**: the scrollbar on the right (it lights up once the table is longer than the view) - drag the handle, use the mouse wheel, or click the track above/below the handle to page; the wheel works anywhere on the screen.
