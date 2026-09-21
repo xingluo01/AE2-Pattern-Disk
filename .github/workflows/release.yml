@@ -66,7 +66,8 @@ jobs:
       # 那个分支现已把上游 v21.1.2 合并进来（21.2.0-beta5 基线），版号与官方发布同名，换 jar 时
       # 别把官方构建传上去——这里要的是带辅助存储 API 的 fork 构建。
       # 第二个 jar（ModDevMCP 0.3）同样未发布到公共 maven，由变量 MODDEVMCP_JAR_URL 提供，
-      # 对应 build.gradle 里的 implementation files('libs/moddevmcp-0.3.jar')。
+      # 对应 build.gradle 里的 compileOnly files('libs/moddevmcp-0.3.jar')（那份 0.3 jar 只上编译类路径，
+      # 开发运行期的工具来自 dev.vfyjxf:moddevmcp，src 里不引用它）。
       # 第三个 jar（ExtendedAE Plus 的本地构建，含其终端兼容层接口 IPatternUploadMenu /
       # IPatternUploadTerminal；Modrinth 最新发布版 1.6.2 还没有这两个类）由变量 EAEPLUS_JAR_URL 提供，
       # 对应 build.gradle 里的 compileOnly / clientCompileOnly files('libs/extendedae_plus-<版本>-dev.jar')。
