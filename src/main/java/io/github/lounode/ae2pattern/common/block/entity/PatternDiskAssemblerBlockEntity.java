@@ -1,5 +1,6 @@
 package io.github.lounode.ae2pattern.common.block.entity;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 
 import org.jetbrains.annotations.Nullable;
@@ -301,8 +302,9 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
      * 网格的裁剪尺寸与样板自己的裁剪尺寸比对，不等就返回空（{@code AECraftingPattern#assemble}），而传入的
      * 尺寸来自网格里非空物品的最小包围盒。所以只要有一次只填进去一部分原料、或某一格被不属于样板的物品占住，
      * 包围盒的形状就与样板不同，{@code canAssemble} 会永远为假——机器表现为「第二次把料拉进网格后就不再
-     * 合成」，而料还留在网格里。这里因此先探测全部输入、再一次性抽取；凑不齐时连样板自己的格子也清空，让网格
-     * 回到「干净地等料」，而不是留下一个形状不对的半成品。</p>
+     * 合成」，而料还留在网格里。这里因此先按 key 汇总出这 9 格的真实需求（够不够只能按总量判，逐格判只会
+     * 得到「每格都有一件」这种假答案）、再一次性抽取；凑不齐时连样板自己的格子也清空，让网格回到「干净地等料」，
+     * 而不是留下一个形状不对的半成品。</p>
      */
     private boolean tryFillGridFromNetwork(CraftUnit unit) {
         var plan = unit.plan;
@@ -323,7 +325,8 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
             return true;
         }
 
-        // 每个输入挑一个「网络现在就能给」的候选；给不了也要留一个占位候选，好知道它该落在哪一格。
+        // 每个输入挑一个「网络现在就能给」的候选，按它自己的需求量判（getMultiplier 就是该输入占用的格数）；
+        // 给不了也要留一个占位候选，好知道它该落在哪一格。
         var chosen = new AEItemKey[inputs.length];
         var shape = new KeyCounter[inputs.length];
         boolean allAvailable = true;
@@ -334,6 +337,7 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
                 // 样板自己的空占位：不参与可用性判断。
                 continue;
             }
+            long need = Math.max(1, input.getMultiplier());
             AEItemKey first = null;
             for (var possible : input.getPossibleInputs()) {
                 if (possible == null || !(possible.what() instanceof AEItemKey itemKey)) {
@@ -342,7 +346,7 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
                 if (first == null) {
                     first = itemKey;
                 }
-                if (storage.extract(itemKey, 1, Actionable.SIMULATE, actionSource) > 0) {
+                if (storage.extract(itemKey, need, Actionable.SIMULATE, actionSource) >= need) {
                     chosen[i] = itemKey;
                     break;
                 }
@@ -364,6 +368,27 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
             }
         });
 
+        // 按 key 汇总一次真实需求再判：逐格判只能回答「这一格有没有一件」，回答不了「总量够不够」——配方要
+        // 两件同名材料、网络只有一件时，两格都会判通过，于是抽出前一件、后一件失败，网格里留半份料；而清料
+        // 路径优先送相邻容器，那件材料就被搬进了旁边的箱子，每 tick 一次。汇总后网络给不出整份就一格不抽。
+        var demand = new LinkedHashMap<AEItemKey, Long>();
+        for (int slot = 0; slot < GRID_SIZE; slot++) {
+            if (!needed[slot] || target[slot] == null || target[slot].isEmpty()
+                    || !unit.grid.getStackInSlot(slot).isEmpty()) {
+                continue;
+            }
+            var key = AEItemKey.of(target[slot]);
+            if (key != null) {
+                demand.merge(key, 1L, Long::sum);
+            }
+        }
+        for (var entry : demand.entrySet()) {
+            if (storage.extract(entry.getKey(), entry.getValue(), Actionable.SIMULATE, actionSource)
+                    < entry.getValue()) {
+                allAvailable = false;
+            }
+        }
+
         // 清掉不该留在网格里的：不在样板里的格位、格位对但物品不对的；凑不齐时连样板自己的格子也清空
         // （半成品的包围盒与样板形状不等，留着只会把这一页钉死）。
         boolean changed = false;
@@ -384,7 +409,11 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
             return false;
         }
 
-        // 真抽：每个输入都已经 SIMULATE 过，正常不会再失败；真失败就停手等下一 tick，不留半成品。
+        // 真抽：需求量已在上面按 key 核过，正常不会再失败；真失败（同一 tick 里有别的消费者）就把本 tick 已经
+        // 抽出来的原路退回 ME 网络——不能留给下一轮的清理路径，那条路优先送相邻容器，等于把材料挪出网络。
+        var placedKeys = new AEItemKey[GRID_SIZE];
+        var placedSlots = new int[GRID_SIZE];
+        int placedCount = 0;
         for (int slot = 0; slot < GRID_SIZE; slot++) {
             var stack = target[slot];
             if (stack == null || stack.isEmpty() || !unit.grid.getStackInSlot(slot).isEmpty()) {
@@ -397,9 +426,18 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
             // A crafting grid slot holds exactly one item, even if a third-party pattern wrote a
             // larger stack into the probe table.
             if (storage.extract(key, 1, Actionable.MODULATE, actionSource) <= 0) {
+                for (int back = placedCount - 1; back >= 0; back--) {
+                    if (storage.insert(placedKeys[back], 1, Actionable.MODULATE, actionSource) > 0) {
+                        unit.grid.setItemDirect(placedSlots[back], ItemStack.EMPTY);
+                    }
+                }
+                saveChanges();
                 return canAssemble(unit);
             }
             unit.grid.setItemDirect(slot, key.toStack(1));
+            placedKeys[placedCount] = key;
+            placedSlots[placedCount] = slot;
+            placedCount++;
             changed = true;
         }
         if (changed) {
@@ -645,8 +683,9 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
             if (plan != null && key != null && plan.isItemValid(i, key, level)) {
                 continue;
             }
-            ejectGridSlot(unit, i);
-            saveChanges();
+            if (ejectGridSlot(unit, i)) {
+                saveChanges();
+            }
             return;
         }
     }

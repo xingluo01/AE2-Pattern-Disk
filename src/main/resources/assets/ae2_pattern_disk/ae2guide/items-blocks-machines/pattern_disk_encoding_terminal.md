@@ -75,7 +75,7 @@ When the search bar narrows the list to exactly one disk, pressing Encode writes
 
 ## Uploading to NEO ECO
 
-With NEO ECO AE Extension installed, an upload button appears in the top right of the interface. It sends the pattern in the encoded slot to NEO ECO's computation cluster pattern storage, clears the slot on success, and returns a blank pattern in the order network → inventory → encoded slot. Without that mod the button does not appear.
+With NEO ECO AE Extension installed, an upload button appears in the top right of the interface. It sends the pattern in the encoded slot to NEO ECO's computation cluster pattern storage, clears the slot on success, and returns the replacement the other side names (usually a blank pattern) in the order network → inventory → encoded slot. Nothing is handed back when a slot merely stored the pattern as an item, since the network already holds that stack; when the other side has no replacement to give, the pattern stays in the encoded slot rather than being dropped. Without that mod the button does not appear.
 
 ## Recipe
 

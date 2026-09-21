@@ -71,16 +71,17 @@ final class NeoECOUploadHandler {
             if (details == null) return;
 
             // Reporting form on purpose: the plain insertPattern only answers "did something take it", which is
-            // exactly the question this caller must not act on alone - see the three cases below.
+            // exactly the question this caller must not act on alone - see the three cases below. The stack handed
+            // to the other side is a copy: its contract is read-only, but we should not bet on that.
             var insertion = service.insertPreparedPatternReporting(
-                    new ECOPreparedPattern(encoded, details, AEItemKey.of(encoded)));
+                    new ECOPreparedPattern(encoded.copy(), details, AEItemKey.of(encoded)));
 
             if (insertion.result() == ECOPatternInsertionResult.ALREADY_PRESENT) {
                 // The network already reaches this recipe, which does not mean this item reached it. The match
                 // can come from a recipe a pattern disk absorbed - counted into the network's pattern index -
                 // and then clearing the slot destroys the only copy of the item. NEO ECO's own upload path pays
                 // a blank here, so this one does too.
-                refundAndClear(menu, service.blankPatternReplacementFor(encoded));
+                refundAndClear(menu, service.blankPatternReplacementFor(encoded.copy()));
                 return;
             }
             if (insertion.result() != ECOPatternInsertionResult.INSERTED) {

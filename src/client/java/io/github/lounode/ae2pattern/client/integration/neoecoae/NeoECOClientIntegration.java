@@ -1,5 +1,8 @@
 package io.github.lounode.ae2pattern.client.integration.neoecoae;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import net.minecraft.world.item.ItemStack;
 
 import net.neoforged.fml.ModList;
@@ -14,6 +17,9 @@ import io.github.lounode.ae2pattern.integration.neoecoae.NeoECOTypes;
  * when neoecoae is confirmed present.
  */
 public final class NeoECOClientIntegration {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger("ae2_pattern_disk.integration.neoecoae");
+
     private NeoECOClientIntegration() {
     }
 
@@ -36,7 +42,8 @@ public final class NeoECOClientIntegration {
     }
 
     /**
-     * 服务端的 ECO 集成是否真能接上传：与 {@code NeoECOIntegration.apply()} 的闸门同一份判据。
+     * 服务端的 ECO 集成是否真能接上传：与服务端 {@code NeoECOIntegration.apply()} 的闸门同源，取其中与
+     * 客户端可用性相关的那一部分（服务端要的自注册方法客户端用不上，不在这里判）。
      *
      * <p>少判一项就多一个点了没反应的按钮——尤其「有辅助存储、但没有报告式上传入口」的构建，服务端那时根本
      * 不注册处理器。按钮本体的类也在这儿：缺了它是在 {@code init()} 里崩 {@code NoClassDefFoundError}，
@@ -71,12 +78,19 @@ public final class NeoECOClientIntegration {
         }
     }
 
-    /** @return 类是否存在；{@code initialize=false} 是为了只问「在不在」，不触发对方的静态初始化 */
+    /**
+     * @return 类是否存在；{@code initialize=false} 是为了只问「在不在」，不触发对方的静态初始化
+     */
     private static boolean classPresent(String name) {
         try {
             Class.forName(name, false, loader());
             return true;
-        } catch (Throwable absent) {
+        } catch (ClassNotFoundException | NoClassDefFoundError absent) {
+            return false;
+        } catch (LinkageError broken) {
+            // 类在、但链接不起来：这不是「版本旧」而是「这份构建坏了」，与服务端那边记录同一口径。
+            LOGGER.warn("[AE2-Pattern-Disk] NEO ECO class {} could not be linked; the upload button stays off",
+                    name, broken);
             return false;
         }
     }

@@ -60,8 +60,14 @@ public final class JechPinyin {
                 var method = Class.forName(MATCH_CLASS)
                         .getMethod("contains", CharSequence.class, CharSequence.class);
                 // 探测只能证明「类与方法签名存在」，证明不了它是静态方法；非静态时反射调用必然失败，
-                // 与其每次敲键都试一次，不如这里就当作不可用。
-                contains = Modifier.isStatic(method.getModifiers()) ? method : null;
+                // 与其每次敲键都试一次，不如这里就当作不可用（留一行日志，免得玩家装了 JECH 却只看到
+                // 「搜不出来」）。
+                if (Modifier.isStatic(method.getModifiers())) {
+                    contains = method;
+                } else {
+                    contains = null;
+                    LOGGER.info("JECH Match#contains is not static; disk search stays literal");
+                }
             } catch (Throwable absent) {
                 // 没装 JECH（或它改了 API）：功能降级即可，不是错误。
                 contains = null;
