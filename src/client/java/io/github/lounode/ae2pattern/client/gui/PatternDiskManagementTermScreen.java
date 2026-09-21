@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import appeng.client.gui.StackWithBounds;
 import appeng.client.gui.me.common.RepoSlot;
 
 import org.jetbrains.annotations.Nullable;
@@ -15,6 +16,7 @@ import org.slf4j.LoggerFactory;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.inventory.ClickType;
@@ -31,6 +33,7 @@ import appeng.api.config.Settings;
 import appeng.api.config.ShowPatternProviders;
 import appeng.api.config.SortDir;
 import appeng.api.config.SortOrder;
+import appeng.api.stacks.GenericStack;
 import appeng.client.gui.me.common.MEStorageScreen;
 import appeng.menu.SlotSemantics;
 import appeng.menu.slot.DisabledSlot;
@@ -972,6 +975,48 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
             }
         }
         return null;
+    }
+
+    /**
+     * 把光标下的那一格交给切片浏览器（JEI / EMI / REI）。表格是自绘的，真实槽位在 {@code init()} 里被移除，
+     * 所以父类的默认实现（只认 vanilla 槽）在这一屏问不出任何东西。这是 AE2 为「不在普通槽里的 ingredient」
+     * 留的钩子（见 {@code AEBaseScreen#getStackUnderMouse} 的注释），AE2 自己的自绘表格也这么做（样板访问
+     * 终端、合成 CPU 的 {@code CraftingCPUScreen}）。
+     *
+     * <p>交出的是格子上画着的那个东西：样板的主产物（与 {@code drawDiskRow} 的图标同一个来源，产物不是物品
+     * 时是它自带的伪物品包装，{@code GenericStack.fromItemStack} 会拆开）。R/U 因此交给浏览器自己响应——
+     * 本项目不注册键位、也不自己判断按了什么键。</p>
+     *
+     * <p>只认样板格（磁盘格、空格、组头行不在此列），解不出主产物的坏样板不交（那一格按 R/U 安静地无事发生，
+     * 与格子上标红的提示一致）；背包与快捷栏那些真实槽仍走父类。</p>
+     *
+     * <p>两条前提：JEI 那一侧要装 AE2 的 JEI 集成模组（AE2 19.2.x 本体不带 JEI 支持，本屏的 JEI 转发由那个
+     * 模组提供；EMI 与 REI 由 AE2 自带模块转发）。另外，格子 tooltip 说的是样板本体（含输入清单），而这里的
+     * R/U 查的是它的主产物——两者口径不同是有意的。</p>
+     */
+    @Nullable
+    @Override
+    public StackWithBounds getStackUnderMouse(double mouseX, double mouseY) {
+        int rowIndex = rowIndexAt(mouseX, mouseY);
+        int column = columnAt(mouseX);
+        if (rowIndex >= 0 && column >= 0 && column < COLUMNS && patternIndexAt(rowIndex, column) >= 0) {
+            var pattern = itemAt(rowIndex, column);
+            var stack = GenericStack.fromItemStack(pattern == null ? ItemStack.EMPTY : patternOutputOf(pattern));
+            if (stack != null) {
+                // 非物品产出（流体等）是经伪物品包装过来的，里面带的量是 0，而浏览器侧只有 JEI 会把 0 夹到 1。
+                // 这里统一补到 1，两家口径一致，也免得键匹配不上。
+                if (stack.amount() <= 0) {
+                    stack = new GenericStack(stack.what(), 1);
+                }
+                // 坐标与 drawDiskRow 逐字一致（baseX = LIST_X、rowY = LIST_Y + HEADER_HEIGHT + 可见行号
+                // × ROW_HEIGHT、格内再各 +1），只是把局部坐标换成绝对屏幕坐标；矩形口径与 AE2 的
+                // StackWithBounds.fromSlot 相同（一格内容 16×16）。
+                int cellX = leftPos + LIST_X + column * 18 + 1;
+                int cellY = topPos + LIST_Y + HEADER_HEIGHT + (rowIndex - scrollOffset) * ROW_HEIGHT + CELL_Y_INSET;
+                return new StackWithBounds(stack, new Rect2i(cellX, cellY, 16, 16));
+            }
+        }
+        return super.getStackUnderMouse(mouseX, mouseY);
     }
 
     /** 表里（当前过滤/显示口径下）有没有这张盘。 */
