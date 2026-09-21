@@ -59,9 +59,14 @@ ordering="AFTER"
 side="CLIENT"
 
 # NEO ECO AE Extension is optional but covers both sides: its smart pattern bus accepts our disks, and its
-# upload button is installed on our terminal. No version bound of our own: the auxiliary-pattern-store API
-# only exists in our fork's builds, and a stock NEO ECO makes the reflection lookups fail and the integration
-# stand down (with a log line) rather than block the load.
+# upload button is installed on our terminal. No version bound of our own: both halves of that API come from
+# https://github.com/xingluo01/NeoECOAEExtension (branch feature/pattern-disk-v21.1.2, proposed upstream as
+# PR #101) rather than from a release - a stock NEO ECO, including the tagged builds whose version string our
+# dev jar also carries, makes the reflection lookups fail and the integration stand down (with a log line)
+# rather than block the load. The upload button is only added when the whole chain is present - the bus, the
+# auxiliary store, the prepared pattern, the upload widget, and both upload entries (the reporting one and the
+# blank-replacement query) - because the plain insertPattern cannot tell a consumed pattern from a merely moved
+# one; a build that has the classes but not those entries keeps the bus integration and leaves the button off.
 [[dependencies.${mod_id}]]
 modId="neoecoae"
 type="optional"

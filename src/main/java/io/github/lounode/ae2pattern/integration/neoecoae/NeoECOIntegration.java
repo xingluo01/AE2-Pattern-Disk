@@ -107,9 +107,18 @@ public class NeoECOIntegration {
         registerTerminalView(busClass, handles);
 
         // Upload button for the encoding terminal: wire up the pattern-storage upload so that clicking the
-        // NEO ECO button in the terminal screen calls into the disk's storage service.
-        PatternDiskEncodingTermMenu.uploadHandler = NeoECOUploadHandler.create();
-        LOGGER.info("[AE2-Pattern-Disk] Encoding terminal upload button wired");
+        // NEO ECO button in the terminal screen calls into the disk's storage service. The client decides
+        // whether to draw the button by the same capability, so the two cannot disagree.
+        if (NeoECOUploadHandler.reportingApiPresent()) {
+            PatternDiskEncodingTermMenu.uploadHandler = NeoECOUploadHandler.create();
+            LOGGER.info("[AE2-Pattern-Disk] Encoding terminal upload button wired");
+        } else {
+            // Without the reporting entry an upload can only guess whether a container ate the pattern or a
+            // slot merely took it in, and the wrong guess hands a blank back for a pattern that was only
+            // moved - a dupe. Offer no button rather than one that can mint patterns.
+            LOGGER.warn("[AE2-Pattern-Disk] NEO ECO has no insertPreparedPatternReporting, so the encoding "
+                    + "terminal upload button stays off");
+        }
     }
 
     /**

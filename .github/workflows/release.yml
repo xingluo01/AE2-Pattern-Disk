@@ -15,7 +15,7 @@ name: Release
 #             CURSEFORGE_TOKEN       https://www.curseforge.com/account/api-tokens 生成
 #   Variables MODRINTH_PROJECT_ID    Modrinth 项目 id 或 slug
 #             CURSEFORGE_PROJECT_ID  CurseForge 数字项目 id（不是 slug）
-#             NEOECOAE_JAR_URL       libs/neoecoae-21.2.0-beta3.jar 的下载地址（见下方说明）
+#             NEOECOAE_JAR_URL       libs/neoecoae-21.2.0-beta5.jar 的下载地址（见下方说明）
 #             MODDEVMCP_JAR_URL     libs/moddevmcp-0.3.jar 的下载地址（同为本地专属依赖，见下方说明）
 #             EAEPLUS_JAR_URL       libs/extendedae_plus-1.6.2-dev.jar 的下载地址（缺它 fetch 步骤会硬失败，见下方说明）
 #
@@ -63,6 +63,8 @@ jobs:
       # build.gradle 把 libs/neoecoae-<version>.jar 当作 compileOnly 依赖，而该 jar 不入 git（第三方
       # 构建产物，见 README）。把 fork（xingluo01/NeoECOAEExtension，分支 feature/pattern-disk-v21.1.2）
       # 构建出的 jar 传到一个 release asset / 可直链，再把地址填进仓库变量 NEOECOAE_JAR_URL。
+      # 那个分支现已把上游 v21.1.2 合并进来（21.2.0-beta5 基线），版号与官方发布同名，换 jar 时
+      # 别把官方构建传上去——这里要的是带辅助存储 API 的 fork 构建。
       # 第二个 jar（ModDevMCP 0.3）同样未发布到公共 maven，由变量 MODDEVMCP_JAR_URL 提供，
       # 对应 build.gradle 里的 implementation files('libs/moddevmcp-0.3.jar')。
       # 第三个 jar（ExtendedAE Plus 的本地构建，含其终端兼容层接口 IPatternUploadMenu /
@@ -90,12 +92,12 @@ jobs:
             exit 1
           fi
           mkdir -p libs
-          curl -fL --retry 3 --retry-delay 5 -o libs/neoecoae-21.2.0-beta3.jar "$JAR_URL"
+          curl -fL --retry 3 --retry-delay 5 -o libs/neoecoae-21.2.0-beta5.jar "$JAR_URL"
           curl -fL --retry 3 --retry-delay 5 -o libs/moddevmcp-0.3.jar "$MCP_JAR_URL"
           curl -fL --retry 3 --retry-delay 5 -o libs/extendedae_plus-1.6.2-dev.jar "$EAEPLUS_JAR_URL"
           # 校验下载内容：Gradle 对 files() 里不存在的文件是静默跳过，靠这里把“下错文件”挡在构建前。
           # 若日后替换 deps-v1 上的同名 jar，必须同步更新下面三条哈希。
-          echo "7749d2c9ecf4ce2cb73f070fc180da17d2438340472f0f4f0f278268a9db0bec  libs/neoecoae-21.2.0-beta3.jar" | sha256sum -c -
+          echo "c7113167eb0d42bbb4000c6e2f388a897d69909c144409905778639008a33e8a  libs/neoecoae-21.2.0-beta5.jar" | sha256sum -c -
           echo "ce22ff7266a8462e1ae7062d17df1fdbdd06bdf29e5501c2f6d6ded6daf33789  libs/moddevmcp-0.3.jar" | sha256sum -c -
           echo "f789723bde98d709885501184f5335ae06a84a9ad6ad5a4c51366eabb3a2fcd1  libs/extendedae_plus-1.6.2-dev.jar" | sha256sum -c -
           ls -l libs

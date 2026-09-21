@@ -3,6 +3,8 @@ package io.github.lounode.ae2pattern.integration.neoecoae;
 import java.lang.reflect.Method;
 
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -23,12 +25,14 @@ import appeng.api.inventories.InternalInventory;
  */
 final class NeoECOBusAccess {
 
-    static final String BUS_CLASS =
-            "cn.dancingsnow.neoecoae.blocks.entity.crafting.ECOCraftingPatternBusBlockEntity";
+    private static final Logger LOGGER = LoggerFactory.getLogger("ae2_pattern_disk.integration.neoecoae");
 
-    static final String AUXILIARY_STORE_CLASS = "cn.dancingsnow.neoecoae.api.AuxiliaryPatternStore";
+    /** 与客户端能力门控共用同一份名字，免得两侧漂移；见 {@link NeoECOTypes}。 */
+    static final String BUS_CLASS = NeoECOTypes.BUS;
 
-    static final String INSERTION_RESULT_CLASS = "cn.dancingsnow.neoecoae.api.ECOPatternInsertionResult";
+    static final String AUXILIARY_STORE_CLASS = NeoECOTypes.AUXILIARY_STORE;
+
+    static final String INSERTION_RESULT_CLASS = NeoECOTypes.INSERTION_RESULT;
 
     /**
      * The bus methods this integration needs, resolved once.
@@ -48,7 +52,12 @@ final class NeoECOBusAccess {
     static Class<?> findClass(String name) {
         try {
             return Class.forName(name);
-        } catch (ClassNotFoundException e) {
+        } catch (ClassNotFoundException absent) {
+            return null;
+        } catch (LinkageError broken) {
+            // 类在、但链接不起来：这不是「版本旧」而是「构建坏了」，退场之外还得留一个原因，
+            // 否则日志里这两种情形长得一样。
+            LOGGER.warn("[AE2-Pattern-Disk] NEO ECO class {} could not be linked", name, broken);
             return null;
         }
     }

@@ -40,13 +40,14 @@ public class ExtendedAEPlusUploadScreen extends PatternDiskEncodingTermScreen im
     }
 
     /**
-     * @return EAE+ 上传按钮的位置（屏幕绝对坐标）；本终端在右侧只在挂了 ECO 上传按钮时才给锚点，
+     * @return EAE+ 上传按钮的位置（屏幕绝对坐标）；本终端在右侧只在真挂了 ECO 上传按钮时才给锚点，
      *         没挂就返回 null，让 EAE+ 按它自己的办法（从 encodePattern 按钮推）定位。
+     *         判定与父类装按钮的条件同一份（见 {@code hasUploadTarget}），否则会为不存在的按钮留空。
      */
     @Nullable
     @Override
     public Rect2i getUploadAnchor() {
-        if (!NeoECOClientIntegration.isLoaded()) {
+        if (!NeoECOClientIntegration.hasUploadTarget()) {
             return null;
         }
         // 位置只能自己算：EAE+ 是在 AEBaseScreen.init 的 TAIL 取锚点，而本屏幕的 ECO 按钮要等

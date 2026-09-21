@@ -1180,22 +1180,44 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
      * 就落玩家背包；背包也满则留在编码槽由玩家手动取走（不丢失）。
      */
     private void returnBlankPatternToStorage() {
+        returnPatternToStorage(AEPatternRegistries.blankPattern());
+    }
+
+    /**
+     * 把一张样板交回：优先网络存储，其次玩家背包，两处都放不下时退回编码槽——调用方已经清空编码槽，
+     * 那是它唯一的去处。网络只吃下了一部分时，余量接着走同一条兜底链：不能因为「进去了一点」就把整张
+     * 当作已退。
+     *
+     * <p>今天所有调用方都只退单件（编码槽本身限一件），所以「部分合入」在这些路径上不可达；这里仍按
+     * {@code count} 推导余量，免得将来有人拿它退多件时把余量吞掉。与 NEO ECO 那边「替代物要进到网络里
+     * 才允许清源」相比，这里把「已交到玩家手里」也算兑现——两边都不丢件，差别只在这条兜底链更长。</p>
+     *
+     * @param pattern 要退还的样板；空表示不退还（样板只是被搬了位置，物品并没有消失）
+     */
+    private void returnPatternToStorage(ItemStack pattern) {
+        var remaining = pattern.copy();
+        if (remaining.isEmpty()) {
+            return;
+        }
         var grid = getGrid();
         var storage = grid == null ? null : grid.getStorageService();
         if (storage != null) {
-            var inserted = storage.getInventory().insert(AEItemKey.of(AEItems.BLANK_PATTERN), 1,
+            long inserted = storage.getInventory().insert(AEItemKey.of(remaining), remaining.getCount(),
                     Actionable.MODULATE, IActionSource.ofPlayer(getPlayer()));
-            if (inserted > 0) {
+            if (inserted >= remaining.getCount()) {
                 broadcastChanges();
                 return;
             }
+            if (inserted > 0) {
+                remaining.shrink((int) inserted);
+            }
         }
-        if (getPlayer().getInventory().add(AEPatternRegistries.blankPattern())) {
+        // 背包 add 可能只收下一部分：传进去的就是 remaining 本身，剩下的量留在它手里，不会重复给。
+        if (getPlayer().getInventory().add(remaining)) {
             broadcastChanges();
             return;
         }
-        // 都放不下：退回编码槽。调用方已经把编码槽清空了，这里是那一个样板唯一的去处。
-        this.encodedPatternSlot.set(AEPatternRegistries.blankPattern());
+        this.encodedPatternSlot.set(remaining);
         broadcastChanges();
     }
 
@@ -1238,6 +1260,19 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
     public void clearEncodedPatternAndReturnBlank() {
         this.encodedPatternSlot.set(ItemStack.EMPTY);
         returnBlankPatternToStorage();
+    }
+
+    /**
+     * 上传成功后清空编码槽。
+     *
+     * <p>与 {@link #clearEncodedPatternAndReturnBlank()} 的区别在“退多少”：上传方知道这次是被容器吃掉了
+     * （物品真的没了，得补），还是只被搬进了槽位（物品还在网络里，补一张就是凭空多造），所以由它决定。
+     *
+     * @param replacement 退还的内容；空表示不用退
+     */
+    public void clearEncodedPatternAfterUpload(ItemStack replacement) {
+        this.encodedPatternSlot.set(ItemStack.EMPTY);
+        returnPatternToStorage(replacement);
     }
 
     // ---- 磁盘列表同步（服务端扫描 <-> 客户端渲染） ----

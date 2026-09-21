@@ -237,8 +237,11 @@ build it, then copy the result in:
 ```bash
 cd ../NeoECOAEExtension
 ./gradlew build -x test
-cp build/libs/neoecoae-21.2.0-beta3.jar ../AE2-Pattern-Disk/libs/
+cp build/libs/neoecoae-21.2.0-beta5.jar ../AE2-Pattern-Disk/libs/
 ```
+
+The jar carries the branch's version string unchanged, so it can read the same as an official release;
+take it from the branch above, not from the release channels.
 
 The FD Smart Pattern Bus integration (upload-to-ECO button, disk-aware insertion, pattern access
 terminal view, encoding-terminal disk list) needs the hooks added by that PR. Against a stock NEO ECO

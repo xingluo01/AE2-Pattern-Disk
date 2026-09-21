@@ -177,12 +177,21 @@ dependencies {
 
     // NEO ECO AE Extension: dev reference for the pattern-disk integration (upload-to-ECO button,
     // disk-aware storage, autocrafting from disk-held patterns). Compile and runtime both resolve
-    // libs/neoecoae-21.2.0-beta3.jar, which is NOT tracked in git: build it from the sibling checkout
-    // at https://github.com/xingluo01/NeoECOAEExtension (branch feature/pattern-disk-v21.1.2), then
-    // copy build/libs/neoecoae-21.2.0-beta3.jar into libs/. The integration stays inert when the
-    // auxiliary-pattern-store API is absent, so the mod still runs against a stock NEO ECO build.
-    compileOnly files('libs/neoecoae-21.2.0-beta3.jar')
-    clientCompileOnly files('libs/neoecoae-21.2.0-beta3.jar')
+    // libs/neoecoae-21.2.0-beta5.jar, which is NOT tracked in git: build it from the sibling checkout at
+    // https://github.com/xingluo01/NeoECOAEExtension (branch feature/pattern-disk-v21.1.2, which now has the
+    // upstream v21.1.2 line merged in; that merge commit currently sits on feature/pattern-disk-v21.1.2-merge
+    // until the upstream PR is updated), then copy build/libs/neoecoae-<version>.jar into libs/.
+    //
+    // Every API this integration talks to (AuxiliaryPatternStore, the reporting upload, the terminal view
+    // hook) exists only on that branch, proposed upstream as
+    // https://github.com/DancingSnow0517/NeoECOAEExtension/pull/101 - a stock NEO ECO, including the
+    // released tags, has none of it. The jar carries the branch's version string unchanged, because the work
+    // is headed for upstream rather than an independent release: that string can therefore equal an official
+    // release, so read the file as a fork build, not as that release. Rebuild it whenever the branch moves.
+    // The integration stays inert when the auxiliary-pattern-store API is absent, so the mod still runs
+    // against a stock NEO ECO build.
+    compileOnly files('libs/neoecoae-21.2.0-beta5.jar')
+    clientCompileOnly files('libs/neoecoae-21.2.0-beta5.jar')
 
     // Client source set: explicit client-side API access.
     clientCompileOnly(libs.ae2)
@@ -265,7 +274,7 @@ dependencies {
     // Pattern-Disk <-> FD Smart Pattern Bus integration.
     // Runtime must use the locally built dev jar (not the published Modrinth artifact), otherwise the
     // disk-acceptance hooks are missing and pattern disks cannot be inserted into the bus.
-    localRuntime files('libs/neoecoae-21.2.0-beta3.jar')
+    localRuntime files('libs/neoecoae-21.2.0-beta5.jar')
     // LDLib: mandatory runtime dependency of Neo ECO AE Extension (its GUI library). Pin the exact
     // version Neo ECO itself depends on (2.2.39.a) instead of the plain 2.2.39 release, so Gradle
     // cannot downgrade the transitive requirement.
