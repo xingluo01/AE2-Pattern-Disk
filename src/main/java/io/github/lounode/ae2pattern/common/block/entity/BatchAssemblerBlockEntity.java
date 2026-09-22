@@ -39,10 +39,12 @@ import appeng.api.networking.ticking.TickRateModulation;
 import appeng.api.networking.ticking.TickingRequest;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
+import appeng.api.stacks.AEKeyType;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
 import appeng.blockentity.crafting.IMolecularAssemblerSupportedPattern;
 import appeng.api.storage.StorageCells;
+import appeng.api.storage.cells.IBasicCellItem;
 import appeng.api.storage.cells.StorageCell;
 import appeng.api.upgrades.IUpgradeInventory;
 import appeng.api.upgrades.IUpgradeableObject;
@@ -66,7 +68,6 @@ import io.github.lounode.ae2pattern.common.pattern.PatternDiskTerminalView;
 
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
-import io.github.lounode.ae2pattern.common.logic.BatchProbe;
 import io.github.lounode.ae2pattern.common.logic.BatchRecipePool;
 import io.github.lounode.ae2pattern.common.logic.PatternPlan;
 
@@ -124,9 +125,28 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
      * catalyst-sized amount therefore arrives in full on the spot, while a huge batch still never becomes
      * one giant IO burst - the reason the smooth return exists at all. */
     private static final long PRIORITY_RETURN_BURST = 512;
-    /** Smooth-return horizon: accumulated outputs are returned to the network over this many ticks
-     * (5% of the accumulated total per tick), so a huge batch never produces one giant IO burst. */
-    private static final int OUTPUT_RETURN_TICKS = 20;
+    /**
+     * Smooth-return horizon: accumulated outputs are returned to the network over this many ticks
+     * (a twentieth of the accumulated total per tick), so a huge batch never produces one giant IO burst.
+     *
+     * <p>{@code 1} means everything is handed over at once, i.e. no smoothing. That is the default because the
+     * trickle cannot bound anything once a queue grows large: the priority branch below raises the hand-over to
+     * {@link #PRIORITY_RETURN_BURST} when the network is waiting for a key, and once one tick's share is at or
+     * above that burst, both branches compute the same amount - the trickle never applies. A share reaches the
+     * burst as soon as a key holds more than {@code OUTPUT_RETURN_TICKS * PRIORITY_RETURN_BURST} items, which
+     * the orders this machine is built for exceed by orders of magnitude. Handing such a queue over in one go
+     * was measured to be harmless: several hundred billion items in a single insert cost a fraction of a
+     * millisecond, because the storage layer books per key rather than per item.
+     *
+     * <p>A machine whose output keys the network never asks for would take the trickle path at every key, and
+     * there a larger value still spreads the return. That is why the value is configurable rather than gone.</p>
+     *
+     * <p>Overridable with {@code -Dae2pattern.outputReturnTicks=N}, parsed as in {@code Integer.getInteger} (so
+     * {@code 0x} and a leading-zero octal are accepted) and floored at 1. A malformed value falls back to this
+     * default.</p>
+     */
+    private static final int OUTPUT_RETURN_TICKS =
+            Math.max(1, Integer.getInteger("ae2pattern.outputReturnTicks", 1));
     /** Upper bound on cached execution plans. Plans are only a speed-up, so a machine fed an endless
      * variety of pushed patterns drops the whole cache instead of growing without limit. */
     private static final int MAX_CACHED_PLANS = 1024;
@@ -275,11 +295,45 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     private final Map<IPatternDetails, Long> queue = new LinkedHashMap<>();
 
     /**
-     * Upper bound on the parallel slots advertised to NEO ECO. A hand-over of 4096 crafts already outruns
-     * what any CPU can assemble, and a bounded probe keeps the estimate at one simulated insert per input
-     * key instead of a search.
+     * Upper bound on the parallel slots advertised to NEO ECO. Unlimited by default: the machine's own ceiling
+     * is not a real constraint, so it must not become the limit a pack runs into. What actually bounds one
+     * hand-over is the cell buffer's shared free space (measured in {@link #availableParallelSlots()}), and past
+     * that what NEO ECO can put in the CPU inventory, its material and its energy - all of which the CPU already
+     * clamps itself. Reporting the protocol's own maximum therefore hands the limit to the factors that exist
+     * rather than to a constant here.
+     *
+     * <p>Overridable with {@code -Dae2pattern.maxParallelSlots=N} to bring back a ceiling. {@code N} is parsed as
+     * in {@code Integer.getInteger}, so a malformed value falls back to unlimited - which would quietly run the
+     * other group of a comparison, so check the effective value logged at class load (see
+     * {@link #logEffectiveTuning}). A value at or below zero becomes 1: one craft per hand-over, meant only for
+     * the lower end of a comparison.</p>
      */
-    private static final int MAX_ADVERTISED_PARALLEL_SLOTS = 4096;
+    private static final int MAX_ADVERTISED_PARALLEL_SLOTS =
+            Math.max(1, Integer.getInteger("ae2pattern.maxParallelSlots", Integer.MAX_VALUE));
+
+    static {
+        logEffectiveTuning();
+    }
+
+    /**
+     * Reports the tuning values at class load, but only for the properties that were actually set. Both are
+     * read with {@code Integer.getInteger}, which falls back to the default on a malformed value without saying
+     * so - and the difference decides how many hand-overs an order costs or whether output is trickled at all.
+     * Printing only what was overridden makes a mistyped launch argument visible while keeping a default launch
+     * silent, which is what a release build has to be.
+     */
+    private static void logEffectiveTuning() {
+        var slots = System.getProperty("ae2pattern.maxParallelSlots");
+        var returns = System.getProperty("ae2pattern.outputReturnTicks");
+        if (slots == null && returns == null) {
+            return;
+        }
+        if (LOGGER.isInfoEnabled()) {
+            LOGGER.info("Batch assembler tuning overridden: maxParallelSlots={} (requested {}), "
+                            + "outputReturnTicks={} (requested {})",
+                    MAX_ADVERTISED_PARALLEL_SLOTS, slots, OUTPUT_RETURN_TICKS, returns);
+        }
+    }
 
     /** The pattern the parallel-slot estimate is measured against: the last one actually handed over. */
     private IPatternDetails lastHandedPattern;
@@ -577,15 +631,62 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     // machine's own bookkeeping entry points.
 
     /**
+     * Room one type entry takes on a cell, expressed in items, for the cell holding {@code stack}.
+     *
+     * <p>AE2 charges a new key {@code bytesPerType * amountPerByte} items' worth of room on top of its items.
+     * The reservation sums this over every cell slot, which is deliberately pessimistic: the item might land in
+     * any one of them, and reserving an entry per slot can only make the estimate smaller. Undersizing costs a
+     * refused hand-over, which sends the whole batch down the per-craft path, so pessimism is the cheap side.
+     *
+     * @return the entry's room in items, or 0 for a cell that does not report a type cost
+     */
+    private static long typeEntryUnits(AEKeyType keyType, net.minecraft.world.item.ItemStack stack) {
+        if (!(stack.getItem() instanceof IBasicCellItem basicCell)) {
+            return 0L;
+        }
+        long bytesPerType = basicCell.getBytesPerType(stack);
+        if (bytesPerType <= 0) {
+            return 0L;
+        }
+        return bytesPerType * Math.max(1L, keyType.getAmountPerByte());
+    }
+
+    /** Room in items every type entry would take across all cell slots, for a key of {@code key}'s type. */
+    private long typeEntryUnits(AEKey key) {
+        long units = 0L;
+        for (int i = 0; i < CELL_SLOTS; i++) {
+            var stack = cellInv.getStackInSlot(i);
+            if (stack.isEmpty()) {
+                continue;
+            }
+            units += typeEntryUnits(key.getType(), stack);
+        }
+        return units;
+    }
+
+    /**
      * How many further complete input sets the cell buffer can take, for the pattern the CPU is currently
      * dispatching. NEO ECO asks this before it offers a batch, so this number decides how many crafts one
      * hand-over carries - the point being that a hand-over is never again "one craft per push".
      *
-     * <p>Best effort by design: ECO's contract does not name the pattern, and cell capacity is shared
-     * between the keys of a set, so the answer is the minimum over the set's keys of how many sets of that
-     * key still fit. That can only overshoot when several keys compete for the same free bytes, and an
-     * overshoot costs nothing but one refused hand-over - {@link #acceptPatternBatch} verifies against the
-     * real cells and rejects the whole batch.</p>
+     * <p>Best effort by design: ECO's contract does not name the pattern, and the cells' free space is shared
+     * between every key of a set. A per-key quotient is therefore not the answer, however small it is taken:
+     * every slot's simulation sees the cells as they are, so each quotient assumes the whole free space for its
+     * own key, and a hand-over sized by the smallest of them asks for one full set per key out of a space that
+     * can only hold one such set in total. The estimate is therefore
+     * {@code min over slots of free(key) / sum over slots of perCraft}, which is a safe lower bound whenever
+     * every key of the pattern is already in the buffer: the total demand of {@code slots} crafts is
+     * {@code slots * sum(perCraft)} and must fit into the shared room all of them draw from. Keys not yet
+     * present each cost one type entry on top of their items, so those entries are reserved separately before
+     * the division (see {@link #typeEntryUnits(AEKey)}).</p>
+     *
+     * <p>Two assumptions keep this honest, and both follow from what this machine accepts. Every input is an
+     * item key, so every key's {@code amountPerByte} is the same and item room may be summed across slots; a
+     * pattern carrying fluids is rejected long before dispatch. And the per-craft amount is read from the
+     * slot's first possible input, which is the variant the pattern lists first - ECO resolves the concrete
+     * key itself, so a pattern whose candidates differ in amount could be sized against the wrong one.
+     * Overshooting is not free here: a refused hand-over leaves the batch to the per-craft fallback, which pays
+     * the per-push cost once per craft, so the estimate is worth being conservative about.</p>
      */
     public int availableParallelSlots() {
         var pattern = currentDispatchPattern();
@@ -597,7 +698,10 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
             // ECO asks once per candidate and several times per tick; measure once per tick.
             return cachedSlots;
         }
-        long slots = MAX_ADVERTISED_PARALLEL_SLOTS;
+        long tightestFree = Long.MAX_VALUE;
+        long perCraftTotal = 0;
+        var occupied = cellContents();
+        long reservedUnits = 0;
         for (var input : pattern.getInputs()) {
             if (input == null) {
                 continue;
@@ -615,12 +719,29 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
                 // A slot the pattern does not describe is nothing this machine could size.
                 continue;
             }
+            // A key the cells do not hold yet costs one type entry on top of its items, and every such key
+            // costs its own: the insertion deducts bytesPerType * amountPerByte once per new key, so a batch
+            // that introduces several of them asks for that much more room than the item totals alone show.
+            if (occupied.get(key) <= 0) {
+                reservedUnits += typeEntryUnits(key);
+            }
+            // Saturating, because the sum only has to decide whether a hand-over is possible at all; a capped
+            // estimate of Integer.MAX_VALUE crafts can overflow it on a large per-craft amount.
+            perCraftTotal = perCraft >= Long.MAX_VALUE - perCraftTotal ? Long.MAX_VALUE : perCraftTotal + perCraft;
             long probe = perCraft <= Long.MAX_VALUE / MAX_ADVERTISED_PARALLEL_SLOTS
                     ? perCraft * MAX_ADVERTISED_PARALLEL_SLOTS
                     : Long.MAX_VALUE;
             long free = insertIntoCells(key, probe, Actionable.SIMULATE);
-            slots = Math.min(slots, free / perCraft);
+            // The probe already saw the key as it is: for a key that is present it returns its item room, and
+            // for a new key the first inserted item already paid the type entry. What the probe cannot know is
+            // the other new keys, which is what the reservation above covers.
+            tightestFree = Math.min(tightestFree, free);
         }
+        long available = tightestFree == Long.MAX_VALUE ? Long.MAX_VALUE : Math.max(0L, tightestFree - reservedUnits);
+        long slots = perCraftTotal > 0 && available != Long.MAX_VALUE
+                ? available / perCraftTotal
+                : 0L;
+        slots = Math.min(slots, MAX_ADVERTISED_PARALLEL_SLOTS);
         cachedSlotsPattern = pattern;
         cachedSlotsGameTime = now;
         cachedSlots = (int) Math.max(0L, Math.min(Integer.MAX_VALUE, slots));
@@ -751,7 +872,6 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         // the answer describe the same crafts either way.
         GenericStack sampleOutput;
         net.minecraft.core.NonNullList<ItemStack> remainders;
-        var remainderStarted = BatchProbe.start();
         try {
             sampleOutput = GenericStack.fromItemStack(supported.assemble(grid, level));
             remainders = supported.getRemainingItems(grid);
@@ -760,7 +880,6 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
                     patternDetails.getClass().getName(), getBlockPos(), broken);
             return false;
         }
-        BatchProbe.add(BatchProbe.REMAINDER, remainderStarted);
         if (!outputMatchesDeclaration(plan, sampleOutput)) {
             warnUnverifiable(patternDetails);
             return false;
@@ -770,7 +889,6 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         // never keeps half a batch. Energy is taken after the material and before anything is booked, because a
         // spent extraction can be returned but spent energy cannot.
         var consumed = new LinkedHashMap<AEKey, Long>();
-        long consumedStarted = BatchProbe.start();
         for (int i = 0; i < plan.inputs().size(); i++) {
             var input = plan.inputs().get(i);
             var usedKey = resolved.get(i);
@@ -785,12 +903,8 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
             }
             consumed.merge(usedKey, needed, Long::sum);
         }
-        BatchProbe.add(BatchProbe.CONSUME, consumedStarted);
 
-        var powerStarted = BatchProbe.start();
-        var powered = consumePower(jobs);
-        BatchProbe.add(BatchProbe.POWER, powerStarted);
-        if (!powered) {
+        if (!consumePower()) {
             // Nothing has been booked yet, so handing the material back leaves the machine exactly as it was.
             rollbackInputs(consumed);
             workState = WorkState.NO_POWER;
@@ -800,7 +914,6 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         // Book what leaves the machine: the verified main output and the pattern's own container remainders,
         // both scaled by the batch size. The power is already paid and the material already taken, so from
         // here on the batch cannot fail.
-        var outputsStarted = BatchProbe.start();
         addBookedOutput(sampleOutput.what(), sampleOutput.amount() * jobs);
         int remainderSlots = Math.min(remainders.size(), MAX_BATCH_REMAINDER_SLOTS);
         for (int i = 0; i < remainderSlots; i++) {
@@ -809,10 +922,8 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
                 addBookedOutput(stack.what(), stack.amount() * jobs);
             }
         }
-        BatchProbe.add(BatchProbe.OUTPUTS, outputsStarted);
 
         workState = WorkState.WORKING;
-        BatchProbe.fastCrafts(jobs);
         return true;
     }
 
@@ -1103,7 +1214,6 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
      * one burst. Internal chaining is deliberately not performed - see {@link BatchRecipePool}.
      */
     private boolean runBatch() {
-        int probeAssembled = 0;
         // Analyse patterns the machine has not seen before. That step only reads immutable pattern data,
         // so it is the one part of a run that may leave the server thread.
         preparePlans(queue.keySet());
@@ -1115,7 +1225,6 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
 
         boolean worked = false;
         int assembled = 0;
-        long batchOptimisedNanos = 0L;
         // Set when a run stops for a reason of its own, so that a later pattern which does run cannot erase it.
         boolean stopped = false;
         var it = queue.entrySet().iterator();
@@ -1134,14 +1243,11 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
             // A mixed buffer still amortises whatever one variant covers, and only the rest stays per-craft.
             long chunk = uniformChunk(plan, remaining);
             if (chunk >= 2) {
-                long started = BatchProbe.ENABLED ? System.nanoTime() : 0L;
                 if (assembleBatchOnce(entry.getKey(), plan, chunk)) {
-                    batchOptimisedNanos += BatchProbe.ENABLED ? System.nanoTime() - started : 0L;
                     workState = WorkState.WORKING;
                     worked = true;
                     int jobs = (int) Math.min(Integer.MAX_VALUE, chunk);
                     assembled += jobs;
-                    probeAssembled += jobs;
                     remaining -= chunk;
                     if (remaining <= 0) {
                         it.remove();
@@ -1172,7 +1278,6 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
                 remaining--;
                 worked = true;
                 assembled++;
-                probeAssembled++;
             }
 
             if (remaining <= 0) {
@@ -1185,8 +1290,8 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         lastRunJobs = assembled;
         if (assembled > 0 && assembled < LARGE_BATCH_JOBS) {
             // A small run: the window gathered next to nothing, so the next batch is not made to wait for it.
-            // Saturated rather than allowed to wrap: the probe keys off this counter, and a negative value
-            // would stop it from ever firing again.
+            // Saturated rather than allowed to wrap, so the streak cannot turn negative and stop the short
+            // window from ever coming back.
             if (shortRunStreak < Integer.MAX_VALUE) {
                 shortRunStreak++;
             }
@@ -1198,8 +1303,6 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         if (worked) {
             saveChanges();
         }
-        BatchProbe.optimisedBatch(batchOptimisedNanos);
-        BatchProbe.batch(batchOptimisedNanos, probeAssembled);
         return worked;
     }
 
@@ -1211,16 +1314,12 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
      * chaining is deliberately not performed - see {@link BatchRecipePool}.
      */
     private boolean assembleOnce(PatternPlan plan, KeyCounter buffer) {
-        var resolveStarted = BatchProbe.start();
         var resolved = resolveInputs(plan, buffer);
-        BatchProbe.add(BatchProbe.RESOLVE, resolveStarted);
         if (resolved == null) {
             workState = WorkState.INPUTS_UNAVAILABLE;
             return false;
         }
-        var consumeStarted = BatchProbe.start();
         var consumed = consumeInputs(plan, resolved);
-        BatchProbe.add(BatchProbe.CONSUME, consumeStarted);
         if (consumed == null) {
             workState = WorkState.INPUTS_UNAVAILABLE;
             return false;
@@ -1242,14 +1341,12 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
                 continue;
             }
             try {
-                var remainderStarted = BatchProbe.start();
                 // Container remainders are derived from the variant actually consumed - buckets, bottles
                 // and other containers must be handed back, otherwise they vanish and the crafting CPU
                 // keeps waiting for its expected container items forever. The same call is what returns a
                 // worn tool to the network: AE2 derives the remainder by re-running the recipe for the
                 // variant that was actually consumed.
                 var remaining = remainderFor(input, usedKey);
-                BatchProbe.add(BatchProbe.REMAINDER, remainderStarted);
                 long consumedCount = input.multiplier();
                 if (remaining != null && consumedCount > 0) {
                     // AE2 books one remaining item per occupied slot.
@@ -1265,24 +1362,18 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         }
 
         // Defer (keeping the inputs in the cell buffer) when the machine cannot run at all.
-        var powerStarted = BatchProbe.start();
-        var powered = consumePower();
-        BatchProbe.add(BatchProbe.POWER, powerStarted);
-        if (!powered) {
+        if (!consumePower()) {
             rollbackInputs(consumed.byKey());
             workState = WorkState.NO_POWER;
             return false;
         }
         // Outputs enter the smooth-return queue instead of hitting the network storage in one burst:
-        // drainOutputs() returns 1/20 of the accumulated total per tick.
-        var outputsStarted = BatchProbe.start();
+        // drainOutputs() hands them over on the next tick.
         for (var entry : outputs.entrySet()) {
             var slot = pendingOutputs.computeIfAbsent(entry.getKey(), k -> new long[2]);
             slot[0] += entry.getValue();
             slot[1] += entry.getValue();
         }
-        BatchProbe.add(BatchProbe.OUTPUTS, outputsStarted);
-        BatchProbe.slowCraft();
         return true;
     }
 
@@ -1359,15 +1450,12 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     }
 
     /**
-     * Charges the grid for one assembled job ({@link #ENERGY_PER_RUN}). Parallel work inside that job -
-     * pattern multipliers, container remainders - does not add extra consumption.
+     * Charges the grid for one assembled run ({@link #ENERGY_PER_RUN}). A whole batch is one execution unit:
+     * the parallelism inside it - pattern multipliers, container remainders, further crafts of the same
+     * pattern - does not add consumption, so the charge does not scale with the batch size.
      */
-    /** Charges the grid for {@code jobs} assembled jobs ({@link #ENERGY_PER_RUN} each). */
-    private boolean consumePower(long jobs) {
-        if (jobs <= 0) {
-            return true;
-        }
-        double wanted = ENERGY_PER_RUN * jobs;
+    private boolean consumePower() {
+        double wanted = ENERGY_PER_RUN;
         var node = getMainNode().getNode();
         if (node == null || node.getGrid() == null) {
             return false;
@@ -1380,10 +1468,6 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
             return false;
         }
         return energy.extractAEPower(wanted, Actionable.MODULATE, PowerMultiplier.CONFIG) > 0;
-    }
-
-    private boolean consumePower() {
-        return consumePower(1L);
     }
 
     /**

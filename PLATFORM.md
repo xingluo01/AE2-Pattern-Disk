@@ -98,7 +98,7 @@ Everything this mod adds is listed in the creative tab **AE2 Pattern Disk**, and
 
 ## In-game guide
 
-A GuideME guide ships with the mod, reachable from the AE2 guide book. It covers the pattern disks (all five tiers on one page), the pattern disk provider in both of its forms, the pattern transferer, the efficient molecular assembler, the batch assembler, and the encoding and management terminals. It is available in English and Simplified Chinese. Of the six machine GUIs, the encoding terminal links to its guide page straight from the screen.
+A GuideME guide ships with the mod, reachable from the AE2 guide book. It covers the pattern disks (all five tiers on one page), the pattern disk provider in both of its forms, the pattern transferer, the efficient molecular assembler, the batch assembler, and the encoding and management terminals. It is available in English and Simplified Chinese. Of the six machine GUIs, the encoding and management terminals link to their guide pages straight from the screen.
 
 ## Dependencies
 

@@ -25,6 +25,9 @@ logs/
 # artifact of its own repository, copied in by hand; the comments beside each dependency say which.
 libs/*.jar
 
+# 本机路径声明：兄弟仓库与 libs jar 的绝对路径索引，换机器要改，不进版本库。
+LOCAL_DEPS.md
+
 # Pi workflow metadata
 plans/
 .pi/

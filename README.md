@@ -170,10 +170,12 @@ All items are available in the dedicated creative tab **AE2 Pattern Disk**.
     `A=ae2:quartz_glass` `B=ae2:calculation_processor` `C=ae2_pattern_disk:pattern_disk_assembler` `D=ae2_pattern_disk:pattern_disk_64k`
 - **Pattern Disk Encoding Terminal**
   - Shapeless: `ae2:pattern_encoding_terminal` + `ae2_pattern_disk:pattern_disk_1k`
+- **Pattern Disk Management Terminal**
+  - Shapeless: `ae2:pattern_access_terminal` + `ae2_pattern_disk:pattern_disk_1k`
 
 ## Guide
 
-The mod ships a GuideME guide (in `assets/ae2_pattern_disk/ae2guide/`) covering the pattern disks (all five tiers on one page), the pattern disk provider (block and panel forms), the pattern transferer, the efficient molecular assembler, the batch assembler and the pattern disk encoding terminal. Of the five machine GUIs, only the encoding terminal declares a `helpTopic` in its screen JSON, so it is the only one that links to its guide page.
+The mod ships a GuideME guide (in `assets/ae2_pattern_disk/ae2guide/`) covering the pattern disks (all five tiers on one page), the pattern disk provider (block and panel forms), the pattern transferer, the efficient molecular assembler, the batch assembler, the pattern disk encoding terminal and the pattern disk management terminal. Of the six machine GUIs, the encoding and management terminals declare a `helpTopic` in their screen JSON, so those two link to their guide pages straight from the screen.
 
 ## Dependencies
 

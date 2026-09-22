@@ -75,3 +75,7 @@ The lower half is the pattern disk encoding terminal's: mode cycling (crafting /
 - The table is a **read-only view**: it shows what is on the disks, but to change them use the controls above or the encoding area. Dragging a pattern into a cell does nothing.
 - Contents are shown in full: a disk holding more simply takes more rows (the first row starts with the disk, every row below is 17 pattern cells).
 - Contents arrive from the server on demand, so a disk that was just placed may show as just the disk for a frame or two.
+
+## Recipe
+
+<RecipeFor id="ae2_pattern_disk:pattern_disk_management_terminal" />
