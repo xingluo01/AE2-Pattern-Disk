@@ -4,6 +4,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -27,6 +29,7 @@ import appeng.api.networking.ticking.IGridTickable;
 import appeng.api.networking.ticking.TickRateModulation;
 import appeng.api.networking.ticking.TickingRequest;
 import appeng.api.stacks.AEItemKey;
+import appeng.api.inventories.BaseInternalInventory;
 import appeng.api.inventories.InternalInventory;
 import appeng.api.stacks.KeyCounter;
 import appeng.api.upgrades.IUpgradeInventory;
@@ -56,16 +59,76 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
         implements InternalInventoryHost, IUpgradeableObject, IGridTickable,
         appeng.api.implementations.blockentities.ICraftingMachine {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(PatternDiskAssemblerBlockEntity.class);
+
     public static final int THREADS = 8;
     public static final int GRID_SIZE = 9; // 3x3
     private static final int OUTPUT_SLOT = 9; // gridInv is 10 slots (9 grid + 1 output)
     private static final int[] SPEED_STEPS = { 10, 13, 17, 20, 25, 50 };
-    private static final double[] POWER_MULT = { 1.0, 1.3, 1.7, 2.0, 2.5, 5.0 };
 
     private final IActionSource actionSource = new MachineSource(this);
     private final IUpgradeInventory upgrades;
 
     private final CraftUnit[] units = new CraftUnit[THREADS];
+
+    /**
+     * Read-only view of the eight output slots, handed out to external item handlers (pipes, hoppers,
+     * AE2 storage buses). AE2's molecular assembler does the same: its crafting-grid filter only lets
+     * extraction through for the output slot. Without this view a product that the neighbouring return
+     * node refuses and the ME network will not take has no way out of the machine at all.
+     */
+    private final InternalInventory exposedOutputs = new BaseInternalInventory() {
+        @Override
+        public int size() {
+            return THREADS;
+        }
+
+        @Override
+        public ItemStack getStackInSlot(int slot) {
+            if (slot < 0 || slot >= THREADS) {
+                return ItemStack.EMPTY;
+            }
+            return units[slot].grid.getStackInSlot(OUTPUT_SLOT);
+        }
+
+        @Override
+        public void setItemDirect(int slot, ItemStack stack) {
+            if (slot < 0 || slot >= THREADS) {
+                return;
+            }
+            units[slot].grid.setItemDirect(OUTPUT_SLOT, stack);
+            // Defensive redundancy: the unit grid already notifies its host on a direct set, which saves
+            // the change and nudges the ticker (see onChangeInventory). Reached only by external
+            // extraction, since insertion is refused below.
+            saveChanges();
+            alertTicker();
+        }
+
+        @Override
+        public int getSlotLimit(int slot) {
+            // The grid slots hold one item each, and the output slot is no different.
+            return slot < 0 || slot >= THREADS ? 0 : units[slot].grid.getSlotLimit(OUTPUT_SLOT);
+        }
+
+        @Override
+        public ItemStack insertItem(int slot, ItemStack stack, boolean simulate) {
+            // Nothing goes in, and refusing here also keeps a caller that assumes AE2's ten-slot crafting
+            // grid from tripping the range check in the default implementation.
+            return stack;
+        }
+
+        @Override
+        public boolean isItemValid(int slot, ItemStack stack) {
+            // Products leave through this view; letting anything in would fight the crafting grid.
+            return false;
+        }
+    };
+
+    /**
+     * Key of the last reported cause for a product that could not be handed to the ME network. Delivery
+     * is retried every tick while a product is stuck, so a cause is only reported when it changes.
+     */
+    private String lastDeliveryFailure;
 
     /** Client-synced power state. */
     private boolean isPowered = false;
@@ -90,6 +153,13 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
 
     private void onUpgradesChanged() {
         saveChanges();
+    }
+
+    /**
+     * The output slots of all units, exposed to external item handlers. Only extraction is allowed.
+     */
+    public InternalInventory getExposedOutputInventory() {
+        return exposedOutputs;
     }
 
     /** Total crafting progress across all threads (0..THREADS*100). */
@@ -410,7 +480,8 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
         }
 
         // 真抽：需求量已在上面按 key 核过，正常不会再失败；真失败（同一 tick 里有别的消费者）就把本 tick 已经
-        // 抽出来的原路退回 ME 网络——不能留给下一轮的清理路径，那条路优先送相邻容器，等于把材料挪出网络。
+        // 抽出来的原路退回 ME 网络——不能留给下一轮的清理路径，那条路也会把材料送回返回节点或网络，
+        // 等于中途换一次去向；直接退回网络才能保证「没抽成功就一格不动」。
         var placedKeys = new AEItemKey[GRID_SIZE];
         var placedSlots = new int[GRID_SIZE];
         int placedCount = 0;
@@ -447,7 +518,8 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
     }
 
     /**
-     * 把一格物品送出网格：先走相邻容器 → ME 网络（与产物、余料同一条路），送不掉的部分才落到输出槽兜底。
+     * 把一格物品送出网格，走页面自己的回送契约（见 {@link #pushItemOut}）：被发配页先走相邻返回节点、
+     * 再回 ME 网络；自拉取页只回 ME 网络、不碰相邻容器。两条路都送不掉的部分才落到输出槽兜底。
      *
      * @return 这一格是否已经清空
      */
@@ -541,7 +613,16 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
                 unit.progress = 0;
             }
             if (unit.plan == null) {
-                return drainRemainders(unit);
+                boolean pending = drainRemainders(unit);
+                // Release the push direction only once the whole job is out - grid drained and the
+                // output slot empty - so a product that is still on its way cannot slip onto the
+                // network-only path. A page only counts as self-executing while the direction is null,
+                // and a stale one would keep the next manual pattern on this page on the provider
+                // return path instead of the network-only one.
+                if (!pending && unit.grid.getStackInSlot(OUTPUT_SLOT).isEmpty()) {
+                    unit.pushDirection = null;
+                }
+                return pending;
             }
         } else if (unit.plan == null || !ItemStack.isSameItemSameComponents(slotPattern, unit.planSource)) {
             var supported = decodeManualPattern(unit);
@@ -552,6 +633,13 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
                 unit.progress = 0;
                 return drainRemainders(unit);
             }
+            // The manual pattern takes this page over. Whatever is still on the grid belongs to the
+            // previous job, so it goes back under that job's contract (return node first) and the push
+            // direction is released - otherwise a page that is self-executing from now on would keep
+            // returning to the neighbour instead of the network. A provider job can also be taken over
+            // while its plan is still running, which is why this is not covered by the idle branch above.
+            drainRemainders(unit);
+            unit.pushDirection = null;
             unit.plan = supported;
             unit.planSource = slotPattern.copy();
             unit.progress = 0;
@@ -566,9 +654,8 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
 
         int speedCards = upgrades.getInstalledUpgrades(AEItems.SPEED_CARD);
         int speed = SPEED_STEPS[Math.min(speedCards, 5)];
-        double powerMult = POWER_MULT[Math.min(speedCards, 5)];
         // Power gating: skip if no power available.
-        if (!hasPower(powerMult)) {
+        if (!hasPower()) {
             return true;
         }
         unit.progress += ticksSinceLastCall * speed;
@@ -587,7 +674,12 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
                     return drainRemainders(unit);
                 }
 
-                unit.grid.setItemDirect(OUTPUT_SLOT, result);
+                // 产物是样板对象内部缓存的那个 ItemStack 实例：AECraftingPattern.assemble 每次都返回
+                // 同一个实例（构造期算一次并缓存在 output 字段，普通路径直接 return 它）。不复制就放进
+                // 输出槽并回送，回送时的 shrink 会把这个共享实例削到数量 0——样板对象的产物就变成了空的，
+                // 此后 canAssemble 恒假、机器永远不再合成（且供应器/CPU 长期持有同一个样板实例，污染会跨机）。
+                // AE2 自己的分子装配室同理：它回送前先 output.copy()。
+                unit.grid.setItemDirect(OUTPUT_SLOT, result.copy());
 
                 // Send animation packet to nearby players (visual parity with AE2 molecular assembler)
                 var itemKey = AEItemKey.of(result);
@@ -626,7 +718,7 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
     }
 
     /** True if the grid can supply the per-work energy for this unit. */
-    private boolean hasPower(double powerMult) {
+    private boolean hasPower() {
         var grid = this.getMainNode().getGrid();
         if (grid == null) {
             return false;
@@ -635,9 +727,6 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
         return energy == null || energy.isNetworkPowered();
     }
 
-    /**
-     * Builds a positioned crafting input from the unit's grid.
-     */
     /**
      * Builds a positioned crafting input from the unit's grid, reusing the unit's cached crafting container.
      */
@@ -670,7 +759,7 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
      *
      * <p>早先这里是「挪进输出槽、等下一轮回送」，但输出槽一被占住整个方法就早退，于是该清的东西永远
      * 清不掉、网格的包围盒形状也就此定型（AE2 的样板按裁剪尺寸严格校验，见 tryFillGridFromNetwork）。
-     * 现在直接走回送路径（相邻容器 → ME 网络），输出槽只是兜底落点。</p>
+     * 现在直接走回送路径（按页面模式：相邻返回节点或 ME 网络），输出槽只是兜底落点。</p>
      */
     private void ejectHeldItems(CraftUnit unit) {
         var plan = unit.plan;
@@ -690,40 +779,86 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
         }
     }
 
-    /** Pushes an item to the configured adjacent target and then to ME storage. */
+    /**
+     * Sends one item out of a unit, following that page's return contract:
+     *
+     * <ul>
+     * <li>A <b>provider-pushed page</b> ({@code pushDirection} set) returns to the neighbouring return
+     * node first - the AE2 molecular assembler contract, where the provider's return inventory hands the
+     * goods back to the network - and only what that neighbour refuses goes to ME storage directly.</li>
+     * <li>A <b>self-executing page</b> (manual pattern, no push direction) hands products and remainders
+     * straight to the ME network. It deliberately never touches adjacent containers: whatever happens to
+     * sit beside the machine is not part of the job the page started, and pushing into it would carry the
+     * results out of the network.</li>
+     * </ul>
+     */
     private ItemStack pushItemOut(CraftUnit unit, ItemStack stack) {
         if (level == null || level.isClientSide() || stack.isEmpty()) {
             return stack;
         }
-        Direction dir = unit.pushDirection;
-        if (dir != null) {
-            stack = pushToAdjacent(stack, dir);
-        } else {
-            for (Direction d : Direction.values()) {
-                stack = pushToAdjacent(stack, d);
-                if (stack.isEmpty()) {
-                    return stack;
-                }
-            }
+        if (unit.pushDirection == null) {
+            return insertIntoNetwork(stack);
         }
-        if (!stack.isEmpty()) {
-            var grid = this.getMainNode().getGrid();
-            if (grid != null) {
-                var storage = grid.getStorageService();
-                if (storage != null) {
-                    var inserted = storage.getInventory().insert(AEItemKey.of(stack), stack.getCount(),
-                            Actionable.MODULATE, actionSource);
-                    if (inserted > 0) {
-                        stack.shrink((int) inserted);
-                    }
-                }
-            }
+        stack = pushToAdjacent(stack, unit.pushDirection);
+        return stack.isEmpty() ? stack : insertIntoNetwork(stack);
+    }
+
+    /**
+     * Inserts as much of the stack as the ME network accepts and returns the rest, which callers leave
+     * in place to retry on the next tick.
+     */
+    private ItemStack insertIntoNetwork(ItemStack stack) {
+        if (stack.isEmpty()) {
+            return stack;
+        }
+        var grid = this.getMainNode().getGrid();
+        if (grid == null) {
+            reportDeliveryFailure("no-grid", "the machine is not connected to an ME network");
+            return stack;
+        }
+        var storage = grid.getStorageService();
+        if (storage == null) {
+            reportDeliveryFailure("no-storage", "the ME network has no storage service");
+            return stack;
+        }
+        var key = AEItemKey.of(stack);
+        if (key == null) {
+            reportDeliveryFailure("no-key", "the product cannot be turned into an AE key");
+            return stack;
+        }
+        var inserted = storage.getInventory().insert(key, stack.getCount(), Actionable.MODULATE, actionSource);
+        if (inserted > 0) {
+            stack.shrink((int) inserted);
+            saveChanges();
+        }
+        if (stack.isEmpty()) {
+            lastDeliveryFailure = null;
+        } else {
+            // One key for both variants: whether the network took part of the stack or none of it, the
+            // cause is the same, and keying on the wording would re-log on every flip between them.
+            reportDeliveryFailure("network-refused", "the ME network took "
+                    + (inserted > 0 ? "only part of the stack" : "none of the stack")
+                    + " - it has no free storage space, or it does not accept this item type");
         }
         return stack;
     }
 
     /**
-     * Pushes the output slot through the same adjacent/network path used for remainders.
+     * Reports why a finished product was not accepted by the ME network, once per distinct cause. The
+     * delivery is retried every tick while products are stuck in the machine, so an unconditional log
+     * line would flood the log; what matters when diagnosing a stuck machine is the cause itself.
+     */
+    private void reportDeliveryFailure(String key, String detail) {
+        if (!key.equals(lastDeliveryFailure)) {
+            lastDeliveryFailure = key;
+            LOGGER.info("Efficient molecular assembler at {} cannot return products to the ME network: {}",
+                    worldPosition, detail);
+        }
+    }
+
+    /**
+     * Pushes the output slot out of the unit, following the page's return contract (see
+     * {@link #pushItemOut}).
      */
     private void pushOut(CraftUnit unit, ItemStack stack) {
         ItemStack left = pushItemOut(unit, stack);
