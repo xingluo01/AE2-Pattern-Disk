@@ -2,6 +2,7 @@
 navigation:
   parent: index.md
   title: 样板磁盘
+  icon: pattern_disk_1k
   position: 1010
 item_ids:
 - ae2_pattern_disk:pattern_disk_1k
@@ -13,9 +14,17 @@ item_ids:
 
 # 样板磁盘
 
-样板磁盘可以把编码过的 AE2 样板存进一个物品里。空磁盘没有类型限制，插进第一张样板后就会锁定为那种样板的类型。
+<Row gap="20">
+  <ItemImage id="pattern_disk_1k" scale="4" />
+  <ItemImage id="pattern_disk_4k" scale="4" />
+  <ItemImage id="pattern_disk_16k" scale="4" />
+  <ItemImage id="pattern_disk_64k" scale="4" />
+  <ItemImage id="pattern_disk_256k" scale="4" />
+</Row>
 
-各阶磁盘的用法完全一样，只是容量不同：
+样板磁盘把编码后的 AE2 样板存放在单个物品中。空置的磁盘不限定样板类型；写入第一张样板后即锁定为该类型，此后只接受同类型样板。
+
+五级磁盘的功能完全相同，仅容量不同：
 
 | 磁盘 | 样板容量 |
 | --- | ---: |
@@ -25,28 +34,41 @@ item_ids:
 | 64k | 256 |
 | 256k | 1024 |
 
-装样板可以用ME样板转存器，也可以在[ME样板磁盘编码终端](pattern_disk_encoding_terminal.md)里把刚编好的样板直接写进去。装满样板的磁盘可以放进ME样板磁盘供应器，供应器会把这些样板提供给 ME 自动合成系统。
+样板可由 [ME样板转存器](pattern_transferer.md) 写入磁盘，也可在 [ME样板磁盘编码终端](pattern_disk_encoding_terminal.md) 中把刚编码的样板直接写入。装满样板的磁盘放入 [ME样板磁盘供应器](pattern_disk_provider.md) 后，其中的样板即提供给 ME 自动合成系统。
 
 ## 样板类型
 
-一张磁盘只能装一种类型的样板。合成、处理、锻造和切石这四种样板分别锁定不同的磁盘类型。
+一张磁盘只接受一种样板类型。合成、处理、锻造、切石四种样板各自锁定对应的磁盘类型；装了 AdvancedAE 时，它的高级处理样板同样锁定并显示为独立类型。
+
+下表按「类型 × 容量」列出每一种组合的外观：行是样板类型及其来源，列是磁盘容量。五种容量的底图完全相同，只有容量层随容量变，右上角的角标随类型变，所以看角标颜色就知道盘里装的是哪一类样板。
+
+| 类型 | 来源 | 1k | 4k | 16k | 64k | 256k |
+| --- | --- | :-: | :-: | :-: | :-: | :-: |
+| 未定型（空盘） | — | ![](/assets/pattern_disk_types/pattern_disk_untyped_1k.png) | ![](/assets/pattern_disk_types/pattern_disk_untyped_4k.png) | ![](/assets/pattern_disk_types/pattern_disk_untyped_16k.png) | ![](/assets/pattern_disk_types/pattern_disk_untyped_64k.png) | ![](/assets/pattern_disk_types/pattern_disk_untyped_256k.png) |
+| 合成 | Applied Energistics 2 | ![](/assets/pattern_disk_types/pattern_disk_crafting_1k.png) | ![](/assets/pattern_disk_types/pattern_disk_crafting_4k.png) | ![](/assets/pattern_disk_types/pattern_disk_crafting_16k.png) | ![](/assets/pattern_disk_types/pattern_disk_crafting_64k.png) | ![](/assets/pattern_disk_types/pattern_disk_crafting_256k.png) |
+| 处理 | Applied Energistics 2 | ![](/assets/pattern_disk_types/pattern_disk_processing_1k.png) | ![](/assets/pattern_disk_types/pattern_disk_processing_4k.png) | ![](/assets/pattern_disk_types/pattern_disk_processing_16k.png) | ![](/assets/pattern_disk_types/pattern_disk_processing_64k.png) | ![](/assets/pattern_disk_types/pattern_disk_processing_256k.png) |
+| 锻造 | Applied Energistics 2 | ![](/assets/pattern_disk_types/pattern_disk_smithing_1k.png) | ![](/assets/pattern_disk_types/pattern_disk_smithing_4k.png) | ![](/assets/pattern_disk_types/pattern_disk_smithing_16k.png) | ![](/assets/pattern_disk_types/pattern_disk_smithing_64k.png) | ![](/assets/pattern_disk_types/pattern_disk_smithing_256k.png) |
+| 切石 | Applied Energistics 2 | ![](/assets/pattern_disk_types/pattern_disk_stonecutting_1k.png) | ![](/assets/pattern_disk_types/pattern_disk_stonecutting_4k.png) | ![](/assets/pattern_disk_types/pattern_disk_stonecutting_16k.png) | ![](/assets/pattern_disk_types/pattern_disk_stonecutting_64k.png) | ![](/assets/pattern_disk_types/pattern_disk_stonecutting_256k.png) |
+| 高级处理 | AdvancedAE | ![](/assets/pattern_disk_types/pattern_disk_adv_processing_1k.png) | ![](/assets/pattern_disk_types/pattern_disk_adv_processing_4k.png) | ![](/assets/pattern_disk_types/pattern_disk_adv_processing_16k.png) | ![](/assets/pattern_disk_types/pattern_disk_adv_processing_64k.png) | ![](/assets/pattern_disk_types/pattern_disk_adv_processing_256k.png) |
 
 ## 标记
 
-磁盘上可以记一个**标记**，说明它属于哪台机器、哪一类配方。标记显示在[ME样板磁盘编码终端](pattern_disk_encoding_terminal.md)的磁盘列表里——悬停某张磁盘时会多出一行「标记：…」（开启 F3+H 时还会多一行原始标记 ID）——且不会改动磁盘本身的名字。
+标记记录一张磁盘所属的机器或配方类别。标记显示在 [ME样板磁盘编码终端](pattern_disk_encoding_terminal.md) 的磁盘列表中：悬停磁盘时多出一行「标记：…」，开启 F3+H 时另有一行原始标记 ID。写入标记不会改动磁盘名称。
 
-标记由[ME样板磁盘编码终端](pattern_disk_encoding_terminal.md)磁盘列表上的两个操作写入：
+标记由编码终端的磁盘列表写入，共两种方式：
 
-- **用鼠标拿起工作方块右键**：记下**鼠标上那个工作方块**所属的配方类别（工作台、切石机、锻造台、熔炉、烟熏……各是各的），任何时机都成立，不必先导入配方。鼠标上拿的不是任何类别的工作方块时，才退回按刚导入的配方类别记；两样都没有就**不写**——写下去只会是「恰好停在处理模式」这种与这张盘无关的模式标记，要改写或清空标记请走 Shift+右键。判定的依据是配方查看器里的机器表（EMI：登记的工作站，以及类别图标本身是方块的那批；JEI：只有催化剂，因为 JEI 的类别图标是绘制对象）；查看器没登记的方块认不出来，这时游戏会当场说一句「鼠标上拿着的 X 不属于任何配方类别」，这次右键也就不会写入标记。
-- **Shift+右键**：把搜索栏里写的文本记成标记；搜索栏为空则清除该磁盘的标记。这条不依赖当前导入的配方，可以把同一类标记随手标到任意一张盘上。
+- **手持工作方块右键**：记录鼠标上工作方块所属的配方类别，例如工作台、切石机、锻造台、熔炉、烟熏，不依赖当前导入的配方。
+  - 鼠标上没有持有所属类别的工作方块时，改为记录刚导入配方的类别；两者都没有时不写入标记。
+  - 判定依据是配方查看器的机器表（EMI 用其登记的工作站，JEI 只用催化剂）；无法识别的方块会给出提示，本次右键不写入标记。
+- **Shift+右键**：把搜索栏中的文本记为标记；搜索栏为空则清除标记。该方式不依赖当前导入的配方，可把同一标记写入任意磁盘。
 
-编码终端会把合成、锻造、切石的模式标记归一到对应的类别名，所以「手动编的切石样板盘」和「导入过切石配方的盘」在列表里叫同一个名字，搜索也搜得到；处理模式没有唯一的类别（不同机器各有各的），手编的处理盘保留「处理样板」这个名字。
+编码终端把合成、锻造、切石的标记归一到对应类别名，因此手动编码的切石样板盘与导入过切石配方的磁盘在列表中同名，搜索结果一致。处理模式没有唯一类别，各机器互不相同，因此手动编码的处理样板盘保留「处理样板」这一名称。
 
-标记是编码终端磁盘列表里 `#` 搜索的筛选依据，也决定中键改名时用哪个机器名。
+标记同时是编码终端磁盘列表中 `#` 搜索的筛选依据，并决定中键重命名时所使用的工作方块名称。
 
-## 兼容性说明
+## 兼容性
 
-容量越大的磁盘，物品本身附带的数据越多。请把它放在普通箱子这类容器里，用大容量磁盘时注意菜单和网络的同步情况。
+磁盘容量越大，物品携带的数据越多。建议存放在普通箱子一类容器中，避免长时间停留在大容量磁盘的物品界面里。
 
 ## 合成配方
 

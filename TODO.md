@@ -179,3 +179,5 @@
 - 网页侧待办（API 改不了，需人工）：项目 Dependencies 标 AE2 为 required、Client/Server 环境标记（现为 unknown）、gallery 截图
 - 依赖项对照：AE2 = `ae2`（id `XxWD5pD3`）、GuideME = `guideme`（id `Ck4E7v7R`）
 - 发版注意：首次建议先开 `build.gradle` 的 `debugMode = true` 干跑 Modrinth 再发正式版；重跑同一 tag 时 Modrinth 会因版本号已存在失败、CurseForge 不去重会再传一份，中断后优先改版本号重发
+- **CHANGELOG 未发布段需发版前改名**：`## [未发布]` 必须在发版前改成 `## [<版本号>] - <日期>`——CI 的 `awk` 是按 `[版本号]` 匹配取段的，取不到会静默回退成 commit log 拼接，发布说明会变成一堆提交标题。
+- **高效分子装配室的回送方向不持久化**：`CraftUnit.pushDirection` 不进 NBT（save/load 只存网格、样板与进度），重载后一个尚未收工的供应器派发页会退化成「只回网络」。产物不会丢，只是会绕过相邻返回节点，与 AE2 契约有偏差；若要严格对齐，需把方向随 CraftUnit 一起存。

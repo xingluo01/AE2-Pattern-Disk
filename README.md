@@ -75,7 +75,7 @@ A parallel molecular assembler with **eight independent execution threads**. It 
 
 The GUI exposes one page per thread (mirroring ExtendedAE's (EAE) extension molecular assembler) with vertical progress only for the selected page. Accepts up to **five AE2 Speed Cards** with multipliers `1.0x / 1.3x / 1.7x / 2.0x / 2.5x / 5.0x`.
 
-Each page also has an optional pattern slot. Inserting an encoded crafting pattern there turns that page into a self-executing unit: it pulls its own inputs from the ME network, crafts continuously while materials last, and pushes products plus container remainders to adjacent inventories or back into the network. A page running a manual pattern does not accept provider-pushed jobs, so the machine only takes pushed jobs while at least one page is idle.
+Each page also has an optional pattern slot. Inserting an encoded crafting pattern there turns that page into a self-executing unit: it pulls its own inputs from the ME network, crafts continuously while materials last, and hands products plus container remainders straight back to the ME network - a self-executing page never pushes into adjacent containers. A page running a manual pattern does not accept provider-pushed jobs, so the machine only takes pushed jobs while at least one page is idle.
 
 ### Batch Assembler
 
@@ -176,6 +176,10 @@ All items are available in the dedicated creative tab **AE2 Pattern Disk**.
 ## Guide
 
 The mod ships a GuideME guide (in `assets/ae2_pattern_disk/ae2guide/`) covering the pattern disks (all five tiers on one page), the pattern disk provider (block and panel forms), the pattern transferer, the efficient molecular assembler, the batch assembler, the pattern disk encoding terminal and the pattern disk management terminal. Of the six machine GUIs, the encoding and management terminals declare a `helpTopic` in their screen JSON, so those two link to their guide pages straight from the screen.
+
+The pattern disk page's type table uses the 30 images under `ae2_pattern_disk/ae2guide/assets/pattern_disk_types/`, cut from the 5x6 grid of the source render kept as `ae2_pattern_disk/ae2guide/assets/pattern_disk_types.png` (rows: untyped, crafting, processing, smithing, stonecutting, AdvancedAE's advanced processing; columns: 1k, 4k, 16k, 64k, 256k). Each cell is resized to 128x128, because GuideME draws inline images at a quarter of their size - these show as 32x32. Slice names follow the model and lang-key suffix, so `smithing` maps to `pattern_disk_type_smithing_table.png` and `adv_processing` to `pattern_disk_type_adv.png`.
+
+Guide image references must not go up more directory levels than the page has, since relative paths are resolved against the page id - and that id is language-neutral, the `_zh_cn/` directory only supplies a translated copy of the same page. Use a path relative to the guide content root instead, such as `/assets/pattern_disk_types/pattern_disk_crafting_1k.png` - the leading slash only takes the reference out of page-relative resolution, and GuideME itself prefixes the content root (`ae2guide`), so it never depends on the depth of the containing page.
 
 ## Dependencies
 

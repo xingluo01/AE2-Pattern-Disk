@@ -25,6 +25,10 @@ logs/
 # artifact of its own repository, copied in by hand; the comments beside each dependency say which.
 libs/*.jar
 
+# Guide archive unpacked next to the source it duplicates. Kept on disk because the mod jar still ships
+# it, but the guide sources under assets/ae2_pattern_disk/ae2guide/ are the ones under version control.
+src/main/resources/assets/ae2_pattern_disk.zip
+
 # 本机路径声明：兄弟仓库与 libs jar 的绝对路径索引，换机器要改，不进版本库。
 LOCAL_DEPS.md
 

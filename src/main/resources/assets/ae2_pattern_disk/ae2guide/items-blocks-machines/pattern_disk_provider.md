@@ -2,6 +2,7 @@
 navigation:
   parent: index.md
   title: ME Pattern Disk Provider
+  icon: pattern_disk_provider
   position: 1020
 item_ids:
 - ae2_pattern_disk:pattern_disk_provider
@@ -12,44 +13,35 @@ categories:
 
 # ME Pattern Disk Provider
 
-The ME Pattern Disk Provider is a pattern provider that serves real pattern disks. Put disks holding patterns into its disk slots and it offers their encoded patterns to ME autocrafting.
+<Row gap="20">
+  <BlockImage id="pattern_disk_provider" scale="8" />
+  <ItemImage id="cable_pattern_disk_provider" scale="4" />
+</Row>
 
-It only pushes jobs; it does not craft. It sends patterns and materials to a compatible machine beside it, such as the Efficient Molecular Assembler.
+The ME Pattern Disk Provider replaces the pattern slots with real pattern disks. Put disks holding patterns into its disk slots and their encoded patterns are offered to ME autocrafting; everything else behaves like an <ItemLink id="ae2:pattern_provider" />, including pushing patterns and materials to adjacent machines and taking products back through its return inventory ("Returned Items" in the interface).
 
-Finished items can come back to the provider's return slots. The disks are the sole source of truth: change what is on them and the provider works out afresh what it can offer.
+The disks are the sole source of truth: change what is on them and the provider works out afresh what it can offer.
 
 ## Using it
 
-1. Connect the provider to your ME network.
-2. Insert one or more pattern disks.
-3. Put an Efficient Molecular Assembler or another compatible machine next to it.
-4. Write patterns onto the disks with the ME Pattern Transferer or the [ME Pattern Disk Encoding Terminal](pattern_disk_encoding_terminal.md), then insert them.
+Write patterns onto disks with the ME Pattern Transferer or the [ME Pattern Disk Encoding Terminal](pattern_disk_encoding_terminal.md), insert the disks, and place the provider next to the target machine.
 
 ## Panel form
 
-Mounted on an ME cable it becomes a panel: same disk slots, interface, pattern logic and return-slot interface as the block form. Left untouched, it pushes patterns out of the face it is attached to (the panel behaviour it always had).
+Mounted on an ME cable it becomes a panel, matching AE2's flat pattern provider variant: same disk slots, interface, pattern logic and return inventory interface as the block form, and it pushes out of the face it is attached to until the direction is changed (AE2's flat variant can only push in one direction; this mod's panel can be switched to omnidirectional). The two forms convert into each other with a shapeless craft.
 
-The two forms convert into each other: a shapeless craft in a crafting grid swaps one for the other, with no extra materials.
+## Push direction
 
-## Push direction (wrench)
+The block form matches AE2's normal and directional variants and switches with a wrench in rotate mode on a face; the panel walks a fixed cycle with a wrench in rotate mode: the attached side (default), omnidirectional, the other five faces.
 
-Both forms take it, but not with the same gesture - a panel has no face to click, it sits on a cable:
+- Omnidirectional means all six sides; directional means that one side only.
+- The panel has no arrow model, so it announces the new setting on the action bar.
 
-| Form | Gesture and order |
-| --- | --- |
-| Block | Wrench (rotate mode) on a face: omnidirectional pushes away from that face; on the face it already pushes towards, back to omnidirectional; on any other face, rotates one step around |
-| Panel | Wrench (rotate mode) walks a fixed cycle: the attached side (default), omnidirectional, the other five faces one by one, then back to the attached side |
+## Upload button
 
-- Omnidirectional means all six sides; directional means that one side only. The block form swaps its model to match (the faces showing the arrow are the ones it pushes into).
-- The panel form has no arrow model yet, so it announces the new setting on the action bar.
-- Each form stores its own setting (the block in its block state, the panel in its own NBT): same meaning, no effect on each other.
-- A wrench in another mode (such as dismantling) leaves it alone.
+With ExtendedAE Plus installed, its "upload pattern to a provider" button works here too. The provider has no pattern slots of its own, so an uploaded pattern lands in a free space on one of the disks it holds; **AE2:Utility** uploads the same way and behaves the same.
 
-## Upload button (ExtendedAE Plus / AE2:Utility)
-
-With ExtendedAE Plus installed, its "upload pattern to a provider" button works on this provider too. The provider has no pattern slots of its own, so an uploaded pattern lands in a free space on one of the disks it holds. **AE2:Utility** goes through the same upload API, so its automatic upload lands here as well.
-
-Storing a pattern on a disk returns the blank pattern it freed to the ME network - the accounting this mod always applies (pulling a pattern back out of a disk spends one, the other way round). A network that is gone or full simply refuses the write: better a failed upload (with the pattern still in the uploader's hands) than a blank pattern that quietly vanishes.
+Storing a pattern on a disk returns the blank pattern it freed to the ME network, the mirror image of the blank pattern spent when a pattern is taken back out. A network that is gone or full refuses the write: the upload fails, the pattern stays with the uploader, and the blank pattern is not consumed.
 
 ## Recipes
 
