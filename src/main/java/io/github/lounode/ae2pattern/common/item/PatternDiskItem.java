@@ -1,6 +1,7 @@
 package io.github.lounode.ae2pattern.common.item;
 
 import java.util.List;
+import java.util.Map;
 
 import org.jetbrains.annotations.Nullable;
 
@@ -54,8 +55,31 @@ public class PatternDiskItem extends Item {
     }
 
     /**
+     * The pattern types this mod knows by name, keyed by the locked type id.
+     *
+     * <p>One table feeds both places that need to know a type: the model override value below and the
+     * tooltip's type name. Keeping them apart is how a disk ends up rendering as the right type while
+     * its tooltip still shows the raw id.</p>
+     *
+     * <p>{@code propertyValue} must match the {@code overrides} entries in
+     * {@code models/item/pattern_disk_*.json}. Those entries have to stay ascending by value - the last
+     * matching override is the one that wins - so a new type always takes a value above every existing
+     * one. A type missing here falls back to 0, the same as an untyped disk.</p>
+     */
+    private record KnownType(float propertyValue, String nameKey) {
+    }
+
+    private static final Map<String, KnownType> KNOWN_TYPES = Map.of(
+            "ae2:crafting_pattern", new KnownType(1, "ae2_pattern_disk.tooltip.type.crafting"),
+            "ae2:processing_pattern", new KnownType(2, "ae2_pattern_disk.tooltip.type.processing"),
+            "ae2:smithing_table_pattern", new KnownType(3, "ae2_pattern_disk.tooltip.type.smithing"),
+            "ae2:stonecutting_pattern", new KnownType(4, "ae2_pattern_disk.tooltip.type.stonecutting"),
+            // AdvancedAE 的高级处理样板：它是自己的物品（带插入面等组件），不归 AE2 那四种。
+            "advanced_ae:adv_processing_pattern", new KnownType(5, "ae2_pattern_disk.tooltip.type.adv_processing"));
+
+    /**
      * Item property value for the encoded-pattern type, used to drive the disk's rendered model:
-     * 0 = untyped/empty, 1 = crafting, 2 = processing, 3 = smithing, 4 = stonecutting.
+     * 0 = untyped/empty or an unrecognized type, otherwise the type's value in {@link #KNOWN_TYPES}.
      */
     public static float typePropertyValue(ItemStack stack) {
         var instance = stack.getItem() instanceof PatternDiskItem disk ? disk : null;
@@ -66,13 +90,8 @@ public class PatternDiskItem extends Item {
         if (!contents.isTyped()) {
             return 0;
         }
-        return switch (contents.type()) {
-            case "ae2:crafting_pattern" -> 1;
-            case "ae2:processing_pattern" -> 2;
-            case "ae2:smithing_table_pattern" -> 3;
-            case "ae2:stonecutting_pattern" -> 4;
-            default -> 0;
-        };
+        var known = KNOWN_TYPES.get(contents.type());
+        return known == null ? 0 : known.propertyValue();
     }
 
     /**
@@ -209,12 +228,8 @@ public class PatternDiskItem extends Item {
     }
 
     private static Component typeName(String type) {
-        return switch (type) {
-            case "ae2:crafting_pattern" -> Component.translatable("ae2_pattern_disk.tooltip.type.crafting");
-            case "ae2:processing_pattern" -> Component.translatable("ae2_pattern_disk.tooltip.type.processing");
-            case "ae2:smithing_table_pattern" -> Component.translatable("ae2_pattern_disk.tooltip.type.smithing");
-            case "ae2:stonecutting_pattern" -> Component.translatable("ae2_pattern_disk.tooltip.type.stonecutting");
-            default -> Component.literal(type);
-        };
+        var known = KNOWN_TYPES.get(type);
+        // 认不出的类型（别的附加模组的自定义样板）就直接报 id：总比给它编一个名字强。
+        return known == null ? Component.literal(type) : Component.translatable(known.nameKey());
     }
 }

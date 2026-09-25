@@ -47,6 +47,7 @@ import appeng.core.localization.ButtonToolTips;
 
 import io.github.lounode.ae2pattern.client.sort.NaturalOrder;
 import io.github.lounode.ae2pattern.client.sort.NaturalSort;
+import io.github.lounode.ae2pattern.client.sort.SortTiers;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
@@ -422,7 +423,13 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         displayOrders.keySet().retainAll(visibleDisks.keySet());
 
         var rebuilt = new ArrayList<Row>();
-        for (var group : menu.getHostList()) {
+        // 机器列表默认按显示名排（大小写不敏感的字符串序；中文名走 Unicode 码点序、不是拼音序——项目里
+        // 唯一的拼音能力只有搜索用的 JECH 匹配，取不到拼音串）。同名机器的相对次序沿用服务端原序
+        //（同名本就合并成一行，这里排的是不同机器之间）。
+        var hosts = new ArrayList<>(menu.getHostList());
+        hosts.sort(Comparator.comparing(host -> host.name() == null ? "" : host.name(),
+                String.CASE_INSENSITIVE_ORDER));
+        for (var group : hosts) {
             var groupDisks = new ArrayList<DiskListPanel.DiskEntry>();
             for (var disk : group.disks()) {
                 var visible = visibleDisks.get(disk.serial());
@@ -454,10 +461,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     }
 
     /** 搜索框里有没有内容；有内容时没命中磁盘的组不进表（否则一搜就满屏空机器）。 */
-    private boolean isDiskSearchActive() {
-        var search = miniSearchField().getValue();
-        return search != null && !search.isBlank();
-    }
+    // isDiskSearchActive() 来自基类：编码终端的自动写盘也按同一判据。
 
     /**
      * 给刚数完的那一组补「剩余槽位」行。
@@ -487,29 +491,52 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         scrollOffset = Math.max(0, Math.min(scrollOffset, max));
     }
 
-    /** @return 当前表里磁盘的张数，用于「只剩一张就自动落到它」的判断。 */
-    private int visibleDiskCount() {
-        int count = 0;
-        for (var row : rows) {
-            // 只数首行：一张盘的内容续行也是 DiskRow，数进去会把一张盘算成好几张。
-            if (row instanceof DiskRow disk && disk.from() == 0) {
-                count++;
+    /**
+     * 写盘顺位候选：选中的那张盘排在最前，其后是同一容器（表格里的同一组）内的其他已插入磁盘；
+     * 没有选中盘时退回与编码终端相同的口径——搜索栏有内容才按列表顺序顺位，否则不给目标。
+     */
+    private long[] buildAutoDiskCandidates() {
+        var out = new ArrayList<Long>();
+        if (selectedSerial != 0) {
+            out.add(selectedSerial);
+            var groupKey = groupKeyOf(selectedSerial);
+            if (groupKey != null) {
+                for (var group : getMenu().getHostList()) {
+                    if (!groupKey.equals(group.key())) {
+                        continue;
+                    }
+                    for (var disk : group.disks()) {
+                        if (disk.serial() != selectedSerial) {
+                            out.add(disk.serial());
+                        }
+                    }
+                }
+            }
+        } else if (isDiskSearchActive()) {
+            // 没选中盘时按表格行序顺位（与玩家看到的顺序一致）。
+            for (var row : rows) {
+                if (row instanceof DiskRow disk && disk.from() == 0) {
+                    out.add(disk.serial());
+                }
             }
         }
-        return count;
+        var serials = new long[out.size()];
+        for (int i = 0; i < serials.length; i++) {
+            serials[i] = out.get(i);
+        }
+        return capCandidates(serials);
     }
 
-    private long soleVisibleDisk() {
-        long found = 0;
-        for (var row : rows) {
-            if (row instanceof DiskRow disk && disk.from() == 0) {
-                if (found != 0) {
-                    return 0;
+    /** 这张盘属于哪一组（同一键即为同一容器，与表格的分组口径一致）。 */
+    private String groupKeyOf(long serial) {
+        for (var group : getMenu().getHostList()) {
+            for (var disk : group.disks()) {
+                if (disk.serial() == serial) {
+                    return group.key();
                 }
-                found = disk.serial();
             }
         }
-        return found;
+        return null;
     }
 
     /**
@@ -548,18 +575,12 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
             contentRefreshCooldown = CONTENT_REFRESH_INTERVAL_TICKS;
             requestVisibleContents(true);
         }
-        // 写盘目标：右键选中的那张盘优先（它还在表里才算数），否则沿用「只剩一张就写它」的口径。
-        if (selectedSerial != 0) {
-            if (containsDisk(selectedSerial)) {
-                getMenu().setClientAutoDisk(1, selectedSerial);
-            } else {
-                // 那张盘被取走、或搜索把它筛出去了，选择跟着失效。
-                selectedSerial = 0;
-            }
+        // 右键选中的那张盘被取走、或搜索把它筛出去了，选择跟着失效。
+        if (selectedSerial != 0 && !containsDisk(selectedSerial)) {
+            selectedSerial = 0;
         }
-        if (selectedSerial == 0) {
-            getMenu().setClientAutoDisk(visibleDiskCount(), soleVisibleDisk());
-        }
+        // 写盘目标：选中的那张盘优先，写不进时顺位到同一容器内的其他盘（候选顺序就是意图顺序）。
+        getMenu().setClientAutoDisks(buildAutoDiskCandidates());
     }
 
     // ---- 绘制 ----
@@ -697,8 +718,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
             // 显示主产物，而不是样板本体：与 AE2 样板访问终端同口径（它的 PatternSlot.getDisplayStack 用
             // EncodedPatternItem#getOutput 换掉槽位显示）。任何类型的产物都直接显示——那个方法对流体等
             // 非物品产出会包一层伪物品；取不到时回退到样板本体。玩家因此不必按住 Shift 才知道样板做什么。
-            var output = patternOutputOf(pattern);
-            var icon = output.isEmpty() ? pattern : output;
+            var icon = displayedItem.apply(pattern);
             guiGraphics.renderItem(icon, cellX, cellY);
             guiGraphics.renderItemDecorations(font, icon, cellX, cellY);
 
@@ -1111,14 +1131,18 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     }
 
     /**
-     * 按 mod 排：附加排序打开时是三层——mod → 去掉数字后的文本 → 名字的数值序；关掉时退回 AE2 原本的两层
-     * （mod → 名字字面序）。第三层才是数大小：先分组再排数，同一系列（只是容量不同）才会相邻，
-     * 不会出现「1k存储元件、1k存储组件、4k存储元件」这种把同系列拆散的次序。
+     * 按 mod 排：附加排序打开时是四层——mod → 阶层（见 {@link SortTiers}）→ 去掉数字后的文本 → 名字的
+     * 数值序；关掉时退回 AE2 原本的两层（mod → 名字字面序）。第三层才是数大小：先分组再排数，同一系列
+     * （只是容量不同）才会相邻，不会出现「1k存储元件、1k存储组件、4k存储元件」这种把同系列拆散的次序。
      */
     private Comparator<ItemStack> byModComparator(SortDir dir, boolean additional) {
         Comparator<ItemStack> ascending = Comparator.comparing(displayedItemModId, String::compareToIgnoreCase);
         if (additional) {
+            // 与物品网格同一套口径：阶层层夹在 mod 与文本分组之间，命中的排在未命中的前面。四层都按
+            // 格子实际显示的那个栈算（见 displayedItem），否则阶层会按样板本体去查，一个也命中不了。
+            var tiers = SortTiers.rankerForItems();
             ascending = ascending
+                    .thenComparingInt(pattern -> tiers.applyAsInt(displayedItem.apply(pattern)))
                     .thenComparing(stack -> NaturalOrder.template(displayedItemName(stack)),
                             String::compareToIgnoreCase)
                     .thenComparing(this::displayedItemName, NaturalOrder.strings());
@@ -1128,17 +1152,20 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         return dir == SortDir.DESCENDING ? ascending.reversed() : ascending;
     }
 
-    /** 格子里的名字：能解出主产物就用产物，解不出就用样板本体。 */
-    private String displayedItemName(ItemStack pattern) {
+    /** 格子实际显示的那个栈：能解出主产物就用产物，解不出就用样板本体。四层排序口径都以它为准。 */
+    private static final java.util.function.Function<ItemStack, ItemStack> displayedItem = pattern -> {
         var output = patternOutputOf(pattern);
-        return (output.isEmpty() ? pattern : output).getHoverName().getString();
+        return output.isEmpty() ? pattern : output;
+    };
+
+    /** 格子里的名字。 */
+    private String displayedItemName(ItemStack pattern) {
+        return displayedItem.apply(pattern).getHoverName().getString();
     }
 
     /** 格子所属的 mod：同上，取产物那一侧。 */
-    private static final java.util.function.Function<ItemStack, String> displayedItemModId = pattern -> {
-        var output = patternOutputOf(pattern);
-        return NaturalSort.modIdOf(output.isEmpty() ? pattern : output);
-    };
+    private static final java.util.function.Function<ItemStack, String> displayedItemModId =
+            pattern -> NaturalSort.modIdOf(displayedItem.apply(pattern));
 
     /** 给某个格位（18×18 槽框）描一圈高亮：画在框线上，不盖住格内内容。 */
     private static void outlineCell(GuiGraphics guiGraphics, int cellX, int rowY) {

@@ -1,67 +1,38 @@
 {
-  "credit": "Batch assembler glow-shell geometry and textures authored by XingLuo, the author of this mod; not AE2- or AdvancedAE-derived. All rights reserved (ARR).",
-  "render_type": "cutout",
-  "textures": {
-    "1": "ae2_pattern_disk:block/batch_assembler_grid_on_light",
-    "particle": "ae2_pattern_disk:block/batch_assembler_grid_on",
-    "core": "ae2_pattern_disk:block/batch_assembler_grid_on"
-  },
-  "elements": [
-    {
-      "from": [0.01, 0.01, 0.01],
-      "to": [15.99, 15.99, 15.99],
-      "faces": {
-        "north": { "uv": [0, 0, 16, 16], "texture": "#core" },
-        "east": { "uv": [0, 0, 16, 16], "texture": "#core" },
-        "south": { "uv": [0, 0, 16, 16], "texture": "#core" },
-        "west": { "uv": [0, 0, 16, 16], "texture": "#core" },
-        "up": { "uv": [16, 0, 0, 16], "texture": "#core" },
-        "down": { "uv": [16, 0, 0, 16], "texture": "#core" }
-      }
-    },
-    {
-      "from": [0, 0, 0],
-      "to": [16, 16, 16],
-      "shade": false,
-      "faces": {
-        "north": { "uv": [0, 0, 16, 16], "texture": "#1" },
-        "east": { "uv": [0, 0, 16, 16], "texture": "#1" },
-        "south": { "uv": [0, 0, 16, 16], "texture": "#1" },
-        "west": { "uv": [0, 0, 16, 16], "texture": "#1" },
-        "up": { "uv": [16, 0, 0, 16], "texture": "#1" },
-        "down": { "uv": [16, 0, 0, 16], "texture": "#1" }
-      }
-    }
-  ],
-  "display": {
-    "thirdperson_righthand": {
-      "rotation": [75, 45, 0],
-      "translation": [0, 2.5, 0],
-      "scale": [0.375, 0.375, 0.375]
-    },
-    "thirdperson_lefthand": {
-      "rotation": [75, 45, 0],
-      "translation": [0, 2.5, 0],
-      "scale": [0.375, 0.375, 0.375]
-    },
-    "firstperson_righthand": {
-      "rotation": [0, 45, 0],
-      "scale": [0.4, 0.4, 0.4]
-    },
-    "firstperson_lefthand": {
-      "rotation": [0, -135, 0],
-      "scale": [0.4, 0.4, 0.4]
-    },
-    "ground": {
-      "translation": [0, 3, 0],
-      "scale": [0.25, 0.25, 0.25]
-    },
-    "gui": {
-      "rotation": [30, -135, 0],
-      "scale": [0.625, 0.625, 0.625]
-    },
-    "fixed": {
-      "scale": [0.5, 0.5, 0.5]
-    }
-  }
+	"format_version": "1.9.2",
+	"credit": "Batch assembler glow-shell geometry and textures authored by XingLuo, the author of this mod; not AE2- or AdvancedAE-derived. All rights reserved (ARR).",
+	"parent": "block/block",
+	"render_type": "cutout",
+	"textures": {
+		"light": "ae2_pattern_disk:block/batch_assembler_grid_on_light",
+		"particle": "ae2_pattern_disk:block/batch_assembler_grid_on",
+		"core": "ae2_pattern_disk:block/batch_assembler_grid_on"
+	},
+	"elements": [
+		{
+			"from": [-0.01, -0.01, -0.01],
+			"to": [16.01, 16.01, 16.01],
+			"shade": false,
+			"faces": {
+				"north": {"uv": [0, 0, 16, 16], "texture": "#light", "cullface": "north", "neoforge_data": {"block_light": 15, "sky_light": 15}},
+				"east": {"uv": [0, 0, 16, 16], "texture": "#light", "cullface": "east", "neoforge_data": {"block_light": 15, "sky_light": 15}},
+				"south": {"uv": [0, 0, 16, 16], "texture": "#light", "cullface": "south", "neoforge_data": {"block_light": 15, "sky_light": 15}},
+				"west": {"uv": [0, 0, 16, 16], "texture": "#light", "cullface": "west", "neoforge_data": {"block_light": 15, "sky_light": 15}},
+				"up": {"uv": [16, 0, 0, 16], "texture": "#light", "cullface": "up", "neoforge_data": {"block_light": 15, "sky_light": 15}},
+				"down": {"uv": [16, 0, 0, 16], "texture": "#light", "cullface": "down", "neoforge_data": {"block_light": 15, "sky_light": 15}}
+			}
+		},
+		{
+			"from": [0, 0, 0],
+			"to": [16, 16, 16],
+			"faces": {
+				"north": {"uv": [0, 0, 16, 16], "texture": "#core", "cullface": "north"},
+				"east": {"uv": [0, 0, 16, 16], "texture": "#core", "cullface": "east"},
+				"south": {"uv": [0, 0, 16, 16], "texture": "#core", "cullface": "south"},
+				"west": {"uv": [0, 0, 16, 16], "texture": "#core", "cullface": "west"},
+				"up": {"uv": [16, 0, 0, 16], "texture": "#core", "cullface": "up"},
+				"down": {"uv": [16, 0, 0, 16], "texture": "#core", "cullface": "down"}
+			}
+		}
+	]
 }

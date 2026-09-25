@@ -28,6 +28,12 @@
         "ae2_pattern_disk:pattern_type": 4
       },
       "model": "ae2_pattern_disk:item/pattern_disk_4k_stonecutting"
+    },
+    {
+      "predicate": {
+        "ae2_pattern_disk:pattern_type": 5
+      },
+      "model": "ae2_pattern_disk:item/pattern_disk_4k_adv"
     }
   ]
 }

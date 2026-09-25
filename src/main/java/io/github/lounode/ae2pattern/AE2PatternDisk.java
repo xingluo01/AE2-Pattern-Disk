@@ -1,7 +1,9 @@
 package io.github.lounode.ae2pattern;
 
 import net.neoforged.bus.api.IEventBus;
+import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
@@ -14,6 +16,7 @@ import io.github.lounode.ae2pattern.network.DiskContentPayload;
 import io.github.lounode.ae2pattern.network.DiskHostListPayload;
 import io.github.lounode.ae2pattern.network.VisibleDisksPayload;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
+import io.github.lounode.ae2pattern.config.AEPDConfig;
 
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskAssemblerBlockEntity;
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskProviderBlockEntity;
@@ -27,7 +30,10 @@ public class AE2PatternDisk {
 
     public static final String MOD_ID = "ae2_pattern_disk";
 
-    public AE2PatternDisk(IEventBus modBus) {
+    public AE2PatternDisk(IEventBus modBus, ModContainer modContainer) {
+        // 附加排序的层级表是纯客户端的视图设置：注册成 CLIENT，服务端不加载这份文件，也不随网络同步。
+        modContainer.registerConfig(ModConfig.Type.CLIENT, AEPDConfig.CLIENT_SPEC);
+
         // Registration entry points
         AEPatternRegistries.register(modBus);
 
@@ -81,6 +87,16 @@ public class AE2PatternDisk {
                 appeng.api.AECapabilities.IN_WORLD_GRID_NODE_HOST,
                 AEPatternRegistries.BE_ASSEMBLER.get(),
                 (be, dir) -> (appeng.api.networking.IInWorldGridNodeHost) be);
+
+        // Item handler for the assembler's output slots: pipes, hoppers and AE2 storage buses can
+        // recover a product that neither the neighbouring return node nor the ME network would take.
+        // AE2 binds the same capability for its own molecular assembler, whose crafting-grid filter
+        // likewise only allows extraction from the output slot.
+        event.registerBlockEntity(
+                net.neoforged.neoforge.capabilities.Capabilities.ItemHandler.BLOCK,
+                AEPatternRegistries.BE_ASSEMBLER.get(),
+                (be, dir) -> PatternDiskAssemblerBlockEntity.class.cast(be)
+                        .getExposedOutputInventory().toItemHandler());
 
         // Batch assembler: grid node host + crafting machine (receives provider-pushed patterns).
         // NOTE: deliberately no ME_STORAGE / IStorageProvider exposure - its cell slots must stay private.

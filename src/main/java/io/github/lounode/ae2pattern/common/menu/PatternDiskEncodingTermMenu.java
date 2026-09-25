@@ -339,8 +339,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
         registerClientAction(ACTION_EXTRACT_FROM_DISK, ExtractRequest.class, this::handleExtractFromDisk);
         registerClientAction(ACTION_BIND_PREFIX, Long.class, this::bindPrefix);
         registerClientAction("setPendingRecipeCategory", String.class, this::setPendingRecipeCategory);
-        registerClientAction("setPendingAutoDisk", Long.class, this::setPendingAutoDisk);
-        registerClientAction("setPendingAutoDiskCount", Integer.class, this::setPendingAutoDiskCount);
+        registerClientAction("setPendingAutoDisks", long[].class, this::setPendingAutoDisks);
         registerClientAction("setPendingDiskName", String.class, this::setPendingDiskName);
         registerClientAction("setPendingMarkText", String.class, this::setPendingMarkText);
         registerClientAction("bindSearchMark", Long.class, this::bindSearchMark);
@@ -386,19 +385,16 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
     public void encode() {
         if (isClientSide()) {
             // 配方类别只有客户端知道（导入时记下的），而服务端绑标记时要用它，所以像 bindPrefix 一样先单独送过去。
-            // 搜索栏筛出的唯一那张盘的 serial 同理。
+            // 写盘顺位候选（搜索栏筛出的列表、或选中的那张盘）同理。
             var category = pendingRecipeCategory;
             sendClientAction("setPendingRecipeCategory", category == null ? "" : category);
-            sendClientAction("setPendingAutoDisk", clientAutoDisk);
-            sendClientAction("setPendingAutoDiskCount", clientAutoDiskCount);
+            sendClientAction("setPendingAutoDisks", clientAutoDisks);
             sendClientAction(ACTION_ENCODE);
             return;
         }
-        // 先取值再清空，所以提前退出也不会把这次的报数留给下一次编码。
-        var autoCount = pendingAutoDiskCount;
-        pendingAutoDiskCount = 0;
-        var auto = pendingAutoDisk;
-        pendingAutoDisk = 0L;
+        // 先取值再清空，所以提前退出也不会把这次的候选留给下一次编码。
+        var autoDisks = pendingAutoDisks;
+        pendingAutoDisks = NO_DISKS;
         ItemStack encodedPattern = encodePattern();
         if (encodedPattern != null) {
             var encodeOutput = this.encodedPatternSlot.getItem();
@@ -414,11 +410,10 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
                 }
             }
             this.encodedPatternSlot.set(encodedPattern);
-            // 搜索栏筛完只剩一张盘时，刚编好的样板直接写进去——省掉「编出一个样板再点磁盘」两步。
-            // 那张盘收不下（已满、锁定类型不符、主产物重复）由 transferToDisk 自己报原因；
-            // 没有唯一目标时由客户端当场说明（张数只有那边知道）。
-            if (autoCount == 1) {
-                transferToDisk(auto);
+            // 搜索栏有内容时，刚编好的样板按列表顺序顺位写进第一张能收的盘——省掉「编出一个样板再点
+            // 磁盘」两步。候选由客户端给出（顺序就是屏幕上的顺序）；全部写不进时由顺位路径报原因。
+            if (autoDisks.length > 0) {
+                transferToFirstWritable(autoDisks);
             }
         } else {
             // 网格里没有可编码的东西时，如果编码槽里正停着一枚写好的样板，「编写样板」的意图就是把它写进目标
@@ -426,9 +421,9 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
             // 等于把玩家手里的样板销毁掉。
             var existing = this.encodedPatternSlot.getItem();
             if (PatternDetailsHelper.isEncodedPattern(existing)) {
-                if (autoCount == 1) {
+                if (autoDisks.length > 0) {
                     // 走既有的写盘路径：写进去、清空编码槽、退回空白样板，一处口径。
-                    transferToDisk(auto);
+                    transferToFirstWritable(autoDisks);
                 }
                 return;
             }
@@ -685,36 +680,63 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
             sendClientAction(ACTION_TRANSFER_TO_DISK, serial);
             return;
         }
+        transferToFirstWritable(new long[] { serial });
+    }
+
+    /** 候选为空时的哨兵：直接拿空数组当值传，不必每处新建。 */
+    private static final long[] NO_DISKS = new long[0];
+
+    /**
+     * 按顺序把编码槽里的样板写进候选磁盘，写进第一张能收的就停。
+     *
+     * <p>候选与顺序都由客户端给出，顺序就是玩家的意图顺序：编码终端是搜索栏筛出的列表，管理终端是
+     * 右键选中的那张盘加上同一容器内的其他盘。全部写不进时只报**第一张被拒**（已过期的候选会被跳过）的原因，
+     * 而不是逐张刷屏；一张盘都没碰到（列表过期）时才报「目标已不在列表里」。</p>
+     */
+    private void transferToFirstWritable(long[] serials) {
         var encoded = encodedPatternSlot.getItem();
         if (encoded.isEmpty() || !PatternDetailsHelper.isEncodedPattern(encoded)) {
             return;
         }
 
-        var ref = diskRefs.get(serial);
-        if (ref == null) {
-            // 客户端列表可能比服务端旧：那张盘已经被拿走了。不提示的话，玩家只会看到点了没反应。
-            notifyStaleTarget();
-            return;
-        }
-        var inv = ref.host().getDiskInventory();
-        var stack = inv.getStackInSlot(ref.slot());
-        if (stack.isEmpty() || !(stack.getItem() instanceof PatternDiskItem disk)) {
-            notifyStaleTarget();
-            return;
+        var level = getPlayer().level();
+        boolean stale = false;
+        Component refusedName = null;
+        PatternDiskItem.InsertFailure refusedReason = null;
+        for (long serial : serials) {
+            var ref = diskRefs.get(serial);
+            if (ref == null) {
+                // 客户端列表可能比服务端旧：那张盘已经被拿走了。全部失败时再一起说，免得顺位中途刷屏。
+                stale = true;
+                continue;
+            }
+            var inv = ref.host().getDiskInventory();
+            var stack = inv.getStackInSlot(ref.slot());
+            if (stack.isEmpty() || !(stack.getItem() instanceof PatternDiskItem disk)) {
+                stale = true;
+                continue;
+            }
+
+            // 接收判据（容量/锁定类型/主产物互斥）统一由 PatternDiskItem.canInsert/tryInsert 负责
+            var updated = stack.copy();
+            if (disk.tryInsert(updated, encoded, level)) {
+                writeDiskSlot(inv, ref.slot(), updated);
+                // 样板已存入磁盘：编码槽清空，原编码样板回退为空白样板并按 ME网络→玩家背包→编码槽 优先级落位
+                this.encodedPatternSlot.set(ItemStack.EMPTY);
+                returnBlankPatternToStorage();
+                notifyPatternWritten(stack.getHoverName());
+                return;
+            }
+            if (refusedName == null) {
+                refusedName = stack.getHoverName();
+                refusedReason = disk.whyCannotInsert(stack, encoded, level);
+            }
         }
 
-        // 接收判据（容量/锁定类型/主产物互斥）统一由 PatternDiskItem.canInsert/tryInsert 负责
-        var level = getPlayer().level();
-        var updated = stack.copy();
-        if (disk.tryInsert(updated, encoded, level)) {
-            writeDiskSlot(inv, ref.slot(), updated);
-            // 样板已存入磁盘：编码槽清空，原编码样板回退为空白样板并按 ME网络→玩家背包→编码槽 优先级落位
-            this.encodedPatternSlot.set(ItemStack.EMPTY);
-            returnBlankPatternToStorage();
-            notifyPatternWritten(stack.getHoverName());
-        } else {
-            // 写不进去时说明理由：不写提示的话，玩家只会看到样板留在编码槽里，不知道卡在哪一步。
-            notifyDiskRefused(stack.getHoverName(), disk.whyCannotInsert(stack, encoded, level));
+        if (refusedName != null) {
+            notifyDiskRefused(refusedName, refusedReason);
+        } else if (stale) {
+            notifyStaleTarget();
         }
     }
 
@@ -1033,41 +1055,26 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu {
     }
 
     /**
-     * 客户端：样板磁盘搜索栏筛完剩下的张数，以及恰好一张时那台的 serial。
+     * 客户端：写盘顺位候选（serial 按尝试顺序）。空数组表示这次编码不自动写盘。
      *
-     * <p>判断“有没有唯一目标”只看张数：serial 是从 {@code Long.MIN_VALUE} 开始自增的，恒为负数，
-     * 拿它的符号当"没有"的标记会把每一张都误当成没有。</p>
+     * <p>候选与顺序只有客户端知道（屏幕上的列表、右键选中的那张盘都在那边），服务端拿到了就按顺序试，
+     * 不再自己猜“该不该写”。</p>
      */
-    private int clientAutoDiskCount;
-    /** 只在 {@link #clientAutoDiskCount} 为 1 时有意义；其余时候这里的值是占位，不参与查表。 */
-    private long clientAutoDisk;
+    private long[] clientAutoDisks = NO_DISKS;
 
-    /** @see #clientAutoDiskCount */
-    public int getClientAutoDiskCount() {
-        return clientAutoDiskCount;
-    }
-
-    /** @see #clientAutoDiskCount */
-    public void setClientAutoDisk(int count, long serial) {
-        this.clientAutoDiskCount = count;
-        this.clientAutoDisk = serial;
+    /** @see #clientAutoDisks */
+    public void setClientAutoDisks(long[] serials) {
+        this.clientAutoDisks = serials == null ? NO_DISKS : serials;
     }
 
     /**
-     * 服务端：客户端报上来的张数与唯一目标，与 {@code ACTION_ENCODE} 成对使用，用后清空。
+     * 服务端：客户端报上来的候选，与 {@code ACTION_ENCODE} 成对使用，用后清空。
      */
-    private int pendingAutoDiskCount;
-    /** 只在 {@link #pendingAutoDiskCount} 为 1 时有意义；其余时候这里的值是占位，不参与查表。 */
-    private long pendingAutoDisk;
+    private long[] pendingAutoDisks = NO_DISKS;
 
-    /** @see #pendingAutoDiskCount */
-    public void setPendingAutoDiskCount(int count) {
-        this.pendingAutoDiskCount = count;
-    }
-
-    /** @see #pendingAutoDiskCount */
-    public void setPendingAutoDisk(long serial) {
-        this.pendingAutoDisk = serial;
+    /** @see #pendingAutoDisks */
+    private void setPendingAutoDisks(long[] serials) {
+        this.pendingAutoDisks = serials == null ? NO_DISKS : serials;
     }
 
     /** The name the client wants to give a disk, for {@link #renameDisk(long)}. */

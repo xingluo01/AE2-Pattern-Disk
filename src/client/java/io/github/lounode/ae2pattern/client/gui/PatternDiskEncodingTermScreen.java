@@ -30,8 +30,6 @@ import guideme.PageAnchor;
 
 import appeng.api.behaviors.ContainerItemStrategies;
 import appeng.api.behaviors.EmptyingAction;
-import appeng.api.config.Settings;
-import appeng.api.config.SortOrder;
 import appeng.api.stacks.GenericStack;
 import appeng.client.gui.me.common.MEStorageScreen;
 import appeng.client.gui.me.common.StackSizeRenderer;
@@ -39,8 +37,6 @@ import appeng.client.gui.style.Blitter;
 import appeng.client.gui.style.ScreenStyle;
 import appeng.client.gui.widgets.AETextField;
 import appeng.client.gui.widgets.ActionButton;
-import appeng.client.gui.widgets.IconButton;
-import appeng.client.gui.widgets.SettingToggleButton;
 import appeng.core.localization.ButtonToolTips;
 import appeng.core.network.serverbound.InventoryActionPacket;
 import appeng.helpers.InventoryAction;
@@ -67,14 +63,6 @@ import io.github.lounode.ae2pattern.client.gui.DiskListPanel.DiskEntry;
 public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEncodingTermMenu>
         implements NaturalSort.Provider {
 
-    // 二级排序开关的两枚图标：本模组 states.png 里新画的一对（(96,32) = 1/4 比大小 = 数值序，
-    // (112,32) = 叉 = 关）。
-    private static final Blitter ICON_SORT_NATURAL = Blitter
-            .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/states.png"))
-            .src(96, 32, 16, 16);
-    private static final Blitter ICON_SORT_LITERAL = Blitter
-            .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/states.png"))
-            .src(112, 32, 16, 16);
     // states.png (0,16,64,16) 四模式图标：合成/处理/锻造/切石
     /** NEO ECO 上传按钮的尺寸（neoecoae 的 UploadButton 构造里写死的 18×20）。 */
     static final int NEO_ECO_UPLOAD_BUTTON_WIDTH = 18;
@@ -112,21 +100,15 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     private final DiskListPanel diskListPanel;
     protected final StatesIconButton modeCycleButton;
 
-    /**
-     * 「数值排序」开关（按 mod 排序时出现的二级排序）：默认开。开了以后 mod 组内按名字里的数值排
-     * （1k &lt; 4k &lt; 16k &lt; 64k &lt; 256k &lt; 1M），关了就是 AE2 原本的字面序。
-     *
-     * <p>纯客户端视图状态，不写服务端设置：它只改本屏物品网格的比较器（见
-     * {@link io.github.lounode.ae2pattern.mixin.KeySortersMixin}），换屏即失效。按钮本身只在
-     * 「按 mod」那一档显示。</p>
-     */
-    private boolean naturalSort = true;
-
-    /** 上次写进按钮的 tooltip 输入（当前档位 / 附加排序开关）；变了才重建那几行文本，不必每帧新建。 */
+    /** 上次写进模式轮换按钮的 tooltip 输入；变了才重建那几行文本，不必每帧新建。 */
     private EncodingMode tooltipMode;
-    private Boolean tooltipNaturalSort;
 
-    protected StatesIconButton naturalSortButton;
+    /**
+     * 附加排序开关：按 mod 排序时出现的二级排序，默认开。按钮贴在 AE2 那枚「排序按」后面，只在
+     * 「按 mod」那一档显示；状态与提示语由 {@link NaturalSortButton} 自己管，本屏只负责把它摆上去、
+     * 每帧转达当前排序档位。
+     */
+    protected NaturalSortButton naturalSortButton;
     private final AETextField miniSearchField;
 
     /** 磁盘列表的搜索框（子屏要给它焦点，或者按自己的布局重新定位时读它）。 */
@@ -212,15 +194,11 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         // 提示语每帧回写（它报的是当前所属的配方类型），这里不设死文本。
 
         // 二级排序开关：贴在 AE2 那三枚排序按钮后面，只在「按 mod」那一档显示（见 updateBeforeRender）。
-        this.naturalSortButton = new StatesIconButton(
-                () -> this.naturalSort ? ICON_SORT_NATURAL : ICON_SORT_LITERAL,
-                button -> {
-                    this.naturalSort = !this.naturalSort;
-                    // 比较器换了要重排一遍；updateView 是 AE2 自己换排序档位后走的同一条路。
-                    repo.updateView();
-                });
-        this.naturalSortButton.setBackground(BG_MODE_NORMAL, BG_MODE_HOVER);
-        addToLeftToolbar(this.naturalSortButton);
+        this.naturalSortButton = new NaturalSortButton(() -> {
+            // 比较器换了要重排一遍；updateView 是 AE2 自己换排序档位后走的同一条路。
+            repo.updateView();
+        });
+        addToLeftToolbar(this.naturalSortButton.widget());
 
         // 编码/保存按钮
         // 编码/保存按钮：网络里没有空白样板就不必白跑一趟服务端，直接说清楚原因。
@@ -232,15 +210,6 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
                             "gui.ae2_pattern_disk.encoding_terminal.no_blank_pattern"));
                 }
                 return;
-            }
-            // 写盘目标是不是唯一，只有这边知道（过滤后的列表在客户端），所以没目标时由客户端说。
-            // 报上实际张数：只说“没有恰好一张”的话，看不出到底是零张还是多张。
-            if (menu.getClientAutoDiskCount() != 1) {
-                var player = Minecraft.getInstance().player;
-                if (player != null) {
-                    player.sendSystemMessage(Component.translatable(
-                            "gui.ae2_pattern_disk.encoding_terminal.no_auto_target", diskEntries.size()));
-                }
             }
             menu.encode();
         });
@@ -318,9 +287,9 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
      * 子屏（管理终端）会再把自家那两枚排到模式轮换之前。
      */
     private void orderToolbar() {
-        var sortBy = findSortByButton();
+        var sortBy = NaturalSortButton.findSortByButton(this);
         if (sortBy != null) {
-            ToolbarOrder.placeAfter(this, naturalSortButton, sortBy);
+            ToolbarOrder.placeAfter(this, naturalSortButton.widget(), sortBy);
         }
         ToolbarOrder.placeAtEnd(this, modeCycleButton);
     }
@@ -372,20 +341,9 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             this.showUnmarkedButton.setState(menu.isShowUnmarkedDisks());
         }
 
-        // 附加排序开关：只在「按 mod」时露面（其它档位下它没有意义）。提示语第一行写的是**当前状态**
-        //（与「隐藏槽位」那几个开关一个口径），后两行把两条附加规则各自说清楚；文本只在切换时重建，
-        // 显隐每帧照旧。
+        // 附加排序开关：只在「按 mod」时露面（其它档位下它没有意义），提示语里报的是当前状态。
         if (this.naturalSortButton != null) {
-            this.naturalSortButton.setVisibility(getSortBy() == SortOrder.MOD);
-            if (this.tooltipNaturalSort == null || this.tooltipNaturalSort != this.naturalSort) {
-                this.tooltipNaturalSort = this.naturalSort;
-                this.naturalSortButton.setTooltip(List.of(
-                        Component.translatable(this.naturalSort
-                                ? "gui.ae2_pattern_disk.sort.additional.enable"
-                                : "gui.ae2_pattern_disk.sort.additional.disable"),
-                        Component.translatable("gui.ae2_pattern_disk.sort.additional.rule.group"),
-                        Component.translatable("gui.ae2_pattern_disk.sort.additional.rule.numeric")));
-            }
+            this.naturalSortButton.update(getSortBy());
         }
 
         // 模式轮换按钮的提示语：第一行就是它现在所属的配方类型，第二行才是「点一下换一个」。
@@ -423,11 +381,11 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
 
     /**
      * 「数值排序」当前是否打开；物品网格的比较器（{@code KeySortersMixin}）只认这一处，
-     * 屏幕一关就跟着失效。
+     * 屏幕一关就跟着失效。子屏（管理终端）共用本屏的开关。
      */
     @Override
     public boolean naturalSortEnabled() {
-        return this.naturalSort;
+        return this.naturalSortButton != null && this.naturalSortButton.isEnabled();
     }
 
     /** 当前所属的配方类型名；模式轮换按钮拿它当提示语的第一行。 */
@@ -438,17 +396,6 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             case SMITHING_TABLE -> Component.translatable("ae2_pattern_disk.tooltip.type.smithing");
             case STONECUTTING -> Component.translatable("ae2_pattern_disk.tooltip.type.stonecutting");
         };
-    }
-
-    /** 工具栏上 AE2 那枚「排序按」：附加排序要贴着它；认不出返回 {@code null}。 */
-    @Nullable
-    private IconButton findSortByButton() {
-        for (var listener : this.children()) {
-            if (listener instanceof SettingToggleButton<?> toggle && toggle.getSetting() == Settings.SORT_BY) {
-                return toggle;
-            }
-        }
-        return null;
     }
 
     // ---- 磁盘列表数据 --------------------------------------------------------
@@ -505,9 +452,12 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         // 传给面板
         diskListPanel.setDiskEntries(List.copyOf(diskEntries));
 
-        // 编码按钮要不要直接落盘，取决于搜索栏筛完还剩几张盘。这一步必须等过滤做完：玩家点按钮时看到的
-        // 就是这份列表，早一帧算出来就可能把目标算成此刻已经看不到的那张盘。
-        menu.setClientAutoDisk(diskEntries.size(), diskEntries.size() == 1 ? diskEntries.get(0).serial() : 0L);
+        // 编码按钮要不要直接落盘：只在玩家确实在用搜索栏筛盘时才顺位写（没搜索时「编写样板」的语义就是
+        // 只编码，不该把样板随手塞进列表里的第一张盘）。这一步必须等过滤做完：玩家点按钮时看到的就是这份
+        // 列表，早一帧算出来就可能把目标算成此刻已经看不到的那张盘。
+        menu.setClientAutoDisks(isDiskSearchActive()
+                ? capCandidates(diskEntries.stream().mapToLong(DiskListPanel.DiskEntry::serial).toArray())
+                : NO_DISKS);
 
         // 中键的结算：要等到刷新回来的那一份列表，否则读到的还是旧标记。等不到就作罢，而不是拿旧标记
         // 改名——那样只会把上一次的机器名写上去。
@@ -585,6 +535,26 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             }
         }
         return -1;
+    }
+
+    /** 没有写盘目标时传给服务端的哨兵（空数组 = 这次编码不自动写盘）。 */
+    private static final long[] NO_DISKS = new long[0];
+
+    /**
+     * 客户端动作的参数有 32767 字符的硬上限（AE2 的 {@code AEBaseMenu}），候选整表上传时超了会在
+     * 点击处抛异常。顺位到 {@link #MAX_AUTO_DISKS} 张早已超出实用范围，更长的候选只会变成一条超长消息。
+     */
+    private static final int MAX_AUTO_DISKS = 256;
+
+    /** 把候选截到可发送的长度内。 */
+    protected static long[] capCandidates(long[] serials) {
+        return serials.length <= MAX_AUTO_DISKS ? serials : java.util.Arrays.copyOf(serials, MAX_AUTO_DISKS);
+    }
+
+    /** 磁盘搜索框里有没有内容；编码与管理的自动写盘都按它决定要不要顺位。 */
+    protected boolean isDiskSearchActive() {
+        var search = miniSearchField().getValue();
+        return search != null && !search.isBlank();
     }
 
     /** 子类用：过滤后列表里第 {@code index} 张盘的条目；越界返回 {@code null}。 */
