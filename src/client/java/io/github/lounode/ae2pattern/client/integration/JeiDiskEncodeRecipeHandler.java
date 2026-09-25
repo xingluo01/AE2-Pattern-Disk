@@ -8,10 +8,8 @@ import org.jetbrains.annotations.Nullable;
 
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.MenuType;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeHolder;
-import net.neoforged.neoforge.fluids.FluidStack;
 
 import mezz.jei.api.gui.ingredient.IRecipeSlotsView;
 import mezz.jei.api.recipe.RecipeIngredientRole;
@@ -34,7 +32,8 @@ import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
  * terminal is open - which is how AE2 wires its own encoding terminal and how the EMI handler here works.
  * Crafting-family recipes are encoded from the real recipe object (the encoding helper re-derives the 3x3
  * grid itself, including the stonecutting recipe id); anything else becomes a processing pattern built
- * from the recipe's ingredient slots.</p>
+ * from the recipe's ingredient slots. Ingredients beyond items and fluids (chemicals and other custom
+ * {@code AEKeyType}s) come from AE2's JEI bridge through {@link JeiIngredientConverters}.</p>
  *
  * <p>The container class is a constructor argument because JEI keys its transfer table by the container's
  * <b>runtime</b> class and never walks up to a superclass: one instance has to be registered per concrete
@@ -117,7 +116,7 @@ public class JeiDiskEncodeRecipeHandler implements IUniversalRecipeTransferHandl
             }
             var variants = new ArrayList<GenericStack>();
             for (var typed : slotView.getAllIngredients().toList()) {
-                var stack = toGenericStack(typed.getIngredient());
+                var stack = JeiIngredientConverters.toGenericStack(typed);
                 if (stack != null) {
                     variants.add(stack);
                 }
@@ -137,7 +136,7 @@ public class JeiDiskEncodeRecipeHandler implements IUniversalRecipeTransferHandl
                 continue;
             }
             for (var typed : slotView.getAllIngredients().toList()) {
-                var stack = toGenericStack(typed.getIngredient());
+                var stack = JeiIngredientConverters.toGenericStack(typed);
                 if (stack != null) {
                     outputs.add(stack);
                     break;
@@ -145,19 +144,5 @@ public class JeiDiskEncodeRecipeHandler implements IUniversalRecipeTransferHandl
             }
         }
         return outputs;
-    }
-
-    /**
-     * Converts a JEI ingredient into an AE2 stack. Only the ingredient types this mod can encode are
-     * accepted; everything else (energy, custom ingredient types) is skipped rather than guessed at.
-     */
-    private static @Nullable GenericStack toGenericStack(@Nullable Object ingredient) {
-        if (ingredient instanceof ItemStack itemStack && !itemStack.isEmpty()) {
-            return GenericStack.fromItemStack(itemStack);
-        }
-        if (ingredient instanceof FluidStack fluidStack && !fluidStack.isEmpty()) {
-            return GenericStack.fromFluidStack(fluidStack);
-        }
-        return null;
     }
 }

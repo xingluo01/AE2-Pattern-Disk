@@ -3,11 +3,8 @@ package io.github.lounode.ae2pattern.client.integration;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.jetbrains.annotations.Nullable;
-
 import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.world.item.ItemStack;
-import net.neoforged.neoforge.fluids.FluidStack;
 
 import mezz.jei.api.gui.handlers.IGhostIngredientHandler;
 import mezz.jei.api.ingredients.ITypedIngredient;
@@ -36,8 +33,9 @@ public class JeiEncodingGhostHandler implements IGhostIngredientHandler<PatternD
     @Override
     public <I> List<Target<I>> getTargetsTyped(PatternDiskEncodingTermScreen screen,
             ITypedIngredient<I> ingredient, boolean doStart) {
-        // 只认得出来的物品/流体：转换不了的东西（能量之类）不给目标，免得拖上去没反应还高亮一片。
-        if (toGenericStack(ingredient.getIngredient()) == null) {
+        // 只认得出来的类型：转换不了的东西（能量之类）不给目标，免得拖上去没反应还高亮一片。化学品等
+        // 自定义 AEKeyType 由 AE2 的 JEI 桥提供，见 JeiIngredientConverters。
+        if (JeiIngredientConverters.toGenericStack(ingredient) == null) {
             return List.of();
         }
 
@@ -45,7 +43,7 @@ public class JeiEncodingGhostHandler implements IGhostIngredientHandler<PatternD
         for (var slot : screen.getMenu().slots) {
             // 只看活动槽：当前编码模式不在用的那些格既画不出来，也不该接东西。
             if (slot.isActive() && slot instanceof FakeSlot fakeSlot) {
-                targets.add(new SlotTarget<>(screen, fakeSlot));
+                targets.add(new SlotTarget<>(screen, fakeSlot, ingredient));
             }
         }
         return targets;
@@ -60,7 +58,8 @@ public class JeiEncodingGhostHandler implements IGhostIngredientHandler<PatternD
      * 一个格子的拖放目标。落在格子矩形里就调 {@link FakeSlot#setFilterTo}——它自己会把动作包发给服务端，
      * 所以这里不用再拼包（AE2 给 EMI 用的那条拖放路径也是这么写的）。
      */
-    private record SlotTarget<I>(PatternDiskEncodingTermScreen screen, FakeSlot slot) implements Target<I> {
+    private record SlotTarget<I>(PatternDiskEncodingTermScreen screen, FakeSlot slot,
+            ITypedIngredient<I> typed) implements Target<I> {
 
         @Override
         public Rect2i getArea() {
@@ -69,7 +68,8 @@ public class JeiEncodingGhostHandler implements IGhostIngredientHandler<PatternD
 
         @Override
         public void accept(I ingredient) {
-            var stack = toGenericStack(ingredient);
+            // 用拖拽开始时就拿到的类型信息：自定义类型要靠它去桥的注册表里查转换器。
+            var stack = JeiIngredientConverters.toGenericStack(typed.getType(), ingredient);
             if (stack == null) {
                 return;
             }
@@ -79,20 +79,6 @@ public class JeiEncodingGhostHandler implements IGhostIngredientHandler<PatternD
             }
             slot.setFilterTo(filter);
         }
-    }
-
-    /**
-     * 把 JEI 的物品/流体转成 AE2 的栈；不认识的类型返回 {@code null}。只认这两类是因为本模组的编码槽也就只收
-     * 这两类，别的转不出来也没处放。
-     */
-    private static @Nullable GenericStack toGenericStack(@Nullable Object ingredient) {
-        if (ingredient instanceof ItemStack itemStack && !itemStack.isEmpty()) {
-            return GenericStack.fromItemStack(itemStack);
-        }
-        if (ingredient instanceof FluidStack fluidStack && !fluidStack.isEmpty()) {
-            return GenericStack.fromFluidStack(fluidStack);
-        }
-        return null;
     }
 
     /** 编码槽内部用一个被包成 ItemStack 的 GenericStack 表示非物品，这里与 {@code FakeSlot} 的取值口径对齐。 */
