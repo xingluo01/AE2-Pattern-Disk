@@ -13,14 +13,15 @@ import appeng.api.stacks.AEKey;
 /**
  * 「数值排序」——按 mod 排序时出现的二级排序口径，以及它在当前屏幕上的开关状态。
  *
- * <p>默认的按 mod 排序在组内比的是名字的字符串（于是 {@code 16k} 排在 {@code 1k} 前面）；打开数值排序后
- * 组内改按 {@link NaturalOrder} 比，容量与编号才排得对。开关只认本模组自己那两个终端（
+ * <p>默认的按 mod 排序在组内比的是名字的字符串（于是 {@code 16k} 排在 {@code 1k} 前面）；打开附加排序后，
+ * 组内先按 {@link SortTiers} 里配置的阶层序（基础 &lt; 高级 &lt; 精英…），同阶再按
+ * {@link NaturalOrder} 的数值序，容量与编号才排得对。开关只认本模组自己那两个终端（
  * {@link Provider}），AE2 自己的终端不受影响。</p>
  *
  * <p>状态挂在屏幕上而不是全局静态字段：屏幕关掉即失效，不会把上一个终端的选择留给下一个终端。</p>
  *
  * <p>命名：代码里仍叫 {@code naturalSort}（“自然序开关”），界面上与语言键里叫「附加排序」——
- * 它同时开的是两层（去数字分组 + 组内数值序），叫附加排序更贴实情；两者指同一件事。</p>
+ * 它同时开的是三层（阶层序 + 去数字分组 + 组内数值序），叫附加排序更贴实情；两者指同一件事。</p>
  */
 public final class NaturalSort {
 
@@ -38,9 +39,10 @@ public final class NaturalSort {
     }
 
     /**
-     * AE2「按 mod」档在开关打开时用这个，三层口径：
+     * AE2「按 mod」档在开关打开时用这个，四层口径：
      * <ol>
      *   <li>mod 分组；</li>
+     *   <li>配置里的阶层序（{@link SortTiers}；没配到的排在有阶层的后面）；</li>
      *   <li>去掉数字后的文本分组（{@code 1k存储元件} 与 {@code 4k存储元件} 同组，{@code 1k存储组件} 另一组）；</li>
      *   <li>组内按名字的数值序（{@code 1k < 4k < 16k < 64k < 256k < 1M}）。</li>
      * </ol>
@@ -49,8 +51,12 @@ public final class NaturalSort {
         // 模板按名字记一份：一次重排里同一件东西要参与很多次比较，每次重算一遍模板（还要拼字符串）
         // 很浪费。这个 map 活得和比较器一样长——每次重排新建一个，不会跨屏积起来。
         var templates = new java.util.HashMap<String, String>();
+        // 阶层序的缓存同理，由这次重排独享（见 SortTiers.ranker）。它夹在 mod 与文本分组之间：命中阶层的
+        // 排在没命中的前面，同一阶内再按分组与数值序排。
+        var tiers = SortTiers.ranker();
         Comparator<AEKey> ascending = Comparator
                 .comparing(AEKey::getModId, String::compareToIgnoreCase)
+                .thenComparingInt(tiers::applyAsInt)
                 .thenComparing(key -> templates.computeIfAbsent(key.getDisplayName().getString(),
                         NaturalOrder::template), String::compareToIgnoreCase)
                 .thenComparing(key -> key.getDisplayName().getString(), NaturalOrder.strings());
