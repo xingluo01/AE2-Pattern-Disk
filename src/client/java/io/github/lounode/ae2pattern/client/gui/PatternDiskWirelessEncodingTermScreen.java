@@ -1,5 +1,7 @@
 package io.github.lounode.ae2pattern.client.gui;
 
+import org.anti_ad.mc.ipn.api.IPNPlayerSideOnly;
+
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
 
@@ -19,7 +21,11 @@ import io.github.lounode.ae2pattern.common.menu.PatternDiskWirelessEncodingTermM
  *
  * <p>顺序与 AE2WTLib 自己的无线终端（{@code WETScreen}）一致：先挂按钮与升级面板、再走父类的
  * {@code init()} 铺开布局。</p>
+ *
+ * <p>{@code @IPNPlayerSideOnly}：整理模组的标注，与父屏同源（它没有 {@code @Inherited}，故在此重标一份），
+ * 理由见 {@code PatternDiskEncodingTermScreen} 的类注释。</p>
  */
+@IPNPlayerSideOnly
 public class PatternDiskWirelessEncodingTermScreen extends PatternDiskEncodingTermScreen
         implements IUniversalTerminalCapable {
 

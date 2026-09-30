@@ -1,5 +1,7 @@
 package io.github.lounode.ae2pattern.client.gui;
 
+import org.anti_ad.mc.ipn.api.IPNPlayerSideOnly;
+
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
 
@@ -15,19 +17,27 @@ import io.github.lounode.ae2pattern.common.menu.PatternDiskWirelessManagementTer
 /**
  * 无线版管理终端的屏幕：表格、盘内内容、附加排序全部继承面板版管理终端，无线那一套（升级卡面板、终端切换
  * 按钮、热键）与{@link PatternDiskWirelessEncodingTermScreen 无线编码终端}同一口径。
+ *
+ * <p>{@code @IPNPlayerSideOnly}：整理模组的标注，与父屏同源（它没有 {@code @Inherited}，故在此重标一份），
+ * 理由见 {@code PatternDiskEncodingTermScreen} 的类注释。</p>
  */
+@IPNPlayerSideOnly
 public class PatternDiskWirelessManagementTermScreen extends PatternDiskManagementTermScreen
         implements IUniversalTerminalCapable {
 
     /** 升级卡面板：留给 {@code init()} 之后按可见行数回写行数（同无线编码终端）。 */
     private ScrollingUpgradesPanel upgradesPanel;
 
+    /** 通用终端里的切换按钮：构造器里挂上，{@code init()} 里再排到「切换模式」之后。 */
+    private de.mari_023.ae2wtlib.api.gui.IconButton terminalSwitchButton;
+
     public PatternDiskWirelessManagementTermScreen(PatternDiskWirelessManagementTermMenu menu,
             Inventory playerInventory, Component title, ScreenStyle style) {
         super(menu, playerInventory, title, style);
         // 同无线编码终端：切换按钮在构造器里挂（与 AE2WTLib 自己的无线终端同一时机）。
         if (menu.getTerminalHost().getItemStack().getItem() instanceof ItemWUT) {
-            addToLeftToolbar(cycleTerminalButton());
+            this.terminalSwitchButton = cycleTerminalButton();
+            addToLeftToolbar(this.terminalSwitchButton);
         }
     }
 
@@ -41,6 +51,11 @@ public class PatternDiskWirelessManagementTermScreen extends PatternDiskManageme
         }
         super.init();
         this.upgradesPanel.setMaxRows(Math.max(2, getVisibleRows()));
+        // 切换按钮排在「切换模式」（本屏的 modeCycleButton 继承自编码屏）之后：工具栏按挂载顺序摆，
+        // 而本按钮是构造器里挂的，不重排就会跑到模式按钮前面。
+        if (this.terminalSwitchButton != null) {
+            ToolbarOrder.placeAfter(this, this.terminalSwitchButton, this.modeCycleButton);
+        }
         // 升级卡槽比默认位置左移 1px（纯视觉微调）。面板位置由 wtlib 的 addUpgradePanel 摆好后，
         // 这里以当前 bounds 为准做相对偏移，不写死坐标，上游改布局也不会打偏。
         var upgradeBounds = this.upgradesPanel.getBounds();

@@ -6,6 +6,7 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import org.anti_ad.mc.ipn.api.IPNPlayerSideOnly;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -59,7 +60,17 @@ import io.github.lounode.ae2pattern.client.gui.DiskListPanel.DiskEntry;
  *   <li>右侧 (163,130) 22×22：配方预输出槽 + 保存按钮 + 空白样板存储槽</li>
  * </ul>
  * 模式切换使用轮换按钮（左侧工具栏），而非右侧标签页。
+ *
+ * <p>类上的 {@code @IPNPlayerSideOnly} 是整理模组（Inventory Profiles Next）给模组作者留的官方注解，
+ * 意思是「这个屏幕只整理玩家背包」。不标的话它把本模组的屏幕当「未知容器」——菜单里每一个槽都算可整理
+ * 存储，于是无线版的升级卡槽、以及只有「编码」才填、玩家本就取不走的样板输出槽，都会被整理搬到光标上
+ * （槽的限制写在 {@code mayPickup} 一侧，而整理走的是直接换位，不经过那道判断）。</p>
+ *
+ * <p>这个注解没有 {@code @Inherited}，父类上的标注不会落到子类，所以四个终端屏各标一份。新增终端屏时除了
+ * 在类上带注解，还要把它加进 {@code AE2PatternDiskClient.clientSetup} 里那份自检清单——漏标时启动日志
+ * 会报出屏名。</p>
  */
+@IPNPlayerSideOnly
 public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEncodingTermMenu>
         implements NaturalSort.Provider {
 

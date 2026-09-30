@@ -10,6 +10,7 @@ import java.util.Map;
 import appeng.client.gui.StackWithBounds;
 import appeng.client.gui.me.common.RepoSlot;
 
+import org.anti_ad.mc.ipn.api.IPNPlayerSideOnly;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -86,7 +87,11 @@ import io.github.lounode.ae2pattern.network.VisibleDisksPayload;
  * <p><b>Contents.</b> Patterns shown in the cells come from {@link PatternDiskManagementTermMenu}'s cache,
  * filled by the server in response to {@link VisibleDisksPayload}. Until a disk's contents arrive its row
  * shows just the disk; the request is re-sent whenever the visible set changes.</p>
+ *
+ * <p>{@code @IPNPlayerSideOnly}：整理模组的标注，与父屏同源（它没有 {@code @Inherited}，故在此重标一份），
+ * 理由见 {@code PatternDiskEncodingTermScreen} 的类注释。</p>
  */
+@IPNPlayerSideOnly
 public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScreen {
 
     /**

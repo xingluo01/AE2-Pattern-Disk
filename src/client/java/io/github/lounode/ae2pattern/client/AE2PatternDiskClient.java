@@ -20,11 +20,13 @@ import io.github.lounode.ae2pattern.client.render.PatternDiskAssemblerRenderer;
 import io.github.lounode.ae2pattern.AE2PatternDisk;
 import io.github.lounode.ae2pattern.client.gui.BatchAssemblerScreen;
 import io.github.lounode.ae2pattern.client.gui.PatternDiskEncodingTermScreen;
+import io.github.lounode.ae2pattern.client.gui.PatternDiskManagementTermScreen;
 import io.github.lounode.ae2pattern.client.gui.PatternDiskAssemblerScreen;
 import io.github.lounode.ae2pattern.client.gui.PatternDiskProviderScreen;
 import io.github.lounode.ae2pattern.client.gui.PatternTransfererScreen;
 import io.github.lounode.ae2pattern.client.gui.PatternDiskWirelessEncodingTermScreen;
 import io.github.lounode.ae2pattern.client.gui.PatternDiskWirelessManagementTermScreen;
+import io.github.lounode.ae2pattern.client.integration.ipn.InventoryProfilesIntegration;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskWirelessEncodingTermMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskWirelessManagementTermMenu;
@@ -37,6 +39,9 @@ import io.github.lounode.ae2pattern.AEPatternRegistries;
 public class AE2PatternDiskClient {
 
     public AE2PatternDiskClient(IEventBus modBus) {
+        // 整理模组（IPN）的登记口：它按菜单类登记容器类型，登记得越早越好，趁它还没消费这张表。
+        // IPN 不在时这行什么都不做（类名靠反射找，够不到就安静退场）。
+        InventoryProfilesIntegration.registerTerminalMenus();
         modBus.addListener(this::registerScreens);
         modBus.addListener(this::clientSetup);
         modBus.addListener(this::registerBlockRenderers);
@@ -67,6 +72,12 @@ public class AE2PatternDiskClient {
         event.enqueueWork(InitPatternDiskProperties::init);
         // 多态合成（可选前置）：把本模组的编码终端登记给 Polymorph，未装时此调用直接返回。
         event.enqueueWork(io.github.lounode.ae2pattern.client.integration.polymorph.PolymorphClientCompat::register);
+        // 整理模组（可选前置）：复查四个终端屏上的 @IPNPlayerSideOnly 有没有被认到；未装时这行只留一条 debug。
+        event.enqueueWork(() -> InventoryProfilesIntegration.reportAnnotatedScreens(
+                PatternDiskEncodingTermScreen.class,
+                PatternDiskManagementTermScreen.class,
+                PatternDiskWirelessEncodingTermScreen.class,
+                PatternDiskWirelessManagementTermScreen.class));
     }
 
     private void registerAdditionalModels(ModelEvent.RegisterAdditional event) {
