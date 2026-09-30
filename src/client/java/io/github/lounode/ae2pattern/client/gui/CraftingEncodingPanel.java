@@ -24,11 +24,6 @@ public class CraftingEncodingPanel extends DiskEncodingModePanel {
             .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/pattern_modes.png"))
             .src(0, 0, 115, 66);
 
-    /** 主产物槽（合成结果）的覆盖层：states.png (224,0,16,16)。 */
-    private static final Blitter RESULT_OVERLAY = Blitter
-            .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/states.png"))
-            .src(224, 0, 16, 16);
-
     private final ActionButton clearBtn;
     private final ToggleButton substitutionsBtn;
     private final ToggleButton fluidSubstitutionsBtn;
@@ -92,11 +87,6 @@ public class CraftingEncodingPanel extends DiskEncodingModePanel {
     @Override
     public void drawBackgroundLayer(GuiGraphics guiGraphics, Rect2i bounds, Point mouse) {
         BG.dest(bounds.getX() + x, bounds.getY() + y).blit(guiGraphics);
-
-        // 主产物槽上盖一层。
-        for (var resultSlot : menu.getSlots(SlotSemantics.CRAFTING_RESULT)) {
-            RESULT_OVERLAY.dest(bounds.getX() + resultSlot.x, bounds.getY() + resultSlot.y).blit(guiGraphics);
-        }
 
         var absMouseX = bounds.getX() + mouse.getX();
         var absMouseY = bounds.getY() + mouse.getY();

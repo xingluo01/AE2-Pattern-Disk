@@ -46,6 +46,12 @@ public class ProcessingEncodingPanel extends DiskEncodingModePanel {
             .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/states.png"))
             .src(24, 8, 8, 8);
 
+    // states.png (224,0,16,16)：主产物标记，对应 AE2 的 Icon.BACKGROUND_PRIMARY_OUTPUT（同一张图、同一格）。
+    // 本模组自备一份纹理，所以走 Blitter 而不是它的 Icon 枚举。
+    private static final Blitter RESULT_OVERLAY = Blitter
+            .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/states.png"))
+            .src(224, 0, 16, 16);
+
     private final ActionButton clearBtn;
     private final StatesToggleButton mergeItemsBtn;
     private final StatesIconButton rotatePrimaryBtn;
@@ -157,6 +163,25 @@ public class ProcessingEncodingPanel extends DiskEncodingModePanel {
     @Override
     public void drawBackgroundLayer(GuiGraphics guiGraphics, Rect2i bounds, Point mouse) {
         BG.dest(bounds.getX() + x, bounds.getY() + y).blit(guiGraphics);
+
+        // 主产物槽盖一层，这枚标记交给处理模式。合成侧的产物槽不画：AE2 自己就只在处理侧标它
+        // （PatternEncodingTermMenu 给 processingOutputSlots[0] 挂 Icon.BACKGROUND_PRIMARY_OUTPUT），
+        // 合成结果格只是底图上的一个空槽。
+        //
+        // 第一格即主产物的依据是 AE2 对「主产物」的定义：IPatternDetails.getPrimaryOutput() 取 outputs[0]，
+        // 处理样板编码时也要求它非空（"The first (primary) output must be non-null."）；本模组的
+        // processingOutputSlots[0] 与之一致，cycleProcessingOutput 也从它轮换。
+        //
+        // 两个条件都要：只在主产物格空时画——AE2 的槽图标同样只画空槽，否则图标会从带透明像素的产物
+        // 模型下透出来；只在滚到最顶时画——再往下滚第一格已被移出可视区，「processing-primary-output」
+        // 的提示区也在那时关掉，两边口径相同。
+        if (scrollbar.getCurrentScroll() == 0) {
+            var primaryOutput = menu.getProcessingOutputSlots()[0];
+            if (primaryOutput.getItem().isEmpty()) {
+                RESULT_OVERLAY.dest(bounds.getX() + primaryOutput.x, bounds.getY() + primaryOutput.y)
+                        .blit(guiGraphics);
+            }
+        }
     }
 
     @Override
