@@ -300,9 +300,32 @@ dependencies {
     // 兼容性测试用的 AE2 生态模组（只进开发环境，不参与发布依赖）：
     //   万象构序 OmniSequence Transfinite、闪电科技重生 AE2 Lightning Tech Reborn
     //   及后者的封包样板供应器附属。三者与本模组的样板/供应器功能有重叠，重点测共存。
-    localRuntime 'curse.maven:omnisequence-transfinite-1624558:8991983'
-    localRuntime 'curse.maven:ae2-lightning-tech-reborn-1703763:8930743'
-    localRuntime 'curse.maven:ae2lt-packaged-pattern-provider-1572723:8929486'
+    //
+    // 2026-09-30 全部停用：三者都缺必需的**前置模组**，而这三条来自 CurseForge maven 的构件
+    // 不带依赖元数据，前置 jar 从未进入开发运行时；FML 的依赖检查只认已安装的 mod，
+    // 因此在 pre-loading 阶段直接中止启动（missing mandatory dependencies）。
+    //   omnisequence(molecularmanipulator) → 需 appliedenhancements [1.0.9,)；
+    //     可用坐标 applied-enhancements-1665696:8990232（1.0.9-config-fix），
+    //     本次按「等可用版本一并恢复」一起停用；
+    //   ae2lt        → 需 thunderbolt 精确 [2.0.0]，而该版本尚未发布：CF 1631756（17 个文件，
+    //                   最新 8844639）与 Modrinth thunderbolt-core 都只到 2.0.0-beta.4，
+    //                   beta < 2.0.0 不满足精确范围；换 ae2lt 2.1.0 正式版（8927344）也一样；
+    //   ae2ltpp      → 同时需 ae2lt [2.1.0-beta.1,3.0.0) 与 thunderbolt [2.0.0-beta.1,3.0.0)，
+    //                   被 ae2lt 那个死结拖住。
+    // 等 thunderbolt 2.0.0 发布后，把下面四行一起取消注释（第四行是 omnisequence 的前置）。
+    // localRuntime 'curse.maven:omnisequence-transfinite-1624558:8991983'
+    // localRuntime 'curse.maven:ae2-lightning-tech-reborn-1703763:8930743'
+    // localRuntime 'curse.maven:ae2lt-packaged-pattern-provider-1572723:8929486'
+    // localRuntime 'curse.maven:applied-enhancements-1665696:8990232'
+
+    // 整理模组（Inventory Profiles Next + 它的库 libIPN）：开发环境装上用于验证「整理」不会把终端里
+    // 非玩家槽（升级槽、样板输出槽）的物品移到光标。两个都是 mod，都只能进开发环境。
+    localRuntime 'curse.maven:inventory-profiles-next-495267:7810574'
+    localRuntime 'curse.maven:libipn-679177:7810552'
+    // 四个终端屏上打了 @IPNPlayerSideOnly（整理模组给模组作者留的官方注解），编译需要它的注解类；运行时
+    // 由上面那条 localRuntime 提供。用得到的只有客户端的屏，所以走 clientCompileOnly。compileOnly 不进
+    // 产物，没装整理模组时这些注解只是类文件里的元数据，没人读也就没有影响。
+    clientCompileOnly 'curse.maven:inventory-profiles-next-495267:7810574'
     // Neo ECO AE Extension: separates crafting/storage/computation into multiblock structures whose
     // computation cluster supplies a huge crafting-dispatch budget (thousands of parallel ops) through
     // its own CraftingService mixin. Dev-only; used to test large-order throughput and the
