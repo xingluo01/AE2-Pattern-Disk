@@ -56,7 +56,13 @@ public class AdvancedEncodingPanel extends DiskEncodingModePanel {
     private static final int SLOT_Y = 6;
     private static final int SLOT_SIZE = 18;
 
-    /** 底图左侧那条轨道的落点；滚动条每帧按面板位置贴上去（它是个独立控件，不吃面板的坐标系）。 */
+    /**
+     * 底图左侧那条轨道的落点，同时也是样式文档里这条滚动条的坐标换算依据：
+     * {@code left = 面板 left + (TRACK_X - 1)}、{@code bottom = 面板 bottom - TRACK_Y}。
+     *
+     * <p>位置本身不在这里设——滚动条是独立控件（不吃面板的坐标系），落点由 {@code advancedPatternModeScrollbar}
+     * 在样式文档里给出。这两个常量现在只剩文档价值：挪面板时按上面的关系同步那两份样式文档。</p>
+     */
     private static final int TRACK_X = 6;
     private static final int TRACK_Y = 6;
     private static final int TRACK_H = 54;
@@ -117,8 +123,11 @@ public class AdvancedEncodingPanel extends DiskEncodingModePanel {
         }
         // 下限给 1：maxScroll == 0 时 AE2 会把滚动条画成「禁用」外观，看上去像压根没有这条控件。
         this.scrollbar.setRange(0, Math.max(1, rowCount() - ROWS), ROWS);
-        // 底图上的轨道在 x=6，这里再往左 1px：贴图那条轨道的竖线比控件默认画的位置偏左。
-        this.scrollbar.setPosition(new appeng.client.Point(x + TRACK_X - 1, y + TRACK_Y));
+        // 位置不在这里设：样式文档的 advancedPatternModeScrollbar 给的就是它。两份终端样式各自的
+        // advancedPanel 与这条滚动条必须同源（滚动条 = 面板位置 + (TRACK_X - 1, TRACK_Y)，即
+        // left = 面板 left + 5、bottom = 面板 bottom - 6）；面板挪了这里要跟着改。
+        // 以前这行是 setPosition(x + TRACK_X - 1, y + TRACK_Y)，会把 JSON 的值盖掉——于是管理终端那份
+        // JSON 里的坐标写错了也看不出来。
         scroll = Mth.clamp(this.scrollbar.getCurrentScroll(), 0, maxScroll());
     }
 

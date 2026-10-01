@@ -3,5 +3,15 @@
   "includes": [
     "pattern_disk_management_terminal.json",
     "../wtlib/universal_terminal.json"
-  ]
+  ],
+  "widgets": {
+    "scrollingUpgrades": {
+      "right": 3,
+      "top": 0
+    },
+    "upgradeScrollbar": {
+      "right": -16,
+      "top": 6
+    }
+  }
 }

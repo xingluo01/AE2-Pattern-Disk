@@ -60,6 +60,7 @@ public class PatternDiskWirelessManagementTermScreen extends PatternDiskManageme
         }
     }
 
+
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         return checkForTerminalKeys(keyCode, scanCode) || super.keyPressed(keyCode, scanCode, modifiers);
