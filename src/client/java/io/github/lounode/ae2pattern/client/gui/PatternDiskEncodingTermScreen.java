@@ -33,6 +33,7 @@ import appeng.api.behaviors.EmptyingAction;
 import appeng.api.stacks.GenericStack;
 import appeng.client.gui.me.common.MEStorageScreen;
 import appeng.client.gui.me.common.StackSizeRenderer;
+import appeng.client.gui.WidgetContainer;
 import appeng.client.gui.style.Blitter;
 import appeng.client.gui.style.ScreenStyle;
 import appeng.client.gui.widgets.AETextField;
@@ -120,6 +121,10 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     private final Map<EncodingMode, DiskEncodingModePanel> modePanels = new EnumMap<>(EncodingMode.class);
     /** 高级编码模式面板。它不在 {@link EncodingMode} 里（那个枚举不可扩展），所以单拎一份。 */
     private final AdvancedEncodingPanel advancedPanel;
+
+    /** 雕凿档面板；没装 Rechiseled 或 RechiseledAE2 时为 null（那一档也就不会进轮换）。 */
+    @Nullable
+    private ChiselingEncodingPanel chiselingPanel;
     private final DiskListPanel diskListPanel;
     protected final StatesIconButton modeCycleButton;
 
@@ -196,6 +201,9 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         } catch (IllegalStateException e) {
             AELog.debug("Screen style has no 'advancedPanel' widget; the advanced encoding panel is not shown");
         }
+
+        // 雕凿面板：外观继承切石，但内容建在 Rechiseled 的配方表上，所以它缺席时不挂（那一档也就不出现）。
+        this.chiselingPanel = createChiselingPanel(widgets);
 
         // 注册磁盘列表面板（管理终端不要这个面板：它把磁盘铺进自己的表里，复用面板只为共享搜索状态）
         this.diskListPanel = new DiskListPanel();
@@ -290,6 +298,30 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         return new Rect2i(left, top, NEO_ECO_UPLOAD_BUTTON_WIDTH, NEO_ECO_UPLOAD_BUTTON_HEIGHT);
     }
 
+    /**
+     * 造雕凿面板并挂上。任一前置缺席、或样式文档里没有那一格时返回 null——面板缺席就等于那一档不存在，
+     * 这是它的正常降级形态（与高级编码器缺席时高级档不出现同一个口径）。
+     *
+     * <p>逮 {@code Throwable} 而不是 {@code IllegalStateException}：除了「样式文档缺键」（那种是前者，
+     * 另一处 try/catch 同款），还可能碰上前置在位但版本对不上导致的类链接失败——那时候只该丢掉这一个面板，
+     * 不该带崩整个终端。</p>
+     */
+    @Nullable
+    private ChiselingEncodingPanel createChiselingPanel(WidgetContainer widgets) {
+        if (!net.neoforged.fml.ModList.get().isLoaded("rechiseled")
+                || !net.neoforged.fml.ModList.get().isLoaded("rechiseledae")) {
+            return null;
+        }
+        try {
+            var panel = new ChiselingEncodingPanel(this, widgets);
+            widgets.add("chiselingPanel", panel);
+            return panel;
+        } catch (Throwable t) {
+            AELog.debug("Could not set up the chiseling encoding panel: %s", t.toString());
+            return null;
+        }
+    }
+
     @Override
     public void init() {
         super.init();
@@ -369,7 +401,8 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         if (getMenu().advancedMode) {
             getMenu().setAdvancedMode(false);
             // 高级档的下一站是雕凿（它可用且已开放时），否则直接回合成。
-            if (PatternDiskEncodingTermMenu.CHISELING_TIER_ENABLED && getMenu().chiselingModeAvailable) {
+            if (this.chiselingPanel != null && PatternDiskEncodingTermMenu.CHISELING_TIER_ENABLED
+                    && getMenu().chiselingModeAvailable) {
                 getMenu().setChiselingMode(true);
             } else {
                 getMenu().setMode(EncodingMode.CRAFTING);
@@ -395,7 +428,8 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             // （候选列表 + 编码路径）还没做。登记、字段、动作、图标与持久化都已就位，翻那个常量即可开放。
             if (getMenu().advancedModeAvailable) {
                 getMenu().setAdvancedMode(true);
-            } else if (PatternDiskEncodingTermMenu.CHISELING_TIER_ENABLED && getMenu().chiselingModeAvailable) {
+            } else if (this.chiselingPanel != null && PatternDiskEncodingTermMenu.CHISELING_TIER_ENABLED
+                    && getMenu().chiselingModeAvailable) {
                 getMenu().setChiselingMode(true);
             }
         }
@@ -444,6 +478,9 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             entry.getValue().setVisible(!advanced && !chiseling && entry.getKey() == currentMode);
         }
         this.advancedPanel.setVisible(advanced);
+        if (this.chiselingPanel != null) {
+            this.chiselingPanel.setVisible(chiseling);
+        }
 
         // 刷新磁盘列表（过滤 PatternDiskItem + 搜索过滤）。
         // 搜索栏的自动填充只跟「导入配方」有关：JEI/EMI 配方页点「编写样板」那一刻在菜单里记一次修订号，

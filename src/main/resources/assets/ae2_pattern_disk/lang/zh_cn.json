@@ -52,6 +52,8 @@
   "gui.ae2_pattern_disk.encoding_terminal.merge_same_items_desc_off": "点击禁止合成表中的相同物品合并。",
   "gui.ae2_pattern_disk.encoding_terminal.merge_same_items_desc_on": "点击允许合成表中的相同物品合并。",
   "gui.ae2_pattern_disk.encoding_terminal.advanced_needs_pattern": "高级编码需要样板输出栏里先有一张处理样板",
+  "gui.ae2_pattern_disk.encoding_terminal.chiseling_from": "由 %s 雕凿而来",
+  "gui.ae2_pattern_disk.encoding_terminal.chiseling_needs_target": "雕凿编码需要先选一个候选",
   "gui.ae2_pattern_disk.encoding_terminal.advanced_mode": "高级编码",
   "gui.ae2_pattern_disk.encoding_terminal.chiseling_mode": "雕凿编码",
   "gui.ae2_pattern_disk.encoding_terminal.merge_same_items_off": "同物品合并",

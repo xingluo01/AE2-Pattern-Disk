@@ -241,6 +241,15 @@ dependencies {
     // Its three required dependencies (AE2, Glodium, GuideME) are already in this block or above it.
     localRuntime 'maven.modrinth:appflux:4x40hq9D'
 
+    // 雕凿编码面板要在编译期读 Rechiseled 的配方表（ChiselingRecipeManager），所以这里要 compileOnly；
+    // 运行期在不在场由 mod 壳自己决定。Rechiseled 是软依赖：它缺席时那个面板不注册，终端行为与从前一样
+    // （见 integration/rechiseledae 下的探针）。照本仓习惯，集成的类要隔开隔离，免得缺席时 NoClassDefFoundError
+    // （同 AppFlux / NEO ECO 的做法）。
+    compileOnly 'maven.modrinth:rechiseled:1.2.5-neoforge-mc1.21'
+    clientCompileOnly 'maven.modrinth:rechiseled:1.2.5-neoforge-mc1.21'
+    // 雕凿样板要用 RechiseledAE2 自己的物品与数据组件（EncodedChiselingPattern），所以它也进编译面。
+    compileOnly 'maven.modrinth:rechiseled-applied-energistics-2:1.0.1-neoforge-mc1.21.1'
+
     // Rechiseled + Rechiseled: Applied Energistics dev reference. The latter adds a third kind of encoded
     // pattern - `rechiseledae:chiseling_pattern`, a plain IPatternDetails that a molecular assembler runs -
     // and that item is exactly what this mod's new "chiseling" disk type exists to hold. Without it in the

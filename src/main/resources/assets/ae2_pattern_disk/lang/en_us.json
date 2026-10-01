@@ -52,6 +52,8 @@
   "gui.ae2_pattern_disk.encoding_terminal.merge_same_items_desc_off": "Click to prevent merging of identical items in the recipe.",
   "gui.ae2_pattern_disk.encoding_terminal.merge_same_items_desc_on": "Click to allow merging of identical items in the recipe.",
   "gui.ae2_pattern_disk.encoding_terminal.advanced_needs_pattern": "Advanced encoding needs a processing pattern in the output slot",
+  "gui.ae2_pattern_disk.encoding_terminal.chiseling_from": "Chiseled from %s",
+  "gui.ae2_pattern_disk.encoding_terminal.chiseling_needs_target": "Chiseling needs a candidate selected first",
   "gui.ae2_pattern_disk.encoding_terminal.advanced_mode": "Advanced Encoding",
   "gui.ae2_pattern_disk.encoding_terminal.chiseling_mode": "Chiseling Encoding",
   "gui.ae2_pattern_disk.encoding_terminal.merge_same_items_off": "Merge Same Items",

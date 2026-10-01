@@ -220,6 +220,12 @@
    "width": 115,
    "height": 66
   },
+  "chiselingPanel": {
+   "left": 36,
+   "bottom": 165,
+   "width": 115,
+   "height": 66
+  },
   "advancedPatternModeScrollbar": {
    "left": 41,
    "bottom": 159,
@@ -283,6 +289,11 @@
    "bottom": 151
   },
   "stonecuttingPatternModeScrollbar": {
+   "left": 139,
+   "bottom": 160,
+   "height": 56
+  },
+  "chiselingPatternModeScrollbar": {
    "left": 139,
    "bottom": 160,
    "height": 56

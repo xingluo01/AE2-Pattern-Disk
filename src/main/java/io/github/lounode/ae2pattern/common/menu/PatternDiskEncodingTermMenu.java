@@ -66,6 +66,7 @@ import appeng.util.ConfigInventory;
 import io.github.lounode.ae2pattern.integration.advancedae.AdvPatternSupport;
 import io.github.lounode.ae2pattern.integration.polymorph.PolymorphCompat;
 import io.github.lounode.ae2pattern.integration.rechiseledae.ChiselingPatternEncoder;
+import io.github.lounode.ae2pattern.integration.rechiseledae.ChiselingRecipes;
 
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
@@ -101,6 +102,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
     private static final String ACTION_DIVIDE_OUTPUT = "divideOutput";
     private static final String ACTION_SET_ADVANCED_MODE = "setAdvancedMode";
     private static final String ACTION_SET_CHISELING_MODE = "setChiselingMode";
+    private static final String ACTION_SET_CHISELING = "setChiseling";
     private static final String ACTION_SET_ADVANCED_SIDE = "setAdvancedSide";
     private static final String ACTION_TRANSFER_TO_DISK = "transferToDisk";
     private static final String ACTION_EXTRACT_FROM_DISK = "extractFromDisk";
@@ -247,7 +249,10 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
      * 全让位后的空白区，而雕凿档下 {@code mode} 仍是 CRAFTING（与高级档同样的机制），点「编写样板」会把
      * 输出栏那张样板当合成样板编。面板就绪后翻这一行即可——所有入口与守卫都读它。</p>
      */
-    public static final boolean CHISELING_TIER_ENABLED = false;
+    public static final boolean CHISELING_TIER_ENABLED = true;
+
+    @GuiSync(85)
+    public int selectedChiseling = -1;
 
     @GuiSync(87)
     public boolean chiselingModeAvailable;
@@ -379,6 +384,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
         registerClientAction(ACTION_ENCODE, this::encode);
         registerClientAction(ACTION_SET_ADVANCED_MODE, Boolean.class, this::setAdvancedMode);
         registerClientAction(ACTION_SET_CHISELING_MODE, Boolean.class, this::setChiselingMode);
+        registerClientAction(ACTION_SET_CHISELING, Integer.class, this::setChiseling);
         registerClientAction(ACTION_SET_ADVANCED_SIDE, AdvancedSideChange.class,
                 change -> applyAdvancedSide(change.input(), change.side()));
         registerClientAction(ACTION_CLEAR, this::clear);
@@ -442,6 +448,25 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
 
     // ---- Encoding ------------------------------------------------------------
 
+    /**
+     * 编一枚雕凿样板：输入与输出都取自面板上选中的那个候选项。
+     *
+     * <p>没选就返回 null（编码路径会照常走「清空」那一支），但先给一句提示——否则玩家点了「编写样板」
+     * 只会看到没反应，而那一档的规矩本来就是「先选一个候选」。</p>
+     */
+    @Nullable
+    private ItemStack encodeChiselingPattern() {
+        var candidate = ChiselingRecipes.serverCandidateAt(this.selectedChiseling);
+        if (candidate == null) {
+            if (getPlayer() instanceof ServerPlayer serverPlayer) {
+                serverPlayer.sendSystemMessage(Component.translatable(
+                        "gui.ae2_pattern_disk.encoding_terminal.chiseling_needs_target"));
+            }
+            return null;
+        }
+        return ChiselingRecipes.encode(candidate.input(), candidate.output());
+    }
+
     /** 四套编码的实现已搬去 {@link PatternEncodingLogic}，这里只留一个引用。 */
     private final PatternEncodingLogic patternEncodingLogic = new PatternEncodingLogic(this);
 
@@ -458,7 +483,18 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
         // 先取值再清空，所以提前退出也不会把这次的候选留给下一次编码。
         var autoDisks = pendingAutoDisks;
         pendingAutoDisks = NO_DISKS;
-        ItemStack encodedPattern = patternEncodingLogic.encodePattern();
+        // 雕凿档的产物不从输出栏那张样板推，而是由选中的候选项直接决定（它自己记着「把谁雕成谁」），所以
+        // 在这里就把结果定下来，后面扣空白样板与顺位写盘那段照旧复用。与高级档同理：不先判的话会落到
+        // patternEncodingLogic 的默认分支上（雕凿档下 mode 仍停在 CRAFTING）。
+        ItemStack encodedPattern = this.chiselingMode
+                ? encodeChiselingPattern()
+                : patternEncodingLogic.encodePattern();
+        // 雕凿档编不出来（没选候选、或编码失败）时到此为止：不能再走下面那条 else 分支——它是给
+        // 「网格里没东西可编、而编码槽里已经停着一枚写好的样板」准备的顺位上传路径，雕凿档下走它会
+        // 把玩家还没选候选的样板搬进磁盘。
+        if (this.chiselingMode && encodedPattern == null) {
+            return;
+        }
         if (encodedPattern != null) {
             var encodeOutput = this.encodedPatternSlot.getItem();
             if (!encodeOutput.isEmpty()
@@ -1669,6 +1705,21 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
             }
         }
         return false;
+    }
+
+    /**
+     * 选中第几个雕凿候选。两侧都按同一份配方表算候选，所以只传序号——不传列表。
+     *
+     * <p>序号在服务端可能对不上（配方表是同步过来的，理论上与客户端同源，但服务端总是权威）：
+     * 落盘时按序号现查，查不到就什么也不做，比写出一枚错的雕凿样板好。</p>
+     */
+    public void setChiseling(int index) {
+        if (isClientSide()) {
+            this.selectedChiseling = index;
+            sendClientAction(ACTION_SET_CHISELING, index);
+            return;
+        }
+        this.selectedChiseling = index;
     }
 
     /**
