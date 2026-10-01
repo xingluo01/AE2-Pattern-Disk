@@ -38,7 +38,7 @@ item_ids:
 
 ## 样板类型
 
-一张磁盘只接受一种样板类型。合成、处理、锻造、切石四种样板各自锁定对应的磁盘类型；装了 AdvancedAE 时，它的高级处理样板同样锁定并显示为独立类型。Rechiseled: Applied Energistics 的雕凿样板也一样——它既不是合成样板也不是处理样板，所以同样占一种独立类型（它的整行要等角标切图备齐后才会出现在下表里）。
+一张磁盘只接受一种样板类型。合成、处理、锻造、切石四种样板各自锁定对应的磁盘类型；装了 AdvancedAE 时，它的高级处理样板同样锁定并显示为独立类型。Rechiseled: Applied Energistics 的雕凿样板也一样——它既不是合成样板也不是处理样板，所以同样占一种独立类型。
 
 下表按「类型 × 容量」列出每一种组合的外观：行是样板类型及其来源，列是磁盘容量。五种容量的底图完全相同，只有容量层随容量变，右上角的角标随类型变，所以看角标颜色就知道盘里装的是哪一类样板。
 
@@ -50,6 +50,7 @@ item_ids:
 | 锻造 | Applied Energistics 2 | ![](/assets/pattern_disk_types/pattern_disk_smithing_1k.png) | ![](/assets/pattern_disk_types/pattern_disk_smithing_4k.png) | ![](/assets/pattern_disk_types/pattern_disk_smithing_16k.png) | ![](/assets/pattern_disk_types/pattern_disk_smithing_64k.png) | ![](/assets/pattern_disk_types/pattern_disk_smithing_256k.png) |
 | 切石 | Applied Energistics 2 | ![](/assets/pattern_disk_types/pattern_disk_stonecutting_1k.png) | ![](/assets/pattern_disk_types/pattern_disk_stonecutting_4k.png) | ![](/assets/pattern_disk_types/pattern_disk_stonecutting_16k.png) | ![](/assets/pattern_disk_types/pattern_disk_stonecutting_64k.png) | ![](/assets/pattern_disk_types/pattern_disk_stonecutting_256k.png) |
 | 高级处理 | AdvancedAE | ![](/assets/pattern_disk_types/pattern_disk_adv_processing_1k.png) | ![](/assets/pattern_disk_types/pattern_disk_adv_processing_4k.png) | ![](/assets/pattern_disk_types/pattern_disk_adv_processing_16k.png) | ![](/assets/pattern_disk_types/pattern_disk_adv_processing_64k.png) | ![](/assets/pattern_disk_types/pattern_disk_adv_processing_256k.png) |
+| 雕凿 | Rechiseled: Applied Energistics | ![](/assets/pattern_disk_types/pattern_disk_chiseling_1k.png) | ![](/assets/pattern_disk_types/pattern_disk_chiseling_4k.png) | ![](/assets/pattern_disk_types/pattern_disk_chiseling_16k.png) | ![](/assets/pattern_disk_types/pattern_disk_chiseling_64k.png) | ![](/assets/pattern_disk_types/pattern_disk_chiseling_256k.png) |
 
 ## 标记
 

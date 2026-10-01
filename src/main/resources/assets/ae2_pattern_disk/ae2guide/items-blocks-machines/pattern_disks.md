@@ -38,7 +38,7 @@ Patterns can be written with the [ME Pattern Transferer](pattern_transferer.md),
 
 ## Pattern types
 
-A disk accepts one pattern type only. Crafting, processing, smithing and stonecutting patterns each lock the disk to a matching type; with AdvancedAE installed, its advanced processing pattern locks the disk to a type of its own as well. Rechiseled: Applied Energistics' chiseling pattern does the same - it is neither a crafting nor a processing pattern, so it gets a type of its own too (its row is missing from the table below until its corner marks are cut).
+A disk accepts one pattern type only. Crafting, processing, smithing and stonecutting patterns each lock the disk to a matching type; with AdvancedAE installed, its advanced processing pattern locks the disk to a type of its own as well. Rechiseled: Applied Energistics' chiseling pattern does the same - it is neither a crafting nor a processing pattern, so it gets a type of its own too.
 
 The table below shows every combination of type and capacity: rows are pattern types and where they come from, columns are disk capacities. The base layer is the same for every tier; the capacity layer changes with the capacity, and the corner mark changes with the type, so the mark tells you which kind of pattern a disk holds.
 
@@ -50,6 +50,7 @@ The table below shows every combination of type and capacity: rows are pattern t
 | Smithing | Applied Energistics 2 | ![](/assets/pattern_disk_types/pattern_disk_smithing_1k.png) | ![](/assets/pattern_disk_types/pattern_disk_smithing_4k.png) | ![](/assets/pattern_disk_types/pattern_disk_smithing_16k.png) | ![](/assets/pattern_disk_types/pattern_disk_smithing_64k.png) | ![](/assets/pattern_disk_types/pattern_disk_smithing_256k.png) |
 | Stonecutting | Applied Energistics 2 | ![](/assets/pattern_disk_types/pattern_disk_stonecutting_1k.png) | ![](/assets/pattern_disk_types/pattern_disk_stonecutting_4k.png) | ![](/assets/pattern_disk_types/pattern_disk_stonecutting_16k.png) | ![](/assets/pattern_disk_types/pattern_disk_stonecutting_64k.png) | ![](/assets/pattern_disk_types/pattern_disk_stonecutting_256k.png) |
 | Advanced Processing | AdvancedAE | ![](/assets/pattern_disk_types/pattern_disk_adv_processing_1k.png) | ![](/assets/pattern_disk_types/pattern_disk_adv_processing_4k.png) | ![](/assets/pattern_disk_types/pattern_disk_adv_processing_16k.png) | ![](/assets/pattern_disk_types/pattern_disk_adv_processing_64k.png) | ![](/assets/pattern_disk_types/pattern_disk_adv_processing_256k.png) |
+| Chiseling | Rechiseled: Applied Energistics | ![](/assets/pattern_disk_types/pattern_disk_chiseling_1k.png) | ![](/assets/pattern_disk_types/pattern_disk_chiseling_4k.png) | ![](/assets/pattern_disk_types/pattern_disk_chiseling_16k.png) | ![](/assets/pattern_disk_types/pattern_disk_chiseling_64k.png) | ![](/assets/pattern_disk_types/pattern_disk_chiseling_256k.png) |
 
 ## Marks
 
