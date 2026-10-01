@@ -204,6 +204,12 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
 
         // 雕凿面板：外观继承切石，但内容建在 Rechiseled 的配方表上，所以它缺席时不挂（那一档也就不出现）。
         this.chiselingPanel = createChiselingPanel(widgets);
+        if (this.chiselingPanel == null) {
+            // 面板缺席（没装 Rechiseled、样式缺键、或构造抛异常被吞）时，没人会去隐藏那个输入槽——
+            // 它会停在样式坐标上，成为一个看不见却能被 JEI/EMI 幽灵拖放写进的假槽。先藏起来；
+            // 真装上了面板，它每帧的 setVisible 会在雕凿档里把它重新显示出来。
+            setSlotsHidden(AEPatternRegistries.CHISELING_INPUT, true);
+        }
 
         // 注册磁盘列表面板（管理终端不要这个面板：它把磁盘铺进自己的表里，复用面板只为共享搜索状态）
         this.diskListPanel = new DiskListPanel();
