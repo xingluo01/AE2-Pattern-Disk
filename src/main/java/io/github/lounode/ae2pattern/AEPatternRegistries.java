@@ -388,6 +388,9 @@ public final class AEPatternRegistries {
     public static final SlotSemantic BATCH_CELL = SlotSemantics.register("ae2_pattern_disk:batch_cell", false);
 
     /** Pattern-disk slots of the batch molecular assembler (shared recipe pool source). */
+    public static final SlotSemantic CHISELING_INPUT = SlotSemantics.register(
+            "ae2_pattern_disk:chiseling_input", false);
+
     public static final SlotSemantic BATCH_DISK = SlotSemantics.register("ae2_pattern_disk:batch_disk", false);
 
     static {

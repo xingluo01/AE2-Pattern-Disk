@@ -38,6 +38,16 @@ public class DiskEncodingLogic implements InternalInventoryHost {
     private final ConfigInventory encodedOutputInv = ConfigInventory.configStacks(MAX_OUTPUT_SLOTS)
             .changeListener(this::onEncodedOutputChanged).allowOverstacking(true).build();
 
+    /**
+     * 雕凿档自己的输入格。
+     *
+     * <p>不与 {@code encodedInputInv} 合用：那个库存的每一格都会被编码路径扫描（处理样板输入循环、高级方向表、
+     * 倍数与除法），而且切石与锻造对它的下标是硬编码的 0/1/2。雕凿本来只需要一格「放个方块、看能雕成什么」，
+     * 单独一份既不会与被扫描的格串味，也让两档各自记住自己的输入。</p>
+     */
+    private final ConfigInventory chiselingInputInv = ConfigInventory.configStacks(1)
+            .changeListener(this::onEncodedInputChanged).allowOverstacking(true).build();
+
     private final AppEngInternalInventory blankPatternInv = new AppEngInternalInventory(this, 1);
     private final AppEngInternalInventory encodedPatternInv = new AppEngInternalInventory(this, 1);
 
@@ -182,6 +192,7 @@ public class DiskEncodingLogic implements InternalInventoryHost {
     public void setStonecuttingRecipeId(@Nullable ResourceLocation id) { this.stonecuttingRecipeId = id; saveChanges(); }
 
     public ConfigInventory getEncodedInputInv() { return encodedInputInv; }
+    public ConfigInventory getChiselingInputInv() { return chiselingInputInv; }
     public ConfigInventory getEncodedOutputInv() { return encodedOutputInv; }
     public boolean isHideEmptySlots() { return this.hideEmptySlots; }
     public void setHideEmptySlots(boolean hide) { this.hideEmptySlots = hide; }
@@ -239,6 +250,7 @@ public class DiskEncodingLogic implements InternalInventoryHost {
             blankPatternInv.readFromNBT(data, "blankPattern", registries);
             encodedPatternInv.readFromNBT(data, "encodedPattern", registries);
             encodedInputInv.readFromChildTag(data, "encodedInputs", registries);
+            chiselingInputInv.readFromChildTag(data, "chiselingInput", registries);
             encodedOutputInv.readFromChildTag(data, "encodedOutputs", registries);
         } finally { isLoading = false; }
     }
@@ -260,6 +272,7 @@ public class DiskEncodingLogic implements InternalInventoryHost {
         blankPatternInv.writeToNBT(data, "blankPattern", registries);
         encodedPatternInv.writeToNBT(data, "encodedPattern", registries);
         encodedInputInv.writeToChildTag(data, "encodedInputs", registries);
+        chiselingInputInv.writeToChildTag(data, "chiselingInput", registries);
         encodedOutputInv.writeToChildTag(data, "encodedOutputs", registries);
     }
 

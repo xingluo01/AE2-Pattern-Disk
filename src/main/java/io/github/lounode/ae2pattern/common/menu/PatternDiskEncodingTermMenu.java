@@ -207,6 +207,8 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
     private final FakeSlot[] processingInputSlots = new FakeSlot[AEProcessingPattern.MAX_INPUT_SLOTS];
     private final FakeSlot[] processingOutputSlots = new FakeSlot[AEProcessingPattern.MAX_OUTPUT_SLOTS];
     private final FakeSlot stonecuttingInputSlot;
+    /** 雕凿档自己的输入槽，与切石那个互不影响（两个语义在样式文档里定在同一坐标，各档只显示自己的）。 */
+    private final FakeSlot chiselingInputSlot;
     private final FakeSlot smithingTableTemplateSlot;
     private final FakeSlot smithingTableBaseSlot;
     private final FakeSlot smithingTableAdditionSlot;
@@ -340,6 +342,12 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
         this.addSlot(this.stonecuttingInputSlot = new FakeSlot(encodedInputs, 0), SlotSemantics.STONECUTTING_INPUT);
         this.stonecuttingInputSlot.setHideAmount(true);
 
+        // 雕凿输入：单独一份库存（一格的量级），只给雕凿档用。样式文档里给的是与切石槽相同的坐标，
+        // 所以两档切换时玩家看到的是同一格——但两边各记各的，不会串。
+        var chiselingInputs = encodingLogic.getChiselingInputInv().createMenuWrapper();
+        this.addSlot(this.chiselingInputSlot = new FakeSlot(chiselingInputs, 0), AEPatternRegistries.CHISELING_INPUT);
+        this.chiselingInputSlot.setHideAmount(true);
+
         // Smithing inputs
         this.addSlot(this.smithingTableTemplateSlot = new FakeSlot(encodedInputs, 0),
                 SlotSemantics.SMITHING_TABLE_TEMPLATE);
@@ -456,7 +464,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
      */
     @Nullable
     private ItemStack encodeChiselingPattern() {
-        var input = this.stonecuttingInputSlot.getItem();
+        var input = this.chiselingInputSlot.getItem();
         var candidate = input.isEmpty()
                 ? null
                 : ChiselingRecipes.serverCandidateAt(this.selectedChiseling, input.getItem());
@@ -1631,6 +1639,8 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
         }
         encodedInputsInv.clear();
         encodedOutputsInv.clear();
+        // 雕凿输入也是一份输入，按「清空」的语义一并清掉。
+        encodingLogic.getChiselingInputInv().clear();
         this.broadcastChanges();
         this.getAndUpdateOutput();
     }
@@ -1997,6 +2007,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
     public FakeSlot[] getProcessingInputSlots() { return processingInputSlots; }
     public FakeSlot[] getProcessingOutputSlots() { return processingOutputSlots; }
     public FakeSlot getStonecuttingInputSlot() { return stonecuttingInputSlot; }
+    public FakeSlot getChiselingInputSlot() { return chiselingInputSlot; }
     public FakeSlot getSmithingTableTemplateSlot() { return smithingTableTemplateSlot; }
     public FakeSlot getSmithingTableBaseSlot() { return smithingTableBaseSlot; }
     public FakeSlot getSmithingTableAdditionSlot() { return smithingTableAdditionSlot; }

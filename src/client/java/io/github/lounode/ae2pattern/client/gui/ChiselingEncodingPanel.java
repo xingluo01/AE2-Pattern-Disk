@@ -21,8 +21,8 @@ import appeng.client.gui.WidgetContainer;
 import appeng.client.gui.style.Blitter;
 import appeng.client.gui.widgets.Scrollbar;
 import appeng.core.AELog;
-import appeng.menu.SlotSemantics;
 
+import io.github.lounode.ae2pattern.AEPatternRegistries;
 import io.github.lounode.ae2pattern.integration.rechiseledae.ChiselingRecipes;
 
 /**
@@ -102,7 +102,7 @@ public final class ChiselingEncodingPanel extends DiskEncodingModePanel {
      */
     @Nullable
     private Item inputItem() {
-        var stack = menu.getStonecuttingInputSlot().getItem();
+        var stack = menu.getChiselingInputSlot().getItem();
         return stack.isEmpty() ? null : stack.getItem();
     }
 
@@ -254,14 +254,7 @@ public final class ChiselingEncodingPanel extends DiskEncodingModePanel {
         if (this.scrollbar != null) {
             this.scrollbar.setVisible(visible);
         }
-        // 这个槽的显示/隐藏归切石面板管（它才是这个槽的主人）；雕凿档只是把它借过来显示，所以只在
-        // visible 时去把它显示出来。
-        //
-        // 不能在 !visible 时去隐藏：屏幕每帧按「常规面板 → 高级面板 → 雕凿面板」的顺序调 setVisible，
-        // 切石档下切石面板刚把这个槽显示出来，紧接着就会被这里藏回去——而两个面板的 setVisible 谁先谁后
-        // 靠的是屏幕里的调用顺序，不是这里能控制的。
-        if (visible) {
-            screen.setSlotsHidden(SlotSemantics.STONECUTTING_INPUT, false);
-        }
+        // 这个槽是雕凿档自己的，只由本面板管，所以写对称的 !visible（切石那个槽归切石面板，不去碰）。
+        screen.setSlotsHidden(AEPatternRegistries.CHISELING_INPUT, !visible);
     }
 }
