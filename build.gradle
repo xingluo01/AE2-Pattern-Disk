@@ -255,6 +255,15 @@ dependencies {
     // and that item is exactly what this mod's new "chiseling" disk type exists to hold. Without it in the
     // runtime the type can never be made to appear, so there is nothing to exercise. Rechiseled pulls in
     // SuperMartijn642's Core Lib and Config Lib, plus Fusion on the client only.
+    //
+    // KNOWN CONFLICT (seen in game 2026-10-02): Rechiseled 1.2.5 ships
+    // `jei.RecipeLayoutUserInputHandlerMixin`, which injects into JEI's RecipeLayoutWithButtons and there
+    // references `mezz.jei.gui.input.UserInput` - a class JEI moved out of that package by 19.56. So with
+    // JEI 19.56 installed, opening a JEI recipe page (RecipesGui.mouseClicked -> createUserInputHandler)
+    // fails mixin transformation and crashes the client. Nothing to do with this mod, but it does block
+    // in-game verification of the chiseling type: you cannot open JEI at all. Either use a Rechiseled build
+    // that targets JEI 19.56, or drop JEI back to ~19.27 - the latter collides with the EAE+ requirement
+    // documented further down, so it is not a free switch.
     localRuntime 'maven.modrinth:rechiseled:1.2.5-neoforge-mc1.21'
     localRuntime 'maven.modrinth:rechiseled-applied-energistics-2:1.0.1-neoforge-mc1.21.1'
     localRuntime 'curse.maven:supermartijn642s-core-lib-454372:7521894'
