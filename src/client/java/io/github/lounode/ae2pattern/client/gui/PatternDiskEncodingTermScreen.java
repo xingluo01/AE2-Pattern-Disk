@@ -896,14 +896,8 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     public boolean mouseClicked(double xCoord, double yCoord, int btn) {
         // 展开的模式列表由本屏先接管：工具栏其它按钮与样式面板都排在 children 前面，会把落在它们地盘的
         // 点击先吃掉——列表压在谁身上都点不中。所以这里先把这一下抢过来，没抢到才让点击照常往下走。
-        if (btn == InputConstants.MOUSE_BUTTON_LEFT) {
-            if (this.modeButton.handleMenuClick(xCoord, yCoord)) {
-                return true;
-            }
-            var menuArea = this.modeButton.getTooltipArea();
-            if (!menuArea.contains((int) xCoord, (int) yCoord)) {
-                this.modeButton.closeMenu();
-            }
+        if (btn == InputConstants.MOUSE_BUTTON_LEFT && interceptModeMenuClick(xCoord, yCoord)) {
+            return true;
         }
 
         // 清空后不 return：这一下照旧交给父类，让搜索框拿到焦点（AE2 自己也是这么干的）。
@@ -925,6 +919,27 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         }
 
         return super.mouseClicked(xCoord, yCoord, btn);
+    }
+
+    /**
+     * 把展开的模式列表这一下抢下来（命中则切档并消费）。
+     *
+     * <p>放在父类里给子类共用：命中的判断必须发生在点击被派发给 children 之前，而子类（管理终端）自己覆写
+     * 了 {@link #mouseClicked} 且会在行内直接返回、不调 {@code super}，所以它得在自己的开头先调一次这个。</p>
+     *
+     * @return true 表示这次点击已被模式列表吃掉，调用方应直接返回
+     */
+    protected boolean interceptModeMenuClick(double xCoord, double yCoord) {
+        if (this.modeButton.handleMenuClick(xCoord, yCoord)) {
+            return true;
+        }
+        // 点到了别的地方就收起来。展开时 getTooltipArea 是「按钮 ∪ 列表」的包络，所以点在按钮本体或列表上
+        // 都不会被误收（那两种情形分别交给按钮自己的 onPress 与上面的 handleMenuClick）。
+        var menuArea = this.modeButton.getTooltipArea();
+        if (!menuArea.contains((int) xCoord, (int) yCoord)) {
+            this.modeButton.closeMenu();
+        }
+        return false;
     }
 
     /**

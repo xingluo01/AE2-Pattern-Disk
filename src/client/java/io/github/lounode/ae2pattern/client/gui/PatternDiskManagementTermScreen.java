@@ -25,6 +25,8 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.PacketDistributor;
 
+import com.mojang.blaze3d.platform.InputConstants;
+
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 
@@ -750,6 +752,12 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
 
     @Override
     public boolean mouseClicked(double xCoord, double yCoord, int btn) {
+        // 展开的模式列表要先抢这一下：本屏的行表格排在 children 前面，行带与列表条目的第二列重叠时
+        // 会把点击吃掉。本方法在行内不调 super，所以这个拦截必须自己先做一次。
+        if (btn == InputConstants.MOUSE_BUTTON_LEFT && interceptModeMenuClick(xCoord, yCoord)) {
+            return true;
+        }
+
         int rowIndex = rowIndexAt(xCoord, yCoord);
         if (rowIndex < 0) {
             return super.mouseClicked(xCoord, yCoord, btn);
