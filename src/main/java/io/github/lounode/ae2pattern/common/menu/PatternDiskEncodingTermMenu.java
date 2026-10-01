@@ -457,11 +457,10 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
             // 搜索栏有内容时，刚编好的样板按列表顺序顺位写进第一张能收的盘——省掉「编出一个样板再点
             // 磁盘」两步。候选由客户端给出（顺序就是屏幕上的顺序）；全部写不进时由顺位路径报原因。
             if (autoDisks.length > 0) {
-                transferToFirstWritable(autoDisks);
-                // 唯一目标：顺手把标记写成它的工作方块。类别由客户端先一步送过来了（见本方法开头），
-                // 而 bindPrefix 自己会在类别缺失时跳过，所以这里不必再判一次。
-                if (autoDisks.length == 1) {
-                    bindPrefix(autoDisks[0]);
+                // 写进去了才顺手把标记写成它的工作方块：写盘被拒（容量/重复产出/类型锁定）时盘里没这份
+                // 样板，再去改标记只会让盘与样板对不上。
+                if (transferToFirstWritable(autoDisks) && autoDisks.length == 1) {
+                    bindPrefix(autoDisks[0], false);
                 }
             }
         } else {
@@ -472,9 +471,9 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
             if (PatternDetailsHelper.isEncodedPattern(existing)) {
                 if (autoDisks.length > 0) {
                     // 走既有的写盘路径：写进去、清空编码槽、退回空白样板，一处口径。
-                    transferToFirstWritable(autoDisks);
-                    if (autoDisks.length == 1) {
-                        bindPrefix(autoDisks[0]);
+                    // 同样只在真写进去之后才绑标记（理由见上一处调用点）。
+                    if (transferToFirstWritable(autoDisks) && autoDisks.length == 1) {
+                        bindPrefix(autoDisks[0], false);
                     }
                 }
                 return;
@@ -668,10 +667,10 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
      * 右键选中的那张盘加上同一容器内的其他盘。全部写不进时只报**第一张被拒**（已过期的候选会被跳过）的原因，
      * 而不是逐张刷屏；一张盘都没碰到（列表过期）时才报「目标已不在列表里」。</p>
      */
-    private void transferToFirstWritable(long[] serials) {
+    private boolean transferToFirstWritable(long[] serials) {
         var encoded = encodedPatternSlot.getItem();
         if (encoded.isEmpty() || !PatternDetailsHelper.isEncodedPattern(encoded)) {
-            return;
+            return false;
         }
 
         var level = getPlayer().level();
@@ -700,7 +699,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
                 this.encodedPatternSlot.set(ItemStack.EMPTY);
                 returnBlankPatternToStorage();
                 notifyPatternWritten(stack.getHoverName());
-                return;
+                return true;
             }
             if (refusedName == null) {
                 refusedName = stack.getHoverName();
@@ -713,6 +712,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
         } else if (stale) {
             notifyStaleTarget();
         }
+        return false;
     }
 
     /** 样板写不进磁盘时说明理由。原因与写入路径共用同一套判据（见 whyCannotInsert）。 */
@@ -965,6 +965,15 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
      * Renaming is a separate interaction (see {@link #renameDisk(long)}).
      */
     public void bindPrefix(long serial) {
+        bindPrefix(serial, true);
+    }
+
+    /**
+     * @param announceSkip 类别缺失、写不出标记时，是否在聊天栏说一句。玩家右键打标要说——他明确是冲着标记来的；
+     *                     而编码后的顺手绑盘不说：那一刻已经在写盘路径上回执过成败，再补一句「标记未写入」
+     *                     会被读成写盘失败。
+     */
+    private void bindPrefix(long serial, boolean announceSkip) {
         if (isClientSide()) {
             // The mark depends on the imported recipe's category, which only the client knows, so it travels
             // as its own action just ahead of the bind.
@@ -994,7 +1003,9 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
         // 说进聊天栏：写没写成，玩家得看得到。
         if (pendingRecipeCategory == null || pendingRecipeCategory.isEmpty()) {
             LOGGER.info("Bind skipped for disk {}: nothing on the cursor and nothing imported", serial);
-            notifyMarkNotWritten();
+            if (announceSkip) {
+                notifyMarkNotWritten();
+            }
             return;
         }
 

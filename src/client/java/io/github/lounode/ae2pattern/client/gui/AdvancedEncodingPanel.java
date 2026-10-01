@@ -117,8 +117,20 @@ public class AdvancedEncodingPanel extends DiskEncodingModePanel {
         }
         // 下限给 1：maxScroll == 0 时 AE2 会把滚动条画成「禁用」外观，看上去像压根没有这条控件。
         this.scrollbar.setRange(0, Math.max(1, rowCount() - ROWS), ROWS);
-        this.scrollbar.setPosition(new appeng.client.Point(x + TRACK_X, y + TRACK_Y));
+        // 底图上的轨道在 x=6，这里再往左 1px：贴图那条轨道的竖线比控件默认画的位置偏左。
+        this.scrollbar.setPosition(new appeng.client.Point(x + TRACK_X - 1, y + TRACK_Y));
         scroll = Mth.clamp(this.scrollbar.getCurrentScroll(), 0, maxScroll());
+    }
+
+    @Override
+    public void setVisible(boolean visible) {
+        super.setVisible(visible);
+        // 滚动条是屏幕级 widget（构造器里的 widgets.addScrollBar），而屏幕切模式时只对本面板调
+        // setVisible——滚动条不在面板里，不会跟着藏起来，于是切回别的模式后它还留在那儿。这里手动同步。
+        // 判空是必须的：屏幕在构造完 widget 就会设一次可见性，那一刻 scrollbar 可能还没赋值。
+        if (this.scrollbar != null) {
+            this.scrollbar.setVisible(visible);
+        }
     }
 
     @Override
