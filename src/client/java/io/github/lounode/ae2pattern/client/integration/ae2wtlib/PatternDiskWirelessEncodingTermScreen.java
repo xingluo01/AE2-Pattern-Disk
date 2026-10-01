@@ -61,7 +61,7 @@ public class PatternDiskWirelessEncodingTermScreen extends PatternDiskEncodingTe
         this.upgradesPanel.setMaxRows(Math.max(2, getVisibleRows()));
         // 切换按钮排在「编码类型」之后：工具栏默认按挂载顺序摆，而本按钮是构造器里挂的，会跑到模式按钮前面。
         if (this.terminalSwitchButton != null) {
-            ToolbarOrder.placeAfter(this, this.terminalSwitchButton, this.modeCycleButton);
+            ToolbarOrder.placeAfter(this, this.terminalSwitchButton, this.modeButton);
         }
     }
 

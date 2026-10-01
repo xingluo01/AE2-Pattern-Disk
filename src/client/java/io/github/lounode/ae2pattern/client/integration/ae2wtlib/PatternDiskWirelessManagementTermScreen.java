@@ -53,10 +53,10 @@ public class PatternDiskWirelessManagementTermScreen extends PatternDiskManageme
         }
         super.init();
         this.upgradesPanel.setMaxRows(Math.max(2, getVisibleRows()));
-        // 切换按钮排在「切换模式」（本屏的 modeCycleButton 继承自编码屏）之后：工具栏按挂载顺序摆，
+        // 切换按钮排在「切换模式」（本屏的 modeButton 继承自编码屏）之后：工具栏按挂载顺序摆，
         // 而本按钮是构造器里挂的，不重排就会跑到模式按钮前面。
         if (this.terminalSwitchButton != null) {
-            ToolbarOrder.placeAfter(this, this.terminalSwitchButton, this.modeCycleButton);
+            ToolbarOrder.placeAfter(this, this.terminalSwitchButton, this.modeButton);
         }
     }
 

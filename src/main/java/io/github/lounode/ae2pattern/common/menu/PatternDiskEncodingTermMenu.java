@@ -449,14 +449,17 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
     // ---- Encoding ------------------------------------------------------------
 
     /**
-     * 编一枚雕凿样板：输入与输出都取自面板上选中的那个候选项。
+     * 编一枚雕凿样板：输入取自切石输入槽里那个方块（雕凿档下它也是可见的），输出取自面板上选中的候选。
      *
-     * <p>没选就返回 null（编码路径会照常走「清空」那一支），但先给一句提示——否则玩家点了「编写样板」
-     * 只会看到没反应，而那一档的规矩本来就是「先选一个候选」。</p>
+     * <p>槽空着或没选就返回 null（编码路径会到此为止），但先给一句提示——否则玩家点了「编写样板」
+     * 只会看到没反应，而那一档的规矩本来就是「先放一个方块、再选一个候选」。</p>
      */
     @Nullable
     private ItemStack encodeChiselingPattern() {
-        var candidate = ChiselingRecipes.serverCandidateAt(this.selectedChiseling);
+        var input = this.stonecuttingInputSlot.getItem();
+        var candidate = input.isEmpty()
+                ? null
+                : ChiselingRecipes.serverCandidateAt(this.selectedChiseling, input.getItem());
         if (candidate == null) {
             if (getPlayer() instanceof ServerPlayer serverPlayer) {
                 serverPlayer.sendSystemMessage(Component.translatable(
@@ -464,7 +467,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
             }
             return null;
         }
-        return ChiselingRecipes.encode(candidate.input(), candidate.output());
+        return ChiselingRecipes.encode(input.getItem(), candidate.output());
     }
 
     /** 四套编码的实现已搬去 {@link PatternEncodingLogic}，这里只留一个引用。 */

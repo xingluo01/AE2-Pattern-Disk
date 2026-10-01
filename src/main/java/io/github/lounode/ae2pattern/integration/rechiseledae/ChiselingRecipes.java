@@ -12,34 +12,40 @@ import net.minecraft.world.item.ItemStack;
 
 import com.supermartijn642.rechiseled.ae.RechiseledAE;
 import com.supermartijn642.rechiseled.ae.chiseling_pattern.EncodedChiselingPattern;
+import com.supermartijn642.rechiseled.api.chiseling.ChiselingBlockShape;
 import com.supermartijn642.rechiseled.api.chiseling.ChiselingRecipeManager;
 
 /**
  * Rechiseled 雕凿配方的读取与雕凿样板的编码。这是本仓唯一直接引用 Rechiseled / RechiseledAE2 类的文件，
  * 单独隔开是为了让它们缺席时只有这个类加载失败——调用方在碰它之前先用 ModList 判前置。
  *
- * <p>候选的粒度取「一个风格组内有连接材质版的那种对」：{@code getAnyItem()} 给普通款、
- * {@code getAnyConnectingItem()} 给带连接材质的款，两者都有才成一项。Rechiseled 的配方是「同一风格的
- * 方块/楼梯/台阶互为变体」的无向集合，官方那台编码器是让玩家自己放输入方块再从候选里挑输出——本模组的
- * 终端没有那个输入槽，所以直接把「把谁雕成谁」写进候选项里。</p>
+ * <p><b>候选怎么来的。</b>Rechiseled 的一条配方是一个「风格组」，组内每条 entry 最多 6 件物品：三个形状
+ * （{@code BLOCK / STAIRS / SLAB}）各有普通态与连接材质态。转换只发生在<b>同组 × 同形状 × 同态</b>的子集里，
+ * 普通态与连接态之间不能互转（普通梁不会雕成连接梁）——这一点与 Rechiseled 自己的雕凿机器口径一致。</p>
+ *
+ * <p>所以输入不是候选表的一部分，而是查询的入口：终端里那个切石输入槽放着什么，就用
+ * {@link ChiselingRecipeManager#getRecipeForItem} 找到它所在的组、认出它落在哪个（形状, 态），再列出该组
+ * 同一子集里的其余物品。槽里放普通台阶，列出的就全是普通台阶；放连接台阶，列出的就全是连接台阶。</p>
  *
  * <p><b>配方表要按侧取。</b>Rechiseled 自己维护两份：服务端那份在数据重载时填，客户端那份由它整份同步过来
  * （玩家加入时发一次，重载时再发）。CLIENT 副本在收到之前是空的，拿它会抛
- * {@code IllegalStateException}。上游把服务端表**按序**同步，所以两侧的候选顺序一致，可以只传序号。</p>
+ * {@code IllegalStateException}。上游把服务端表**按序**同步，两侧都从同一个输入算，所以候选顺序一致，
+ * 可以只传序号。</p>
  */
 public final class ChiselingRecipes {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("ae2_pattern_disk.integration.rechiseledae");
 
-    /** 一项候选：把 {@code input} 雕成 {@code output}。 */
-    public record Candidate(Item input, Item output) {
+    /** 一项候选：把输入槽里那个物品雕成 {@code output}。输入是查询入口，不进候选项。 */
+    public record Candidate(Item output) {
     }
 
     /**
-     * 面板侧：客户端那一份配方表。表还没同步到、或前置缺席时返回空表（面板会显示成空档）。
+     * 面板侧：客户端那一份配方表，列出用 {@code input} 雕得出的产物；{@code input} 为 null 时返回空表。
+     * 表还没同步到、或前置缺席时也返回空表（面板会显示成空档）。
      */
-    public static List<Candidate> clientCandidates() {
-        return candidates(true);
+    public static List<Candidate> clientCandidates(@Nullable Item input) {
+        return candidates(true, input);
     }
 
     /**
@@ -49,8 +55,8 @@ public final class ChiselingRecipes {
      * 调用方给一句提示就完了——比写出一枚错的雕凿样板好。</p>
      */
     @Nullable
-    public static Candidate serverCandidateAt(int index) {
-        var all = candidates(false);
+    public static Candidate serverCandidateAt(int index, @Nullable Item input) {
+        var all = candidates(false, input);
         return index >= 0 && index < all.size() ? all.get(index) : null;
     }
 
@@ -72,31 +78,71 @@ public final class ChiselingRecipes {
         }
     }
 
-    private static List<Candidate> candidates(boolean client) {
-        var result = new ArrayList<Candidate>();
+    private static List<Candidate> candidates(boolean client, @Nullable Item input) {
+        if (input == null) {
+            return List.of();
+        }
         try {
-            for (var recipe : ChiselingRecipeManager.get(client).getAllRecipes()) {
-                for (var entry : recipe.entries()) {
-                    var regular = entry.getAnyItem();
-                    var connecting = entry.getAnyConnectingItem();
-                    if (regular == null || connecting == null) {
-                        continue;
+            var recipe = ChiselingRecipeManager.get(client).getRecipeForItem(input);
+            if (recipe == null) {
+                // 这个物品不参与雕凿（没被任何配方收录）。
+                return List.of();
+            }
+
+            // 先认出输入落在哪个（形状, 态）。
+            ChiselingBlockShape shape = null;
+            var connecting = false;
+            for (var entry : recipe.entries()) {
+                for (var candidateShape : ChiselingBlockShape.values()) {
+                    var regular = entry.hasRegularItem(candidateShape) ? entry.getRegularItem(candidateShape) : null;
+                    if (regular != null && regular.item() == input) {
+                        shape = candidateShape;
+                        break;
                     }
-                    var input = regular.item();
-                    var output = connecting.item();
-                    // 同一对可能被多个配方/条目重复给出，去重后再定序，否则两侧的「第 N 项」会在
-                    // 上游数据略有差异时错位。
-                    if (input != output && result.stream()
-                            .noneMatch(c -> c.input() == input && c.output() == output)) {
-                        result.add(new Candidate(input, output));
+                    var connectingItem = entry.hasConnectingItem(candidateShape)
+                            ? entry.getConnectingItem(candidateShape)
+                            : null;
+                    if (connectingItem != null && connectingItem.item() == input) {
+                        shape = candidateShape;
+                        connecting = true;
+                        break;
                     }
                 }
+                if (shape != null) {
+                    break;
+                }
             }
+            if (shape == null) {
+                return List.of();
+            }
+
+            // 再列该组同一子集里的其余物品。上游数据里同一件物品可能被多个 entry 给出，去重后再定序，
+            // 否则两侧的「第 N 项」会在数据略有差异时错位。
+            var result = new ArrayList<Candidate>();
+            for (var entry : recipe.entries()) {
+                var item = connecting
+                        ? (entry.hasConnectingItem(shape) ? entry.getConnectingItem(shape).item() : null)
+                        : (entry.hasRegularItem(shape) ? entry.getRegularItem(shape).item() : null);
+                if (item == null || item == input) {
+                    // 输入自己也在候选集里，但「雕成自己」没有意义，跳过。
+                    continue;
+                }
+                var duplicate = false;
+                for (var existing : result) {
+                    if (existing.output() == item) {
+                        duplicate = true;
+                        break;
+                    }
+                }
+                if (!duplicate) {
+                    result.add(new Candidate(item));
+                }
+            }
+            return result;
         } catch (RuntimeException | LinkageError e) {
             LOGGER.warn("Could not read Rechiseled's chiseling recipes", e);
             return List.of();
         }
-        return result;
     }
 
     private ChiselingRecipes() {

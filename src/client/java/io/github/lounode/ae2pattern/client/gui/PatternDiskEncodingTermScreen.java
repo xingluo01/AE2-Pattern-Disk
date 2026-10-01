@@ -126,7 +126,7 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     @Nullable
     private ChiselingEncodingPanel chiselingPanel;
     private final DiskListPanel diskListPanel;
-    protected final StatesIconButton modeCycleButton;
+    protected final ModeDropdownButton modeButton;
 
     /** 上次写进模式轮换按钮的 tooltip 输入；变了才重建那几行文本，不必每帧新建。 */
     private EncodingMode tooltipMode;
@@ -228,19 +228,15 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
                 Component.translatable("gui.ae2_pattern_disk.encoding_terminal.disk_search.clear_hint")));
         this.miniSearchField.setResponder(text -> diskListPanel.setSearchText(text));
 
-        // 模式轮换按钮（左侧工具栏）—— states.png 项目内图标
-        this.modeCycleButton = new StatesIconButton(
+        // 编码模式选择钮（左侧工具栏）：按本体展开一列档位，点其中一个直接切过去——不再循环轮换，
+        // 档位一多那种「点几下才到」的交互就难用了。可选列表每帧现算（哪些档可用要看菜单字段）。
+        this.modeButton = new ModeDropdownButton(
                 () -> getMenu().advancedMode ? ICON_ADVANCED
                         : getMenu().chiselingMode ? ICON_CHISELING
-                                : switch (getMenu().getMode()) {
-                                    case CRAFTING -> ICON_CRAFTING;
-                                    case PROCESSING -> ICON_PROCESSING;
-                                    case SMITHING_TABLE -> ICON_SMITHING;
-                                    case STONECUTTING -> ICON_STONECUTTING;
-                                },
-                btn -> cycleMode());
-        this.modeCycleButton.setBackground(BG_MODE_NORMAL, BG_MODE_HOVER);
-        addToLeftToolbar(this.modeCycleButton);
+                                : iconFor(getMenu().getMode()),
+                this::modeChoices);
+        this.modeButton.setBackground(BG_MODE_NORMAL, BG_MODE_HOVER);
+        addToLeftToolbar(this.modeButton);
         // 提示语每帧回写（它报的是当前所属的配方类型），这里不设死文本。
 
         // 二级排序开关：贴在 AE2 那三枚排序按钮后面，只在「按 mod」那一档显示（见 updateBeforeRender）。
@@ -365,7 +361,7 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         if (sortBy != null) {
             ToolbarOrder.placeAfter(this, naturalSortButton.widget(), sortBy);
         }
-        ToolbarOrder.placeAtEnd(this, modeCycleButton);
+        ToolbarOrder.placeAtEnd(this, modeButton);
     }
 
     /**
@@ -395,45 +391,75 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
-    private void cycleMode() {
-        // 高级编码与雕凿编码都是并列的档，不在 AE2 的 EncodingMode 里。轮换顺序：
-        // 合成 → 处理 → 锻造 → 切石 → 高级（装了高级样板编码器）→ 雕凿（装了雕凿样板编码器）→ 合成。
+    /** 常规四档的图标。 */
+    private static Blitter iconFor(EncodingMode mode) {
+        return switch (mode) {
+            case CRAFTING -> ICON_CRAFTING;
+            case PROCESSING -> ICON_PROCESSING;
+            case SMITHING_TABLE -> ICON_SMITHING;
+            case STONECUTTING -> ICON_STONECUTTING;
+        };
+    }
+
+    /**
+     * 选择钮展开列表的内容。两个额外档排在四个常规档后面（高级在前、雕凿在后），与它们的可用性判断放在一起
+     * —— 与下面给面板做可见性判断的地方用同一组条件。
+     */
+    private List<ModeDropdownButton.Choice> modeChoices() {
+        var currentMode = getMenu().getMode();
+        var advancedOn = getMenu().advancedMode;
+        var chiselingOn = getMenu().chiselingMode;
+        var regular = !advancedOn && !chiselingOn;
+
+        var choices = new ArrayList<ModeDropdownButton.Choice>();
+        for (var mode : EncodingMode.values()) {
+            choices.add(new ModeDropdownButton.Choice(
+                    iconFor(mode),
+                    modeName(mode),
+                    regular && currentMode == mode,
+                    () -> pickMode(mode)));
+        }
+        if (getMenu().advancedModeAvailable) {
+            choices.add(new ModeDropdownButton.Choice(
+                    ICON_ADVANCED,
+                    Component.translatable("gui.ae2_pattern_disk.encoding_terminal.advanced_mode"),
+                    advancedOn,
+                    this::pickAdvanced));
+        }
+        if (this.chiselingPanel != null && PatternDiskEncodingTermMenu.CHISELING_TIER_ENABLED
+                && getMenu().chiselingModeAvailable) {
+            choices.add(new ModeDropdownButton.Choice(
+                    ICON_CHISELING,
+                    Component.translatable("gui.ae2_pattern_disk.encoding_terminal.chiseling_mode"),
+                    chiselingOn,
+                    this::pickChiseling));
+        }
+        return choices;
+    }
+
+    /** 直接点到某个常规档：先把两个额外档关掉，它们与常规档互斥（否则面板会叠加显示）。 */
+    private void pickMode(EncodingMode mode) {
         if (getMenu().advancedMode) {
             getMenu().setAdvancedMode(false);
-            // 高级档的下一站是雕凿（它可用且已开放时），否则直接回合成。
-            if (this.chiselingPanel != null && PatternDiskEncodingTermMenu.CHISELING_TIER_ENABLED
-                    && getMenu().chiselingModeAvailable) {
-                getMenu().setChiselingMode(true);
-            } else {
-                getMenu().setMode(EncodingMode.CRAFTING);
-            }
-            return;
         }
         if (getMenu().chiselingMode) {
             getMenu().setChiselingMode(false);
-            getMenu().setMode(EncodingMode.CRAFTING);
-            return;
         }
-        var current = getMenu().getMode();
-        var next = switch (current) {
-            case CRAFTING -> EncodingMode.PROCESSING;
-            case PROCESSING -> EncodingMode.SMITHING_TABLE;
-            case SMITHING_TABLE -> EncodingMode.STONECUTTING;
-            case STONECUTTING -> EncodingMode.CRAFTING;
-        };
-        if (current == EncodingMode.STONECUTTING) {
-            // 两个额外档都排在切石之后，顺序固定：高级在前、雕凿在后（雕凿的面板外观就继承切石）。
-            //
-            // 雕凿那一档暂不开放（见 PatternDiskEncodingTermMenu.CHISELING_TIER_ENABLED）：它的面板
-            // （候选列表 + 编码路径）还没做。登记、字段、动作、图标与持久化都已就位，翻那个常量即可开放。
-            if (getMenu().advancedModeAvailable) {
-                getMenu().setAdvancedMode(true);
-            } else if (this.chiselingPanel != null && PatternDiskEncodingTermMenu.CHISELING_TIER_ENABLED
-                    && getMenu().chiselingModeAvailable) {
-                getMenu().setChiselingMode(true);
-            }
+        getMenu().setMode(mode);
+    }
+
+    private void pickAdvanced() {
+        if (getMenu().chiselingMode) {
+            getMenu().setChiselingMode(false);
         }
-        getMenu().setMode(next);
+        getMenu().setAdvancedMode(true);
+    }
+
+    private void pickChiseling() {
+        if (getMenu().advancedMode) {
+            getMenu().setAdvancedMode(false);
+        }
+        getMenu().setChiselingMode(true);
     }
 
     @Override
@@ -450,7 +476,7 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             this.naturalSortButton.update(getSortBy());
         }
 
-        // 模式轮换按钮的提示语：第一行就是它现在所处的档位，第二行才是「点一下换一个」。
+        // 模式选择钮的提示语：第一行就是它现在所处的档位，第二行说明点它会发生什么。
         // 两个额外档不在 EncodingMode 里，但它们同样是一次「当前在哪儿」，所以一并跟。
         var mode = menu.getMode();
         var advancedOn = menu.advancedMode;
@@ -460,7 +486,7 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             this.tooltipMode = mode;
             this.tooltipAdvanced = advancedOn;
             this.tooltipChiseling = chiselingOn;
-            this.modeCycleButton.setTooltip(List.of(
+            this.modeButton.setTooltip(List.of(
                     advancedOn
                             ? Component.translatable("gui.ae2_pattern_disk.encoding_terminal.advanced_mode")
                             : chiselingOn

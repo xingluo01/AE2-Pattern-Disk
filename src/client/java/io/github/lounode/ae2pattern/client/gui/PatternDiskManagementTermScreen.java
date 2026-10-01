@@ -355,7 +355,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         hideIrrelevantToolbarButtons();
         // 本模组自己的按钮排到 AE2 自带的之后，次序：显示模式 → 显示槽位 → 模式轮换
         //（附加排序已在父类里贴到了「排序按」后面）。
-        ToolbarOrder.placeAtEnd(this, List.of(showProvidersButton, hideSlotsButton, modeCycleButton));
+        ToolbarOrder.placeAtEnd(this, List.of(showProvidersButton, hideSlotsButton, modeButton));
 
         // 风格档位可能把面板改矮：清单没变时 rebuildRows 不会夹偏移，这里补一次，免得顶部留白。
         // （前提：JSON 的 header=17、firstRow/lastRow=18、bottom=95，即 imageHeight = 18×行 + 112；改那几处要同步这里。）
