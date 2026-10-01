@@ -894,10 +894,12 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
      */
     @Override
     public boolean mouseClicked(double xCoord, double yCoord, int btn) {
-        // 展开的模式列表只画在按钮自己里：点到别的控件上时那次点击比按钮先被消费（工具栏其它按钮与样式
-        // 面板都排在它前面），按钮收不到，所以在这里统一先收一次。点在按钮或展开列表范围内时不收——
-        // 那一路交给按钮自己判，在这里收掉会破掉「展开时点选档位」。
+        // 展开的模式列表由本屏先接管：工具栏其它按钮与样式面板都排在 children 前面，会把落在它们地盘的
+        // 点击先吃掉——列表压在谁身上都点不中。所以这里先把这一下抢过来，没抢到才让点击照常往下走。
         if (btn == InputConstants.MOUSE_BUTTON_LEFT) {
+            if (this.modeButton.handleMenuClick(xCoord, yCoord)) {
+                return true;
+            }
             var menuArea = this.modeButton.getTooltipArea();
             if (!menuArea.contains((int) xCoord, (int) yCoord)) {
                 this.modeButton.closeMenu();

@@ -20,10 +20,10 @@ import appeng.client.gui.style.Blitter;
  * <p>按钮本身不认识档位：可选列表由屏幕给（{@link Choice} 里带着图标、名字与点击动作），这样「哪些档
  * 当前可用」的判断留在屏幕那侧，与它给面板做可见性判断的地方挨着，不必在两个文件里各写一遍。</p>
  *
- * <p>展开的列表不注册成 widget，就画在自己的 {@link #renderWidget} 里，命中靠覆写 {@link #mouseClicked}：
- * {@code Screen} 会把点击广播给所有 children，所以按钮边界之外的点击也能收到。但反过来，**排在更前面的
- * widget（工具栏上其它按钮、样式面板）会先吃掉点击，本按钮就收不到**——所以列表要开在没有别的东西的位置
- * （按钮下方），并让屏幕在派发前调一次 {@link #closeMenu}，补上「点到别的控件上也要收起」这一半。</p>
+ * <p>展开的列表不注册成 widget，就画在自己的 {@link #renderWidget} 里。命中则**不走 children 广播**：
+ * 工具栏其它按钮与样式面板排在更前面，会把落在它们地盘的点击先吃掉，列表底下那几项就永远点不中。
+ * 所以由屏幕在派发之前调一次 {@link #handleMenuClick}，把这一下先抢过来；屏幕也会在同一个位置调
+ * {@link #closeMenu} 补上「点到别的控件上也要收起」。</p>
  */
 public final class ModeDropdownButton extends StatesIconButton {
 
@@ -122,23 +122,35 @@ public final class ModeDropdownButton extends StatesIconButton {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (this.menuOpen && button == 0) {
-            var index = itemAt(mouseX, mouseY);
-            if (index >= 0) {
-                this.choices.get().get(index).onPick().run();
-                this.menuOpen = false;
-                return true;
-            }
-        }
         if (super.mouseClicked(mouseX, mouseY, button)) {
             return true;
         }
         if (this.menuOpen) {
-            // 点到别处：收起，但不消费这次点击（让它在别的地方照常生效）。点到别的控件上时走不到这里
-            // （那几个控件比本按钮先派发，那一路由屏幕侧的 closeMenu 兜）。
+            // 点到别处：收起，但不消费这次点击（让它在别的地方照常生效）。正常路径下屏幕已经先问过
+            // handleMenuClick，这里只是按钮边界内那一下的兜底。
             this.menuOpen = false;
         }
         return false;
+    }
+
+    /**
+     * 由屏幕在派发点击之前调用：这一下是不是点在展开的列表里；是则执行那一项并消费掉这次点击。
+     *
+     * <p>命中不能只靠 {@link #mouseClicked}——工具栏其它按钮与样式面板都排在 children 前面，先被派发
+     * 就会把落在它们地盘的点击吃掉，列表底下那几项永远收不到。屏幕在 {@code super.mouseClicked} 之前
+     * 问一次，就把这条依赖彻底去掉了（列表即使压在别的按钮上也点得中）。</p>
+     */
+    public boolean handleMenuClick(double mouseX, double mouseY) {
+        if (!this.menuOpen) {
+            return false;
+        }
+        var index = itemAt(mouseX, mouseY);
+        if (index < 0) {
+            return false;
+        }
+        this.choices.get().get(index).onPick().run();
+        this.menuOpen = false;
+        return true;
     }
 
     /** 展开时提示区要跟着外扩，否则列表上的 tooltip 会被判成「不在本按钮范围内」而不显示。 */
@@ -200,9 +212,10 @@ public final class ModeDropdownButton extends StatesIconButton {
     }
 
     /**
-     * 面板开在按钮**下方**：模式钮是工具栏里的最后一个（屏幕用 {@code ToolbarOrder.placeAtEnd} 排的），
-     * 下方没有别的按钮——而工具栏按钮比它先收到点击，开在上面会被那些按钮抢走命中。左边缘与按钮对齐，
-     * 避免贴到 GUI 左边之外。
+     * 面板开在按钮下方（模式钮一般排在工具栏末尾），下方放不下才翻到上方、再不够贴顶。
+     *
+     * <p>方向不必躲开别的按钮：命中由屏幕的 {@link #handleMenuClick} 先抢，压在谁身上都点得中；
+     * 这里只保证整块落在窗口内。</p>
      */
     private int panelX() {
         return Math.max(0, getX());
@@ -214,7 +227,6 @@ public final class ModeDropdownButton extends StatesIconButton {
         if (below + panelHeight() <= guiHeight) {
             return below;
         }
-        // 窗口矮到下方放不下（无线屏里本钮未必排在末尾），翻到上方；再不够就贴顶——整条落在屏幕外就真的点不到了。
         return Math.max(0, getY() - panelHeight() - PANEL_GAP);
     }
 
