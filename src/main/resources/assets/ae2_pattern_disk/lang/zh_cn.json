@@ -17,6 +17,7 @@
   "ae2_pattern_disk.tooltip.type.smithing": "锻造",
   "ae2_pattern_disk.tooltip.type.stonecutting": "切石",
   "ae2_pattern_disk.tooltip.type.adv_processing": "高级处理",
+  "ae2_pattern_disk.tooltip.type.chiseling": "雕凿",
   "ae2_pattern_disk.tooltip.untyped": "未定型（空）",
   "block.ae2_pattern_disk.batch_molecular_assembler": "批处理装配室",
   "block.ae2_pattern_disk.pattern_disk_assembler": "高效分子装配室",

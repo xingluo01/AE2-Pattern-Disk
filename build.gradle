@@ -241,6 +241,17 @@ dependencies {
     // Its three required dependencies (AE2, Glodium, GuideME) are already in this block or above it.
     localRuntime 'maven.modrinth:appflux:4x40hq9D'
 
+    // Rechiseled + Rechiseled: Applied Energistics dev reference. The latter adds a third kind of encoded
+    // pattern - `rechiseledae:chiseling_pattern`, a plain IPatternDetails that a molecular assembler runs -
+    // and that item is exactly what this mod's new "chiseling" disk type exists to hold. Without it in the
+    // runtime the type can never be made to appear, so there is nothing to exercise. Rechiseled pulls in
+    // SuperMartijn642's Core Lib and Config Lib, plus Fusion on the client only.
+    localRuntime 'maven.modrinth:rechiseled:1.2.5-neoforge-mc1.21'
+    localRuntime 'maven.modrinth:rechiseled-applied-energistics-2:1.0.1-neoforge-mc1.21.1'
+    localRuntime 'curse.maven:supermartijn642s-core-lib-454372:7521894'
+    localRuntime 'curse.maven:supermartijn642s-config-lib-438332:5546996'
+    clientLocalRuntime 'maven.modrinth:fusion-connected-textures:1.3.2b-neoforge-mc1.21.1'
+
     // ExtendedAE Plus (EAE+) dev reference. Its "upload pattern to a provider" button is the feature the
     // pattern disk provider has to serve, so it belongs in the dev runtime to exercise that path.
     //

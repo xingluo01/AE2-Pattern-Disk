@@ -38,7 +38,7 @@ Patterns can be written with the [ME Pattern Transferer](pattern_transferer.md),
 
 ## Pattern types
 
-A disk accepts one pattern type only. Crafting, processing, smithing and stonecutting patterns each lock the disk to a matching type; with AdvancedAE installed, its advanced processing pattern locks the disk to a type of its own as well.
+A disk accepts one pattern type only. Crafting, processing, smithing and stonecutting patterns each lock the disk to a matching type; with AdvancedAE installed, its advanced processing pattern locks the disk to a type of its own as well. Rechiseled: Applied Energistics' chiseling pattern does the same - it is neither a crafting nor a processing pattern, so it gets a type of its own too (its row is missing from the table below until its corner marks are cut).
 
 The table below shows every combination of type and capacity: rows are pattern types and where they come from, columns are disk capacities. The base layer is the same for every tier; the capacity layer changes with the capacity, and the corner mark changes with the type, so the mark tells you which kind of pattern a disk holds.
 
