@@ -894,6 +894,16 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
      */
     @Override
     public boolean mouseClicked(double xCoord, double yCoord, int btn) {
+        // 展开的模式列表只画在按钮自己里：点到别的控件上时那次点击比按钮先被消费（工具栏其它按钮与样式
+        // 面板都排在它前面），按钮收不到，所以在这里统一先收一次。点在按钮或展开列表范围内时不收——
+        // 那一路交给按钮自己判，在这里收掉会破掉「展开时点选档位」。
+        if (btn == InputConstants.MOUSE_BUTTON_LEFT) {
+            var menuArea = this.modeButton.getTooltipArea();
+            if (!menuArea.contains((int) xCoord, (int) yCoord)) {
+                this.modeButton.closeMenu();
+            }
+        }
+
         // 清空后不 return：这一下照旧交给父类，让搜索框拿到焦点（AE2 自己也是这么干的）。
         if (btn == InputConstants.MOUSE_BUTTON_RIGHT && miniSearchField.isMouseOver(xCoord, yCoord)) {
             miniSearchField.setValue("");

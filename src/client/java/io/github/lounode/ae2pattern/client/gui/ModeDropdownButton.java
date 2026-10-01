@@ -5,6 +5,7 @@ import java.util.function.Supplier;
 
 import org.jetbrains.annotations.Nullable;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -20,8 +21,9 @@ import appeng.client.gui.style.Blitter;
  * 当前可用」的判断留在屏幕那侧，与它给面板做可见性判断的地方挨着，不必在两个文件里各写一遍。</p>
  *
  * <p>展开的列表不注册成 widget，就画在自己的 {@link #renderWidget} 里，命中靠覆写 {@link #mouseClicked}：
- * {@code Screen} 会把点击广播给所有 children，所以按钮边界之外的点击也能收到，「点别处收起」因此不用挂
- * 额外的监听。</p>
+ * {@code Screen} 会把点击广播给所有 children，所以按钮边界之外的点击也能收到。但反过来，**排在更前面的
+ * widget（工具栏上其它按钮、样式面板）会先吃掉点击，本按钮就收不到**——所以列表要开在没有别的东西的位置
+ * （按钮下方），并让屏幕在派发前调一次 {@link #closeMenu}，补上「点到别的控件上也要收起」这一半。</p>
  */
 public final class ModeDropdownButton extends StatesIconButton {
 
@@ -50,6 +52,8 @@ public final class ModeDropdownButton extends StatesIconButton {
     private static final int PANEL_GAP = 5;
     /** 图标在底板里的内缩（底板 18 宽包着 16 宽的图标）。 */
     private static final int ICON_OFFSET = 1;
+    /** 一列最多几项，超出就另起一列（与 AE2WTLib 同值）。 */
+    private static final int MAX_ROWS = 3;
 
     private final Supplier<List<Choice>> choices;
 
@@ -130,7 +134,8 @@ public final class ModeDropdownButton extends StatesIconButton {
             return true;
         }
         if (this.menuOpen) {
-            // 点到别处：收起，但不消费这次点击（让它在别的地方照常生效）。
+            // 点到别处：收起，但不消费这次点击（让它在别的地方照常生效）。点到别的控件上时走不到这里
+            // （那几个控件比本按钮先派发，那一路由屏幕侧的 closeMenu 兜）。
             this.menuOpen = false;
         }
         return false;
@@ -164,32 +169,61 @@ public final class ModeDropdownButton extends StatesIconButton {
         return super.isTooltipAreaVisible() || (this.menuOpen && this.hoveredName != null);
     }
 
+    /** 展开状态下把列表收起来。屏幕侧的 mouseClicked 会调它，因为点到别的控件上时本按钮收不到点击。 */
+    public void closeMenu() {
+        this.menuOpen = false;
+    }
+
     // ---- 几何 ----------------------------------------------------------------
 
+    private int itemCount() {
+        return this.choices.get().size();
+    }
+
+    /** 分列摆放（一列最多 {@link #MAX_ROWS} 项），列优先：6 个档位就是两列三行。 */
+    private int rows() {
+        return Math.max(1, Math.min(MAX_ROWS, itemCount()));
+    }
+
+    private int columns() {
+        return Math.max(1, (itemCount() + rows() - 1) / rows());
+    }
+
     private int panelWidth() {
-        return PADDING * 2 + ITEM_W;
+        var columns = columns();
+        return PADDING * 2 + columns * ITEM_W + (columns - 1) * GAP;
     }
 
     private int panelHeight() {
-        var count = this.choices.get().size();
-        return PADDING * 2 + count * ITEM_H + (count - 1) * GAP;
+        var rows = rows();
+        return PADDING * 2 + rows * ITEM_H + (rows - 1) * GAP;
     }
 
-    /** 面板右边缘与按钮右边缘对齐、开在按钮上方：按钮在工具栏，往上开不会出屏。 */
+    /**
+     * 面板开在按钮**下方**：模式钮是工具栏里的最后一个（屏幕用 {@code ToolbarOrder.placeAtEnd} 排的），
+     * 下方没有别的按钮——而工具栏按钮比它先收到点击，开在上面会被那些按钮抢走命中。左边缘与按钮对齐，
+     * 避免贴到 GUI 左边之外。
+     */
     private int panelX() {
-        return getX() + getWidth() - panelWidth();
+        return Math.max(0, getX());
     }
 
     private int panelY() {
-        return getY() - panelHeight() - PANEL_GAP;
+        var below = getY() + getHeight() + PANEL_GAP;
+        var guiHeight = Minecraft.getInstance().getWindow().getGuiScaledHeight();
+        if (below + panelHeight() <= guiHeight) {
+            return below;
+        }
+        // 窗口矮到下方放不下（无线屏里本钮未必排在末尾），翻到上方；再不够就贴顶——整条落在屏幕外就真的点不到了。
+        return Math.max(0, getY() - panelHeight() - PANEL_GAP);
     }
 
     private int itemX(int index) {
-        return panelX() + PADDING;
+        return panelX() + PADDING + (index / rows()) * (ITEM_W + GAP);
     }
 
     private int itemY(int index) {
-        return panelY() + PADDING + index * (ITEM_H + GAP);
+        return panelY() + PADDING + (index % rows()) * (ITEM_H + GAP);
     }
 
     private boolean isInItem(int mouseX, int mouseY, int index) {
@@ -199,8 +233,8 @@ public final class ModeDropdownButton extends StatesIconButton {
     }
 
     private int itemAt(double mouseX, double mouseY) {
-        var entries = this.choices.get();
-        for (int i = 0; i < entries.size(); ++i) {
+        var count = itemCount();
+        for (int i = 0; i < count; ++i) {
             if (isInItem((int) mouseX, (int) mouseY, i)) {
                 return i;
             }
