@@ -78,6 +78,9 @@
 - 待办：① 面板变体无独立合成配方，仅与方块形态 1:1 无序互转（`recipe/pattern_disk_provider_to_cable.json` 与 `recipe/cable_pattern_disk_provider_to_block.json`）；② ✅ 纹理已按本项目风格重绘；③ 编码终端/样板管理终端对 Part 形态的收录已由 AE2 源码证实（网格机器按 owner 具体类登记，Part 的 owner 即 Part 本身），待实机确认；④ 面板返还栏的 `GENERIC_INTERNAL_INV` 已注册（`RegisterPartCapabilitiesEvent`，待实机验证装配室回送）；⑤ ✅ 已修：指纹混入宿主 identity salt，面板用所贴面区分同电缆多面板；⑥ ✅ 已修：两形态掉落先清空镜像再走 `logic.addDrops(...)`——返还栏与**待发送缓冲**（已投未达的物品）都会掉落，镜像本身不入掉落；⑦ ✅ 已修：导入前清空镜像；导出也不再往内存卡写镜像样板（AE2 会写 pattern inventory 进卡，导入时按空白样板计价 → 白扣玩家空白样板）；⑧ 面板物品名后缀「（面板）」已去掉，与 AE2 原版面板/方块同名的做法一致
 
 ### F. 其余记录 — P3 ⬜
+- **EAE+ 往原生供应器屏幕加的那几个按钮：无 API，作罢（2026-10 记录）**：ExtendedAE Plus 给 AE2 原生供应器屏幕加的两个开关（高级阻挡、智能翻倍）与「每供应器缩放上限」输入框，全部靠 `@Mixin(PatternProviderScreen.class)` 直接注入，它仓库里没有任何按钮注册表/事件/工厂；公开面只有 `IPatternUploadMenu`（菜单侧，本项目已实现）与 `IPatternUploadTerminal`（屏幕侧，在其仓库里没有消费者，按钮不会自动出现）。
+  - **服务端那半其实早就在身上**：它的 `@Mixin(PatternProviderLogic.class)` 系列命中的正是本模组供应器继承的父类，所以两个开关的行为已生效，缺的只是那三个控件。
+  - **不补的理由**：补它们只能反射 EAE+ 的 `EAPSettings` / `EAPServerSettingToggleButton` / `GuiUtil` 与它的 C2S 包，属于「拿内部类当 API」——而屏幕 UI 不像投递路径那样有「探不到就退回默认行为」的天然兼底。若上游日后开放按屏幕类登记按钮的接口，再补。
 - **样板清单容量 1024 待补文档**：`PatternDiskProviderLogic` 构造时把内部样板清单固定为 1024 槽（`super(mainNode, host, 1024)`）；多张磁盘的样板总数超过该上限时的行为：代码为 `i < all.size() && i < patternInv.size()` 填充镜像 → **静默截断**（超出的样板不提供给合成系统，既不报错也不提示）→ 稍后把这个上限与截断行为补进 README/指南
 - ✅ **代码收敛已完成**：`BatchAssemblerBlockEntity` 原先自建了一份 `PatternDiskRemoveInventory` + 匿名 sink，现已改用与方块/面板共用的 `PatternDiskTerminalView`——核心的"取走样板要扣网络空样板并真删磁盘配方"逻辑（`PatternDiskRemoveInventory`）全仓只剩一份；NeoECO 反射适配器（`NeoECOBusTerminalView`/`NeoECOBusDisks`）仍保留自带的空样板抽取，因为那条总线不是 action host，其抽取刻意不归属任何玩家
 
