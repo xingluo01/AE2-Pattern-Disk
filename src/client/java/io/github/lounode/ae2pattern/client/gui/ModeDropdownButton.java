@@ -50,10 +50,10 @@ public final class ModeDropdownButton extends StatesIconButton {
     /**
      * 底板与内容之间的内缩。
      *
-     * <p>{@code BackgroundGenerator} 的边框固定 4px，取 3 会每边压掉 1px（四个角最明显）。AE2WTLib 自己
-     * 用的就是 3（照抄常量时一并带过来了），这里取其零风险的收敛值 4：贴边不压，面板也不至于胖一圈。</p>
+     * <p>取值与 AE2WTLib 一致（3）。它的 {@code BackgroundGenerator} 边框固定 4px，所以 3 会每边压掉
+     * 1px（四个角最明显）——为了与那枚钮的观感对齐，这里接受这点代价，不取零风险的 4。</p>
      */
-    private static final int PADDING = 4;
+    private static final int PADDING = 3;
     /** 列表与按钮本体之间的空隙。 */
     private static final int PANEL_GAP = 5;
     /** 图标在底板里的内缩（底板 18 宽包着 16 宽的图标）。 */
@@ -115,10 +115,12 @@ public final class ModeDropdownButton extends StatesIconButton {
             var itemY = itemY(i);
             var hovered = isInItem(mouseX, mouseY, i);
 
-            // 悬停时不整体下移：这几张底板本来就差 1px 高，直接换图比位移稳。
+            // 悬停时整体下移 1px（与 AE2WTLib 一致）：悬停底板比常态矮 1px（18×19 vs 18×20），配上这个
+            // 位移看上去就是「按下去」；图标跟着下移同样的量，免得在底板里跳。
+            var yOffset = hovered ? 1 : 0;
             var bg = hovered ? ITEM_BG_HOVERED : entry.selected() ? ITEM_BG_SELECTED : ITEM_BG;
-            bg.dest(itemX, itemY).zOffset(2).blit(guiGraphics);
-            entry.icon().dest(itemX + ICON_OFFSET, itemY + ICON_OFFSET).zOffset(3).blit(guiGraphics);
+            bg.dest(itemX, itemY + yOffset).zOffset(2).blit(guiGraphics);
+            entry.icon().dest(itemX + ICON_OFFSET, itemY + ICON_OFFSET + yOffset).zOffset(3).blit(guiGraphics);
 
             if (hovered) {
                 this.hoveredName = entry.name();
