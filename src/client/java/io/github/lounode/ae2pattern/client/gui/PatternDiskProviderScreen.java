@@ -96,8 +96,8 @@ public class PatternDiskProviderScreen extends AEBaseScreen<PatternDiskProviderM
         this.widgets.add("lockReason", this.lockReason);
 
         // 升级面板：槽位由它按 AE2 的规矩摆在对话框右侧外沿并画底框（界面上那几个 UPGRADE 槽的定位归它管，
-        // 界面文档里那份坐标只是冗余）。没有升级槽的机器不挂——ME 样板磁盘供应器就是那种，挂上去只会
-        // 留下一块空的命中区。
+        // 界面文档里那份坐标只是冗余）。没有升级槽的机器不挂——本屏平时就属于那种（供应器自身不带卡槽），
+        // 只有装了 Applied Flux 时才会多出它给的那一格感应卡槽，那时面板才挂上去。
         var upgradeSlots = menu.getSlots(SlotSemantics.UPGRADE);
         if (!upgradeSlots.isEmpty()) {
             this.widgets.add("upgrades", new UpgradesPanel(upgradeSlots, this::getCompatibleUpgrades));

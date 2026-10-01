@@ -1,29 +1,20 @@
 package io.github.lounode.ae2pattern.common.block.entity;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.RejectedExecutionException;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.crafting.CraftingInput;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 
 import appeng.api.config.Actionable;
-import appeng.api.config.FuzzyMode;
 import appeng.api.config.PowerMultiplier;
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.implementations.blockentities.ICraftingMachine;
@@ -39,13 +30,9 @@ import appeng.api.networking.ticking.TickRateModulation;
 import appeng.api.networking.ticking.TickingRequest;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
-import appeng.api.stacks.AEKeyType;
-import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
 import appeng.blockentity.crafting.IMolecularAssemblerSupportedPattern;
 import appeng.api.storage.StorageCells;
-import appeng.api.storage.cells.IBasicCellItem;
-import appeng.api.storage.cells.StorageCell;
 import appeng.api.upgrades.IUpgradeInventory;
 import appeng.api.upgrades.IUpgradeableObject;
 import appeng.api.upgrades.UpgradeInventories;
@@ -61,7 +48,6 @@ import appeng.util.inv.filter.IAEItemFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.jetbrains.annotations.Nullable;
 
 import io.github.lounode.ae2pattern.api.IPatternDiskHost;
 import io.github.lounode.ae2pattern.api.PatternDiskApi;
@@ -69,8 +55,16 @@ import io.github.lounode.ae2pattern.api.PatternDiskTerminalView;
 
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
+import io.github.lounode.ae2pattern.common.logic.BatchPatternAnalyser;
 import io.github.lounode.ae2pattern.common.logic.BatchRecipePool;
+import io.github.lounode.ae2pattern.common.logic.BatchSynthesisEngine;
+import io.github.lounode.ae2pattern.common.logic.BatchWorkState;
+import io.github.lounode.ae2pattern.common.logic.CellBuffer;
+import io.github.lounode.ae2pattern.common.logic.ParallelSlotProbe;
+import io.github.lounode.ae2pattern.common.logic.PatternPlanCache;
 import io.github.lounode.ae2pattern.common.logic.PatternPlan;
+import io.github.lounode.ae2pattern.common.logic.SmoothReturnQueue;
+import io.github.lounode.ae2pattern.common.util.DropStacks;
 
 /**
  * Block entity of the batch assembler (批处理装配室).
@@ -148,49 +142,14 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
      */
     private static final int OUTPUT_RETURN_TICKS =
             Math.max(1, Integer.getInteger("ae2pattern.outputReturnTicks", 1));
-    /** Upper bound on cached execution plans. Plans are only a speed-up, so a machine fed an endless
-     * variety of pushed patterns drops the whole cache instead of growing without limit. */
-    private static final int MAX_CACHED_PLANS = 1024;
     /** AE charged per assembled job (container remainders and parallels do not change this). */
     private static final double ENERGY_PER_RUN = 10.0;
 
     /**
-     * What the machine is doing, or why it is not doing it.
-     *
-     * <p>Three different situations all leave {@link #assembleOnce} returning {@code false} without saying
-     * which: the pattern could not be resolved against the buffer, the buffer could not supply the material,
-     * or the grid could not pay for the run. From outside the machine they were indistinguishable, so a
-     * machine that refuses to work looked exactly like one waiting on a delivery - and no display could tell
-     * the player which was in front of them.</p>
+     * What the machine is doing, or why it is not doing it. 值域与每档含义在 {@link BatchWorkState}：
+     * 它得被拆解出的执行引擎（{@code common/logic}）写，所以状态枚举不能留在方块实体里。
      */
-    public enum WorkState {
-        /** The machine is not on the grid, so nothing it reports about itself is current. */
-        OFFLINE,
-        /** No storage cell to work out of, so the crafting CPU never hands it anything. */
-        NO_BUFFER,
-        /** The disks hold no pattern this machine can run, so a job could never be matched to one. */
-        NO_PATTERN,
-        /** Nothing queued and nothing left to return. */
-        IDLE,
-        /** Jobs are queued, still inside the quiet window that closes before a batch runs. */
-        WAITING_FOR_MATERIAL,
-        /** A queued pattern produced no execution plan, so its job can never run. */
-        UNRESOLVABLE_PATTERN,
-        /** The cell buffer could not supply the inputs for the pattern being run. */
-        INPUTS_UNAVAILABLE,
-        /** The grid could not pay for the run. */
-        NO_POWER,
-        /** A container remainder could not be worked out, so the run was rolled back before producing anything. */
-        REMAINDER_FAILED,
-        /** The queue is done; produced outputs are still returning to the network. */
-        RETURNING_OUTPUTS,
-        /** Outputs are waiting but the network is taking none of them, so they will not drain on their own. */
-        OUTPUT_BLOCKED,
-        /** A run completed on the last attempt. */
-        WORKING
-    }
-
-    private WorkState workState = WorkState.IDLE;
+    private BatchWorkState workState = BatchWorkState.IDLE;
 
     /** Client-side mirror of the ME node state; synced through the block entity stream. */
     private boolean isActive = false;
@@ -216,7 +175,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     }
 
     /** @return what the machine is doing, or why it is not doing it. */
-    public WorkState getWorkState() {
+    public BatchWorkState getWorkState() {
         // The structural reasons are worked out here rather than recorded while ticking, because ticking only
         // runs while the machine is active: a machine that is offline, has no cell to work from, or has
         // nothing executable on its disks would otherwise keep reporting whatever it was last doing. That
@@ -224,21 +183,21 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         // both, so it has to be asked here first.
         var node = getMainNode().getNode();
         if (node == null || node.getGrid() == null) {
-            return WorkState.OFFLINE;
+            return BatchWorkState.OFFLINE;
         }
         if (!acceptsPlans()) {
-            return WorkState.NO_BUFFER;
+            return BatchWorkState.NO_BUFFER;
         }
         if (exposedPatterns.isEmpty()) {
-            return WorkState.NO_PATTERN;
+            return BatchWorkState.NO_PATTERN;
         }
-        if (!pendingOutputs.isEmpty() && queue.isEmpty()) {
+        if (!returns.isEmpty() && queue.isEmpty()) {
             // Distinguished from a return in progress because only one of the two has anything its owner can act
             // on, and from the outside the queue draining and the queue stuck look exactly alike.
-            return returnStalled ? WorkState.OUTPUT_BLOCKED : WorkState.RETURNING_OUTPUTS;
+            return returnStalled ? BatchWorkState.OUTPUT_BLOCKED : BatchWorkState.RETURNING_OUTPUTS;
         }
-        if (queue.isEmpty() && pendingOutputs.isEmpty()) {
-            return WorkState.IDLE;
+        if (queue.isEmpty() && returns.isEmpty()) {
+            return BatchWorkState.IDLE;
         }
         return workState;
     }
@@ -284,10 +243,12 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     }
 
     private final AppEngCellInventory cellInv = new AppEngCellInventory(this, CELL_SLOTS);
-    private final StorageCell[] cells = new StorageCell[CELL_SLOTS];
     private final AppEngInternalInventory diskInv = new AppEngInternalInventory(this, DISK_SLOTS);
     private final IUpgradeInventory upgrades;
     private final IActionSource actionSource = new MachineSource(this);
+
+    /** 元件缓冲：解析、读写与「还剩多少」都在 {@link CellBuffer} 里，这里只持有它。 */
+    private final CellBuffer cellBuffer = new CellBuffer(cellInv, actionSource);
 
     private final BatchRecipePool recipePool = new BatchRecipePool();
     private final List<IPatternDetails> exposedPatterns = new ArrayList<>();
@@ -322,20 +283,6 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
      */
     private static final long MAX_ADVERTISED_PARALLEL_SLOTS =
             Math.max(1L, Long.getLong("ae2pattern.maxParallelSlots", Long.MAX_VALUE));
-
-    /**
-     * How much the capacity probe asks a cell to take.
-     *
-     * <p>It only has to be larger than any real free space, so it sits well below {@link Long#MAX_VALUE}. Cells
-     * that answer a request by echoing it back would otherwise report a full {@code Long.MAX_VALUE} as free room,
-     * which the estimate cannot tell apart from "nothing could be measured" - and that apart is the difference
-     * between reporting a usable parallel count and reporting zero. AE2's own cells do exactly this when they hold
-     * a void upgrade, so a buffering cell fitted with one would silently switch the parallel path off.</p>
-     *
-     * <p>Understating the probe only ever understates the estimate, which is the safe direction: a refused
-     * hand-over costs the batch path, not correctness.</p>
-     */
-    private static final long CAPACITY_PROBE = Long.MAX_VALUE / 1024;
 
     /**
      * How many synthesis operations one server tick may perform.
@@ -397,20 +344,24 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     /** The pattern the parallel-slot estimate is measured against: the last one actually handed over. */
     private IPatternDetails lastHandedPattern;
 
-    /** Last answer of {@link #availableParallelSlots()}, valid for the game tick it was measured in. */
-    private IPatternDetails cachedSlotsPattern;
-    private long cachedSlotsGameTime = -1;
-    private long cachedSlots;
+    /** 并行槽位估算与它每 tick 的记忆值都在 {@link ParallelSlotProbe} 里，这里只持有它。 */
+    private final ParallelSlotProbe parallelSlots = new ParallelSlotProbe(cellBuffer, MAX_ADVERTISED_PARALLEL_SLOTS);
 
-    /** Execution plans of the queued patterns, shared between the analysis workers and the tick thread. */
-    private final Map<IPatternDetails, PatternPlan> planCache = new ConcurrentHashMap<>();
+    /** 配方计划、余料与告警记号都在 {@link PatternPlanCache} 里，这里只持有它。 */
+    private final PatternPlanCache plans = new PatternPlanCache();
 
-    /** Produced outputs waiting for their smooth return to the ME network: AEKey ->
-     * long[]{remainingToReturn, accumulatedTotal}. The per-tick return rate is total/20 (min 1),
-     * so a batch's outputs reach the CPU over roughly {@link #OUTPUT_RETURN_TICKS} ticks. */
-    private final Map<AEKey, long[]> pendingOutputs = new LinkedHashMap<>();
+    /**
+     * 产出物的平滑回送队列：增速、额度与优先通道都在 {@link SmoothReturnQueue} 里，这里只持有它。
+     */
+    private final SmoothReturnQueue returns = new SmoothReturnQueue(OUTPUT_RETURN_TICKS, PRIORITY_RETURN_BURST);
 
-    private boolean cellsDirty = true;
+    /**
+     * 一条作业怎么兑现成产物（摊销块与单件慢路径）都在 {@link BatchSynthesisEngine} 里，这里只持有它。
+     * 能量与状态回写是它跟本机借的两样东西：网格不属于它，状态栏也不属于它。
+     */
+    private final BatchSynthesisEngine engine = new BatchSynthesisEngine(cellBuffer, plans, returns,
+            this::getLevel, this::getBlockPos, this::consumePower, s -> workState = s);
+
     /** Game time of the last accepted input push. The batch window is the gap measured from here, so
      * material that keeps arriving simply keeps the window open. */
     private long lastInputGameTime;
@@ -429,15 +380,17 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     private boolean idleFlushDone;
     /** Fast batch mode flushes after 10 quiet ticks instead of the standard 40. */
     private boolean fastBatchMode = false;
-    /** Worker threads used to analyse newly queued patterns in parallel; null while there are none. */
-    private ExecutorService workers;
-    private int workerCount;
+    /** 分析线程池（速度卡定尺寸）与失败上报都在 {@link BatchPatternAnalyser} 里，这里只持有它。 */
+    private final BatchPatternAnalyser analyser;
 
     public BatchAssemblerBlockEntity(BlockPos pos, BlockState blockState) {
         super(AEPatternRegistries.BE_BATCH_ASSEMBLER.get(), pos, blockState);
 
         this.upgrades = UpgradeInventories.forMachine(AEPatternRegistries.BLOCK_BATCH_ASSEMBLER.get(),
                 MAX_SPEED_CARDS, this::onUpgradesChanged);
+        // 只能在这里构造：它读的就是上面那个升级库存。
+        this.analyser = new BatchPatternAnalyser(
+                () -> upgrades.getInstalledUpgrades(AEItems.SPEED_CARD), this::getBlockPos);
 
         // 它向自动合成暴露样板并自己从网络取料，按 AE2 的设备口径要占 1 个频道。
         this.getMainNode()
@@ -467,10 +420,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     private void onUpgradesChanged() {
         // Speed cards size the analysis pool, so dropping cards must not leave the old threads idle. The
         // pool only exists once cards were installed, hence the workerCount guard before touching upgrades.
-        if (workerCount > 0
-                && (1 << upgrades.getInstalledUpgrades(AEItems.SPEED_CARD)) != workerCount) {
-            shutdownWorkers();
-        }
+        analyser.onSpeedCardsChanged(upgrades.getInstalledUpgrades(AEItems.SPEED_CARD));
         saveChanges();
         alertTicker();
     }
@@ -491,60 +441,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         return isVisibleInTerminal();
     }
 
-    /**
-     * Rebuilds the cached {@link StorageCell} for every slot. The cached handler points at the live
-     * {@link ItemStack} in the slot; it therefore has to be dropped whenever a cell enters or leaves a
-     * slot, otherwise it would keep writing into a detached stack.
-     */
-    private void refreshCells() {
-        for (int i = 0; i < CELL_SLOTS; i++) {
-            cells[i] = null;
-            cellInv.setHandler(i, null);
-            var stack = cellInv.getStackInSlot(i); // also persists the previous cell content
-            if (stack.isEmpty()) {
-                continue;
-            }
-            var cell = StorageCells.getCellInventory(stack, null);
-            if (cell != null) {
-                cellInv.setHandler(i, cell);
-                cells[i] = cell;
-            }
-        }
-        cellsDirty = false;
-    }
-
-    private StorageCell[] resolvedCells() {
-        if (cellsDirty) {
-            refreshCells();
-        }
-        return cells;
-    }
-
-    /** Simulated/real insert across every cell slot; returns how much was accepted. */
-    private long insertIntoCells(AEKey key, long amount, Actionable mode) {
-        long remaining = amount;
-        for (var cell : resolvedCells()) {
-            if (cell == null || remaining <= 0) {
-                continue;
-            }
-            long inserted = cell.insert(key, remaining, mode, actionSource);
-            remaining -= inserted;
-        }
-        return amount - remaining;
-    }
-
-    /** Simulated/real extract across every cell slot; returns how much was taken. */
-    private long extractFromCells(AEKey key, long amount, Actionable mode) {
-        long remaining = amount;
-        for (var cell : resolvedCells()) {
-            if (cell == null || remaining <= 0) {
-                continue;
-            }
-            long extracted = cell.extract(key, remaining, mode, actionSource);
-            remaining -= extracted;
-        }
-        return amount - remaining;
-    }
+    // 元件缓冲的解析与读写都在 {@link CellBuffer} 里：换元件、清空、读档要 markDirty，理由见那个类。
 
     // ---- recipe pool ---------------------------------------------------------
 
@@ -565,14 +462,13 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         recipePool.rebuild(stacks, getLevel());
         // Patterns are decoded again here, so every cached plan is potentially stale: a plan stores output
         // amounts and container remainders, which a recipe reload can change for the same pattern value.
-        planCache.clear();
+        plans.clear();
         // Remainders and damage notes describe the patterns that were just re-decoded; both are keyed by
         // pattern instances, so they have to go together with the plans.
-        remainderCache.clear();
-        damageFallbackNoted.clear();
+        plans.clearNotes();
         // The pattern the parallel-slot estimate was measured against may be gone from the disks now.
         lastHandedPattern = null;
-        cachedSlotsPattern = null;
+        parallelSlots.invalidate();
 
         exposedPatterns.clear();
         exposedPatterns.addAll(recipePool.all());
@@ -642,12 +538,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     public boolean acceptsPlans() {
         // Whether the buffer can actually take the material is decided by bufferInputs; require at
         // least one usable cell so jobs are never accepted without a place to store the inputs.
-        for (var cell : resolvedCells()) {
-            if (cell != null) {
-                return true;
-            }
-        }
-        return false;
+        return cellBuffer.hasAnyCell();
     }
 
     @Override
@@ -690,126 +581,19 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     // which is what keeps this class free of ECO types - in a pack without ECO nothing is registered, and the
     // two methods below are just the machine's own bookkeeping entry points.
 
-    /**
-     * Room one type entry takes on a cell, expressed in items, for the cell holding {@code stack}.
-     *
-     * <p>AE2 charges a new key {@code bytesPerType * amountPerByte} items' worth of room on top of its items.
-     * The reservation sums this over every cell slot, which is deliberately pessimistic: the item might land in
-     * any one of them, and reserving an entry per slot can only make the estimate smaller. Undersizing costs a
-     * refused hand-over, which sends the whole batch down the per-craft path, so pessimism is the cheap side.
-     *
-     * @return the entry's room in items, or 0 for a cell that does not report a type cost
-     */
-    private static long typeEntryUnits(AEKeyType keyType, net.minecraft.world.item.ItemStack stack) {
-        if (!(stack.getItem() instanceof IBasicCellItem basicCell)) {
-            return 0L;
-        }
-        long bytesPerType = basicCell.getBytesPerType(stack);
-        if (bytesPerType <= 0) {
-            return 0L;
-        }
-        return bytesPerType * Math.max(1L, keyType.getAmountPerByte());
-    }
-
-    /** Room in items every type entry would take across all cell slots, for a key of {@code key}'s type. */
-    private long typeEntryUnits(AEKey key) {
-        long units = 0L;
-        for (int i = 0; i < CELL_SLOTS; i++) {
-            var stack = cellInv.getStackInSlot(i);
-            if (stack.isEmpty()) {
-                continue;
-            }
-            units += typeEntryUnits(key.getType(), stack);
-        }
-        return units;
-    }
+    // 类型条目的容量换算在 {@link CellBuffer#typeEntryUnits}，含「为什么按每个槽位各预留一份」的取舍。
 
     /**
-     * How many further complete input sets the cell buffer can take, for the pattern the CPU is currently
-     * dispatching. NEO ECO asks this before it offers a batch, so this number decides how many crafts one
-     * hand-over carries - the point being that a hand-over is never again "one craft per push".
+     * 元件缓冲还能吃下多少个完整配方（用于 CPU 正在派发的那个配方）。估算算法与它的取舍都在
+     * {@link ParallelSlotProbe}。
      *
-     * <p>Best effort by design: ECO's contract does not name the pattern, and the cells' free space is shared
-     * between every key of a set. A per-key quotient is therefore not the answer, however small it is taken:
-     * every slot's simulation sees the cells as they are, so each quotient assumes the whole free space for its
-     * own key, and a hand-over sized by the smallest of them asks for one full set per key out of a space that
-     * can only hold one such set in total. The estimate is therefore
-     * {@code min over slots of free(key) / sum over slots of perCraft}, which is a safe lower bound whenever
-     * every key of the pattern is already in the buffer: the total demand of {@code slots} crafts is
-     * {@code slots * sum(perCraft)} and must fit into the shared room all of them draw from. Keys not yet
-     * present each cost one type entry on top of their items, so those entries are reserved separately before
-     * the division (see {@link #typeEntryUnits(AEKey)}).</p>
-     *
-     * <p>Two assumptions keep this honest, and both follow from what this machine accepts. Every input is an
-     * item key, so every key's {@code amountPerByte} is the same and item room may be summed across slots; a
-     * pattern carrying fluids is rejected long before dispatch. And the per-craft amount is read from the
-     * slot's first possible input, which is the variant the pattern lists first - ECO resolves the concrete
-     * key itself, so a pattern whose candidates differ in amount could be sized against the wrong one.
-     * Overshooting is not free here: a refused hand-over leaves the batch to the per-craft fallback, which pays
-     * the per-push cost once per craft, so the estimate is worth being conservative about.</p>
-     *
-     * <p>Reported as a {@code long} because the buffer's room is not bounded by {@code Integer.MAX_VALUE}: a
-     * large enough cell holds more crafts than an int can name. Callers whose contract names an int should use
-     * {@link #availableParallelSlots()}, which clamps this.</p>
+     * <p>返回 {@code long}：缓冲的空间不受 {@code Integer.MAX_VALUE} 约束，够大的元件能装下 int 说不出的
+     * 份数。契约指名 int 的调用方走 {@link #availableParallelSlots()}，那里会夹住。</p>
      */
     public long availableParallelSlotsLong() {
         var pattern = currentDispatchPattern();
-        if (pattern == null) {
-            return 0L;
-        }
-        long now = currentGameTime();
-        if (pattern == cachedSlotsPattern && now == cachedSlotsGameTime) {
-            // ECO asks once per candidate and several times per tick; measure once per tick.
-            return cachedSlots;
-        }
-        long tightestFree = Long.MAX_VALUE;
-        long perCraftTotal = 0;
-        var occupied = cellContents();
-        long reservedUnits = 0;
-        for (var input : pattern.getInputs()) {
-            if (input == null) {
-                continue;
-            }
-            long perCraft = 0;
-            AEKey key = null;
-            for (var possible : input.getPossibleInputs()) {
-                if (possible != null && possible.what() != null && possible.amount() > 0) {
-                    perCraft = possible.amount() * Math.max(1L, input.getMultiplier());
-                    key = possible.what();
-                    break;
-                }
-            }
-            if (key == null || perCraft <= 0) {
-                // A slot the pattern does not describe is nothing this machine could size.
-                continue;
-            }
-            // A key the cells do not hold yet costs one type entry on top of its items, and every such key
-            // costs its own: the insertion deducts bytesPerType * amountPerByte once per new key, so a batch
-            // that introduces several of them asks for that much more room than the item totals alone show.
-            if (occupied.get(key) <= 0) {
-                reservedUnits += typeEntryUnits(key);
-            }
-            // Saturating, because the sum only has to decide whether a hand-over is possible at all; a capped
-            // estimate can overflow it on a large per-craft amount.
-            perCraftTotal = perCraft >= Long.MAX_VALUE - perCraftTotal ? Long.MAX_VALUE : perCraftTotal + perCraft;
-            long probe = perCraft <= CAPACITY_PROBE / MAX_ADVERTISED_PARALLEL_SLOTS
-                    ? perCraft * MAX_ADVERTISED_PARALLEL_SLOTS
-                    : CAPACITY_PROBE;
-            long free = insertIntoCells(key, probe, Actionable.SIMULATE);
-            // The probe already saw the key as it is: for a key that is present it returns its item room, and
-            // for a new key the first inserted item already paid the type entry. What the probe cannot know is
-            // the other new keys, which is what the reservation above covers.
-            tightestFree = Math.min(tightestFree, free);
-        }
-        long available = tightestFree == Long.MAX_VALUE ? Long.MAX_VALUE : Math.max(0L, tightestFree - reservedUnits);
-        long slots = perCraftTotal > 0 && available != Long.MAX_VALUE
-                ? available / perCraftTotal
-                : 0L;
-        slots = Math.min(slots, MAX_ADVERTISED_PARALLEL_SLOTS);
-        cachedSlotsPattern = pattern;
-        cachedSlotsGameTime = now;
-        cachedSlots = Math.max(0L, slots);
-        return cachedSlots;
+        // 没有在派发的配方时不碰时钟：空闲机器每 tick 都会被问到这里，没必要为了一个必然为 0 的答案读世界时间。
+        return pattern == null ? 0L : parallelSlots.estimate(pattern, currentGameTime());
     }
 
     /**
@@ -849,279 +633,6 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         }
         bookArrival(patternDetails, craftCount);
         return true;
-    }
-
-    /**
-     * Whether the whole batch of {@code jobs} crafts can run on one variant per input slot.
-     *
-     * <p>This is the gate for the amortised path. When every slot's declared candidate still covers
-     * {@code jobs} crafts on its own, all of those crafts consume the same key in that slot - and an AE key
-     * carries the item's whole component patch, damage included ({@code AEItemKey.equals} compares
-     * {@code isSameItemSameComponents}). One variant per slot means one consumption total, one output set and
-     * one remainder set for the batch, which is exactly what makes it legal to compute the craft once.</p>
-     *
-     * <p>Anything that does not hold falls back to the per-craft path: a buffer that holds several damage
-     * variants of a tool, a slot whose candidate runs out halfway through the batch, or a slot that can only
-     * be filled by a fuzzy same-item variant rather than a declared candidate. Running those one craft at a
-     * time is the price of correctness, not an implementation shortcut.</p>
-     *
-     * @return {@code true} when every slot is covered by a single declared candidate for the whole batch
-     */
-    private boolean canAmortise(PatternPlan plan, long jobs) {
-        if (jobs <= 1) {
-            // Nothing to amortise, and short-circuiting keeps a batch of one from paying the simulation twice.
-            return false;
-        }
-        var level = getLevel();
-        if (level == null) {
-            return false;
-        }
-        for (var input : plan.inputs()) {
-            if (input == null || input.isEmpty()) {
-                continue;
-            }
-            long needed = input.multiplier();
-            if (needed <= 0 || needed > Long.MAX_VALUE / jobs) {
-                return false;
-            }
-            long total = needed * jobs;
-            boolean covered = false;
-            for (var candidate : input.candidates()) {
-                if (extractFromCells(candidate, total, Actionable.SIMULATE) >= total) {
-                    if (needed > 1 && remainderFor(input, candidate) != null) {
-                        // A slot that wants more than one item and leaves a container behind is answered by two
-                        // different conventions: the per-slot API scales the remainder with the slot's demand,
-                        // while the whole-grid API answers per grid position. Running those crafts one at a time
-                        // is the only way to keep the machine's return exactly equal to what the CPU expects.
-                        return false;
-                    }
-                    covered = true;
-                    break;
-                }
-            }
-            if (!covered) {
-                // Either the buffer holds damage variants that do not add up to one key, or the material is
-                // simply not there yet. Both are the per-craft path's business.
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /**
-     * Runs {@code jobs} crafts of one pattern as a single unit: one variant lookup, one verified recipe call,
-     * one consumption, one output booking.
-     *
-     * <p>Only reached through {@link #canAmortise}, which guarantees that every slot is served by one declared
-     * candidate for the whole batch - so all of these crafts consume the same keys, yield the same outputs and
-     * leave the same container remainders. With that, the batch differs from a single craft by nothing but the
-     * multiplier {@code jobs} (exactly how NEO ECO's parallel hand-over describes it), and the per-craft work
-     * would have produced the identical result {@code jobs} times.</p>
-     *
-     * <p>The recipe itself is still asked once, and its answer is compared against the plan's declared outputs:
-     * the plan is a declaration, the recipe is the truth. A mismatch - a third-party pattern whose recipe
-     * returns something other than what it declares, or an input whose template amount the machine does not
-     * model - is warned about once per pattern and falls back to one craft at a time.</p>
-     *
-     * @return {@code true} when the whole batch was consumed and booked
-     */
-    private boolean assembleBatchOnce(IPatternDetails patternDetails, PatternPlan plan, long jobs) {
-        var level = getLevel();
-        if (level == null || jobs <= 0) {
-            return false;
-        }
-        if (!(patternDetails instanceof IMolecularAssemblerSupportedPattern supported)) {
-            return false;
-        }
-
-        var resolved = resolveUniformInputs(plan, jobs);
-        if (resolved == null) {
-            return false;
-        }
-
-        var grid = buildCraftingGrid(supported, plan, resolved);
-        if (grid == null) {
-            return false;
-        }
-
-        // Work out the recipe's answer before spending anything. Nothing is consumed, booked or paid yet, so a
-        // rejecting recipe or a mismatching declaration costs this batch only its fast path - and the grid and
-        // the answer describe the same crafts either way.
-        GenericStack sampleOutput;
-        net.minecraft.core.NonNullList<ItemStack> remainders;
-        try {
-            sampleOutput = GenericStack.fromItemStack(supported.assemble(grid, level));
-            remainders = supported.getRemainingItems(grid);
-        } catch (RuntimeException broken) {
-            LOGGER.warn("Could not run the recipe of pattern {} at {}; falling back to one craft at a time",
-                    patternDetails.getClass().getName(), getBlockPos(), broken);
-            return false;
-        }
-        if (!outputMatchesDeclaration(plan, sampleOutput)) {
-            warnUnverifiable(patternDetails);
-            return false;
-        }
-
-        // Take the material first: a shortfall can be handed straight back with rollbackInputs, so the machine
-        // never keeps half a batch. Energy is taken after the material and before anything is booked, because a
-        // spent extraction can be returned but spent energy cannot.
-        var consumed = new LinkedHashMap<AEKey, Long>();
-        for (int i = 0; i < plan.inputs().size(); i++) {
-            var input = plan.inputs().get(i);
-            var usedKey = resolved.get(i);
-            if (input == null || usedKey == null) {
-                continue;
-            }
-            long needed = input.multiplier() * jobs;
-            if (extractFromCells(usedKey, needed, Actionable.MODULATE) < needed) {
-                rollbackInputs(consumed);
-                workState = WorkState.INPUTS_UNAVAILABLE;
-                return false;
-            }
-            consumed.merge(usedKey, needed, Long::sum);
-        }
-
-        if (!consumePower()) {
-            // Nothing has been booked yet, so handing the material back leaves the machine exactly as it was.
-            rollbackInputs(consumed);
-            workState = WorkState.NO_POWER;
-            return false;
-        }
-
-        // Book what leaves the machine: the verified main output and the pattern's own container remainders,
-        // both scaled by the batch size. The power is already paid and the material already taken, so from
-        // here on the batch cannot fail.
-        addBookedOutput(sampleOutput.what(), sampleOutput.amount() * jobs);
-        int remainderSlots = Math.min(remainders.size(), MAX_BATCH_REMAINDER_SLOTS);
-        for (int i = 0; i < remainderSlots; i++) {
-            var stack = GenericStack.fromItemStack(remainders.get(i));
-            if (stack != null) {
-                addBookedOutput(stack.what(), stack.amount() * jobs);
-            }
-        }
-
-        workState = WorkState.WORKING;
-        return true;
-    }
-
-    /**
-     * Resolves one variant per slot for the whole batch: only the candidates the pattern itself declares, and
-     * only when a single one of them still covers all {@code jobs} crafts on its own. That is the same test as
-     * {@link #canAmortise}, repeated here so the batch path cannot be entered on a stale decision.
-     *
-     * @return the key per input slot ({@code null} for holes), or {@code null} when the batch cannot be sized
-     */
-    private List<AEKey> resolveUniformInputs(PatternPlan plan, long jobs) {
-        var inputs = plan.inputs();
-        var resolved = new ArrayList<AEKey>(inputs.size());
-        for (var input : inputs) {
-            if (input == null || input.isEmpty()) {
-                resolved.add(null);
-                continue;
-            }
-            long needed = input.multiplier();
-            if (needed <= 0 || needed > Long.MAX_VALUE / jobs) {
-                return null;
-            }
-            long total = needed * jobs;
-            AEKey covered = null;
-            for (var candidate : input.candidates()) {
-                if (extractFromCells(candidate, total, Actionable.SIMULATE) >= total) {
-                    covered = candidate;
-                    break;
-                }
-            }
-            if (covered == null) {
-                return null;
-            }
-            resolved.add(covered);
-        }
-        return resolved;
-    }
-
-    /** Builds a nine-slot grid for one craft of the pattern, using the resolved variant of every slot. */
-    private @Nullable CraftingInput buildCraftingGrid(
-            IMolecularAssemblerSupportedPattern supported, PatternPlan plan, List<AEKey> resolved) {
-        var table = new KeyCounter[resolved.size()];
-        for (int i = 0; i < resolved.size(); i++) {
-            table[i] = new KeyCounter();
-            var key = resolved.get(i);
-            var input = plan.inputs().get(i);
-            if (key != null && input != null) {
-                // One craft's worth for the slot: the amount the pattern declares for this input.
-                table[i].add(key, input.multiplier());
-            }
-        }
-        var items = new ItemStack[9];
-        for (int i = 0; i < items.length; i++) {
-            items[i] = ItemStack.EMPTY;
-        }
-        try {
-            supported.fillCraftingGrid(table, (slot, stack) -> {
-                if (slot >= 0 && slot < items.length) {
-                    items[slot] = stack.copy();
-                }
-            });
-            return CraftingInput.of(3, 3, List.of(items));
-        } catch (RuntimeException broken) {
-            // Third-party fill implementations: a broken one must not take the tick down with it.
-            LOGGER.warn("Could not build a crafting grid for pattern {} at {}; falling back to one craft at a time",
-                    plan.getClass().getName(), getBlockPos(), broken);
-            return null;
-        }
-    }
-
-    /** The single output key the plan declares, or {@code null} when it declares none or several. */
-    /**
-     * Whether the batch's own recipe answer agrees with what the pattern declares for a single main output.
-     * A pattern declaring anything other than exactly one main output cannot be checked this way.
-     */
-    private boolean outputMatchesDeclaration(PatternPlan plan, GenericStack sampleOutput) {
-        var outputs = plan.baseOutputs();
-        if (sampleOutput == null || outputs.size() != 1) {
-            return false;
-        }
-        var declared = outputs.entrySet().iterator().next();
-        return declared.getKey().equals(sampleOutput.what()) && declared.getValue() == sampleOutput.amount();
-    }
-
-    /** Books an amount of an output into the smooth-return queue. */
-    private void addBookedOutput(AEKey key, long amount) {
-        if (key == null || amount <= 0) {
-            return;
-        }
-        var slot = pendingOutputs.computeIfAbsent(key, k -> new long[2]);
-        slot[0] += amount;
-        slot[1] += amount;
-    }
-
-    /**
-     * Notes once per pattern that only part of its order shared one damage variant, so the covered part was
-     * assembled as a batch and the rest one craft at a time. Purely informational - it is the expected outcome
-     * for a buffer that holds tools of several damage levels.
-     */
-    private void notePartialFallback(IPatternDetails patternDetails) {
-        if (damageFallbackNoted.add(patternDetails) && damageFallbackNoted.size() > MAX_WARNED_PATTERNS) {
-            damageFallbackNoted.clear();
-            damageFallbackNoted.add(patternDetails);
-        }
-        if (LOGGER.isDebugEnabled()) {
-            LOGGER.debug("Pattern {} at {} is served by several variants at once; the covered part runs as a "
-                    + "batch and the rest one craft at a time", patternDetails.getClass().getName(), getBlockPos());
-        }
-    }
-
-    /** Warns once per pattern that its recipe disagrees with what it declares, then keeps the slow path. */
-    private void warnUnverifiable(IPatternDetails patternDetails) {
-        warnedPatterns.add(patternDetails);
-        if (warnedPatterns.size() > MAX_WARNED_PATTERNS) {
-            // Bounded on purpose: a machine fed an endless variety of patterns must not grow a set forever.
-            warnedPatterns.clear();
-        }
-        if (LOGGER.isWarnEnabled()) {
-            LOGGER.warn("Pattern {} at {} does not assemble to what it declares; running it one craft at a time",
-                    patternDetails.getClass().getName(), getBlockPos());
-        }
     }
 
     /**
@@ -1175,7 +686,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
                     continue;
                 }
                 var key = entry.getKey();
-                long accepted = insertIntoCells(key, amount, Actionable.MODULATE);
+                long accepted = cellBuffer.insert(key, amount, Actionable.MODULATE);
                 insertedKeys.add(key);
                 insertedAmounts.add(accepted);
                 if (accepted < amount) {
@@ -1192,7 +703,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
             for (int i = 0; i < insertedKeys.size(); i++) {
                 long accepted = insertedAmounts.get(i);
                 if (accepted > 0) {
-                    extractFromCells(insertedKeys.get(i), accepted, Actionable.MODULATE);
+                    cellBuffer.extract(insertedKeys.get(i), accepted, Actionable.MODULATE);
                 }
             }
             return false;
@@ -1229,21 +740,21 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
             // as one long silence, which would hand the cells over on the very first tick.
             lastActivityGameTime = now;
         }
-        if (queue.isEmpty() && pendingOutputs.isEmpty()) {
+        if (queue.isEmpty() && returns.isEmpty()) {
             return idleTick(now);
         }
         // The output drain runs every tick, independent of batch scheduling: the smooth-return queue
         // keeps feeding the crafting CPU while (and after) the batch executes.
-        boolean pendingWork = !pendingOutputs.isEmpty();
+        boolean pendingWork = !returns.isEmpty();
         if (pendingWork) {
             drainOutputs();
         }
         // Restated every evaluation so a reason cannot outlive the situation that produced it; a run below
         // overwrites it with whatever it ran into.
         if (queue.isEmpty()) {
-            workState = pendingWork ? WorkState.RETURNING_OUTPUTS : WorkState.IDLE;
+            workState = pendingWork ? BatchWorkState.RETURNING_OUTPUTS : BatchWorkState.IDLE;
         } else if (inputGapTicks() < effectiveWindowTicks()) {
-            workState = WorkState.WAITING_FOR_MATERIAL;
+            workState = BatchWorkState.WAITING_FOR_MATERIAL;
         }
         // A batch starts only while the material is genuinely quiet: the window is the gap since the last
         // accepted push, so as long as material keeps arriving the machine keeps waiting. Nothing forces
@@ -1259,7 +770,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
             lastActivityGameTime = now;
             saveChanges();
         }
-        if (!queue.isEmpty() || !pendingOutputs.isEmpty()) {
+        if (!queue.isEmpty() || !returns.isEmpty()) {
             return TickRateModulation.IDLE;
         }
         return TickRateModulation.SLEEP;
@@ -1271,7 +782,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
      * something, and then hands that material back to the network - see {@link #flushCellsToNetwork}.
      */
     private TickRateModulation idleTick(long now) {
-        if (idleFlushDone || !hasCellContents()) {
+        if (idleFlushDone || !cellBuffer.hasContents()) {
             return TickRateModulation.SLEEP;
         }
         if (now - lastActivityGameTime < IDLE_FLUSH_TICKS) {
@@ -1293,7 +804,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     private boolean runBatch() {
         // Analyse patterns the machine has not seen before. That step only reads immutable pattern data,
         // so it is the one part of a run that may leave the server thread.
-        preparePlans(queue.keySet());
+        plans.prepare(queue.keySet(), queue.keySet(), analyser.pool(), analyser::reportFailure);
 
         // Snapshot of what the buffer holds, built on first use: it is only consulted to discover candidate
         // variants the pattern never spelled out (a tool that already lost durability). Availability is
@@ -1310,10 +821,10 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         var it = queue.entrySet().iterator();
         while (it.hasNext()) {
             var entry = it.next();
-            var plan = planFor(entry.getKey());
+            var plan = plans.analyse(entry.getKey(), analyser::reportFailure);
             if (plan == null) {
                 // Unanalysable pattern: keep its job queued instead of aborting the rest of the batch.
-                workState = WorkState.UNRESOLVABLE_PATTERN;
+                workState = BatchWorkState.UNRESOLVABLE_PATTERN;
                 continue;
             }
             long remaining = entry.getValue();
@@ -1327,21 +838,21 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
             // previous answer rather than from the whole remaining count.
             long covered = remaining;
             while (remaining > 1 && operations > 0) {
-                long chunk = uniformChunk(plan, remaining, covered);
+                long chunk = engine.uniformChunk(plan, remaining, covered);
                 if (chunk < 2) {
                     // Not even two crafts share a variant any more: the rest is the per-craft path's work.
                     break;
                 }
-                if (!assembleBatchOnce(entry.getKey(), plan, chunk)) {
+                if (!engine.amortise(entry.getKey(), plan, chunk)) {
                     // Refused outright - a recipe that disagrees with the pattern, or no power - so the rest
                     // falls through to one craft at a time below.
                     if (remaining > 1) {
-                        notePartialFallback(entry.getKey());
+                        engine.notePartialFallback(entry.getKey());
                     }
                     break;
                 }
                 if (!stopped) {
-                    workState = WorkState.WORKING;
+                    workState = BatchWorkState.WORKING;
                 }
                 worked = true;
                 operations--;
@@ -1354,16 +865,16 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
             // over from a mixed buffer, not the bulk of the order.
             while (remaining > 0 && operations > 0) {
                 if (buffer == null) {
-                    buffer = cellContents();
+                    buffer = cellBuffer.contents();
                 }
-                if (!assembleOnce(plan, buffer)) {
+                if (!engine.craftOnce(plan, buffer)) {
                     stopped = true;
                     break;
                 }
                 if (!stopped) {
                     // Only the ticks where nothing stopped report work: a machine that ran one pattern and was
                     // refused the next is better described by the refusal, which is what its owner has to act on.
-                    workState = WorkState.WORKING;
+                    workState = BatchWorkState.WORKING;
                 }
                 operations--;
                 remaining--;
@@ -1404,112 +915,29 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     }
 
     /**
-     * Executes one pattern from the cell buffer: inputs are consumed first, then the whole output set
-     * (main outputs + container remainders) enters the smooth-return queue. Inputs are rolled back, and
-     * the run deferred, only when the machine cannot run at all (no power) or when the buffer cannot
-     * supply the material - never because the network is full, since outputs queue up instead. Internal
-     * chaining is deliberately not performed - see {@link BatchRecipePool}.
-     */
-    private boolean assembleOnce(PatternPlan plan, KeyCounter buffer) {
-        var resolved = resolveInputs(plan, buffer);
-        if (resolved == null) {
-            workState = WorkState.INPUTS_UNAVAILABLE;
-            return false;
-        }
-        var consumed = consumeInputs(plan, resolved);
-        if (consumed == null) {
-            workState = WorkState.INPUTS_UNAVAILABLE;
-            return false;
-        }
-
-        // Collect every produced key (main outputs + container remainders) before touching the network.
-        // The main outputs arrive pre-aggregated from the plan, so they are not walked again per run.
-        var outputs = new LinkedHashMap<AEKey, Long>(plan.baseOutputs());
-        var inputs = plan.inputs();
-        for (int i = 0; i < inputs.size(); i++) {
-            var input = inputs.get(i);
-            if (input == null || input.isEmpty()) {
-                continue;
-            }
-            // Container remainders are computed against the variant actually consumed (the inputs may
-            // accept substitutes whose containers differ).
-            var usedKey = consumed.usedByInput().get(i);
-            if (usedKey == null) {
-                continue;
-            }
-            try {
-                // Container remainders are derived from the variant actually consumed - buckets, bottles
-                // and other containers must be handed back, otherwise they vanish and the crafting CPU
-                // keeps waiting for its expected container items forever. The same call is what returns a
-                // worn tool to the network: AE2 derives the remainder by re-running the recipe for the
-                // variant that was actually consumed.
-                var remaining = remainderFor(input, usedKey);
-                long consumedCount = input.multiplier();
-                if (remaining != null && consumedCount > 0) {
-                    // AE2 books one remaining item per occupied slot.
-                    outputs.merge(remaining, consumedCount, Long::sum);
-                }
-            } catch (Exception e) {
-                LOGGER.warn("Failed to compute container remainder for pattern slot {} at {}; rolling back",
-                        i, getBlockPos(), e);
-                rollbackInputs(consumed.byKey());
-                workState = WorkState.REMAINDER_FAILED;
-                return false;
-            }
-        }
-
-        // Defer (keeping the inputs in the cell buffer) when the machine cannot run at all.
-        if (!consumePower()) {
-            rollbackInputs(consumed.byKey());
-            workState = WorkState.NO_POWER;
-            return false;
-        }
-        // Outputs enter the smooth-return queue instead of hitting the network storage in one burst:
-        // drainOutputs() hands them over on the next tick.
-        for (var entry : outputs.entrySet()) {
-            var slot = pendingOutputs.computeIfAbsent(entry.getKey(), k -> new long[2]);
-            slot[0] += entry.getValue();
-            slot[1] += entry.getValue();
-        }
-        return true;
-    }
-
-    /**
-     * Smooth-return: every tick, up to 1/20 of each key's accumulated total is inserted into the ME
-     * network, so a huge batch's outputs reach the CPU over roughly {@link #OUTPUT_RETURN_TICKS}
-     * ticks instead of one giant IO burst. Network-full leftovers stay queued for the next tick.
+     * 交付一轮平滑回送：每个 key 交出它这一轮的额度，网络没收下的部分留到下一 tick。额度与优先通道的算法在
+     * {@link SmoothReturnQueue#drain}，这里只提供投递目标（ME 存储 + 「谁正在被索要」）。
      */
     private void drainOutputs() {
         var node = getMainNode().getNode();
         if (node == null || node.getGrid() == null) {
             return;
         }
-        returnStalled = false;
         var grid = node.getGrid();
         var storage = grid.getStorageService().getInventory();
         // Read once per drain: the per-key check below would otherwise walk every queued plan again.
         var queuedInputs = queuedInputKeys();
-        var it = pendingOutputs.entrySet().iterator();
-        while (it.hasNext()) {
-            var entry = it.next();
-            var slot = entry.getValue();
-            long rate = Math.max(1, (slot[1] + OUTPUT_RETURN_TICKS - 1) / OUTPUT_RETURN_TICKS);
-            long amount = Math.min(slot[0], rate);
-            if (claimedByNetwork(grid, queuedInputs, entry.getKey())) {
-                // Wanted right now: hand the whole claim over at once instead of trickling it over the horizon.
-                // A recycled container arriving one tick at a time is exactly what keeps a planning chain
-                // from starting its next wave.
-                amount = Math.min(slot[0], Math.max(rate, PRIORITY_RETURN_BURST));
+        returnStalled = returns.drain(new SmoothReturnQueue.Target() {
+            @Override
+            public long insert(AEKey key, long amount) {
+                return storage.insert(key, amount, Actionable.MODULATE, actionSource);
             }
-            long inserted = storage.insert(entry.getKey(), amount, Actionable.MODULATE, actionSource);
-            slot[0] -= inserted;
-            if (inserted == 0) {
-                returnStalled = true;
+
+            @Override
+            public boolean waitingFor(AEKey key) {
+                return claimedByNetwork(grid, queuedInputs, key);
             }
-            if (slot[0] <= 0) {
-                it.remove();
-            }
-        }
+        });
     }
 
     /**
@@ -1519,7 +947,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     private Set<AEKey> queuedInputKeys() {
         var keys = new HashSet<AEKey>();
         for (var pattern : queue.keySet()) {
-            var plan = planCache.get(pattern);
+            var plan = plans.get(pattern);
             if (plan == null) {
                 continue;
             }
@@ -1546,10 +974,13 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         return queuedInputs.contains(key);
     }
 
+
     /**
      * Charges the grid for one assembled run ({@link #ENERGY_PER_RUN}). A whole batch is one execution unit:
      * the parallelism inside it - pattern multipliers, container remainders, further crafts of the same
      * pattern - does not add consumption, so the charge does not scale with the batch size.
+     *
+     * <p>执行引擎通过回调调它：网格不属于引擎，扣能量的判断与执行得留在方块实体这一侧。</p>
      */
     private boolean consumePower() {
         double wanted = ENERGY_PER_RUN;
@@ -1568,117 +999,6 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     }
 
     /**
-     * Snapshot of the keys the cell buffer currently holds. Only used to discover candidate variants;
-     * every candidate is re-verified against the live buffer before it is consumed.
-     */
-    private KeyCounter cellContents() {
-        var contents = new KeyCounter();
-        for (var cell : resolvedCells()) {
-            if (cell != null) {
-                cell.getAvailableStacks(contents);
-            }
-        }
-        return contents;
-    }
-
-    /**
-     * Resolves the variant to consume for every input slot, in AE2's own order: the variants the pattern
-     * spells out first, then any same-item variant the pattern accepts. That second step is what lets a
-     * slot take a tool that already lost durability - AE2's crafting patterns accept such a variant through
-     * {@code IInput.isValid} as long as the pattern was encoded with substitution enabled, and a pattern
-     * encoded without it rejects everything that is not an exact match.
-     *
-     * @return the key per input slot ({@code null} for holes), or {@code null} when a slot cannot be filled
-     */
-    private List<AEKey> resolveInputs(PatternPlan plan, KeyCounter buffer) {
-        var level = getLevel();
-        var inputs = plan.inputs();
-        var resolved = new ArrayList<AEKey>(inputs.size());
-        for (var input : inputs) {
-            if (input == null) {
-                resolved.add(null);
-                continue;
-            }
-            var key = resolveVariant(input, level, buffer);
-            if (key == null) {
-                return null;
-            }
-            resolved.add(key);
-        }
-        return resolved;
-    }
-
-    private AEKey resolveVariant(PatternPlan.Input input, Level level, KeyCounter buffer) {
-        long needed = input.multiplier();
-        if (needed < 0) {
-            // Malformed slot: a negative requirement must never reach the cells as a negative extract.
-            return null;
-        }
-        for (var candidate : input.candidates()) {
-            if (extractFromCells(candidate, needed, Actionable.SIMULATE) >= needed) {
-                return candidate;
-            }
-        }
-        if (level == null) {
-            return null;
-        }
-        // Nothing the pattern listed is available: look for a same-item variant sitting in the buffer. The
-        // pattern itself decides which variants it accepts, so this cannot widen a pattern's contract.
-        for (var candidate : input.candidates()) {
-            if (!(candidate instanceof AEItemKey itemCandidate)) {
-                continue;
-            }
-            for (var variant : buffer.findFuzzy(itemCandidate, FuzzyMode.IGNORE_ALL)) {
-                var key = variant.getKey();
-                if (key.equals(candidate) || !input.accepts(key, level)) {
-                    continue;
-                }
-                if (extractFromCells(key, needed, Actionable.SIMULATE) >= needed) {
-                    return key;
-                }
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Consumes the resolved variants for one run. Returns the per-key totals (for rollback) plus the
-     * variant consumed per input slot, or {@code null} when a slot turned out to be empty in the meantime
-     * - in that case everything this run already took is put back.
-     */
-    private Consumption consumeInputs(PatternPlan plan, List<AEKey> resolved) {
-        var byKey = new LinkedHashMap<AEKey, Long>();
-        var inputs = plan.inputs();
-        for (int i = 0; i < inputs.size(); i++) {
-            var input = inputs.get(i);
-            var usedKey = resolved.get(i);
-            if (input == null || usedKey == null) {
-                continue;
-            }
-            long needed = input.multiplier();
-            if (extractFromCells(usedKey, needed, Actionable.MODULATE) < needed) {
-                // The simulation and the real extraction disagreed (something else emptied the slot in
-                // between): hand back what this run took and leave the job queued.
-                rollbackInputs(byKey);
-                return null;
-            }
-            byKey.merge(usedKey, needed, Long::sum);
-        }
-        return new Consumption(byKey, resolved);
-    }
-
-    /** Per-run consumption record: {@code byKey} drives rollbacks, {@code usedByInput} drives container remainders. */
-    private record Consumption(LinkedHashMap<AEKey, Long> byKey, List<AEKey> usedByInput) {
-    }
-
-    /** Puts rolled-back inputs (and only those) back into the cell buffer they came from. */
-    private void rollbackInputs(LinkedHashMap<AEKey, Long> consumed) {
-        for (var entry : consumed.entrySet()) {
-            insertIntoCells(entry.getKey(), entry.getValue(), Actionable.MODULATE);
-        }
-    }
-
-    /**
      * Pushes a produced key to the ME network; returns the amount that did not fit.
      */
     private long pushToNetwork(AEKey key, long amount) {
@@ -1692,69 +1012,24 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         return amount - inserted;
     }
 
-    /** @return whether any cell slot currently holds something. */
-    private boolean hasCellContents() {
-        for (var cell : resolvedCells()) {
-            if (cell == null) {
-                continue;
-            }
-            var contents = new KeyCounter();
-            cell.getAvailableStacks(contents);
-            if (!contents.isEmpty()) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     /**
-     * Hands whatever the cells still hold back to the ME network. Material that is only sitting in them is
-     * locked up: the cells refuse extraction while work is buffered, and once the machine falls idle nothing
-     * else would ever take it out again. Nothing is dropped - what the network will not take goes back into
-     * the cells and waits for the next attempt.
+     * 把元件里还留着的东西交还给网络。判断与回写都在 {@link CellBuffer#flushTo}，这里只说明去向：网络不收、
+     * 元件也放不回的部分进回送队列，下一轮再试。
      *
-     * @return whether anything was handed over
+     * @return 是否交出了任何东西
      */
     private boolean flushCellsToNetwork() {
-        boolean any = false;
-        for (var cell : resolvedCells()) {
-            if (cell == null) {
-                continue;
+        return cellBuffer.flushTo(new CellBuffer.Sink() {
+            @Override
+            public long push(AEKey key, long amount) {
+                return pushToNetwork(key, amount);
             }
-            var contents = new KeyCounter();
-            cell.getAvailableStacks(contents);
-            for (var entry : contents) {
-                long amount = entry.getLongValue();
-                if (amount <= 0) {
-                    continue;
-                }
-                long taken = cell.extract(entry.getKey(), amount, Actionable.MODULATE, actionSource);
-                if (taken <= 0) {
-                    continue;
-                }
-                any = true;
-                long leftover = pushToNetwork(entry.getKey(), taken);
-                if (leftover > 0) {
-                    // The cell just handed this much out, so it goes back there rather than to any cell - the
-                    // space is guaranteed and nothing can be lost in between. Third-party cells are not bound
-                    // by that assumption, so a shortfall is booked for another attempt instead of vanishing.
-                    long back = cell.insert(entry.getKey(), leftover, Actionable.MODULATE, actionSource);
-                    requeueOutput(entry.getKey(), leftover - back);
-                }
-            }
-        }
-        return any;
-    }
 
-    /** Puts an amount back into the smooth-return queue, so nothing can fall between two structures that
-     * each took a part of it. */
-    private void requeueOutput(AEKey key, long amount) {
-        if (amount <= 0) {
-            return;
-        }
-        var slot = pendingOutputs.computeIfAbsent(key, k -> new long[]{0, 0});
-        slot[0] += amount;
-        slot[1] += amount;
+            @Override
+            public void requeue(AEKey key, long amount) {
+                returns.add(key, amount);
+            }
+        });
     }
 
     /** Empties the cell buffer back into the ME network (used by the "cancel crafting" action). */
@@ -1771,48 +1046,28 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         // would tick anymore, and the crafting CPU is still waiting for these outputs. Whatever the network
         // refuses goes back into the cells instead of vanishing - on the drops path those cells leave the
         // machine as items, so the goods stay with the player.
-        for (var entry : pendingOutputs.entrySet()) {
-            var slot = entry.getValue();
-            if (slot[0] <= 0) {
+        for (var entry : returns.snapshot().entrySet()) {
+            long remaining = entry.getValue();
+            if (remaining <= 0) {
                 continue;
             }
-            long leftover = pushToNetwork(entry.getKey(), slot[0]);
+            long leftover = pushToNetwork(entry.getKey(), remaining);
             // What the network refused goes into the cells; only what neither of them accepts stays queued.
             // Writing back the whole leftover would book the same items twice - once in a cell, once in the
             // queue - and both routes would deliver them.
             long placed = leftover > 0
-                    ? insertIntoCells(entry.getKey(), leftover, Actionable.MODULATE)
+                    ? cellBuffer.insert(entry.getKey(), leftover, Actionable.MODULATE)
                     : 0;
-            slot[0] = leftover - placed;
-            if (slot[0] > 0) {
+            long stillQueued = leftover - placed;
+            returns.setRemaining(entry.getKey(), stillQueued);
+            if (stillQueued > 0) {
                 LOGGER.warn("Batch assembler could not return {} x{}: network full and no cell space",
-                        entry.getKey(), slot[0]);
+                        entry.getKey(), stillQueued);
             }
         }
-        pendingOutputs.entrySet().removeIf(entry -> entry.getValue()[0] <= 0);
-        for (var cell : resolvedCells()) {
-            if (cell == null) {
-                continue;
-            }
-            var contents = new KeyCounter();
-            cell.getAvailableStacks(contents);
-            for (var entry : contents) {
-                long amount = entry.getLongValue();
-                if (amount <= 0) {
-                    continue;
-                }
-                long taken = cell.extract(entry.getKey(), amount, Actionable.MODULATE, actionSource);
-                if (taken > 0) {
-                    long leftover = pushToNetwork(entry.getKey(), taken);
-                    if (leftover > 0) {
-                        // Put it back where it came from: the cell just handed that much out, so the space is
-                        // still there. Handing it to "some cell" instead could quietly drop it.
-                        long back = cell.insert(entry.getKey(), leftover, Actionable.MODULATE, actionSource);
-                        requeueOutput(entry.getKey(), leftover - back);
-                    }
-                }
-            }
-        }
+        returns.discardEmpty();
+        // 元件里剩下的东西走与闲置回灌同一段逻辑：两者要的都是「把缓冲清空交还网络」，没有理由各写一遍。
+        flushCellsToNetwork();
         saveChanges();
         alertTicker();
     }
@@ -1846,234 +1101,12 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
 
     // ---- worker pool ---------------------------------------------------------
 
-    /**
-     * Worker pool used to analyse newly queued patterns off the server thread.
-     *
-     * <p>Size is the speed-card multiplier (1 &lt;&lt; cards, so 16 threads at four cards). That is the
-     * only place speed cards can buy real parallelism here: the cell buffer and the ME network are not
-     * thread-safe, so every cell access, grid call and world access stays on the server thread. Without
-     * speed cards there is nothing worth handing off and the machine stays single-threaded.</p>
-     */
-    private ExecutorService workerPool() {
-        int wanted = 1 << upgrades.getInstalledUpgrades(AEItems.SPEED_CARD);
-        if (wanted <= 1) {
-            shutdownWorkers();
-            return null;
-        }
-        if (workers == null || workers.isShutdown() || workerCount != wanted) {
-            shutdownWorkers();
-            workers = Executors.newFixedThreadPool(wanted, runnable -> {
-                var thread = new Thread(runnable, "ae2-pattern-disk-batch-assembler");
-                // Daemon so a shutdown or a chunk unload is never held up by a running analysis.
-                thread.setDaemon(true);
-                // Analysis must never compete with the server thread for CPU time.
-                thread.setPriority(Thread.MIN_PRIORITY);
-                return thread;
-            });
-            workerCount = wanted;
-        }
-        return workers;
-    }
-
-    private void shutdownWorkers() {
-        if (workers != null) {
-            workers.shutdownNow();
-            workers = null;
-            workerCount = 0;
-        }
-    }
-
     @Override
     public void setRemoved() {
         super.setRemoved();
         // The pool outlives ticks but not the block entity: leaking it would strand one thread group per
         // broken or unloaded machine.
-        shutdownWorkers();
-    }
-
-    /**
-     * Ensures every queued pattern has an execution plan before the batch runs.
-     *
-     * <p>Analysing a pattern is pure work, so with speed cards installed the missing plans are built in
-     * parallel on the worker pool: one task per pattern, with the server thread waiting for the results
-     * because the very same tick has to execute them. An interrupted wait is a path that can leave a worker
-     * analysing a pattern while this thread retries it - a pure read repeated, never written to.</p>
-     * <p>That purity is an assumption about the pattern implementation: container remainders are read
-     * through {@code IInput.getRemainingKey}, so a third-party pattern that keeps mutable state in that
-     * path would not be safe to analyse here. AE2's own crafting, smithing and stonecutting patterns only
-     * read fields built in their constructors, and those are the types the intake gate lets in.</p>
-     */
-    private void preparePlans(Collection<IPatternDetails> patterns) {
-        var missing = new ArrayList<IPatternDetails>();
-        for (var pattern : patterns) {
-            if (!planCache.containsKey(pattern)) {
-                missing.add(pattern);
-            }
-        }
-        if (missing.isEmpty()) {
-            return;
-        }
-        if (planCache.size() + missing.size() > MAX_CACHED_PLANS) {
-            // Plans are only a speed-up, so reclaim the cache - but keep the entries the running batch can
-            // still reuse instead of dropping everything.
-            planCache.keySet().retainAll(queue.keySet());
-            // The remainder map is bounded on its own, but it describes the very inputs of those dropped plans.
-            remainderCache.clear();
-        }
-
-        var pool = workerPool();
-        if (pool == null || missing.size() < 2) {
-            // A single analysis is cheaper inline than handed to a worker.
-            for (var pattern : missing) {
-                planFor(pattern);
-            }
-            return;
-        }
-
-        var submitted = new ArrayList<IPatternDetails>(missing.size());
-        var futures = new ArrayList<Future<?>>(missing.size());
-        for (var pattern : missing) {
-            try {
-                futures.add(pool.submit(() -> planCache.put(pattern, PatternPlan.of(pattern))));
-                submitted.add(pattern);
-            } catch (RejectedExecutionException e) {
-                // The pool was shut down under us (machine removed mid-tick). This pattern never reached a
-                // worker, so analysing it here cannot race with anything.
-                planFor(pattern);
-            }
-        }
-        for (int i = 0; i < futures.size(); i++) {
-            try {
-                futures.get(i).get();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                // Cancelling keeps tasks that have not started yet from ever starting. A task that is
-                // already running keeps running - interrupting a thread cannot stop a pure computation -
-                // so this thread may still duplicate its work, see the safety net below.
-                for (int j = i; j < futures.size(); j++) {
-                    futures.get(j).cancel(true);
-                }
-                break;
-            } catch (ExecutionException e) {
-                // planFor below retries the analysis and reports a permanent failure itself.
-            }
-        }
-        for (int i = 0; i < futures.size(); i++) {
-            var future = futures.get(i);
-            if (future.isCancelled() || !future.isDone()) {
-                // A cancelled task may still be running; runBatch picks the pattern up again on this very
-                // tick if it is still missing. Only storage, grid and world access have to stay on this
-                // thread - a duplicated pure analysis is harmless.
-                continue;
-            }
-            planFor(submitted.get(i));
-        }
-    }
-
-    /** Patterns whose recipe answer already disagreed with their declaration; warns once per pattern. */
-    private static final int MAX_WARNED_PATTERNS = 64;
-    private final Set<IPatternDetails> warnedPatterns =
-            java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
-
-    /** Patterns whose buffer held several damage variants at once, so part of the order stayed per-craft. */
-    private final Set<IPatternDetails> damageFallbackNoted =
-            java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
-
-    /**
-     * Container remainders already worked out, keyed by the pattern's own input slot and the variant that was
-     * actually consumed.
-     *
-     * <p>AE2 derives a remainder by re-running the recipe for that exact variant and keeps no cache of its own
-     * ({@code AECraftingPattern#getRecipeRemainder} even carries a TODO about caching them), so without this a
-     * batch that keeps consuming the same variant would pay a recipe lookup on every single craft - the most
-     * expensive part of running one craft. Identity keys because a pattern's input objects are per-decode
-     * instances and must not be compared for value here.</p>
-     */
-    private static final int MAX_CACHED_REMAINDERS = 4096;
-
-    /** At most this many remainder slots are read from one recipe answer; a legal grid has far fewer. */
-    private static final int MAX_BATCH_REMAINDER_SLOTS = 16;
-    private final Map<PatternPlan.Input, Map<AEKey, java.util.Optional<AEKey>>> remainderCache =
-            new java.util.IdentityHashMap<>();
-
-    /** The cached container remainder of one slot for one consumed variant, {@code null} when there is none. */
-    private @Nullable AEKey remainderFor(PatternPlan.Input input, AEKey usedKey) {
-        var byVariant = remainderCache.get(input);
-        if (byVariant == null) {
-            if (remainderCache.size() >= MAX_CACHED_REMAINDERS) {
-                // Remainders only save work; a machine fed an endless variety of patterns drops the map rather
-                // than growing it without limit, the same policy the plan cache follows.
-                remainderCache.clear();
-            }
-            byVariant = new java.util.HashMap<>();
-            remainderCache.put(input, byVariant);
-        }
-        var cached = byVariant.get(usedKey);
-        if (cached != null) {
-            return cached.orElse(null);
-        }
-        var computed = input.remainingFor(usedKey);
-        byVariant.put(usedKey, java.util.Optional.ofNullable(computed));
-        return computed;
-    }
-
-    /**
-     * The largest part of {@code remaining} crafts that still runs on one variant per slot, or 0 when not even
-     * two crafts can share a variant.
-     *
-     * <p>Exists so that a mixed buffer does not collapse straight to one craft at a time: when only part of the
-     * order is covered by a single damage variant - say four fresh tools next to twenty worn ones - the covered
-     * part is still amortised and only the rest is run craft by craft. The search is a binary one because
-     * coverage only improves as the chunk shrinks: if {@code k} crafts are covered, so is every smaller number.</p>
-     *
-     * <p>{@code ceiling} carries the previous block's size back in. A run only ever consumes material, so the
-     * covered part cannot grow from one block to the next and the search never has to look above the last
-     * answer again. That matters because the search is the one cost a block pays on top of its single
-     * operation: without the bound, a buffer made of many tiny variants would spend more on searches than the
-     * blocks themselves save.</p>
-     */
-    private long uniformChunk(PatternPlan plan, long remaining, long ceiling) {
-        if (remaining <= 1) {
-            return 0;
-        }
-        long hi = Math.min(remaining, Math.max(1L, ceiling));
-        if (hi >= remaining && canAmortise(plan, remaining)) {
-            return remaining;
-        }
-        long lo = 1;
-        while (lo < hi) {
-            long mid = lo + (hi - lo + 1) / 2;
-            if (canAmortise(plan, mid)) {
-                lo = mid;
-            } else {
-                hi = mid - 1;
-            }
-        }
-        return lo >= 2 ? lo : 0;
-    }
-
-    /**
-     * Cached plan of a pattern, analysed inline when the cache holds no entry for it yet.
-     *
-     * <p>Returns {@code null} when the pattern cannot be analysed at all. Callers leave that job queued
-     * instead of aborting the batch, and "return buffer" hands the buffered material back to the network.</p>
-     */
-    private PatternPlan planFor(IPatternDetails pattern) {
-        var plan = planCache.get(pattern);
-        if (plan != null) {
-            return plan;
-        }
-        try {
-            plan = PatternPlan.of(pattern);
-        } catch (Exception e) {
-            // Log the pattern's class rather than its definition: reading the definition is third-party code
-            // and must not be able to throw out of this catch block.
-            LOGGER.warn("Could not analyse pattern {} for the batch molecular assembler at {}; leaving the job queued",
-                    pattern.getClass().getName(), getBlockPos(), e);
-            return null;
-        }
-        planCache.put(pattern, plan);
-        return plan;
+        analyser.shutdown();
     }
 
     /** Idle ticks that flush a batch for the currently selected mode. */
@@ -2121,7 +1154,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
             refreshRecipePool();
             terminalView.invalidate(); // invalidate the pattern access terminal view
         } else {
-            cellsDirty = true;
+            cellBuffer.markDirty();
             // A freshly inserted cell brings its own contents along: give the idle flush another chance.
             idleFlushDone = false;
         }
@@ -2202,16 +1235,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         upgrades.writeToNBT(tag, "upgrades", registries);
         tag.putBoolean("fastBatchMode", fastBatchMode);
         // Persist the smooth-return queue so a save/load cannot lose already-produced outputs.
-        var pendingTag = new CompoundTag();
-        int pendingIndex = 0;
-        for (var entry : pendingOutputs.entrySet()) {
-            var entryTag = new CompoundTag();
-            entryTag.put("key", entry.getKey().toTag(registries));
-            entryTag.putLong("remaining", entry.getValue()[0]);
-            entryTag.putLong("total", entry.getValue()[1]);
-            pendingTag.put("e" + pendingIndex++, entryTag);
-        }
-        tag.put("pendingOutputs", pendingTag);
+        returns.writeToNbt(tag, registries, "pendingOutputs");
     }
 
     @Override
@@ -2227,21 +1251,8 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         terminalView.invalidate(); // invalidate the pattern access terminal view
         upgrades.readFromNBT(tag, "upgrades", registries);
         fastBatchMode = tag.getBoolean("fastBatchMode");
-        pendingOutputs.clear();
-        var pendingTag = tag.getCompound("pendingOutputs");
-        for (var entryKey : pendingTag.getAllKeys()) {
-            var entryTag = pendingTag.getCompound(entryKey);
-            var key = AEKey.fromTagGeneric(registries, entryTag.getCompound("key"));
-            if (key == null) {
-                continue;
-            }
-            long remaining = Math.max(0, entryTag.getLong("remaining"));
-            long total = Math.max(remaining, entryTag.getLong("total"));
-            if (remaining > 0) {
-                pendingOutputs.put(key, new long[]{remaining, total});
-            }
-        }
-        cellsDirty = true;
+        returns.readFromNbt(tag, registries, "pendingOutputs");
+        cellBuffer.markDirty();
         refreshRecipePool();
     }
 
@@ -2251,13 +1262,13 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         // cells (and therefore their contents) leave the machine. Queued jobs are not the only case: the
         // smooth-return queue may still hold finished outputs (or be stuck on a full network), and those are
         // just as lost if the block goes away without flushing them.
-        if (hasBufferedWork() || !pendingOutputs.isEmpty()) {
+        if (hasBufferedWork() || !returns.isEmpty()) {
             cancelAndReturnContents();
         }
         // Whatever neither the network nor a cell would take is still the player's: it leaves with the block
         // as drops, because after this method the block entity and its queues are gone.
-        for (var entry : pendingOutputs.entrySet()) {
-            long amount = entry.getValue()[0];
+        for (var entry : returns.snapshot().entrySet()) {
+            long amount = entry.getValue();
             var key = entry.getKey();
             if (amount <= 0) {
                 continue;
@@ -2271,26 +1282,14 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
             // otherwise spawn one entity per stack - millions of them - and take the server down with it.
             // Anything past the ceiling is carried in oversized stacks instead, which keeps the material
             // rather than dropping it and yields a handful of entries rather than millions.
-            long maxStack = Math.max(1, itemKey.getMaxStackSize());
-            int stacks = 0;
-            while (amount > 0 && stacks < MAX_LEFTOVER_DROP_STACKS) {
-                int perStack = (int) Math.min(amount, maxStack);
-                drops.add(itemKey.toStack(perStack));
-                amount -= perStack;
-                stacks++;
-            }
-            if (amount > 0) {
+            long oversized = DropStacks.add(itemKey, amount, drops, MAX_LEFTOVER_DROP_STACKS);
+            if (oversized > 0) {
                 LOGGER.warn("Batch assembler leftover {} x{} exceeds {} drop stacks; carrying the rest in "
                                 + "oversized stacks so the world is not flooded with entities",
-                        key, amount, MAX_LEFTOVER_DROP_STACKS);
-                while (amount > 0) {
-                    int perStack = (int) Math.min(amount, Integer.MAX_VALUE);
-                    drops.add(itemKey.toStack(perStack));
-                    amount -= perStack;
-                }
+                        key, oversized, MAX_LEFTOVER_DROP_STACKS);
             }
         }
-        pendingOutputs.clear();
+        returns.clear();
         super.addAdditionalDrops(level, pos, drops);
         for (int i = 0; i < CELL_SLOTS; i++) {
             var cell = cellInv.getStackInSlot(i);
@@ -2315,7 +1314,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     @Override
     public void clearContent() {
         super.clearContent();
-        pendingOutputs.clear();
+        returns.clear();
         for (int i = 0; i < CELL_SLOTS; i++) {
             cellInv.setItemDirect(i, ItemStack.EMPTY);
         }
@@ -2325,7 +1324,6 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         terminalView.invalidate();
         upgrades.clear();
         queue.clear();
-        cellsDirty = true;
-        refreshCells();
+        cellBuffer.markDirty();
     }
 }

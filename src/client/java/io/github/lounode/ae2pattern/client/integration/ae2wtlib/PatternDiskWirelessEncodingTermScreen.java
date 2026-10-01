@@ -1,4 +1,4 @@
-package io.github.lounode.ae2pattern.client.gui;
+package io.github.lounode.ae2pattern.client.integration.ae2wtlib;
 
 import org.anti_ad.mc.ipn.api.IPNPlayerSideOnly;
 
@@ -12,7 +12,9 @@ import de.mari_023.ae2wtlib.api.terminal.ItemWUT;
 import de.mari_023.ae2wtlib.api.terminal.IUniversalTerminalCapable;
 import de.mari_023.ae2wtlib.api.terminal.WTMenuHost;
 
-import io.github.lounode.ae2pattern.common.menu.PatternDiskWirelessEncodingTermMenu;
+import io.github.lounode.ae2pattern.client.gui.PatternDiskEncodingTermScreen;
+import io.github.lounode.ae2pattern.client.gui.ToolbarOrder;
+import io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessEncodingTermMenu;
 
 /**
  * 无线版编码终端的屏幕：布局、磁盘列表、附加排序按钮全部继承面板版，只多出 AE2WTLib 那一套无线终端的东西

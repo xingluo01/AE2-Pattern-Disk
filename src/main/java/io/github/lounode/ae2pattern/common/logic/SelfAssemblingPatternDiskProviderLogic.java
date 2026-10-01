@@ -10,12 +10,11 @@ import java.util.function.Supplier;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
-import net.minecraft.core.NonNullList;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.Nameable;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.crafting.CraftingInput;
+import net.minecraft.world.level.Level;
 
 import appeng.api.config.Actionable;
 import appeng.api.config.LockCraftingMode;
@@ -45,8 +44,6 @@ import appeng.util.inv.AppEngInternalInventory;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectIterator;
-import it.unimi.dsi.fastutil.objects.Reference2ObjectArrayMap;
-import it.unimi.dsi.fastutil.objects.ReferenceArrayList;
 import org.jetbrains.annotations.Nullable;
 
 import io.github.lounode.ae2pattern.common.util.AeKeyAmountNbt;
@@ -72,9 +69,6 @@ public class SelfAssemblingPatternDiskProviderLogic extends PatternDiskProviderL
 
     /** 无加速卡时，一次自完成合成消耗的网络电量。与来源实现一致。 */
     public static final int energyPerWork = 50;
-
-    /** 产物缓存上限：同一张样板反复执行时省掉重算。 */
-    private static final int OUTPUT_CACHE_LIMIT = 10;
 
     private final IManagedGridNode mainNode;
     private final IActionSource actionSource;
@@ -103,12 +97,8 @@ public class SelfAssemblingPatternDiskProviderLogic extends PatternDiskProviderL
     /** 距上次回送经过的 tick 数，用于超频卡的节奏。 */
     private int ticksSinceLastReturn = 0;
 
-    /** 同一张样板的产物缓存。 */
-    private final Reference2ObjectArrayMap<IPatternDetails, List<GenericStack>> outputCache = new Reference2ObjectArrayMap<>(
-            OUTPUT_CACHE_LIMIT);
-
-    /** 缓存顺序，用于按插入顺序清理。 */
-    private final ReferenceArrayList<IPatternDetails> outputCacheOrder = new ReferenceArrayList<>(OUTPUT_CACHE_LIMIT + 4);
+    /** 样板产物的解析与缓存都在 {@link AssemblerOutputResolver} 里，这里只持有它。 */
+    private final AssemblerOutputResolver outputResolver = new AssemblerOutputResolver();
 
     public SelfAssemblingPatternDiskProviderLogic(IManagedGridNode mainNode, PatternProviderLogicHost host,
             int diskSlots, Supplier<AppEngInternalInventory> diskInventorySupplier) {
@@ -172,7 +162,7 @@ public class SelfAssemblingPatternDiskProviderLogic extends PatternDiskProviderL
 
         // 先算产物再扣电：算不出来时（摆不出合成表、算不出产物）这次推送根本没发生，
         // 先扣电会随 AE 的每次重试白掉一份电量。
-        List<GenericStack> output = getMolecularAssemblerSupportedPatternOutput(pattern, inputHolder);
+        List<GenericStack> output = outputResolver.resolve(pattern, inputHolder, levelOf());
         if (output == null) {
             return false;
         }
@@ -204,8 +194,7 @@ public class SelfAssemblingPatternDiskProviderLogic extends PatternDiskProviderL
         if (grid == null) {
             return false;
         }
-        IEnergyService energyService = grid.getEnergyService();
-        if (energyService == null) {
+        IEnergyService energyService = grid.getEnergyService();        if (energyService == null) {
             return false;
         }
 
@@ -222,116 +211,10 @@ public class SelfAssemblingPatternDiskProviderLogic extends PatternDiskProviderL
         return false;
     }
 
-    /**
-     * 把样板与输入摆成合成表、实际跑一次合成，得到产物与剩余物。
-     *
-     * <p>
-     * 计数与顺序无关，所以先把 3×3 摆出来再压缩边距（去掉空行列），交给 {@code assemble}。算不出来时返回
-     * {@code null}，调用方据此放弃这次推送而不是记一条空产物。
-     * </p>
-     */
-    @Nullable
-    private List<GenericStack> getMolecularAssemblerSupportedPatternOutput(IMolecularAssemblerSupportedPattern pattern,
-            KeyCounter[] inputHolder) {
-        List<GenericStack> cachedOutput = outputCache.get(pattern);
-        if (cachedOutput != null) {
-            return cachedOutput;
-        }
-
-        var level = host.getBlockEntity() == null ? null : host.getBlockEntity().getLevel();
-        if (level == null) {
-            return null;
-        }
-
-        final ItemStack[] grid3x3 = new ItemStack[9];
-        for (int i = 0; i < 9; i++) {
-            grid3x3[i] = ItemStack.EMPTY;
-        }
-        try {
-            KeyCounter[] inputHolderCopy = new KeyCounter[inputHolder.length];
-            for (int i = 0; i < inputHolder.length; i++) {
-                KeyCounter counter = inputHolder[i];
-                KeyCounter copy = new KeyCounter();
-                if (counter != null) {
-                    copy.addAll(counter);
-                }
-                inputHolderCopy[i] = copy;
-            }
-            pattern.fillCraftingGrid(inputHolderCopy, (slot, stack) -> {
-                if (slot >= 0 && slot < 9) {
-                    grid3x3[slot] = (stack == null) ? ItemStack.EMPTY : stack;
-                }
-            });
-        } catch (RuntimeException e) {
-            // 摆不出来说明这次输入不稳定，直接放弃。
-            return null;
-        }
-
-        // 压缩边距：只留非空行列。
-        int minX = 3, minY = 3, maxX = -1, maxY = -1;
-        for (int slot = 0; slot < 9; slot++) {
-            ItemStack stack = grid3x3[slot];
-            if (stack != null && !stack.isEmpty()) {
-                int x = slot % 3;
-                int y = slot / 3;
-                if (x < minX) {
-                    minX = x;
-                }
-                if (y < minY) {
-                    minY = y;
-                }
-                if (x > maxX) {
-                    maxX = x;
-                }
-                if (y > maxY) {
-                    maxY = y;
-                }
-            }
-        }
-
-        if (maxX < 0) {
-            return null;
-        }
-
-        final int width = (maxX - minX + 1);
-        final int height = (maxY - minY + 1);
-
-        final List<ItemStack> compressedItems = new ArrayList<>(width * height);
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                int srcSlot = (minX + x) + (minY + y) * 3;
-                ItemStack stack = grid3x3[srcSlot];
-                compressedItems.add(stack == null ? ItemStack.EMPTY : stack);
-            }
-        }
-
-        final CraftingInput input = CraftingInput.of(width, height, compressedItems);
-
-        ItemStack output = pattern.assemble(input, level);
-        if (output == null || output.isEmpty()) {
-            return null;
-        }
-        NonNullList<ItemStack> remainders = pattern.getRemainingItems(input);
-
-        List<GenericStack> finalOutput = new ArrayList<>();
-        GenericStack outputStack = GenericStack.fromItemStack(output);
-        if (outputStack != null) {
-            finalOutput.add(outputStack);
-        }
-        for (ItemStack stack : remainders) {
-            GenericStack remainingStack = GenericStack.fromItemStack(stack);
-            if (remainingStack != null) {
-                finalOutput.add(remainingStack);
-            }
-        }
-
-        outputCache.put(pattern, finalOutput);
-        outputCacheOrder.add(pattern);
-        while (outputCache.size() > OUTPUT_CACHE_LIMIT && !outputCacheOrder.isEmpty()) {
-            IPatternDetails oldest = outputCacheOrder.removeFirst();
-            outputCache.remove(oldest);
-        }
-        return finalOutput;
+    /** 归属世界；方块实体还没成型时为 {@code null}，产物就无从算起。 */
+    private @Nullable Level levelOf() {
+        var be = host.getBlockEntity();
+        return be == null ? null : be.getLevel();
     }
 
     /**
@@ -516,8 +399,7 @@ public class SelfAssemblingPatternDiskProviderLogic extends PatternDiskProviderL
         super.clearContent();
         upgrades.clear();
         craftedContents.clear();
-        outputCache.clear();
-        outputCacheOrder.clear();
+        outputResolver.clear();
     }
 
 }

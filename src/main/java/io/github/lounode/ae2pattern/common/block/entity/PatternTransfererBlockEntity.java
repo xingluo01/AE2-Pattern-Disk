@@ -2,8 +2,6 @@ package io.github.lounode.ae2pattern.common.block.entity;
 
 import java.util.List;
 
-import org.jetbrains.annotations.Nullable;
-
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
@@ -11,11 +9,9 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 
-import appeng.api.config.Actionable;
 import appeng.api.networking.GridFlags;
 import appeng.api.networking.IManagedGridNode;
 import appeng.api.networking.security.IActionSource;
-import appeng.api.stacks.AEItemKey;
 import appeng.api.upgrades.IUpgradeInventory;
 import appeng.api.upgrades.IUpgradeableObject;
 import appeng.api.upgrades.UpgradeInventories;
@@ -24,9 +20,7 @@ import appeng.me.helpers.MachineSource;
 import appeng.util.inv.AppEngInternalInventory;
 import appeng.util.inv.InternalInventoryHost;
 
-import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
-import io.github.lounode.ae2pattern.api.PatternClassifier;
-import io.github.lounode.ae2pattern.api.PatternDiskContents;
+import io.github.lounode.ae2pattern.common.logic.TransfererOperations;
 import io.github.lounode.ae2pattern.common.pattern.TransferMode;
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 
@@ -78,18 +72,15 @@ public class PatternTransfererBlockEntity extends AENetworkedBlockEntity
         }
     }
 
-    /** Ticks per second (Minecraft). */
-    private static final double TICKS_PER_SECOND = 20.0;
-
-    /** Accumulated fractional patterns to transfer (for smooth per-tick rate). */
-    private double patternAccumulator = 0;
-
-    /** Client-side mirror of the ME node state; synced through the block entity stream. */
+    /** 客户端侧 ME 节点状态的镜像；经方块实体流同步。 */
     private boolean isActive = false;
 
     private final AppEngInternalInventory inventory = new AppEngInternalInventory(this, TOTAL_SLOTS);
     private final IActionSource actionSource = new MachineSource(this);
     private final IUpgradeInventory upgrades;
+
+    /** 搬运操作、速率累积与空样板回送都在 {@link TransfererOperations} 里，这里只持有它。 */
+    private final TransfererOperations ops;
 
     public PatternTransfererBlockEntity(BlockPos pos, BlockState blockState) {
         super(AEPatternRegistries.BE_TRANSFERER.get(), pos, blockState);
@@ -103,6 +94,9 @@ public class PatternTransfererBlockEntity extends AENetworkedBlockEntity
                 // In-world node so adjacent AE2 cables can connect (getGridNode returns non-null).
                 .setInWorldNode(true)
                 .setExposedOnSides(java.util.Set.of(Direction.values()));
+        // 网格与世界都是拿调用时刻的实况，所以给 Supplier：节点晚于构造器建立，level 则可能为空。
+        this.ops = new TransfererOperations(inventory, upgrades, actionSource,
+                () -> getMainNode().getGrid(), () -> this.level);
     }
 
     private void onUpgradesChanged() {
@@ -195,269 +189,13 @@ public class PatternTransfererBlockEntity extends AENetworkedBlockEntity
     }
 
     /**
-     * Runs the transfer at the speed-card rate: {@code 2^(2x+1)} patterns per second, where x is the
-     * number of installed speed cards. Spread across 20 ticks/second with an accumulator.
+     * 跑一个搬运周期。速率（每 tick 几个）、空样板回送与两种模式的搬运都在 {@link TransfererOperations}。
      */
     private void tickTransfer() {
-        int speedCards = installedSpeedCards();
-        double patternsPerSecond = Math.pow(2, 2 * speedCards + 1);
-        double perTick = patternsPerSecond / TICKS_PER_SECOND;
-
-        patternAccumulator += perTick;
-        int toProcess = (int) patternAccumulator;
-        if (toProcess <= 0) {
-            return;
-        }
-        patternAccumulator -= toProcess;
-
-        boolean changed = returnBlanksToNetwork();
-        changed |= processInputs(toProcess);
-        if (changed) {
+        if (ops.tick(mode)) {
             saveChanges();
         }
     }
-
-    private int installedSpeedCards() {
-        var speedCard = net.minecraft.core.registries.BuiltInRegistries.ITEM
-                .get(net.minecraft.resources.ResourceLocation.parse("ae2:speed_card"));
-        return speedCard == null ? 0 : upgrades.getInstalledUpgrades(speedCard);
-    }
-
-    private int countNonEmptyInputs() {
-        int c = 0;
-        for (int i = 0; i < INPUT_SLOT_COUNT; i++) {
-            if (!inventory.getStackInSlot(inputSlot(i)).isEmpty()) {
-                c++;
-            }
-        }
-        return c;
-    }
-
-    /**
-     * Moves blank patterns from the output slot back into the connected ME network.
-     */
-    private boolean returnBlanksToNetwork() {
-        ItemStack output = inventory.getStackInSlot(OUTPUT_SLOT);
-        if (output.isEmpty() || !PatternClassifier.isBlankPattern(output)) {
-            return false;
-        }
-        var grid = this.getMainNode().getGrid();
-        if (grid == null) {
-            return false;
-        }
-        var storage = grid.getStorageService();
-        if (storage == null) {
-            return false;
-        }
-        var blankKey = AEItemKey.of(output);
-        long toSend = output.getCount();
-        long inserted = storage.getInventory().insert(blankKey, toSend, Actionable.MODULATE, actionSource);
-        if (inserted > 0) {
-            output.shrink((int) inserted);
-            if (output.isEmpty()) {
-                inventory.setItemDirect(OUTPUT_SLOT, ItemStack.EMPTY);
-            }
-            return true;
-        }
-        return false;
-    }
-
-    /**
-     * Processes the six input slots, distributing patterns across the application disks.
-     *
-     * <p>Mode dispatch:</p>
-     * <ul>
-     *   <li>{@link TransferMode#STORE}：编码样板提取到磁盘；磁盘配方<b>移动</b>到目标盘（源盘被清空）。</li>
-     *   <li>{@link TransferMode#COPY}：磁盘配方<b>复制</b>到目标盘（源盘内容保留）。</li>
-     * </ul>
-     *
-     * @param limit maximum number of patterns to transfer this tick.
-     */
-    private boolean processInputs(int limit) {
-        int processed = 0;
-        for (int i = 0; i < INPUT_SLOT_COUNT && processed < limit; i++) {
-            ItemStack input = inventory.getStackInSlot(inputSlot(i));
-            if (input.isEmpty()) {
-                continue;
-            }
-
-            int transferred = 0;
-            if (input.getItem() instanceof PatternDiskItem disk) {
-                if (mode == TransferMode.STORE) {
-                    // 样板存储：磁盘 → 磁盘（移动：源盘配方转出，目标盘接收）
-                    transferred = storeDiskInto(input, disk, limit - processed);
-                } else if (mode == TransferMode.COPY) {
-                    // 样板复写：磁盘 → 磁盘（复制：源盘内容保留）
-                    transferred = copyDiskInto(input, disk, limit - processed);
-                }
-            } else if (PatternClassifier.isEncodedPatternStack(input)) {
-                if (mode == TransferMode.STORE) {
-                    // 样板存储：编码样板 → 磁盘
-                    transferred = extractPatternInto(input) ? 1 : 0;
-                }
-            }
-            processed += transferred;
-        }
-        return processed > 0;
-    }
-
-    /**
-     * 移动语义：将源磁盘中的配方依次移入目标应用磁盘，源盘已移出的配方被移除。
-     * 每个配方优先写入第一个满足条件的目标盘：类型匹配（未定型或同类型）、未满、
-     * 且不含产生相同主输出的配方（同输出互斥）。
-     * 无法安置的配方（类型不匹配/全满/互斥）保留在源盘中，不丢弃。
-     *
-     * @param limit 本次最多移动的配方数量
-     * @return 本次实际移动的配方数
-     */
-    private int storeDiskInto(ItemStack source, PatternDiskItem sourceDisk, int limit) {
-        var sourceContents = sourceDisk.contents(source);
-        if (sourceContents.isEmpty() || limit <= 0) {
-            return 0;
-        }
-        var sourceType = sourceContents.type();
-        // 损坏数据防御：有配方却未定型（type=null）的源盘无法安全移动，跳过
-        if (sourceType == null) {
-            return 0;
-        }
-
-        boolean changed = false;
-        int moved = 0;
-        var remaining = new java.util.ArrayList<ItemStack>();
-        for (var candidate : sourceContents.patterns()) {
-            boolean placed = false;
-            if (moved < limit) {
-                for (int slot = 0; slot < APPLICATION_SLOT_COUNT; slot++) {
-                    ItemStack appDisk = inventory.getStackInSlot(applicationSlot(slot));
-                    if (appDisk.isEmpty() || !(appDisk.getItem() instanceof PatternDiskItem app)) {
-                        continue;
-                    }
-                    // 容量/锁定类型/同主产物互斥均由 PatternDiskItem.tryInsert 统一把关
-                    if (!app.tryInsert(appDisk, candidate, this.level)) {
-                        continue;
-                    }
-                    moved++;
-                    changed = true;
-                    placed = true;
-                    break; // 该配方已移出，处理下一个
-                }
-            }
-            if (!placed) {
-                remaining.add(candidate); // 本次未安置：保留在源盘
-            }
-        }
-
-        if (changed) {
-            if (remaining.isEmpty()) {
-                source.remove(AEPatternRegistries.DISK_CONTENTS.get());
-            } else {
-                source.set(AEPatternRegistries.DISK_CONTENTS.get(),
-                        new PatternDiskContents(sourceType, sourceContents.capacity(), remaining));
-            }
-        }
-        return moved;
-    }
-
-    /**
-     * 复制语义：将源磁盘中的每个配方复制到目标应用磁盘，源磁盘内容保持不变。
-     * 每个配方优先写入第一个满足条件的目标盘：类型匹配（未定型或同类型）、未满、
-     * 且不含产生相同主输出的配方（同输出互斥，天然避免重复复制）。
-     *
-     * @param limit 本次最多复制的配方数量
-     * @return 本次实际复制的配方数
-     */
-    private int copyDiskInto(ItemStack source, PatternDiskItem sourceDisk, int limit) {
-        var sourceContents = sourceDisk.contents(source);
-        if (sourceContents.isEmpty() || limit <= 0) {
-            return 0;
-        }
-
-        int copied = 0;
-        // 只读遍历源盘配方，绝不修改源盘（复制而非移动）
-        for (var candidate : sourceContents.patterns()) {
-            if (copied >= limit) {
-                break;
-            }
-            for (int slot = 0; slot < APPLICATION_SLOT_COUNT; slot++) {
-                ItemStack appDisk = inventory.getStackInSlot(applicationSlot(slot));
-                if (appDisk.isEmpty() || !(appDisk.getItem() instanceof PatternDiskItem app)) {
-                    continue;
-                }
-                // 容量/锁定类型/同主产物互斥均由 PatternDiskItem.tryInsert 统一把关
-                if (!app.tryInsert(appDisk, candidate, this.level)) {
-                    continue;
-                }
-                copied++;
-                break; // 该配方已复制，处理下一个配方
-            }
-        }
-        return copied;
-    }
-
-    /**
-     * Extracts an encoded pattern from an input slot into an application disk, producing a blank pattern
-     * into the output slot.
-     */
-    private boolean extractPatternInto(ItemStack input) {
-        var level = this.level;
-        if (level == null) {
-            return false;
-        }
-        String type = PatternClassifier.typeOf(input, level);
-        if (type == null) {
-            return false;
-        }
-
-        int targetSlot = -1;
-        PatternDiskContents targetContents = null;
-        PatternDiskItem targetDisk = null;
-        for (int slot = 0; slot < APPLICATION_SLOT_COUNT; slot++) {
-            ItemStack appDisk = inventory.getStackInSlot(applicationSlot(slot));
-            if (appDisk.isEmpty() || !(appDisk.getItem() instanceof PatternDiskItem app)) {
-                continue;
-            }
-            var contents = app.contents(appDisk);
-            if (contents.isFull()) {
-                continue;
-            }
-            if (!contents.isTyped() || contents.type().equals(type)) {
-                targetSlot = slot;
-                targetContents = contents;
-                targetDisk = app;
-                break;
-            }
-        }
-        if (targetSlot < 0) {
-            return false;
-        }
-
-        // Room, locked type and same-result exclusivity are enforced by PatternDiskItem.tryInsert.
-        ItemStack appDisk = inventory.getStackInSlot(applicationSlot(targetSlot));
-        if (!targetDisk.tryInsert(appDisk, input, level)) {
-            return false;
-        }
-        inventory.setItemDirect(inputSlotOf(input), ItemStack.EMPTY);
-
-        // Produce a blank pattern into the output slot.
-        ItemStack blank = AEPatternRegistries.blankPattern();
-        ItemStack output = inventory.getStackInSlot(OUTPUT_SLOT);
-        if (output.isEmpty()) {
-            inventory.setItemDirect(OUTPUT_SLOT, blank);
-        } else if (output.is(blank.getItem())) {
-            output.grow(1);
-        }
-        return true;
-    }
-
-    private int inputSlotOf(ItemStack input) {
-        for (int i = 0; i < INPUT_SLOT_COUNT; i++) {
-            if (inventory.getStackInSlot(inputSlot(i)) == input) {
-                return inputSlot(i);
-            }
-        }
-        return INPUT_START;
-    }
-
     @Override
     public void onChangeInventory(AppEngInternalInventory inv, int slot) {
         saveChanges();
@@ -479,7 +217,7 @@ public class PatternTransfererBlockEntity extends AENetworkedBlockEntity
         inventory.writeToNBT(tag, "inv", registries);
         upgrades.writeToNBT(tag, "upgrades", registries);
         tag.putString("mode", mode.name());
-        tag.putDouble("patternAccumulator", patternAccumulator);
+        ops.writeToNbt(tag, "patternAccumulator");
     }
 
     @Override
@@ -492,7 +230,7 @@ public class PatternTransfererBlockEntity extends AENetworkedBlockEntity
         } catch (IllegalArgumentException e) {
             mode = TransferMode.STORE;
         }
-        patternAccumulator = tag.getDouble("patternAccumulator");
+        ops.readFromNbt(tag, "patternAccumulator");
     }
 
     @Override

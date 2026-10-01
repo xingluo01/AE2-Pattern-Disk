@@ -235,6 +235,12 @@ dependencies {
     localRuntime 'curse.maven:ex-pattern-provider-892005:8511901'
     localRuntime 'curse.maven:advancedae-1084104:7849217'
 
+    // Applied Flux (AppFlux) dev reference: it registers a extra upgrade slot on AE2's own pattern
+    // providers and interfaces, and that slot is what both of this mod's provider forms have to show and
+    // register a card limit for. Without it in the runtime the integration cannot be exercised at all.
+    // Its three required dependencies (AE2, Glodium, GuideME) are already in this block or above it.
+    localRuntime 'maven.modrinth:appflux:4x40hq9D'
+
     // ExtendedAE Plus (EAE+) dev reference. Its "upload pattern to a provider" button is the feature the
     // pattern disk provider has to serve, so it belongs in the dev runtime to exercise that path.
     //

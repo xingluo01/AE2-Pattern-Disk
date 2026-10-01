@@ -1,4 +1,4 @@
-package io.github.lounode.ae2pattern.common.integration.polymorph;
+package io.github.lounode.ae2pattern.integration.polymorph;
 
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;

@@ -17,8 +17,8 @@ import io.github.lounode.ae2pattern.client.gui.PatternDiskEncodingTermScreen;
 import io.github.lounode.ae2pattern.client.gui.PatternDiskManagementTermScreen;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskWirelessEncodingTermMenu;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskWirelessManagementTermMenu;
+import io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessEncodingTermMenu;
+import io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessManagementTermMenu;
 
 /**
  * JEI entry point: wires the pattern disk encoding terminal into JEI's recipe transfer ("+") button.

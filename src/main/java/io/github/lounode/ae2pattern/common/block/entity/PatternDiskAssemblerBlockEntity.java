@@ -4,8 +4,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 
 import org.jetbrains.annotations.Nullable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -45,6 +43,7 @@ import appeng.util.inv.InternalInventoryHost;
 
 import io.github.lounode.ae2pattern.network.AssemblerAnimationPayload;
 import io.github.lounode.ae2pattern.network.AssemblerAnimationStatus;
+import io.github.lounode.ae2pattern.common.logic.ProductDelivery;
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 
 /**
@@ -58,8 +57,6 @@ import io.github.lounode.ae2pattern.AEPatternRegistries;
 public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
         implements InternalInventoryHost, IUpgradeableObject, IGridTickable,
         appeng.api.implementations.blockentities.ICraftingMachine {
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(PatternDiskAssemblerBlockEntity.class);
 
     public static final int THREADS = 8;
     public static final int GRID_SIZE = 9; // 3x3
@@ -124,11 +121,8 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
         }
     };
 
-    /**
-     * Key of the last reported cause for a product that could not be handed to the ME network. Delivery
-     * is retried every tick while a product is stuck, so a cause is only reported when it changes.
-     */
-    private String lastDeliveryFailure;
+    /** 产物投递（去向选择 + 送不掉时的记账）都在 {@link ProductDelivery} 里，这里只持有它。 */
+    private final ProductDelivery delivery;
 
     /** Client-synced power state. */
     private boolean isPowered = false;
@@ -141,6 +135,9 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
         for (int i = 0; i < THREADS; i++) {
             units[i] = new CraftUnit(this);
         }
+        // 网格与世界都是拿调用时刻的实况，所以给 Supplier：节点晚于构造器建立，level 则可能为空。
+        this.delivery = new ProductDelivery(() -> getMainNode().getGrid(), () -> this.level, worldPosition,
+                actionSource, this::saveChanges);
         this.upgrades = UpgradeInventories.forMachine(AEPatternRegistries.BLOCK_ASSEMBLER.get(), 5,
                 this::onUpgradesChanged);
         // 与 AE2 分子装配室一致：它只做被推送的合成，不占频道（仍从网格取电）。
@@ -793,67 +790,7 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
      * </ul>
      */
     private ItemStack pushItemOut(CraftUnit unit, ItemStack stack) {
-        if (level == null || level.isClientSide() || stack.isEmpty()) {
-            return stack;
-        }
-        if (unit.pushDirection == null) {
-            return insertIntoNetwork(stack);
-        }
-        stack = pushToAdjacent(stack, unit.pushDirection);
-        return stack.isEmpty() ? stack : insertIntoNetwork(stack);
-    }
-
-    /**
-     * Inserts as much of the stack as the ME network accepts and returns the rest, which callers leave
-     * in place to retry on the next tick.
-     */
-    private ItemStack insertIntoNetwork(ItemStack stack) {
-        if (stack.isEmpty()) {
-            return stack;
-        }
-        var grid = this.getMainNode().getGrid();
-        if (grid == null) {
-            reportDeliveryFailure("no-grid", "the machine is not connected to an ME network");
-            return stack;
-        }
-        var storage = grid.getStorageService();
-        if (storage == null) {
-            reportDeliveryFailure("no-storage", "the ME network has no storage service");
-            return stack;
-        }
-        var key = AEItemKey.of(stack);
-        if (key == null) {
-            reportDeliveryFailure("no-key", "the product cannot be turned into an AE key");
-            return stack;
-        }
-        var inserted = storage.getInventory().insert(key, stack.getCount(), Actionable.MODULATE, actionSource);
-        if (inserted > 0) {
-            stack.shrink((int) inserted);
-            saveChanges();
-        }
-        if (stack.isEmpty()) {
-            lastDeliveryFailure = null;
-        } else {
-            // One key for both variants: whether the network took part of the stack or none of it, the
-            // cause is the same, and keying on the wording would re-log on every flip between them.
-            reportDeliveryFailure("network-refused", "the ME network took "
-                    + (inserted > 0 ? "only part of the stack" : "none of the stack")
-                    + " - it has no free storage space, or it does not accept this item type");
-        }
-        return stack;
-    }
-
-    /**
-     * Reports why a finished product was not accepted by the ME network, once per distinct cause. The
-     * delivery is retried every tick while products are stuck in the machine, so an unconditional log
-     * line would flood the log; what matters when diagnosing a stuck machine is the cause itself.
-     */
-    private void reportDeliveryFailure(String key, String detail) {
-        if (!key.equals(lastDeliveryFailure)) {
-            lastDeliveryFailure = key;
-            LOGGER.info("Efficient molecular assembler at {} cannot return products to the ME network: {}",
-                    worldPosition, detail);
-        }
+        return delivery.deliver(stack, unit.pushDirection);
     }
 
     /**
@@ -863,23 +800,6 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
     private void pushOut(CraftUnit unit, ItemStack stack) {
         ItemStack left = pushItemOut(unit, stack);
         unit.grid.setItemDirect(OUTPUT_SLOT, left);
-    }
-
-    private ItemStack pushToAdjacent(ItemStack output, Direction d) {
-        if (output.isEmpty()) {
-            return output;
-        }
-        var adaptor = appeng.api.inventories.InternalInventory.wrapExternal(level, worldPosition.relative(d), d.getOpposite());
-        if (adaptor == null) {
-            return output;
-        }
-        int size = output.getCount();
-        output = adaptor.addItems(output);
-        int newSize = output.isEmpty() ? 0 : output.getCount();
-        if (size != newSize) {
-            saveChanges();
-        }
-        return output;
     }
 
     @Override

@@ -39,15 +39,15 @@ import io.github.lounode.ae2pattern.common.block.entity.PatternDiskAssemblerBloc
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskProviderBlockEntity;
 import io.github.lounode.ae2pattern.common.block.entity.PatternTransfererBlockEntity;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
-import io.github.lounode.ae2pattern.common.item.WirelessPatternDiskTerminalItem;
+import io.github.lounode.ae2pattern.integration.ae2wtlib.WirelessPatternDiskTerminalItem;
 import io.github.lounode.ae2pattern.common.menu.BatchAssemblerMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskAssemblerMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternTransfererMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskWirelessEncodingTermMenu;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskWirelessManagementTermMenu;
+import io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessEncodingTermMenu;
+import io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessManagementTermMenu;
 import io.github.lounode.ae2pattern.common.part.PatternDiskEncodingTerminalPart;
 import io.github.lounode.ae2pattern.common.part.PatternDiskManagementTerminalPart;
 import io.github.lounode.ae2pattern.common.part.PatternDiskProviderPart;
@@ -410,7 +410,7 @@ public final class AEPatternRegistries {
         // 传方法引用而不是调用结果：物品要等登记回调触发时才构造——物品构造器会往注册表写 intrusive
         // holder，那只允许在注册表「正在注册」时进行，而这里的调用点在模组构造期（注册表已冻结，
         // 立刻 new 会抛 IllegalStateException: Registry is already frozen）。
-        io.github.lounode.ae2pattern.common.registration.WirelessTerminalRegistrations.register(
+        io.github.lounode.ae2pattern.integration.ae2wtlib.WirelessTerminalRegistrations.register(
                 AEPatternRegistries::wirelessEncodingItem, AEPatternRegistries::wirelessManagementItem);
 
         // The api resolves the component through the holder, so it is handed the holder itself - a

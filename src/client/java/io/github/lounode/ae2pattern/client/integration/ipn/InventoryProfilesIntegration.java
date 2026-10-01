@@ -29,6 +29,11 @@ import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
  * <p>全程反射，本模组不在编译期依赖 IPN：它只是可选前置，且只存在于客户端。任一环节缺失（类不在、方法
  * 签名变了）就安静退场，整理按钮照旧工作，只是本模组的槽仍会被整理——同「没装 IPN」时的表现。注册放在
  * 客户端模组构造器里（见 {@code AE2PatternDiskClient}），早于 IPN 消费登记表。</p>
+ *
+ * <p><b>为什么 {@code @IPNPlayerSideOnly} 不搬到本包：</b>那个注解是 IPN 在运行时从<b>屏幕类本身</b>读的
+ * （{@code HintsManagerNG.isPlayerSideOnly(Class)} 直接扫目标类，不跟 meta-注解、也没有继承），注解只有
+ * 物理贴在屏幕类上才算数。它是上游强加的物理约束，不是可以收敛进集成包的引用；本包只能把口径与复查
+ * （{@link #reportAnnotatedScreens}）集中起来，注解本身留在四个终端屏上。</p>
  */
 public final class InventoryProfilesIntegration {
 

@@ -6,7 +6,7 @@ import net.minecraft.world.entity.player.Inventory;
 import appeng.client.gui.style.ScreenStyle;
 
 import io.github.lounode.ae2pattern.client.gui.PatternDiskEncodingTermScreen;
-import io.github.lounode.ae2pattern.client.gui.PatternDiskWirelessEncodingTermScreen;
+import io.github.lounode.ae2pattern.client.integration.ae2wtlib.PatternDiskWirelessEncodingTermScreen;
 
 /**
  * 客户端侧的适配入口：把「带契约的 EAE+ 在场」这件事变成一屏，而不把适配子类的名字带进总是加载的类。
@@ -56,13 +56,13 @@ public final class ClientExtendedAEPlusCompat {
      * <p>同样只在契约探针为真后调用。</p>
      */
     public static PatternDiskWirelessEncodingTermScreen createWirelessUploadScreen(
-            io.github.lounode.ae2pattern.common.menu.PatternDiskWirelessEncodingTermMenu menu,
+            io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessEncodingTermMenu menu,
             Inventory playerInventory, Component title, ScreenStyle style) {
         try {
             return (PatternDiskWirelessEncodingTermScreen) Class
                     .forName(WIRELESS_UPLOAD_SCREEN_CLASS, true, ClientExtendedAEPlusCompat.class.getClassLoader())
                     .getConstructor(
-                            io.github.lounode.ae2pattern.common.menu.PatternDiskWirelessEncodingTermMenu.class,
+                            io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessEncodingTermMenu.class,
                             Inventory.class, Component.class, ScreenStyle.class)
                     .newInstance(menu, playerInventory, title, style);
         } catch (ReflectiveOperationException e) {

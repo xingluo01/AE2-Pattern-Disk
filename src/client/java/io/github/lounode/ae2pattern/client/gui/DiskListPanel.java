@@ -35,6 +35,13 @@ public class DiskListPanel implements ICompositeWidget {
     private static final Blitter SCROLL_BTN_NARROW_PRESSED = Blitter
             .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/pattern_modes.png"))
             .src(251, 15, 5, 15);
+    /**
+     * 不可交互（一屏装得下）时的手柄：同一张素材乘 0.5 亮度。
+     *
+     * <p>必须 copy：{@code color(...)} 改的是实例字段，直接链在上面那两个共享实例上会把它们永久染灰。</p>
+     */
+    private static final Blitter SCROLL_BTN_NARROW_DISABLED = SCROLL_BTN_NARROW_NORMAL
+            .copy().color(0.5f, 0.5f, 0.5f);
 
     /** 磁盘覆盖层起点（GUI 画布坐标）。 */
     private int x, y;
@@ -209,21 +216,25 @@ public class DiskListPanel implements ICompositeWidget {
 
         // 滚动轴轨道已烘入 DISK_OVERLAY 底图（x20-22, rel y7..60），无需独立绘制
 
-        // 绘制滚动滑块
-        if (maxOffset > 0) {
-            float thumbRatio = (float) scrollOffset / maxOffset;
-            int thumbCanvasY = y + TRACK_OFFSET_Y + (int) (thumbRatio * (TRACK_H - THUMB_H));
-            int thumbCanvasX = x + THUMB_OFFSET_X;
+        // 绘制滚动滑块。常态显示——它是这一栏的固定构件，有没有内容可滚不该改变它的存在感；
+        // 一屏装得下（maxOffset == 0）时改用灰调（即 AE2 那种「禁用」观感），而不是干脆不画：
+        // 不画会让人以为这栏压根没有滚动条。此时滑块也停在轨道顶端，不能拿 maxOffset 当除数。
+        var disabled = maxOffset <= 0;
+        float thumbRatio = disabled ? 0f : (float) scrollOffset / maxOffset;
+        int thumbCanvasY = y + TRACK_OFFSET_Y + (int) (thumbRatio * (TRACK_H - THUMB_H));
+        int thumbCanvasX = x + THUMB_OFFSET_X;
 
-            int thumbAbsX = absX + THUMB_OFFSET_X;
-            int thumbAbsY = absY + TRACK_OFFSET_Y + (int) (thumbRatio * (TRACK_H - THUMB_H));
+        int thumbAbsX = absX + THUMB_OFFSET_X;
+        int thumbAbsY = absY + TRACK_OFFSET_Y + (int) (thumbRatio * (TRACK_H - THUMB_H));
 
-            // 检测鼠标（canvas 坐标）是否在滑块上
-            boolean pressed = mouse.getX() >= thumbCanvasX && mouse.getX() < thumbCanvasX + THUMB_W
-                    && mouse.getY() >= thumbCanvasY && mouse.getY() < thumbCanvasY + THUMB_H;
-            Blitter btn = pressed ? SCROLL_BTN_NARROW_PRESSED : SCROLL_BTN_NARROW_NORMAL;
-            btn.dest(thumbAbsX, thumbAbsY).blit(guiGraphics);
-        }
+        // 检测鼠标（canvas 坐标）是否在滑块上
+        boolean pressed = mouse.getX() >= thumbCanvasX && mouse.getX() < thumbCanvasX + THUMB_W
+                && mouse.getY() >= thumbCanvasY && mouse.getY() < thumbCanvasY + THUMB_H;
+        // 用不上时不吃 hover：它此时不可交互，高亮反而误导。
+        var btn = disabled
+                ? SCROLL_BTN_NARROW_DISABLED
+                : (pressed ? SCROLL_BTN_NARROW_PRESSED : SCROLL_BTN_NARROW_NORMAL);
+        btn.dest(thumbAbsX, thumbAbsY).blit(guiGraphics);
     }
 
     @Override

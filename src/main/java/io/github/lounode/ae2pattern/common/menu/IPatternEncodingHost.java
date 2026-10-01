@@ -1,5 +1,8 @@
 package io.github.lounode.ae2pattern.common.menu;
 
+import java.util.Map;
+
+import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.CraftingRecipe;
@@ -8,6 +11,7 @@ import net.minecraft.world.level.Level;
 
 import org.jetbrains.annotations.Nullable;
 
+import appeng.api.stacks.AEKey;
 import appeng.parts.encoding.EncodingMode;
 import appeng.util.ConfigInventory;
 
@@ -61,4 +65,17 @@ public interface IPatternEncodingHost {
 
     /** 取世界：锻造与切石要拿它查配方表。 */
     Level getLevel();
+
+    /**
+     * 是否停在高级编码模式：给加工样板的每个输入分配一个接入面，编成 AdvancedAE 的高级处理样板。
+     */
+    boolean isAdvancedMode();
+
+    /**
+     * 编辑区每个输入槽分配的面，按 {@link AEKey} 索引；没分配（相邻）的不放键。
+     *
+     * <p>按 key 而不是按槽下标传：编码路径上的「同物品合并」会把同 key 的多个槽折成一格，下标在那之后
+     * 就对不上了。</p>
+     */
+    Map<AEKey, Direction> advancedSidesByKey();
 }

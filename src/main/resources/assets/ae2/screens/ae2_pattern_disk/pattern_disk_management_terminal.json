@@ -251,6 +251,17 @@
    "width": 115,
    "height": 66
   },
+  "advancedPatternModeScrollbar": {
+   "left": 41,
+   "bottom": 159,
+   "height": 54
+  },
+  "advancedPanel": {
+   "left": 175,
+   "bottom": 75,
+   "width": 115,
+   "height": 66
+  },
   "encodePattern": {
    "left": 305,
    "bottom": 55

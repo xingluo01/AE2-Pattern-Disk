@@ -1,4 +1,4 @@
-package io.github.lounode.ae2pattern.common.menu;
+package io.github.lounode.ae2pattern.integration.ae2wtlib;
 
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
@@ -9,6 +9,8 @@ import appeng.menu.slot.RestrictedInputSlot;
 
 import de.mari_023.ae2wtlib.api.gui.AE2wtlibSlotSemantics;
 import de.mari_023.ae2wtlib.api.terminal.WTMenuHost;
+
+import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
 
 /**
  * 无线版样板磁盘编码终端的菜单：内容全部继承面板版（编码区、磁盘列表、写盘动作都一样），只换宿主与类型。
@@ -31,6 +33,12 @@ public class PatternDiskWirelessEncodingTermMenu extends PatternDiskEncodingTerm
         // 缺了它就会把第一格升级槽当奇点槽藏掉，可用升级卡位少一个。
         addSlot(new RestrictedInputSlot(RestrictedInputSlot.PlacableItemType.QE_SINGULARITY,
                 host.getSubInventory(WTMenuHost.INV_SINGULARITY), 0), AE2wtlibSlotSemantics.SINGULARITY);
+    }
+
+    /** 无线终端要升级槽：AdvancedAE 的高级样板编码器放这儿（面板版终端不走这条路）。 */
+    @Override
+    protected boolean supportsUpgradeSlots() {
+        return true;
     }
 
     /**

@@ -1,11 +1,10 @@
 package io.github.lounode.ae2pattern.common.menu;
 
-import java.util.Arrays;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
-import java.util.regex.Pattern;
 
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -14,9 +13,10 @@ import org.slf4j.LoggerFactory;
 import it.unimi.dsi.fastutil.ints.IntArraySet;
 import it.unimi.dsi.fastutil.ints.IntSet;
 
-import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.NonNullList;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -25,28 +25,37 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
+
+import appeng.api.upgrades.IUpgradeInventory;
+import appeng.menu.SlotSemantic;
+import appeng.menu.slot.AppEngSlot;
 import net.minecraft.world.item.crafting.CraftingInput;
 import net.minecraft.world.item.crafting.CraftingRecipe;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.item.crafting.SingleRecipeInput;
-import net.minecraft.world.item.crafting.SmithingRecipeInput;
 import net.minecraft.world.item.crafting.StonecutterRecipe;
 
 import appeng.api.config.Actionable;
+import appeng.api.crafting.IPatternDetails;
 import appeng.api.networking.security.IActionSource;
 import appeng.api.crafting.PatternDetailsHelper;
 import appeng.api.inventories.InternalInventory;
 import appeng.api.networking.IGrid;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
-import appeng.api.stacks.GenericStack;
 import appeng.core.definitions.AEItems;
 import appeng.crafting.pattern.AECraftingPattern;
 import appeng.crafting.pattern.AEProcessingPattern;
 import appeng.menu.SlotSemantics;
 import appeng.menu.guisync.GuiSync;
 import appeng.menu.implementations.MenuTypeBuilder;
+import appeng.api.storage.ITerminalHost;
+import appeng.api.storage.ILinkStatus;
+import appeng.api.storage.MEStorage;
+import appeng.api.upgrades.UpgradeInventories;
+import appeng.api.util.IConfigManager;
+import appeng.menu.ISubMenu;
 import appeng.menu.me.common.MEStorageMenu;
 import appeng.menu.slot.FakeSlot;
 import appeng.menu.slot.PatternTermSlot;
@@ -54,7 +63,8 @@ import appeng.menu.slot.RestrictedInputSlot;
 import appeng.parts.encoding.EncodingMode;
 import appeng.util.ConfigInventory;
 
-import io.github.lounode.ae2pattern.common.integration.polymorph.PolymorphCompat;
+import io.github.lounode.ae2pattern.integration.advancedae.AdvPatternSupport;
+import io.github.lounode.ae2pattern.integration.polymorph.PolymorphCompat;
 
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
@@ -88,6 +98,8 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
     private static final String ACTION_CYCLE_PROCESSING_OUTPUT = "cycleProcessingOutput";
     private static final String ACTION_MULTIPLY_OUTPUT = "multiplyOutput";
     private static final String ACTION_DIVIDE_OUTPUT = "divideOutput";
+    private static final String ACTION_SET_ADVANCED_MODE = "setAdvancedMode";
+    private static final String ACTION_SET_ADVANCED_SIDE = "setAdvancedSide";
     private static final String ACTION_TRANSFER_TO_DISK = "transferToDisk";
     private static final String ACTION_EXTRACT_FROM_DISK = "extractFromDisk";
 
@@ -226,6 +238,21 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
     @GuiSync(91)
     public boolean showUnmarkedDisks;
 
+    /** 升级槽里装着高级样板编码器——高级编码模式因此可用（屏幕上才会多出那一档）。 */
+    @GuiSync(90)
+    public boolean advancedModeAvailable;
+
+    /** 当前是否停在高级编码模式。它不在 AE2 的 {@link EncodingMode} 里（那个枚举不可扩展），是并列的一档。 */
+    @GuiSync(89)
+    public boolean advancedMode;
+
+    /**
+     * 样板输出栏那张高级样板每个输入声明的接入面：{@code Direction} 的序号，或 -1 表示「相邻」（没指定）。
+     * 逗号分隔、按输入顺序——面板上的按钮逐行跟着它亮。
+     */
+    @GuiSync(88)
+    public String advancedSides = "";
+
     /**
      * 客户端侧：最近一次从 EMI/JEI 导入的配方类别 id。绑定标记时优先用它——它才是「这是一台什么
      * 机器」的答案，编码模式只是四个粗类。为空则退回编码模式。
@@ -244,26 +271,8 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
     /** 客户端已收到多少次磁盘列表推送，用来判断“刚才要的刷新到货了没有”。 */
     private long diskListRevision;
 
-    /** serial → 磁盘所在供应器槽位的反查表（仅服务端使用）。 */
-    private final it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap<DiskRef> diskRefs = new it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap<>();
-    private static long nextDiskSerial = Long.MIN_VALUE;
-    /** 上次发送列表的指纹，避免无变化时重复全量推送。 */
-    private int lastDiskFingerprint;
-    private boolean fingerprintInitialized;
-
-    private record DiskRef(IPatternDiskHost host, int slot) {
-    }
-
-    /**
-     * A disk slot's value identity, built the same way the sync fingerprint does. Its purpose is to survive
-     * hosts that hand out a fresh adapter object on every collect (the Neo ECO integration does), where
-     * comparing {@link DiskRef} by reference would silently fail.
-     */
-    private record DiskSlotKey(BlockPos pos, int salt, int slot) {
-    }
-
-    /** The serial each disk slot last used, so a re-send can hand out the same one again. */
-    private final java.util.Map<DiskSlotKey, Long> diskSerials = new java.util.HashMap<>();
+    /** serial → 磁盘槽的反查与序列号沿用都在 {@link DiskIndex} 里，这里只持有它。 */
+    private final DiskIndex diskIndex = new DiskIndex();
 
     private final List<RecipeHolder<StonecutterRecipe>> stonecuttingRecipes = new java.util.ArrayList<>();
 
@@ -327,7 +336,32 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
                 SlotSemantics.ENCODED_PATTERN);
         this.encodedPatternSlot.setStackLimit(1);
 
+        // 升级槽：高级样板编码器放这儿。切忌别信「UPGRADES 槽的准入就是查登记表」——AE2 实际上只做一句
+        // instanceof UpgradeCardItem，所以槽自带一层自己的判定（见 TerminalUpgradeSlot）。
+        // AE2 的 MEStorageMenu 在构造里已经按 SlotSemantics.UPGRADE 建过一套（它的判定只认 UpgradeCardItem，
+        // 不看登记表），而 AE2 没有移除服务端槽的 API。那套槽在界面文档里没有坐标、画不出来，但仍然作为
+        // 槽存在（整理模组与拖放都会看见同一格的两份），所以先把它们按死，再由下面这一套顶替。
+        // 必须走 super：本类覆写了 getSlots(UPGRADE)（只返回自己那套），此刻自己的槽还没加——直接写
+        // getSlots(...) 是虚调用，只会拿到空列表，循环一次都不执行。
+        for (var builtByAe2 : super.getSlots(SlotSemantics.UPGRADE)) {
+            if (builtByAe2 instanceof AppEngSlot appEngSlot) {
+                appEngSlot.setSlotEnabled(false);
+            }
+        }
+        // 升级槽：高级样板编码器放这儿（无线终端那侧要它）。面板版终端不摆——它的高级编码能力不由升级卡
+        // 给（产品口径），见 supportsUpgradeSlots。另，切忌信「UPGRADES 槽的准入就是查登记表」：AE2 实际
+        // 上只做一句 instanceof UpgradeCardItem，所以槽自带一层自己的判定（见 TerminalUpgradeSlot）。
+        if (supportsUpgradeSlots()) {
+            var upgrades = host.getUpgrades();
+            for (int i = 0; i < upgrades.size(); i++) {
+                this.addSlot(new TerminalUpgradeSlot(upgrades, i), SlotSemantics.UPGRADE);
+            }
+        }
+
         registerClientAction(ACTION_ENCODE, this::encode);
+        registerClientAction(ACTION_SET_ADVANCED_MODE, Boolean.class, this::setAdvancedMode);
+        registerClientAction(ACTION_SET_ADVANCED_SIDE, AdvancedSideChange.class,
+                change -> applyAdvancedSide(change.input(), change.side()));
         registerClientAction(ACTION_CLEAR, this::clear);
         registerClientAction(ACTION_SET_MODE, EncodingMode.class, encodingLogic::setMode);
         registerClientAction(ACTION_CYCLE_PROCESSING_OUTPUT, this::cycleProcessingOutput);
@@ -645,7 +679,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
         Component refusedName = null;
         PatternDiskItem.InsertFailure refusedReason = null;
         for (long serial : serials) {
-            var ref = diskRefs.get(serial);
+            var ref = diskIndex.refOf(serial);
             if (ref == null) {
                 // 客户端列表可能比服务端旧：那张盘已经被拿走了。全部失败时再一起说，免得顺位中途刷屏。
                 stale = true;
@@ -736,7 +770,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
         if (request == null || request.target == null) {
             return;
         }
-        var ref = diskRefs.get(request.serial);
+        var ref = diskIndex.refOf(request.serial);
         if (ref == null) {
             notifyStaleTarget();
             return;
@@ -847,6 +881,67 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
     }
 
     /** 没写成的回执：光标上有东西就说清是哪件认不出来，光标为空则只说没有可用的类别。 */
+    /**
+     * 菜单要不要给宿主摆升级槽。
+     *
+     * <p>默认不摆：面板版终端的高级编码能力不由升级卡给（产品口径），所以连槽都不出。无线版覆盖成
+     * true——那边要放 AdvancedAE 的高级样板编码器。</p>
+     */
+    protected boolean supportsUpgradeSlots() {
+        return false;
+    }
+
+    /**
+     * 升级槽只暴露本模组这一套。
+     *
+     * <p>AE2 的 {@code MEStorageMenu} 在构造里已经无条件建过一套（判定是 {@code instanceof UpgradeCardItem}，
+     * 不看登记表），而 AE2 没有移除服务端槽的 API。那套槽在界面文档里没有坐标、本来就画不出来，这里再把它们
+     * 从「按语义取槽」的结果里剔掉：AE2WTLib 的升级面板正是按这个结果排布槽位的，留着它就会去摆 AE2 那两格
+     * 与真库存同步的镜像格。</p>
+     */
+    @Override
+    public java.util.List<net.minecraft.world.inventory.Slot> getSlots(SlotSemantic semantic) {
+        var slots = super.getSlots(semantic);
+        if (semantic != SlotSemantics.UPGRADE) {
+            return slots;
+        }
+        var ours = new java.util.ArrayList<net.minecraft.world.inventory.Slot>(slots.size());
+        for (var slot : slots) {
+            if (slot instanceof TerminalUpgradeSlot) {
+                ours.add(slot);
+            }
+        }
+        return ours;
+    }
+
+    /**
+     * 升级槽：准入改用「登记表」而不是 AE2 的物品类型判定。
+     *
+     * <p>AE2 的 {@code RestrictedInputSlot} 在 {@code UPGRADES} 语义下只认 {@code UpgradeCardItem} 的子类
+     * （{@code Upgrades.isUpgradeCardItem} 内部就是一句 {@code instanceof}），**完全不看 {@code Upgrades}
+     * 登记表**。AdvancedAE 的高级样板编码器是 Curios 饰品、不属于那个类，于是「在表里登记过」也照旧被拒：
+     * 槽在那儿、卡拖进去弹回来、还没有任何提示。这里把判定换成库存自己的登记结果——登记过就能放。</p>
+     */
+    private static final class TerminalUpgradeSlot extends RestrictedInputSlot {
+
+        private final IUpgradeInventory upgrades;
+
+        TerminalUpgradeSlot(IUpgradeInventory upgrades, int index) {
+            super(PlacableItemType.UPGRADES, upgrades, index);
+            this.upgrades = upgrades;
+        }
+
+        @Override
+        public boolean mayPlace(ItemStack stack) {
+            if (super.mayPlace(stack)) {
+                return true;
+            }
+            // 回退只补「物品类型」那一条闸（AE2 只认 UpgradeCardItem）；其余闸在 super 里都是私有的，
+            // 这里自己重放一遍，免得把卡放进一个已经被禁用/收起或不允许编辑的格里。
+            return isActive() && !stack.isEmpty() && this.upgrades.getMaxInstalled(stack.getItem()) > 0;
+        }
+    }
+
     private void notifyMarkNotWritten() {
         if (!(getPlayer() instanceof ServerPlayer player)) {
             return;
@@ -879,7 +974,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
             return;
         }
 
-        var ref = diskRefs.get(serial);
+        var ref = diskIndex.refOf(serial);
         if (ref == null) {
             // 客户端列表可能比服务端旧：那张盘已经被拿走了。不提示的话，玩家只会看到点了没反应。
             notifyStaleTarget();
@@ -921,35 +1016,13 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
      * （{@link #bindSearchMark(long)}，它把搜索栏文本原样存下）。</p>
      *
      * <p>两套写法看起来是两种标记，但显示与搜索会把模式标记归一成对应的类别（见
-     * {@link #categoryForMode}），所以玩家看到的、搜到的名字是一致的。</p>
+     * {@link DiskMarkRules#categoryForMode}），所以玩家看到的、搜到的名字是一致的。</p>
      */
     public String deriveMarkId() {
-        return pendingRecipeCategory != null && !pendingRecipeCategory.isEmpty()
-                ? "#" + pendingRecipeCategory
-                : modeMarkId(this.mode);
-    }
-
-    /**
-     * 编码模式对应的规范配方类别 id，没有公认类别时返回 null。“导入过”的盘用配方自己的类别，
-     * “手动编码”的盘只能用模式，把模式映射到类别是为了让这两种盘叫同一个名字。
-     */
-    @Nullable
-    public static String categoryForMode(EncodingMode mode) {
-        return switch (mode) {
-            case CRAFTING -> "minecraft:crafting";
-            case STONECUTTING -> "minecraft:stonecutting";
-            case SMITHING_TABLE -> "minecraft:smithing";
-            // 处理没有唯一的类别：不同机器各有各的 EMI 类别，只能保留模式自己的名字。
-            case PROCESSING -> null;
-        };
+        return DiskMarkRules.deriveMarkId(pendingRecipeCategory, this.mode);
     }
 
     /** The mark standing for an encoding mode, for disks marked without an imported recipe. */
-    public static String modeMarkId(EncodingMode mode) {
-        return "#mode:" + mode.name().toLowerCase(Locale.ROOT);
-    }
-
-    /** Remembers the recipe category of the recipe just imported, for {@link #deriveMarkId()}. */
     public void setPendingRecipeCategory(@Nullable String categoryId) {
         this.pendingRecipeCategory = categoryId;
     }
@@ -1048,17 +1121,17 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
         if (text == null) return;
 
         // 值来自客户端，服务端自己收紧：去掉控制字符与 §，再裁掉首尾空白。
-        text = DISALLOWED_NAME_CHARS.matcher(text).replaceAll("").strip();
+        text = DiskMarkRules.sanitizeName(text.strip());
         // 只有“#”一个字符不算标记，当成空——否则盘上会多出一个看不出内容的标记。
         String mark = text.isEmpty() ? null : (text.startsWith("#") ? text : "#" + text);
-        if (mark != null && mark.length() > MAX_DISK_NAME_LENGTH) {
-            mark = mark.substring(0, MAX_DISK_NAME_LENGTH);
+        if (mark != null && mark.length() > DiskMarkRules.MAX_DISK_NAME_LENGTH) {
+            mark = mark.substring(0, DiskMarkRules.MAX_DISK_NAME_LENGTH);
         }
         if (mark != null && mark.length() <= 1) {
             mark = null;
         }
 
-        var ref = diskRefs.get(serial);
+        var ref = diskIndex.refOf(serial);
         if (ref == null) return;
         var inv = ref.host().getDiskInventory();
         var stack = inv.getStackInSlot(ref.slot());
@@ -1081,12 +1154,6 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
         this.pendingDiskName = name;
     }
 
-    /** 磁盘名的上限，与原版铁砧一致。 */
-    private static final int MAX_DISK_NAME_LENGTH = 50;
-
-    /** 名字里不允许出现的字符：控制字符与 § 格式码。客户端送来的串不能带着它们进物品组件。 */
-    private static final Pattern DISALLOWED_NAME_CHARS = Pattern.compile("[\\p{Cntrl}\u00a7]");
-
     /**
      * Renames the disk identified by serial to the name the client resolved. It travels as its own action
      * just ahead of the rename, the same way {@link #bindPrefix(long)} carries the recipe category: the name
@@ -1105,13 +1172,10 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
         if (name == null || name.isEmpty()) return;
 
         // 名字来自客户端，所以服务端要自己收紧一遍：改包客户端可以送任意长的串或不含格式字符的串。
-        name = DISALLOWED_NAME_CHARS.matcher(name).replaceAll("");
-        if (name.length() > MAX_DISK_NAME_LENGTH) {
-            name = name.substring(0, MAX_DISK_NAME_LENGTH);
-        }
+        name = DiskMarkRules.sanitizeName(name);
         if (name.isEmpty()) return;
 
-        var ref = diskRefs.get(serial);
+        var ref = diskIndex.refOf(serial);
         if (ref == null) return;
 
         var inv = ref.host().getDiskInventory();
@@ -1240,39 +1304,9 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
      *              have reached it yet.
      */
     private void syncDiskList(boolean force) {
-        // 收集当前网格中所有磁盘宿主的磁盘槽（item 类型为 PatternDiskItem 的非空槽）
-        var hosts = collectDiskHosts();
-        var slots = new java.util.ArrayList<DiskRef>();
-        for (var host : hosts) {
-            collectHostDisks(host, slots);
-        }
-
-        // 宿主名单也进指纹：新插一台还没插盘的供应器、或把最后一盘抽走，"磁盘槽"那部分指纹一点没变，
-        // 但表要跟着变（管理终端要能看见没插盘的机器以及它还剩多少空槽）。
-        int fingerprint = computeDiskFingerprint(slots, hosts);
-        if (!force && fingerprintInitialized && fingerprint == lastDiskFingerprint) {
+        var entries = diskIndex.rebuild(collectDiskHosts(), force);
+        if (entries == null) {
             return; // unchanged: skip full resend
-        }
-        lastDiskFingerprint = fingerprint;
-        fingerprintInitialized = true;
-
-        // Rebuild serial mapping and full packet. Serials stay attached to the same disk slot across
-        // refreshes - matched by value, not by adapter object - because the client uses them to name the disk
-        // it is acting on, and handing out new ones would make an in-flight action point at the wrong disk.
-        var previousSerials = new java.util.HashMap<>(diskSerials);
-        diskSerials.clear();
-        diskRefs.clear();
-        var entries = new java.util.ArrayList<DiskListPayload.DiskEntry>();
-        for (var ref : slots) {
-            var key = new DiskSlotKey(ref.host().getBlockPos(), ref.host().getIdentitySalt(), ref.slot());
-            var serial = previousSerials.get(key);
-            if (serial == null) {
-                serial = nextDiskSerial++;
-            }
-            diskSerials.put(key, serial);
-            diskRefs.put(serial, ref);
-            var stack = ref.host().getDiskInventory().getStackInSlot(ref.slot());
-            entries.add(new DiskListPayload.DiskEntry(serial, stack.copy()));
         }
         sendPacketToClient(new DiskListPayload(entries));
         onDiskListRebuilt(entries);
@@ -1284,16 +1318,14 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
     protected void onDiskListRebuilt(java.util.List<DiskListPayload.DiskEntry> entries) {
     }
 
-    /** 子类用：磁盘序列号对应的宿主；未知返回 {@code null}。父类的 diskRefs 是私有的，这里只开只读口。 */
+    /** 子类用：磁盘序列号对应的宿主；未知返回 {@code null}。索引是私有的，这里只开只读口。 */
     protected @org.jetbrains.annotations.Nullable IPatternDiskHost diskHostOf(long serial) {
-        var ref = diskRefs.get(serial);
-        return ref == null ? null : ref.host();
+        return diskIndex.hostOf(serial);
     }
 
     /** 子类用：磁盘序列号在宿主库存里的槽位；未知返回 -1。 */
     protected int diskSlotOf(long serial) {
-        var ref = diskRefs.get(serial);
-        return ref == null ? -1 : ref.slot();
+        return diskIndex.slotOf(serial);
     }
 
     /**
@@ -1319,38 +1351,6 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
      */
     protected List<IPatternDiskHost> collectDiskHosts() {
         return PatternDiskApi.diskHosts(getGrid());
-    }
-
-    /** Appends every pattern disk currently sitting in {@code host}'s disk inventory. */
-    private static void collectHostDisks(IPatternDiskHost host, List<DiskRef> slots) {
-        var inv = host.getDiskInventory();
-        for (int i = 0; i < inv.size(); i++) {
-            var stack = inv.getStackInSlot(i);
-            if (stack.isEmpty() || !(stack.getItem() instanceof PatternDiskItem)) continue;
-            slots.add(new DiskRef(host, i));
-        }
-    }
-
-    /**
-     * Fingerprint over the set of disk slots: item id, slot index, host position and the host's own
-     * identity salt (two panels on one cable share a position).
-     */
-    private static int computeDiskFingerprint(List<DiskRef> slots, List<IPatternDiskHost> hosts) {
-        int hash = 1;
-        for (var host : hosts) {
-            // 位置 + 身份盐就认定了宿主（同一根电缆上的两个面板位置相同、盐不同）。
-            hash = 31 * hash + host.getBlockPos().hashCode();
-            hash = 31 * hash + host.getIdentitySalt();
-        }
-        for (var ref : slots) {
-            var stack = ref.host().getDiskInventory().getStackInSlot(ref.slot());
-            hash = 31 * hash + net.minecraft.core.registries.BuiltInRegistries.ITEM.getId(stack.getItem());
-            hash = 31 * hash + stack.getComponentsPatch().hashCode();
-            hash = 31 * hash + ref.host().getBlockPos().hashCode();
-            hash = 31 * hash + ref.host().getIdentitySalt();
-            hash = 31 * hash + ref.slot();
-        }
-        return hash;
     }
 
     /**
@@ -1393,13 +1393,13 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
         if (isClientSide()) {
             return this.recipePrefix.isEmpty() ? null : this.recipePrefix;
         }
-        return modeMarkId(this.mode);
+        return DiskMarkRules.modeMarkId(this.mode);
     }
 
     @Nullable
     private String resolveCurrentRecipePrefix() {
         // 兼容旧调用：当前模式的标记即当前前缀语义
-        return modeMarkId(this.mode);
+        return DiskMarkRules.modeMarkId(this.mode);
     }
 
     // ---- Accessors -----------------------------------------------------------
@@ -1429,6 +1429,8 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
             if (this.mode != encodingLogic.getMode()) {
                 this.setMode(encodingLogic.getMode());
             }
+            // 高级档与 mode 并列，权威值同样在 logic 里：那是唯一跟着终端持久化的地方，关屏重开不掉档。
+            this.advancedMode = encodingLogic.isAdvancedMode();
             this.substitute = encodingLogic.isSubstitution();
             this.substituteFluids = encodingLogic.isFluidSubstitution();
             // 两个开关的权威值在部件自己的 logic 里（与替换同款），服务端每 tick 回读进菜单字段再下发客户端。
@@ -1442,6 +1444,11 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
                 migrateLegacyBlankPatterns();
             }
             blankPatternSlot.updateMirror(getNetworkBlankPatternCount());
+            this.advancedModeAvailable = hasAdvancedEncoder();
+            if (!this.advancedModeAvailable && this.advancedMode) {
+                // 卡被拿走了：模式立刻退出去，否则面板会停在一个再也读不出方向的空档上。
+                this.setAdvancedMode(false);
+            }
         }
     }
 
@@ -1489,40 +1496,18 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
     public void cycleProcessingOutput() {
         if (isClientSide()) {
             sendClientAction(ACTION_CYCLE_PROCESSING_OUTPUT);
-        } else {
-            if (mode != EncodingMode.PROCESSING) {
-                return;
-            }
-            // 仅有 0/1 个非空输出时无可轮换，直接返回，避免单输出被清空
-            if (!canCycleProcessingOutputs()) {
-                return;
-            }
-
-            var newOutputs = new ItemStack[getProcessingOutputSlots().length];
-            for (int i = 0; i < processingOutputSlots.length; i++) {
-                newOutputs[i] = ItemStack.EMPTY;
-                if (!processingOutputSlots[i].getItem().isEmpty()) {
-                    // Search for the next, skipping empty slots
-                    for (int j = 1; j < processingOutputSlots.length; j++) {
-                        var nextItem = processingOutputSlots[(i + j) % processingOutputSlots.length].getItem();
-                        if (!nextItem.isEmpty()) {
-                            newOutputs[i] = nextItem;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            for (int i = 0; i < newOutputs.length; i++) {
-                processingOutputSlots[i].set(newOutputs[i]);
-            }
+            return;
         }
+        // 轮换的算术在 ProcessingOutputMath；这里只判「这个模式该不该轮换」。
+        if (mode != EncodingMode.PROCESSING || !canCycleProcessingOutputs()) {
+            return;
+        }
+        ProcessingOutputMath.cycle(processingOutputSlots);
     }
 
     // 仅当已编码多个处理输出时可轮换
     public boolean canCycleProcessingOutputs() {
-        return mode == EncodingMode.PROCESSING
-                && Arrays.stream(processingOutputSlots).filter(s -> !s.getItem().isEmpty()).count() > 1;
+        return mode == EncodingMode.PROCESSING && ProcessingOutputMath.canCycle(processingOutputSlots);
     }
 
     /**
@@ -1536,8 +1521,8 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
         if (mode != EncodingMode.PROCESSING || factor <= 0) {
             return;
         }
-        multiplyInventory(encodedInputsInv, factor);
-        multiplyInventory(encodedOutputsInv, factor);
+        ProcessingOutputMath.multiply(encodedInputsInv, factor);
+        ProcessingOutputMath.multiply(encodedOutputsInv, factor);
         broadcastChanges();
     }
 
@@ -1554,40 +1539,12 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
             return;
         }
         // 先校验两个库存中全部非空物品均可整除，任一不满足则整体不处理
-        for (var inv : new ConfigInventory[] { encodedInputsInv, encodedOutputsInv }) {
-            for (int i = 0; i < inv.size(); i++) {
-                var stack = inv.getStack(i);
-                if (stack == null) {
-                    continue;
-                }
-                if (stack.amount() <= 0 || stack.amount() % factor != 0) {
-                    return;
-                }
-            }
+        if (!ProcessingOutputMath.allDivisible(factor, encodedInputsInv, encodedOutputsInv)) {
+            return;
         }
-        divideInventory(encodedInputsInv, factor);
-        divideInventory(encodedOutputsInv, factor);
+        ProcessingOutputMath.divide(encodedInputsInv, factor);
+        ProcessingOutputMath.divide(encodedOutputsInv, factor);
         broadcastChanges();
-    }
-
-    /** 按槽位遍历倍乘全部非空堆叠，避免压缩索引错位。 */
-    private static void multiplyInventory(ConfigInventory inv, int factor) {
-        for (int i = 0; i < inv.size(); i++) {
-            var stack = inv.getStack(i);
-            if (stack != null) {
-                inv.setStack(i, new GenericStack(stack.what(), stack.amount() * factor));
-            }
-        }
-    }
-
-    /** 按槽位遍历倍除全部非空堆叠，避免压缩索引错位。 */
-    private static void divideInventory(ConfigInventory inv, int factor) {
-        for (int i = 0; i < inv.size(); i++) {
-            var stack = inv.getStack(i);
-            if (stack != null) {
-                inv.setStack(i, new GenericStack(stack.what(), stack.amount() / factor));
-            }
-        }
     }
 
     public void clear() {
@@ -1602,6 +1559,179 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
     }
 
     public EncodingMode getMode() { return this.mode; }
+
+    // ---- 高级编码模式 --------------------------------------------------------
+
+    /**
+     * 高级编码模式编辑的是样板输出栏里那张**已编码**的高级样板：读出它的输入与「输入 → 接入面」表，让玩家
+     * 逐个输入改面，再整张重写回去。
+     *
+     * <p>它不动样板的输入与输出，只动方向表——那正是 AdvancedAE 自己的编码器编不出来的东西，也是本模组的
+     * 供应器按面投递时要读的东西。没有产物槽、也不碰编码按钮：产物就是输出栏里原来那张样板。</p>
+     */
+    public record AdvancedSideChange(int input, int side) {
+    }
+
+    /** 每个输入槽分配的面序号；-1 = 相邻。客户端与服务端都读它。 */
+    public int advancedSideAt(int slot) {
+        var parts = this.advancedSides.isEmpty() ? new String[0] : this.advancedSides.split(",");
+        if (slot < 0 || slot >= parts.length) {
+            return -1;
+        }
+        try {
+            return Integer.parseInt(parts[slot].trim());
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+
+    /** 是否停在高级编码模式（供编码路径判断要不要编成高级处理样板）。 */
+    public boolean isAdvancedMode() {
+        return this.advancedMode;
+    }
+
+    /**
+     * 编辑区每个输入槽分配的面，按 {@link AEKey} 索引；没分配（相邻）的不放键。
+     *
+     * <p>编码路径上的「同物品合并」会改变输入的下标，所以方向表按 key 递过去。</p>
+     */
+    @Override
+    public java.util.Map<AEKey, Direction> advancedSidesByKey() {
+        var out = new LinkedHashMap<AEKey, Direction>();
+        for (int i = 0; i < encodedInputsInv.size(); i++) {
+            var key = encodedInputsInv.getKey(i);
+            if (key == null) {
+                continue;
+            }
+            var side = advancedSideAt(i);
+            // 没分配的格子显式放进一个 null（「未指定，交给供应器按相邻那面」），与上游自己的
+            // AdvPatternEncoderMenu 同一写法（它对每个输入都 put(key, null)）。AdvancedAE 的编码会把它
+            // 翻成 NULLDIR，缺键与 null 值等价——这里补全只是为了少一条隐含约定。
+            out.put(key, side < 0 ? null : Direction.values()[side]);
+        }
+        return out;
+    }
+
+    /** 升级槽里是否装着高级样板编码器。 */
+    private boolean hasAdvancedEncoder() {
+        for (var stack : host.getUpgrades()) {
+            if (!stack.isEmpty()
+                    && BuiltInRegistries.ITEM.getKey(stack.getItem()).equals(AdvPatternSupport.ADVANCED_ENCODER)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 切换高级编码模式。进去时把输出栏那张样板的原材料拦进编辑区、方向归零；出来时只关开关。
+     *
+     * <p>不把方向写回任何样板：它只在点「编写样板」那一刻并进去（见
+     * {@link PatternEncodingLogic#encodeProcessingPattern()}）。所以进出模式不会破坏输出栏里那张样板。</p>
+     *
+     * <p>接受**普通处理样板**：它就是「玩家已经编好的样板」，而高级化的意思正是给它的每个输入补一个接入
+     * 面。要求先有一张高级样板会变成一个悖论——那样板本来就是这条路要产出的东西。</p>
+     */
+    public void setAdvancedMode(boolean on) {
+        if (isClientSide()) {
+            // 客户端只换自己的显示状态：那几格原材料得由服务端从样板里摊（那是世界数据）。
+            this.advancedMode = on;
+            this.advancedSides = "";
+            sendClientAction(ACTION_SET_ADVANCED_MODE, on);
+            return;
+        }
+        this.advancedMode = on;
+        this.advancedSides = "";
+        // 权威值写进 logic（与 mode 同处）：它们一起回答「当前在哪一档」，得跟着终端走。
+        this.encodingLogic.setAdvancedMode(on);
+        if (!on) {
+            return;
+        }
+        var details = PatternDetailsHelper.decodePattern(this.encodedPatternSlot.getItem(), getLevel());
+        // 普通处理样板与高级样板都得收：前者是「玩家已编好、想给它补面」的那张，后者是「回来改面」的那张。
+        // 注意两者**不是**同一个类——AE2 的是 AEProcessingPattern，AdvancedAE 的 AdvProcessingPattern 只
+        // 实现 IPatternDetails，所以不能只判 AE2 那个类。
+        var isPlainProcessing = details instanceof AEProcessingPattern;
+        var isAdvanced = AdvPatternSupport.isEditable(details);
+        if (!isPlainProcessing && !isAdvanced) {
+            // 输出栏里没有可编辑的处理样板：停在空面板上，并说清楚为什么。
+            // 不回滚模式：玩家常常是先切进来、再往输出栏放样板；但一个空档配一句沉默很容易被当成坏了。
+            if (getPlayer() instanceof ServerPlayer serverPlayer) {
+                serverPlayer.sendSystemMessage(Component.translatable(
+                        "gui.ae2_pattern_disk.encoding_terminal.advanced_needs_pattern"));
+            }
+            return;
+        }
+        // 输入从样板的「实际材料表」读，而不是从 getInputs()：后者给的是每格的候选模板，倍数与替代品都在
+        // 里面。高级样板走 AdvancedAE 的接口，普通处理样板直接读 AE2 自己那一份（getSparseInputs 是 public）。
+        var inputs = isAdvanced
+                ? AdvPatternSupport.sparseInputs(details)
+                : ((AEProcessingPattern) details).getSparseInputs();
+        if (inputs == null) {
+            return;
+        }
+        encodedInputsInv.clear();
+        for (int i = 0; i < inputs.size() && i < encodedInputsInv.size(); i++) {
+            encodedInputsInv.setStack(i, inputs.get(i));
+        }
+        // 输出也要摊：编码路径要求首个输出非空（那是「主产物」的定义），空着必定编不出来。
+        // 高级模式下 PROCESSING_OUTPUTS 槽是藏起来的，玩家也补不了，所以必须在这里给全。
+        encodedOutputsInv.clear();
+        var outputs = details.getOutputs();
+        for (int i = 0; i < outputs.size() && i < encodedOutputsInv.size(); i++) {
+            encodedOutputsInv.setStack(i, outputs.get(i));
+        }
+
+        // 把样板已有的面读回来。玩家进来常常是「看一眼再改一格」，不播种的话面板会把每一行都显示成
+        // 「相邻」，那时点「编写样板」就把原有的面按 NULLDIR 写回去——配置被静默丢掉，还会顺着写盘落进磁盘。
+        // 只有高级样板有这张表；普通处理样板没有面可读，保持全 -1。
+        var existing = AdvPatternSupport.directionMap(details);
+        if (existing != null && !existing.isEmpty()) {
+            var builder = new StringBuilder();
+            for (int i = 0; i < encodedInputsInv.size(); i++) {
+                if (i > 0) {
+                    builder.append(',');
+                }
+                var key = encodedInputsInv.getKey(i);
+                var direction = key == null ? null : existing.get(key);
+                builder.append(direction == null ? -1 : direction.ordinal());
+            }
+            this.advancedSides = builder.toString();
+        }
+    }
+
+    /**
+     * 客户端点某个方向按钮：本地先改（界面立刻响应），再发给服务端；服务端的改动会同步回来。
+     */
+    public void setAdvancedSide(int input, int side) {
+        if (isClientSide()) {
+            applyAdvancedSide(input, side);
+            sendClientAction(ACTION_SET_ADVANCED_SIDE, new AdvancedSideChange(input, side));
+        } else {
+            applyAdvancedSide(input, side);
+        }
+    }
+
+    /** 改本次编辑的方向表；样板一个字节也不动。 */
+    private void applyAdvancedSide(int input, int side) {
+        if (input < 0) {
+            return;
+        }
+        var size = Math.max(input + 1, encodedInputsInv.size());
+        var sides = new int[size];
+        for (int i = 0; i < size; i++) {
+            sides[i] = advancedSideAt(i);
+        }
+        sides[input] = side;
+        var out = new StringBuilder();
+        for (int value : sides) {
+            if (out.length() > 0) {
+                out.append(',');
+            }
+            out.append(value);
+        }
+        this.advancedSides = out.toString();
+    }
 
     public void setMode(EncodingMode mode) {
         if (this.mode != mode && mode == EncodingMode.STONECUTTING) {

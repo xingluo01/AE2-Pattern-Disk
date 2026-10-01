@@ -14,6 +14,7 @@ import appeng.parts.encoding.EncodingMode;
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 import io.github.lounode.ae2pattern.client.integration.EmiMarkNames;
 import io.github.lounode.ae2pattern.client.integration.JeiMarkNames;
+import io.github.lounode.ae2pattern.common.menu.DiskMarkRules;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
 
 /**
@@ -65,7 +66,7 @@ public final class PatternDiskMarks {
             }
             // 手动编码写下的盘用的是模式标记，而导入过配方的盘用配方类别。把模式归一到它对应的规范
             // 类别名，两种盘就叫同一个名字（否则切石会同时看到“切石”和“切石样板”），搜索也才搜得到。
-            var canonicalId = PatternDiskEncodingTermMenu.categoryForMode(mode);
+            var canonicalId = DiskMarkRules.categoryForMode(mode);
             var canonicalName = canonicalId == null ? null : findCategoryName(canonicalId);
             return canonicalName != null
                     ? canonicalName

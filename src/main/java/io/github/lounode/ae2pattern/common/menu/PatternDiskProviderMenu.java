@@ -5,11 +5,14 @@ import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 
+import org.jetbrains.annotations.Nullable;
+
 import appeng.api.config.LockCraftingMode;
 import appeng.api.config.Settings;
 import appeng.api.config.YesNo;
 import appeng.api.inventories.InternalInventory;
 import appeng.api.stacks.GenericStack;
+import appeng.api.upgrades.IUpgradeInventory;
 import appeng.helpers.externalstorage.GenericStackInv;
 import appeng.helpers.patternprovider.PatternProviderReturnInventory;
 import appeng.menu.AEBaseMenu;
@@ -20,6 +23,7 @@ import appeng.menu.slot.AppEngSlot;
 
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskProviderHost;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
+import io.github.lounode.ae2pattern.integration.appflux.AppFluxInductionCard;
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 
 /**
@@ -81,7 +85,30 @@ public class PatternDiskProviderMenu extends AEBaseMenu {
             this.addSlot(new AppEngSlot(returnInv, i), SlotSemantics.STORAGE);
         }
 
+        // Applied Flux 的感应卡槽（软依赖）：它给 AE2 的供应器逻辑挂了一格升级库存、并把宿主接口扩成
+        // IUpgradeableObject，这里把那格显示出来。取不到就没有这一格，供应器与从前一模一样。
+        this.setupUpgradesOnce(AppFluxInductionCard.upgradesOf(host));
+
         this.createPlayerInventorySlots(playerInv);
+    }
+
+    /**
+     * 加一格升级槽，但已经加过同一个库存就不再加第二次。
+     *
+     * <p>单看父类这一处用不上它；用得上的是子类：自装配（陨石）版的宿主自己也实现 {@code getUpgrades()}
+     * （转发 AECS 的升级库存），而 {@link AppFluxInductionCard#upgradesOf} 是反射调的同一方法——两边拿到
+     * 的是同一个库存，各加一次就会在屏幕上摆出两个指向同一格、内容同步的双胞胎槽。</p>
+     */
+    protected final void setupUpgradesOnce(@Nullable IUpgradeInventory upgrades) {
+        if (upgrades == null) {
+            return;
+        }
+        for (var slot : getSlots(SlotSemantics.UPGRADE)) {
+            if (slot instanceof AppEngSlot appEngSlot && appEngSlot.getInventory() == upgrades) {
+                return;
+            }
+        }
+        setupUpgrades(upgrades);
     }
 
     @Override

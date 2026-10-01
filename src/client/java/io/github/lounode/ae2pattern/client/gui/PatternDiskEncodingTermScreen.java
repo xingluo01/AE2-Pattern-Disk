@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import org.anti_ad.mc.ipn.api.IPNPlayerSideOnly;
 import org.jetbrains.annotations.Nullable;
@@ -38,6 +37,7 @@ import appeng.client.gui.style.Blitter;
 import appeng.client.gui.style.ScreenStyle;
 import appeng.client.gui.widgets.AETextField;
 import appeng.client.gui.widgets.ActionButton;
+import appeng.core.AELog;
 import appeng.core.localization.ButtonToolTips;
 import appeng.core.network.serverbound.InventoryActionPacket;
 import appeng.helpers.InventoryAction;
@@ -45,10 +45,10 @@ import appeng.menu.SlotSemantics;
 import appeng.parts.encoding.EncodingMode;
 
 import io.github.lounode.ae2pattern.AEPatternRegistries;
-import io.github.lounode.ae2pattern.client.integration.JechPinyin;
 import io.github.lounode.ae2pattern.client.integration.MachineRecipeTypes;
 import io.github.lounode.ae2pattern.client.sort.NaturalSort;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
+import io.github.lounode.ae2pattern.common.menu.DiskMarkRules;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
 import io.github.lounode.ae2pattern.client.gui.DiskListPanel.DiskEntry;
 
@@ -91,6 +91,11 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/states.png"))
             .src(48, 16, 16, 16);
 
+    // states.png (64,16,16,16)：高级编码模式的档位图标。装上高级样板编码器后，它才会进模式循环。
+    private static final Blitter ICON_ADVANCED = Blitter
+            .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/states.png"))
+            .src(64, 16, 16, 16);
+
     // states.png (16,0,16,8)：左 8x8 = 强制列出全部磁盘（含无标记的），右 8x8 = 只列有标记的
     private static final Blitter ICON_SHOW_UNMARKED_ON = Blitter
             .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/states.png"))
@@ -108,11 +113,16 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             .src(226, 224, 18, 20);
 
     private final Map<EncodingMode, DiskEncodingModePanel> modePanels = new EnumMap<>(EncodingMode.class);
+    /** 高级编码模式面板。它不在 {@link EncodingMode} 里（那个枚举不可扩展），所以单拎一份。 */
+    private final AdvancedEncodingPanel advancedPanel;
     private final DiskListPanel diskListPanel;
     protected final StatesIconButton modeCycleButton;
 
     /** 上次写进模式轮换按钮的 tooltip 输入；变了才重建那几行文本，不必每帧新建。 */
     private EncodingMode tooltipMode;
+
+    /** 上一次提示语用的是不是高级档；与 tooltipMode 一起决定何时重写它。 */
+    private boolean tooltipAdvanced;
 
     /**
      * 附加排序开关：按 mod 排序时出现的二级排序，默认开。按钮贴在 AE2 那枚「排序按」后面，只在
@@ -168,6 +178,18 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             modePanels.put(mode, panel);
         }
 
+        // 高级编码模式：AE2 的 EncodingMode 没有它，单独挂一份，可见性跟着菜单的 advancedMode。
+        //
+        // 这份控件得出现在会构造本屏幕类的样式文档里（编码终端、管理终端各一份，两个无线版由 include 继承）
+        // —— AE2 对缺失的键不是「不画」，而是在开界面的那一刻抛异常，整个屏幕打不开。
+        // ExtendedAE Plus 的上传子屏继承本类、却带着它自己的样式文档，所以这里容一手：挂不上就算了。
+        this.advancedPanel = new AdvancedEncodingPanel(this, widgets);
+        try {
+            widgets.add("advancedPanel", this.advancedPanel);
+        } catch (IllegalStateException e) {
+            AELog.debug("Screen style has no 'advancedPanel' widget; the advanced encoding panel is not shown");
+        }
+
         // 注册磁盘列表面板（管理终端不要这个面板：它把磁盘铺进自己的表里，复用面板只为共享搜索状态）
         this.diskListPanel = new DiskListPanel();
         if (usesDiskListPanel()) {
@@ -193,7 +215,7 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
 
         // 模式轮换按钮（左侧工具栏）—— states.png 项目内图标
         this.modeCycleButton = new StatesIconButton(
-                () -> switch (getMenu().getMode()) {
+                () -> getMenu().advancedMode ? ICON_ADVANCED : switch (getMenu().getMode()) {
                     case CRAFTING -> ICON_CRAFTING;
                     case PROCESSING -> ICON_PROCESSING;
                     case SMITHING_TABLE -> ICON_SMITHING;
@@ -333,6 +355,12 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     }
 
     private void cycleMode() {
+        // 高级编码是并列的一档，不在 AE2 的 EncodingMode 里：装上高级样板编码器后，切石之后先经过它。
+        if (getMenu().advancedMode) {
+            getMenu().setAdvancedMode(false);
+            getMenu().setMode(EncodingMode.CRAFTING);
+            return;
+        }
         var current = getMenu().getMode();
         var next = switch (current) {
             case CRAFTING -> EncodingMode.PROCESSING;
@@ -340,6 +368,9 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             case SMITHING_TABLE -> EncodingMode.STONECUTTING;
             case STONECUTTING -> EncodingMode.CRAFTING;
         };
+        if (current == EncodingMode.STONECUTTING && getMenu().advancedModeAvailable) {
+            getMenu().setAdvancedMode(true);
+        }
         getMenu().setMode(next);
     }
 
@@ -357,20 +388,27 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             this.naturalSortButton.update(getSortBy());
         }
 
-        // 模式轮换按钮的提示语：第一行就是它现在所属的配方类型，第二行才是「点一下换一个」。
+        // 模式轮换按钮的提示语：第一行就是它现在所处的档位，第二行才是「点一下换一个」。
+        // 高级档不在 EncodingMode 里，但它同样是一次「当前在哪儿」，所以一并跟。
         var mode = menu.getMode();
-        if (mode != this.tooltipMode) {
+        var advancedOn = menu.advancedMode;
+        if (mode != this.tooltipMode || advancedOn != this.tooltipAdvanced) {
             this.tooltipMode = mode;
+            this.tooltipAdvanced = advancedOn;
             this.modeCycleButton.setTooltip(List.of(
-                    modeName(mode),
+                    advancedOn
+                            ? Component.translatable("gui.ae2_pattern_disk.encoding_terminal.advanced_mode")
+                            : modeName(mode),
                     Component.translatable("gui.ae2_pattern_disk.encoding_terminal.mode_cycle")));
         }
 
-        // 根据当前模式切换面板可见性
+        // 根据当前模式切换面板可见性。高级模式是并列的一档：它开着时四个常规面板全让位。
         var currentMode = menu.getMode();
+        var advanced = menu.advancedMode;
         for (var entry : modePanels.entrySet()) {
-            entry.getValue().setVisible(entry.getKey() == currentMode);
+            entry.getValue().setVisible(!advanced && entry.getKey() == currentMode);
         }
+        this.advancedPanel.setVisible(advanced);
 
         // 刷新磁盘列表（过滤 PatternDiskItem + 搜索过滤）。
         // 搜索栏的自动填充只跟「导入配方」有关：JEI/EMI 配方页点「编写样板」那一刻在菜单里记一次修订号，
@@ -383,7 +421,7 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             // 切模式清空。类别为空时不填——那会退回模式标记（#mode:...），不是导入者想要的筛选词。
             var imported = menu.getLastImportedCategory();
             if (imported != null && !imported.isEmpty()) {
-                miniSearchField.setValue(markSearchTerm("#" + imported));
+                miniSearchField.setValue(DiskEntryFilter.markSearchTerm("#" + imported));
             }
         }
 
@@ -439,20 +477,9 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         // 一个搜索条件只筛它自己那一维：名字搜索只比名字（无标记的盘照常参与，它也有名字），`#` 标记搜索
         // 只比标记（无标记的盘没东西可匹配，自然不出现）。开关打开 = 无标记的盘不受本次搜索约束，一律留下。
         // 输入先 strip，免得一串空格被当成搜索条件把列表清空。
-        var search = diskListPanel.getSearchText();
-        var needleText = search == null ? "" : search.strip();
-        if (!needleText.isEmpty()) {
-            var needle = needleText.toLowerCase(Locale.ROOT);
-            var markSearch = needle.startsWith("#");
-            // `#` 之后也 strip：玩家习惯输入 `# 合成`，多一个空格不该把结果清空（标记本身也存不下首尾空格）。
-            var matchNeedle = markSearch ? needle.substring(1).strip() : needle;
-            diskEntries.removeIf(d -> {
-                if (!hasMark(d)) {
-                    // 无标记：开关打开时一律留下；常态下仅在标记搜索里被筛掉（它没有标记可匹配）。
-                    return !menu.isShowUnmarkedDisks() && markSearch;
-                }
-                return !matchesSearch(d, matchNeedle, markSearch);
-            });
+        var query = DiskEntryFilter.Query.of(diskListPanel.getSearchText());
+        if (query.isActive()) {
+            diskEntries.removeIf(d -> !DiskEntryFilter.keep(d, query, menu.isShowUnmarkedDisks()));
         }
 
         // 没有搜索条件时什么都不剔除（含无标记的空盘）——规则写在上面那段注释里。
@@ -492,21 +519,6 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         }
     }
 
-    /** 这张盘有没有标记——标记就是它属于哪个配方类型的记录。 */
-    /** 磁盘是否匹配当前搜索：{@code markSearch} 时比标记（原文或可读名），否则比显示名。 */
-    private static boolean matchesSearch(DiskEntry entry, String needle, boolean markSearch) {
-        if (markSearch) {
-            return matchesMark(entry, needle);
-        }
-        // 走 JechPinyin：装了 JECH 时中文名可用拼音/首字母搜，没装就是小写子串（见那个类）。
-        return JechPinyin.contains(entry.displayName(), needle);
-    }
-
-    private static boolean hasMark(DiskEntry entry) {
-        var mark = entry.stack().get(AEPatternRegistries.DISK_PREFIX.get());
-        return mark != null && !mark.isEmpty();
-    }
-
     /**
      * 这张盘的标记是否算「符合当前样板类型」。
      *
@@ -520,11 +532,11 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             return false;
         }
         var mode = menu.getMode();
-        var category = PatternDiskEncodingTermMenu.categoryForMode(mode);
+        var category = DiskMarkRules.categoryForMode(mode);
         if (category == null) {
             return false;
         }
-        return ("#" + category).equals(raw) || PatternDiskEncodingTermMenu.modeMarkId(mode).equals(raw);
+        return ("#" + category).equals(raw) || DiskMarkRules.modeMarkId(mode).equals(raw);
     }
 
     /** Renames the disk {@code serial} after the machine its mark stands for. */
@@ -544,30 +556,8 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         }
     }
 
-    /** The search term that selects disks carrying {@code mark}: the {@code #} marker plus its label. */
-    private static String markSearchTerm(String mark) {
-        var label = PatternDiskMarks.displayName(mark);
-        return "#" + (label == null ? mark : label.getString());
-    }
-
-    /** Whether {@code entry} carries a mark matching {@code needle} (already lower-cased). */
-    private static boolean matchesMark(DiskEntry entry, String needle) {
-        var raw = entry.stack().get(AEPatternRegistries.DISK_PREFIX.get());
-        if (raw == null || raw.isEmpty()) {
-            return false;
-        }
-        if (raw.toLowerCase(Locale.ROOT).contains(needle)) {
-            return true;
-        }
-        var label = PatternDiskMarks.displayName(entry.stack());
-        return label != null && JechPinyin.contains(label.getString(), needle);
-    }
-
     // ---- 磁盘列表交互 --------------------------------------------------------
 
-    /**
-     * 左键点击磁盘：把当前编码的样板写入该磁盘。
-     */
     /** 子类（管理终端）用：把「磁盘序列号」映射到本屏幕列表里的下标，好复用下面的点击交互。 */
     protected int indexOfDisk(long serial) {
         for (int i = 0; i < diskEntries.size(); i++) {

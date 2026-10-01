@@ -24,12 +24,12 @@ import io.github.lounode.ae2pattern.client.gui.PatternDiskManagementTermScreen;
 import io.github.lounode.ae2pattern.client.gui.PatternDiskAssemblerScreen;
 import io.github.lounode.ae2pattern.client.gui.PatternDiskProviderScreen;
 import io.github.lounode.ae2pattern.client.gui.PatternTransfererScreen;
-import io.github.lounode.ae2pattern.client.gui.PatternDiskWirelessEncodingTermScreen;
-import io.github.lounode.ae2pattern.client.gui.PatternDiskWirelessManagementTermScreen;
+import io.github.lounode.ae2pattern.client.integration.ae2wtlib.PatternDiskWirelessEncodingTermScreen;
+import io.github.lounode.ae2pattern.client.integration.ae2wtlib.PatternDiskWirelessManagementTermScreen;
 import io.github.lounode.ae2pattern.client.integration.ipn.InventoryProfilesIntegration;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskWirelessEncodingTermMenu;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskWirelessManagementTermMenu;
+import io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessEncodingTermMenu;
+import io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessManagementTermMenu;
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 
 /**

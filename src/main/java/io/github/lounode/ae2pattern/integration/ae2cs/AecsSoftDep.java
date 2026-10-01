@@ -3,8 +3,10 @@ package io.github.lounode.ae2pattern.integration.ae2cs;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.level.ItemLike;
 
 import appeng.api.upgrades.IUpgradeInventory;
+import appeng.api.upgrades.Upgrades;
 
 import net.neoforged.fml.ModList;
 
@@ -43,6 +45,21 @@ public final class AecsSoftDep {
             present = cached;
         }
         return cached;
+    }
+
+    /**
+     * 给 {@code machine} 挂上陨石超频卡，上限 {@code maxCards} 张。AE2 Crystal Science 缺席、或它的卡已被
+     * 改名/移除时，什么都不做。
+     *
+     * <p>取卡的细节（模组在场判定、注册表查询、缓存）留在这里：调用方只需要说「这台设备吃这张卡」，
+     * 不必知道它是本模组之外的物品。</p>
+     */
+    public static void registerOverloadCard(ItemLike machine, int maxCards) {
+        var card = overloadCard();
+        if (card == null) {
+            return;
+        }
+        Upgrades.add(card, machine, maxCards);
     }
 
     /** 给定升级库存里装了几张超频卡；未装该模组（或物品缺失）时恒为 0。 */

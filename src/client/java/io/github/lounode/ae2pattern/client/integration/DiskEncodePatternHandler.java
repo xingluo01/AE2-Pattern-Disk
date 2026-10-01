@@ -50,6 +50,11 @@ public class DiskEncodePatternHandler extends AbstractDiskRecipeHandler<PatternD
             return Result.createFailed(ItemModText.RECIPE_TOO_LARGE.text());
         }
 
+        // 高级编码是并列的一个档位，不是配方转移的目标：先退回普通档再导入（理由同 JEI 侧）。
+        if (doTransfer && menu.advancedMode) {
+            menu.setAdvancedMode(false);
+        }
+
         if (doTransfer) {
             if (craftingRecipe && recipeId != null) {
                 DiskEncodingHelper.encodeCraftingRecipe(menu,

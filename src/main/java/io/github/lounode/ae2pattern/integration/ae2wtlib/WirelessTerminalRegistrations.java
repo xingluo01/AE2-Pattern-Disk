@@ -1,4 +1,4 @@
-package io.github.lounode.ae2pattern.common.registration;
+package io.github.lounode.ae2pattern.integration.ae2wtlib;
 
 import java.util.Map;
 import java.util.function.Supplier;
@@ -6,13 +6,14 @@ import java.util.function.Supplier;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 
+import appeng.api.features.GridLinkables;
+import appeng.api.upgrades.Upgrades;
+import appeng.core.definitions.AEItems;
+import appeng.items.tools.powered.WirelessTerminalItem;
+
 import de.mari_023.ae2wtlib.api.gui.Icon;
 import de.mari_023.ae2wtlib.api.registration.AddTerminalEvent;
 
-import io.github.lounode.ae2pattern.common.item.WirelessPatternDiskTerminalItem;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskWirelessEncodingTermMenu;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskWirelessManagementTermMenu;
-import io.github.lounode.ae2pattern.common.menu.WirelessPatternDiskTerminalHost;
 
 /**
  * 两个无线终端在 AE2WTLib 那边的整套登记：终端名、宿主工厂、菜单类型、物品、图标，以及升级卡的补挂。
@@ -81,10 +82,35 @@ public final class WirelessTerminalRegistrations {
                     .upgradeCount(2)
                     .addTerminal();
 
+            // 升级与链接登记（全部用回调里刚落地的物品实例）：DeferredHolder 此刻尚未绑定，
+            // 所以不能走 AEPatternRegistries 的 ITEM_*.get()，只能拿眼前这两个实例。
+            registerTerminalItems(encodingItem, managementItem);
+
             // 补挂量子桥卡：wtlib 的 UpgradeHelper.addUpgrades() 紧随 AddTerminalEvent.run() 执行，本模组此刻
             // 已在 WTDefinition 里，理论上也会被它挂上；这里显式登记同值（1），不把行为押在上游的遍历时机上。
             addUpgradeCards(encodingItem, managementItem);
         });
+    }
+
+    /**
+     * AE2 与 AE2WTLib 两张表上的终端登记：无线接入点收不收这台终端，以及它吃几张能源卡。
+     *
+     * <p>两张表都在 AE2 的运行时登记表里，与物品的 {@code DeferredHolder} 无关——但登记时机仍在这里，
+     * 因为它们要的是「物品实例」，而实例正是在这个回调里才第一次造出来的。</p>
+     */
+    private static void registerTerminalItems(WirelessPatternDiskTerminalItem encodingItem,
+            WirelessPatternDiskTerminalItem managementItem) {
+        // 无线接入点的「终端绑定槽」按 GridLinkables 注册表决定收不收：AE2 自己只登记了它的两个无线终端
+        // （InitGridLinkables），第三方终端不自己登记就会被拒收。LINKABLE_HANDLER 是 AE2 给无线终端用的
+        // 现成 handler，直接复用。
+        GridLinkables.register(encodingItem, WirelessTerminalItem.LINKABLE_HANDLER);
+        GridLinkables.register(managementItem, WirelessTerminalItem.LINKABLE_HANDLER);
+
+        // 能源卡：上限得由本模组自己登记——AE2WTLib 登记升级卡时只挂量子桥卡与磁卡，从不挂能源卡，而 AE2 的
+        // Upgrades.getMaxInstallable 在无人登记某个卡时返回 0（等于装不上）。2 与 AE2 自家的无线终端一致。
+        // 那张表先到先得（取首个匹配的上限），而能源卡只有本模组登记，所以这个上限与登记时机无关。
+        Upgrades.add(AEItems.ENERGY_CARD, encodingItem, 2);
+        Upgrades.add(AEItems.ENERGY_CARD, managementItem, 2);
     }
 
     /** 给两个无线终端补挂量子桥卡（各 1 张）。 */
@@ -99,7 +125,6 @@ public final class WirelessTerminalRegistrations {
             // 磁卡不在这里挂：按上游的登记表，wtlib 只把量子桥卡统一挂给所有终端，磁卡是登记给它自家终端的，
             // 所以物品侧那层 ExcludedUpgradeInventory 目前不会触发（留着作第三方 blanket 挂卡的保险）。
             appeng.api.upgrades.Upgrades.add(card, encodingItem, entry.getValue());
-            appeng.api.upgrades.Upgrades.add(card, managementItem, entry.getValue());
-        }
+            appeng.api.upgrades.Upgrades.add(card, managementItem, entry.getValue());        }
     }
 }

@@ -10,9 +10,9 @@ import appeng.client.gui.style.ScreenStyle;
 
 import com.extendedae_plus.api.upload.IPatternUploadTerminal;
 
-import io.github.lounode.ae2pattern.client.gui.PatternDiskWirelessEncodingTermScreen;
+import io.github.lounode.ae2pattern.client.integration.ae2wtlib.PatternDiskWirelessEncodingTermScreen;
 import io.github.lounode.ae2pattern.client.integration.neoecoae.NeoECOClientIntegration;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskWirelessEncodingTermMenu;
+import io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessEncodingTermMenu;
 
 /**
  * 无线版编码终端上的 EAE+ 上传按钮适配器：与面板版的

@@ -22,8 +22,8 @@ import appeng.core.localization.ItemModText;
 
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskWirelessEncodingTermMenu;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskWirelessManagementTermMenu;
+import io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessEncodingTermMenu;
+import io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessManagementTermMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
 
 /**
@@ -90,6 +90,12 @@ public class JeiDiskEncodeRecipeHandler implements IUniversalRecipeTransferHandl
         boolean craftingRecipe = DiskEncodingHelper.isSupportedCraftingRecipe(recipe);
         if (craftingRecipe && !fitsIn3x3Grid(recipe)) {
             return helper.createUserErrorWithTooltip(ItemModText.RECIPE_TOO_LARGE.text());
+        }
+
+        // 高级编码是并列的一个档位，不是配方转移的目标：在它上面点转移会让人以为「转移到高级面板了」，
+        // 而转移只改编辑区的普通输入输出，与方向表无关。所以先退回普通档，再按原路导入。
+        if (doTransfer && menu.advancedMode) {
+            menu.setAdvancedMode(false);
         }
 
         // doTransfer == false is JEI asking whether the transfer would work; the answer here is "yes" as long

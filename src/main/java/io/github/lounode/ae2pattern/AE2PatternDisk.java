@@ -23,6 +23,8 @@ import io.github.lounode.ae2pattern.common.block.entity.MeteoritePatternProvider
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskProviderBlockEntity;
 import io.github.lounode.ae2pattern.common.block.entity.PatternTransfererBlockEntity;
 import io.github.lounode.ae2pattern.integration.ae2cs.AecsSoftDep;
+import io.github.lounode.ae2pattern.integration.advancedae.AdvancedPatternEncoder;
+import io.github.lounode.ae2pattern.integration.appflux.AppFluxInductionCard;
 
 /**
  * Entry point for the AE2 Pattern Disk addon.
@@ -222,58 +224,50 @@ public class AE2PatternDisk {
     }
 
     private void registerUpgrades() {
-        // 无线接入点的「终端绑定槽」按 GridLinkables 注册表决定收不收：AE2 自己只登记了它的两个无线终端
-        // （InitGridLinkables），第三方终端必须在自己的初始化里登记，否则放进接入点会被拒收。
-        // LINKABLE_HANDLER 是 AE2 给无线终端用的现成 handler，可直接复用。
-        appeng.api.features.GridLinkables.register(
-                AEPatternRegistries.ITEM_WIRELESS_PATTERN_DISK_ENCODING_TERMINAL.get(),
-                appeng.items.tools.powered.WirelessTerminalItem.LINKABLE_HANDLER);
-        appeng.api.features.GridLinkables.register(
-                AEPatternRegistries.ITEM_WIRELESS_PATTERN_DISK_MANAGEMENT_TERMINAL.get(),
-                appeng.items.tools.powered.WirelessTerminalItem.LINKABLE_HANDLER);
-
-        var machine = net.minecraft.core.registries.BuiltInRegistries.BLOCK
-                .get(net.minecraft.resources.ResourceLocation.parse("ae2_pattern_disk:pattern_transferer"));
-
         // 无线信号增幅器**不登记**：它管的是无线访问点的信号范围，放进终端的升级槽没有意义
         // （AE2WTLib 也没给自家终端挂它，同一个理由）。
-
-        // 能源卡：AE2WTLib 的 UpgradeHelper 给所有无线终端加的是「能源卡上限 0」——等于默认不支持，
-        // 要用它得自己登记上限。2 与 AE2 自家的无线终端一致。
-        appeng.api.upgrades.Upgrades.add(appeng.core.definitions.AEItems.ENERGY_CARD,
-                AEPatternRegistries.ITEM_WIRELESS_PATTERN_DISK_ENCODING_TERMINAL.get(), 2);
-        appeng.api.upgrades.Upgrades.add(appeng.core.definitions.AEItems.ENERGY_CARD,
-                AEPatternRegistries.ITEM_WIRELESS_PATTERN_DISK_MANAGEMENT_TERMINAL.get(), 2);
+        //
+        // 两个无线终端的升级登记（量子桥卡、能源卡上限）与无线接入点的可链接登记都在
+        // WirelessTerminalRegistrations —— 那是 AE2WTLib 侧的整套登记，见其类注释。
 
         var speedCard = net.minecraft.core.registries.BuiltInRegistries.ITEM
                 .get(net.minecraft.resources.ResourceLocation.parse("ae2:speed_card"));
-        if (machine != null && speedCard != null) {
-            appeng.api.upgrades.Upgrades.add(speedCard, machine, 4);
-        }
-
-        var assembler = net.minecraft.core.registries.BuiltInRegistries.BLOCK
-                .get(net.minecraft.resources.ResourceLocation.parse("ae2_pattern_disk:pattern_disk_assembler"));
-        if (assembler != null && speedCard != null) {
-            appeng.api.upgrades.Upgrades.add(speedCard, assembler, 5);
-        }
-
-        var batchAssembler = net.minecraft.core.registries.BuiltInRegistries.BLOCK
-                .get(net.minecraft.resources.ResourceLocation.parse("ae2_pattern_disk:batch_molecular_assembler"));
-        if (batchAssembler != null && speedCard != null) {
-            appeng.api.upgrades.Upgrades.add(speedCard, batchAssembler, 4);
+        // 速度卡按 AE2 的规矩挂到本模组自己的机器上（上限与设备并行度对齐）。取不到速度卡就这台设备
+        // 不额外挂，而不是把初始化带下去。
+        if (speedCard != null) {
+            appeng.api.upgrades.Upgrades.add(speedCard, AEPatternRegistries.BLOCK_TRANSFERER.get(), 4);
+            appeng.api.upgrades.Upgrades.add(speedCard, AEPatternRegistries.BLOCK_ASSEMBLER.get(), 5);
+            appeng.api.upgrades.Upgrades.add(speedCard, AEPatternRegistries.BLOCK_BATCH_ASSEMBLER.get(), 4);
         }
 
         // 自装配样板磁盘供应器：速度卡按 AE2 的规矩上；陨石超频卡是 AE2 Crystal Science 的升级件，得由本模组
-        // 把它挂到自己的方块上（那张卡不知道这台设备），所以这里按 id 取来登记，取不到就只留速度卡那一条。
+        // 把它挂到自己的方块上（那张卡不知道这台设备），取卡细节在 AecsSoftDep 里。
         if (MeteoritePatternProviderRegistrations.isRegistered()) {
             var meteoriteProvider = MeteoritePatternProviderRegistrations.BLOCK.get();
             if (speedCard != null) {
                 appeng.api.upgrades.Upgrades.add(speedCard, meteoriteProvider, 4);
             }
-            var overloadCard = AecsSoftDep.overloadCard();
-            if (overloadCard != null) {
-                appeng.api.upgrades.Upgrades.add(overloadCard, meteoriteProvider, 4);
-            }
+            AecsSoftDep.registerOverloadCard(meteoriteProvider, 4);
+        }
+
+        // Applied Flux 的感应卡：它自己只给 AE2 的供应器与接口登记过，所以本模组的供应器两种形态得各登记
+        // 一次——否则 AppFlux 挂上来的那一格升级库存摆在那儿，却一张卡也放不进去。细节见 AppFluxInductionCard。
+        AppFluxInductionCard.register(AEPatternRegistries.ITEM_PROVIDER.get(),
+                AEPatternRegistries.ITEM_CABLE_PATTERN_DISK_PROVIDER.get());
+
+        // AdvancedAE 的高级样板编码器：装上它，编码终端才多出高级编码模式。面板版走 AE2 的升级表，
+        // 无线版（含 AE2WTLib 的通用终端）走它自己那一套。细节见 AdvancedPatternEncoder。
+        AdvancedPatternEncoder.register(AEPatternRegistries.ITEM_PATTERN_DISK_ENCODING_TERMINAL.get());
+
+        // 两个无线终端再单独登记一次：不走 AE2WTLib 的 UpgradeHelper——它只遍历上游自己的终端表、
+        // 且 readyForUpgrades 置位前后行为不同，本模组这两个终端在不在其中不由我们说了算。放到这里而不是
+        // 物品的注册回调里：那边 AdvancedAE 的物品可能还没注册好，取不到卡就只有一条 debug 日志，
+        // 表现为「槽在那儿、卡放不进」而毫无提示。
+        // 判 AE2WTLib 是否加载是必需的：没装它时两个无线终端根本没有物品实例，而那个工厂方法会当场 new，
+        // 在注册表已冻结的 commonSetup 阶段会抛 IllegalStateException。
+        if (net.neoforged.fml.ModList.get().isLoaded("ae2wtlib")) {
+            AdvancedPatternEncoder.registerFor(AEPatternRegistries.wirelessEncodingItem(),
+                    AEPatternRegistries.wirelessManagementItem());
         }
     }
 }

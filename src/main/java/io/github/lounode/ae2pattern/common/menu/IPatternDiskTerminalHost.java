@@ -1,6 +1,7 @@
 package io.github.lounode.ae2pattern.common.menu;
 
 import appeng.api.storage.ITerminalHost;
+import appeng.api.upgrades.IUpgradeInventory;
 
 /**
  * 终端的宿主契约：面板形态（部件）与无线形态（物品）都得满足的那一份。
@@ -13,4 +14,12 @@ import appeng.api.storage.ITerminalHost;
  * 实现，于是两版终端共用同一份菜单代码。</p>
  */
 public interface IPatternDiskTerminalHost extends ITerminalHost, IDiskEncodingLogicHost {
+
+    /**
+     * 升级库存：高级样板编码器放这儿，装上它编码终端才会多出高级编码模式。
+     *
+     * <p>面板版建在部件自己身上，无线版在终端物品的组件里（跟着物品走）。不是可选能力：两个宿主都得先
+     * 有库存，菜单才能把那一格摆出来。</p>
+     */
+    IUpgradeInventory getUpgrades();
 }

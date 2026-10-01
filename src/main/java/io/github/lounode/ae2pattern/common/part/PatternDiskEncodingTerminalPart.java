@@ -11,6 +11,8 @@ import net.minecraft.world.item.ItemStack;
 
 import appeng.api.parts.IPartItem;
 import appeng.api.parts.IPartModel;
+import appeng.api.upgrades.IUpgradeInventory;
+import appeng.api.upgrades.UpgradeInventories;
 import appeng.items.parts.PartModels;
 import appeng.parts.PartModel;
 import appeng.parts.reporting.AbstractTerminalPart;
@@ -35,8 +37,21 @@ public class PatternDiskEncodingTerminalPart extends AbstractTerminalPart
 
     private final DiskEncodingLogic logic = new DiskEncodingLogic(this);
 
+    /**
+     * 升级槽：装上高级样板编码器，编码终端才会多出高级编码模式（那是唯一的要求，没有别的用途）。
+     *
+     * <p>库存建在部件自己身上而不是物品栈里——它得跟着这台装在世界里的终端走，拆下来时连带掉出。</p>
+     */
+    private final IUpgradeInventory upgrades;
+
     public PatternDiskEncodingTerminalPart(IPartItem<?> partItem) {
         super(partItem);
+        this.upgrades = UpgradeInventories.forMachine(partItem.asItem(), 1, this::markForSave);
+    }
+
+    @Override
+    public IUpgradeInventory getUpgrades() {
+        return upgrades;
     }
 
     @Override
@@ -44,6 +59,7 @@ public class PatternDiskEncodingTerminalPart extends AbstractTerminalPart
         super.addAdditionalDrops(drops, wrenched);
         for (var is : this.logic.getBlankPatternInv()) drops.add(is);
         for (var is : this.logic.getEncodedPatternInv()) drops.add(is);
+        for (var is : this.upgrades) drops.add(is);
     }
 
     @Override
@@ -51,18 +67,21 @@ public class PatternDiskEncodingTerminalPart extends AbstractTerminalPart
         super.clearContent();
         this.logic.getBlankPatternInv().clear();
         this.logic.getEncodedPatternInv().clear();
+        this.upgrades.clear();
     }
 
     @Override
     public void readFromNBT(CompoundTag data, HolderLookup.Provider registries) {
         super.readFromNBT(data, registries);
         logic.readFromNBT(data, registries);
+        upgrades.readFromNBT(data, "upgrades", registries);
     }
 
     @Override
     public void writeToNBT(CompoundTag data, HolderLookup.Provider registries) {
         super.writeToNBT(data, registries);
         logic.writeToNBT(data, registries);
+        upgrades.writeToNBT(data, "upgrades", registries);
     }
 
     @Override

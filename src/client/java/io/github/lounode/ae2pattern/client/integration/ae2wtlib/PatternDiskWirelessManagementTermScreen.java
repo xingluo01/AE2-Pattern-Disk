@@ -1,4 +1,4 @@
-package io.github.lounode.ae2pattern.client.gui;
+package io.github.lounode.ae2pattern.client.integration.ae2wtlib;
 
 import org.anti_ad.mc.ipn.api.IPNPlayerSideOnly;
 
@@ -12,7 +12,9 @@ import de.mari_023.ae2wtlib.api.terminal.ItemWUT;
 import de.mari_023.ae2wtlib.api.terminal.IUniversalTerminalCapable;
 import de.mari_023.ae2wtlib.api.terminal.WTMenuHost;
 
-import io.github.lounode.ae2pattern.common.menu.PatternDiskWirelessManagementTermMenu;
+import io.github.lounode.ae2pattern.client.gui.PatternDiskManagementTermScreen;
+import io.github.lounode.ae2pattern.client.gui.ToolbarOrder;
+import io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessManagementTermMenu;
 
 /**
  * 无线版管理终端的屏幕：表格、盘内内容、附加排序全部继承面板版管理终端，无线那一套（升级卡面板、终端切换
@@ -56,10 +58,6 @@ public class PatternDiskWirelessManagementTermScreen extends PatternDiskManageme
         if (this.terminalSwitchButton != null) {
             ToolbarOrder.placeAfter(this, this.terminalSwitchButton, this.modeCycleButton);
         }
-        // 升级卡槽比默认位置左移 1px（纯视觉微调）。面板位置由 wtlib 的 addUpgradePanel 摆好后，
-        // 这里以当前 bounds 为准做相对偏移，不写死坐标，上游改布局也不会打偏。
-        var upgradeBounds = this.upgradesPanel.getBounds();
-        this.upgradesPanel.setPosition(new appeng.client.Point(upgradeBounds.getX() - 1, upgradeBounds.getY()));
     }
 
     @Override
