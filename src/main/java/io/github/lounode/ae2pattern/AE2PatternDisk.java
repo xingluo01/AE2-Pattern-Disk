@@ -25,6 +25,7 @@ import io.github.lounode.ae2pattern.common.block.entity.PatternTransfererBlockEn
 import io.github.lounode.ae2pattern.integration.ae2cs.AecsSoftDep;
 import io.github.lounode.ae2pattern.integration.advancedae.AdvancedPatternEncoder;
 import io.github.lounode.ae2pattern.integration.appflux.AppFluxInductionCard;
+import io.github.lounode.ae2pattern.integration.rechiseledae.ChiselingPatternEncoder;
 
 /**
  * Entry point for the AE2 Pattern Disk addon.
@@ -259,6 +260,10 @@ public class AE2PatternDisk {
         // 无线版（含 AE2WTLib 的通用终端）走它自己那一套。细节见 AdvancedPatternEncoder。
         AdvancedPatternEncoder.register(AEPatternRegistries.ITEM_PATTERN_DISK_ENCODING_TERMINAL.get());
 
+        // Rechiseled: Applied Energistics 的雕凿样板编码器：同一条路——装上它，编码终端才多出雕凿编码模式。
+        // 它是方块物品（只能按物品 id 取），自己也只在世界里工作，在这儿纯粹当一把钥匙。
+        ChiselingPatternEncoder.register(AEPatternRegistries.ITEM_PATTERN_DISK_ENCODING_TERMINAL.get());
+
         // 两个无线终端再单独登记一次：不走 AE2WTLib 的 UpgradeHelper——它只遍历上游自己的终端表、
         // 且 readyForUpgrades 置位前后行为不同，本模组这两个终端在不在其中不由我们说了算。放到这里而不是
         // 物品的注册回调里：那边 AdvancedAE 的物品可能还没注册好，取不到卡就只有一条 debug 日志，
@@ -267,6 +272,8 @@ public class AE2PatternDisk {
         // 在注册表已冻结的 commonSetup 阶段会抛 IllegalStateException。
         if (net.neoforged.fml.ModList.get().isLoaded("ae2wtlib")) {
             AdvancedPatternEncoder.registerFor(AEPatternRegistries.wirelessEncodingItem(),
+                    AEPatternRegistries.wirelessManagementItem());
+            ChiselingPatternEncoder.registerFor(AEPatternRegistries.wirelessEncodingItem(),
                     AEPatternRegistries.wirelessManagementItem());
         }
     }

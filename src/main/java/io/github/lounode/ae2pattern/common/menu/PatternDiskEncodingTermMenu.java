@@ -65,6 +65,7 @@ import appeng.util.ConfigInventory;
 
 import io.github.lounode.ae2pattern.integration.advancedae.AdvPatternSupport;
 import io.github.lounode.ae2pattern.integration.polymorph.PolymorphCompat;
+import io.github.lounode.ae2pattern.integration.rechiseledae.ChiselingPatternEncoder;
 
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
@@ -99,6 +100,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
     private static final String ACTION_MULTIPLY_OUTPUT = "multiplyOutput";
     private static final String ACTION_DIVIDE_OUTPUT = "divideOutput";
     private static final String ACTION_SET_ADVANCED_MODE = "setAdvancedMode";
+    private static final String ACTION_SET_CHISELING_MODE = "setChiselingMode";
     private static final String ACTION_SET_ADVANCED_SIDE = "setAdvancedSide";
     private static final String ACTION_TRANSFER_TO_DISK = "transferToDisk";
     private static final String ACTION_EXTRACT_FROM_DISK = "extractFromDisk";
@@ -238,6 +240,22 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
     @GuiSync(91)
     public boolean showUnmarkedDisks;
 
+    /**
+     * 雕凿档是否已开放。
+     *
+     * <p>面板（候选列表 + 编码路径）做完前必须为 false：它一旦生效而面板还没挂，屏幕会停在四个常规面板
+     * 全让位后的空白区，而雕凿档下 {@code mode} 仍是 CRAFTING（与高级档同样的机制），点「编写样板」会把
+     * 输出栏那张样板当合成样板编。面板就绪后翻这一行即可——所有入口与守卫都读它。</p>
+     */
+    public static final boolean CHISELING_TIER_ENABLED = false;
+
+    @GuiSync(87)
+    public boolean chiselingModeAvailable;
+
+    /** 当前是否停在雕凿编码模式。与高级档一样，它不在 AE2 的 {@link EncodingMode} 里。 */
+    @GuiSync(86)
+    public boolean chiselingMode;
+
     /** 升级槽里装着高级样板编码器——高级编码模式因此可用（屏幕上才会多出那一档）。 */
     @GuiSync(90)
     public boolean advancedModeAvailable;
@@ -360,6 +378,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
 
         registerClientAction(ACTION_ENCODE, this::encode);
         registerClientAction(ACTION_SET_ADVANCED_MODE, Boolean.class, this::setAdvancedMode);
+        registerClientAction(ACTION_SET_CHISELING_MODE, Boolean.class, this::setChiselingMode);
         registerClientAction(ACTION_SET_ADVANCED_SIDE, AdvancedSideChange.class,
                 change -> applyAdvancedSide(change.input(), change.side()));
         registerClientAction(ACTION_CLEAR, this::clear);
@@ -1442,6 +1461,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
             }
             // 高级档与 mode 并列，权威值同样在 logic 里：那是唯一跟着终端持久化的地方，关屏重开不掉档。
             this.advancedMode = encodingLogic.isAdvancedMode();
+            this.chiselingMode = encodingLogic.isChiselingMode();
             this.substitute = encodingLogic.isSubstitution();
             this.substituteFluids = encodingLogic.isFluidSubstitution();
             // 两个开关的权威值在部件自己的 logic 里（与替换同款），服务端每 tick 回读进菜单字段再下发客户端。
@@ -1459,6 +1479,13 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
             if (!this.advancedModeAvailable && this.advancedMode) {
                 // 卡被拿走了：模式立刻退出去，否则面板会停在一个再也读不出方向的空档上。
                 this.setAdvancedMode(false);
+            }
+            this.chiselingModeAvailable = hasChiselingEncoder();
+            // 卡不在、或这一档还没开放时，模式立刻退出去。后半句不是多余的：存档里可能残留一个为真的
+            // chiselingMode（开放前用开发构建写进去的），而它是每 tick 从 logic 拉回来的——不在这儿清掉，
+            // 界面会一直停在空白区。与「卡被拿走了就退出」同一口径。
+            if ((!this.chiselingModeAvailable || !CHISELING_TIER_ENABLED) && this.chiselingMode) {
+                this.setChiselingMode(false);
             }
         }
     }
@@ -1632,6 +1659,33 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
             }
         }
         return false;
+    }
+
+    /** 升级槽里是否装着雕凿样板编码器。与上一支同形：只认物品 id，不看数量。 */
+    private boolean hasChiselingEncoder() {
+        for (var stack : host.getUpgrades()) {
+            if (ChiselingPatternEncoder.isEncoder(stack)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 切换雕凿编码模式。
+     *
+     * <p>与高级档不同，这一档不从输出栏那张样板里摊任何东西：雕凿的候选来自 Rechiseled 自己的配方表
+     * （{@code ChiselingRecipeManager}），不来自样板。所以这里只切开关，权威值写进 logic 跟着终端持久化。</p>
+     */
+    public void setChiselingMode(boolean on) {
+        if (isClientSide()) {
+            // 客户端先换自己的显示状态（面板要立刻跟着变），权威值由服务端回读后下发。
+            this.chiselingMode = on;
+            sendClientAction(ACTION_SET_CHISELING_MODE, on);
+            return;
+        }
+        this.chiselingMode = on;
+        this.encodingLogic.setChiselingMode(on);
     }
 
     /**

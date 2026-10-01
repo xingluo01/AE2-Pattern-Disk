@@ -47,6 +47,12 @@ public class DiskEncodingLogic implements InternalInventoryHost {
      * 是同一件事——「当前在哪一档」，所以存在同一处、同样跟着终端走：关屏重开不该把它忘掉。
      */
     private boolean advancedMode;
+
+    /**
+     * 是否停在雕凿编码模式。与 {@link #advancedMode} 同处一个理由：它也不在 AE2 的枚举里，但对玩家而言同样
+     * 是「当前在哪一档」，得跟着终端走。
+     */
+    private boolean chiselingMode;
     private boolean substitute = false;
     private boolean substituteFluids = true;
     private boolean mergeSameItems = true;
@@ -152,6 +158,8 @@ public class DiskEncodingLogic implements InternalInventoryHost {
     public void setMode(EncodingMode mode) { this.mode = mode; saveChanges(); }
     public boolean isAdvancedMode() { return advancedMode; }
     public void setAdvancedMode(boolean v) { this.advancedMode = v; saveChanges(); }
+    public boolean isChiselingMode() { return chiselingMode; }
+    public void setChiselingMode(boolean v) { this.chiselingMode = v; saveChanges(); }
     public boolean isSubstitution() { return substitute; }
     public void setSubstitution(boolean v) { this.substitute = v; saveChanges(); }
     public boolean isFluidSubstitution() { return substituteFluids; }
@@ -207,6 +215,7 @@ public class DiskEncodingLogic implements InternalInventoryHost {
             try { this.mode = EncodingMode.valueOf(data.getString("mode")); } catch (IllegalArgumentException ignored) { this.mode = EncodingMode.CRAFTING; }
             // 后加的键，旧存档里没有：缺键时落回「不在高级档」，不能直接 getBoolean 把它读成已开启。
             this.advancedMode = data.contains("advancedMode") && data.getBoolean("advancedMode");
+            this.chiselingMode = data.contains("chiselingMode") && data.getBoolean("chiselingMode");
             this.substitute = data.getBoolean("substitute");
             this.substituteFluids = data.getBoolean("substituteFluids");
             // 这两个键是后加的：旧存档里没有。缺键时必须落到各自的默认值（合并默认开、无标记默认不列），
@@ -237,6 +246,7 @@ public class DiskEncodingLogic implements InternalInventoryHost {
     public void writeToNBT(net.minecraft.nbt.CompoundTag data, net.minecraft.core.HolderLookup.Provider registries) {
         data.putString("mode", this.mode.name());
         data.putBoolean("advancedMode", this.advancedMode);
+        data.putBoolean("chiselingMode", this.chiselingMode);
         data.putBoolean("substitute", this.substitute);
         data.putBoolean("substituteFluids", this.substituteFluids);
         data.putBoolean("mergeSameItems", this.mergeSameItems);
