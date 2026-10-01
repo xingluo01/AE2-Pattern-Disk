@@ -244,9 +244,9 @@ dependencies {
     // 雕凿编码面板要在编译期读 Rechiseled 的配方表（ChiselingRecipeManager），所以这里要 compileOnly；
     // 运行期在不在场由 mod 壳自己决定。Rechiseled 是软依赖：它缺席时那个面板不注册，终端行为与从前一样
     // （见 integration/rechiseledae 下的探针）。照本仓习惯，集成的类要隔开隔离，免得缺席时 NoClassDefFoundError
-    // （同 AppFlux / NEO ECO 的做法）。
-    compileOnly 'maven.modrinth:rechiseled:1.2.5-neoforge-mc1.21'
-    clientCompileOnly 'maven.modrinth:rechiseled:1.2.5-neoforge-mc1.21'
+    // （同 AppFlux / NEO ECO 的做法）。取 CurseForge 的 file 8875899 而不是 Modrinth 的 1.2.5，原因见下方那段。
+    compileOnly 'curse.maven:rechiseled-558998:8875899'
+    clientCompileOnly 'curse.maven:rechiseled-558998:8875899'
     // 雕凿样板要用 RechiseledAE2 自己的物品与数据组件（EncodedChiselingPattern），所以它也进编译面。
     compileOnly 'maven.modrinth:rechiseled-applied-energistics-2:1.0.1-neoforge-mc1.21.1'
 
@@ -256,15 +256,15 @@ dependencies {
     // runtime the type can never be made to appear, so there is nothing to exercise. Rechiseled pulls in
     // SuperMartijn642's Core Lib and Config Lib, plus Fusion on the client only.
     //
-    // KNOWN CONFLICT (seen in game 2026-10-02): Rechiseled 1.2.5 ships
+    // KNOWN CONFLICT (seen in game 2026-10-02 on the Modrinth 1.2.5 build): Rechiseled ships
     // `jei.RecipeLayoutUserInputHandlerMixin`, which injects into JEI's RecipeLayoutWithButtons and there
     // references `mezz.jei.gui.input.UserInput` - a class JEI moved out of that package by 19.56. So with
     // JEI 19.56 installed, opening a JEI recipe page (RecipesGui.mouseClicked -> createUserInputHandler)
     // fails mixin transformation and crashes the client. Nothing to do with this mod, but it does block
-    // in-game verification of the chiseling type: you cannot open JEI at all. Either use a Rechiseled build
-    // that targets JEI 19.56, or drop JEI back to ~19.27 - the latter collides with the EAE+ requirement
-    // documented further down, so it is not a free switch.
-    localRuntime 'maven.modrinth:rechiseled:1.2.5-neoforge-mc1.21'
+    // in-game verification of the chiseling type: you cannot open JEI at all. Dropping JEI back to ~19.27
+    // collides with the EAE+ requirement documented further down, so it is not a free switch; hence the
+    // CurseForge file above, which is a newer build than Modrinth's 1.2.5 and may or may not carry the fix.
+    localRuntime 'curse.maven:rechiseled-558998:8875899'
     localRuntime 'maven.modrinth:rechiseled-applied-energistics-2:1.0.1-neoforge-mc1.21.1'
     localRuntime 'curse.maven:supermartijn642s-core-lib-454372:7521894'
     localRuntime 'curse.maven:supermartijn642s-config-lib-438332:5546996'
