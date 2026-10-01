@@ -47,7 +47,13 @@ public final class ModeDropdownButton extends StatesIconButton {
     private static final int ITEM_W = 18;
     private static final int ITEM_H = 20;
     private static final int GAP = 2;
-    private static final int PADDING = 3;
+    /**
+     * 底板与内容之间的内缩。
+     *
+     * <p>{@code BackgroundGenerator} 的边框固定 4px，取 3 会每边压掉 1px（四个角最明显）。AE2WTLib 自己
+     * 用的就是 3（照抄常量时一并带过来了），这里取其零风险的收敛值 4：贴边不压，面板也不至于胖一圈。</p>
+     */
+    private static final int PADDING = 4;
     /** 列表与按钮本体之间的空隙。 */
     private static final int PANEL_GAP = 5;
     /** 图标在底板里的内缩（底板 18 宽包着 16 宽的图标）。 */
@@ -77,7 +83,7 @@ public final class ModeDropdownButton extends StatesIconButton {
      */
     @Override
     public void onPress() {
-        if (!this.choices.get().isEmpty()) {
+        if (!choices().isEmpty()) {
             this.menuOpen = !this.menuOpen;
         }
     }
@@ -94,7 +100,7 @@ public final class ModeDropdownButton extends StatesIconButton {
     }
 
     private void renderMenu(GuiGraphics guiGraphics, int mouseX, int mouseY) {
-        var entries = this.choices.get();
+        var entries = choices();
         if (entries.isEmpty()) {
             return;
         }
@@ -148,7 +154,7 @@ public final class ModeDropdownButton extends StatesIconButton {
         if (index < 0) {
             return false;
         }
-        this.choices.get().get(index).onPick().run();
+        choices().get(index).onPick().run();
         this.menuOpen = false;
         return true;
     }
@@ -188,8 +194,12 @@ public final class ModeDropdownButton extends StatesIconButton {
 
     // ---- 几何 ----------------------------------------------------------------
 
+    private List<Choice> choices() {
+        return this.choices.get();
+    }
+
     private int itemCount() {
-        return this.choices.get().size();
+        return choices().size();
     }
 
     /** 分列摆放（一列最多 {@link #MAX_ROWS} 项），列优先：6 个档位就是两列三行。 */
@@ -203,31 +213,31 @@ public final class ModeDropdownButton extends StatesIconButton {
 
     private int panelWidth() {
         var columns = columns();
-        return PADDING * 2 + columns * ITEM_W + (columns - 1) * GAP;
+        return PADDING * 2 + columns * ITEM_W + Math.max(0, columns - 1) * GAP;
     }
 
+    /** 多出的 2 是照攄 AE2WTLib 的取值：上下内边距不对称（上 PADDING、下 PADDING+2）。 */
     private int panelHeight() {
         var rows = rows();
-        return PADDING * 2 + rows * ITEM_H + (rows - 1) * GAP;
+        return PADDING * 2 + 2 + rows * ITEM_H + Math.max(0, rows - 1) * GAP;
     }
 
     /**
-     * 面板开在按钮下方（模式钮一般排在工具栏末尾），下方放不下才翻到上方、再不够贴顶。
+     * 面板开在按钮**左侧**、与按钮**顶对齐**——AE2WTLib 的终端选择钮就是这个相对关系
+     * （{@code panelX = getX() - PANEL_GAP - panelWidth()}、{@code panelY = getY()}），照着摆观感才一致。
      *
-     * <p>方向不必躲开别的按钮：命中由屏幕的 {@link #handleMenuClick} 先抢，压在谁身上都点得中；
-     * 这里只保证整块落在窗口内。</p>
+     * <p>左侧放不下时（工具栏贴屏幕左缘、窗口又窄）翻到按钮右侧。命中由屏幕的
+     * {@link #handleMenuClick} 先抢，压在谁身上都点得中，所以这里不必躲别的控件。</p>
      */
     private int panelX() {
-        return Math.max(0, getX());
+        var left = getX() - PANEL_GAP - panelWidth();
+        return left >= 0 ? left : getX() + getWidth() + PANEL_GAP;
     }
 
+    /** 与按钮顶对齐（照 AE2WTLib）；窗口太矮时上移，保证整块落在窗口内。 */
     private int panelY() {
-        var below = getY() + getHeight() + PANEL_GAP;
         var guiHeight = Minecraft.getInstance().getWindow().getGuiScaledHeight();
-        if (below + panelHeight() <= guiHeight) {
-            return below;
-        }
-        return Math.max(0, getY() - panelHeight() - PANEL_GAP);
+        return Math.max(0, Math.min(getY(), guiHeight - panelHeight()));
     }
 
     private int itemX(int index) {
@@ -235,7 +245,20 @@ public final class ModeDropdownButton extends StatesIconButton {
     }
 
     private int itemY(int index) {
-        return panelY() + PADDING + (index % rows()) * (ITEM_H + GAP);
+        return panelY() + PADDING + (index % rows()) * (ITEM_H + GAP) + lastColumnYOffset(index);
+    }
+
+    /**
+     * 最后一列没摆满时，把这一列整体垂直居中（照 AE2WTLib）。
+     *
+     * <p>列优先摆放意味着未满的那几项全落在最右列，不居中就会顶在上边、与其它列错不开。</p>
+     */
+    private int lastColumnYOffset(int index) {
+        var entries = itemCount() % rows();
+        if (entries == 0 || index / rows() != columns() - 1) {
+            return 0;
+        }
+        return (rows() - entries) * (ITEM_H + GAP) / 2;
     }
 
     private boolean isInItem(int mouseX, int mouseY, int index) {
