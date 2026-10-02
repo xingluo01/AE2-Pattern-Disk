@@ -728,17 +728,12 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         // 编码按钮要不要直接落盘。这一步必须等过滤做完：玩家点按钮时看到的就是这份列表，早一帧算出来就可能
         // 把目标算成此刻已经看不到的那张盘。
         // ① 搜索栏筛过盘：按列表顺位写（沿用原语义）；
-        // ② 没搜索：不再「随手塞第一张」，但若是符合当前档位的盘全网只剩这一张，它就是唯一目标——
-        //    直接落盘，省掉先点中那张盘的两步。判定只看盘自己的类型锁与标记，不靠显示名猜。
+        // ② 没搜索：交给 soleMatchingDisk（唯一对得上的盘才算目标）。
         long[] autoDisks = NO_DISKS;
         if (isDiskSearchActive()) {
             autoDisks = capCandidates(diskEntries.stream().mapToLong(DiskListPanel.DiskEntry::serial).toArray());
         } else {
-            var matched = diskEntries.stream().filter(this::matchesCurrentType)
-                    .mapToLong(DiskListPanel.DiskEntry::serial).toArray();
-            if (matched.length == 1) {
-                autoDisks = matched;
-            }
+            autoDisks = soleMatchingDisk();
         }
         menu.setClientAutoDisks(autoDisks);
 
@@ -818,6 +813,22 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             return false;
         }
         return ("#" + category).equals(raw) || DiskMarkRules.modeMarkId(mode).equals(raw);
+    }
+
+    /**
+     * 没有搜索条件时的「唯一目标」：符合当前档位的盘只剩这一张时返回它，否则返回空。
+     *
+     * <p>判定就是 {@link #matchesCurrentType}——磁盘自己的类型锁与标记任一成立即可，不靠显示名猜。
+     * 不再「随手塞第一张」：多张对得上时让玩家自己用搜索栏或点盘选，不猜。</p>
+     *
+     * <p><b>两个终端共用</b>：管理终端的写盘目标多半来自右键选中的那张盘，但在「没选中、也没搜索」
+     * 那一格上它走的是本方法（见其 {@code buildAutoDiskCandidates}）——不共用的话，同一个症状
+     * （盘明明对得上、点「编写样板」却没任何反应）会在管理终端里复现一次。</p>
+     */
+    protected long[] soleMatchingDisk() {
+        var matched = diskEntries.stream().filter(this::matchesCurrentType)
+                .mapToLong(DiskListPanel.DiskEntry::serial).toArray();
+        return matched.length == 1 ? matched : NO_DISKS;
     }
 
     /** 这张盘锁定的样板类型；它不是磁盘、或还是空盘（未锁定）时返回 null。 */

@@ -494,6 +494,11 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
                     out.add(disk.serial());
                 }
             }
+        } else {
+            // 没选中、也没搜索：唯一对得上的那张盘才自动写（与编码终端同口径，见基类 soleMatchingDisk）。
+            // 这不是新开一条路——本分支原本返回空，而「盘明明对得上、点编写样板却没反应」正是那个空造成的。
+            // 选中盘与搜索栏两条分支都不动：它们的优先级在本分支之上，已选中的目标不会被这里抢走。
+            return soleMatchingDisk();
         }
         var serials = new long[out.size()];
         for (int i = 0; i < serials.length; i++) {

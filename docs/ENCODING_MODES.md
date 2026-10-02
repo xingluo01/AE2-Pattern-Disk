@@ -190,11 +190,15 @@ PatternDiskManagementTermMenu  →  PatternDiskEncodingTermMenu  →  MEStorageM
 
 ## 七、上传目标：类型锁与标记
 
-点「编写样板」要不要自动落盘、落给谁，由 `PatternDiskEncodingTermScreen` 的两处决定：
+点「编写样板」要不要自动落盘、落给谁，由**两个终端各自的算法**决定（它们共用基类的匹配判据，但入口不同）：
 
 - **搜索栏有内容**：按列表顺序顺位试，写进第一张能接收的（`transferToFirstWritable`）；
 - **搜索栏为空**：只有**唯一**一张「对得上当前档位」的盘才自动落盘（`matchesCurrentType`），
   零张或多张都不写（多张时让玩家用搜索栏自己选，不猜）。
+
+编码终端在 `updateDiskEntries` 里算（搜索栏顺位 / 唯一匹配）；管理终端在 `buildAutoDiskCandidates` 里算
+（选中盘 + 同容器其他盘 / 表格行序 / 唯一匹配），且**每帧在 `super.updateBeforeRender()` 之后覆盖一次**。
+两处的「唯一匹配」都调基类的 `soleMatchingDisk()`，所以判据只有一份。
 
 `matchesCurrentType` 有两条判据，任一条成立即可 —— **先硬后软**：
 
@@ -203,7 +207,7 @@ PatternDiskManagementTermMenu  →  PatternDiskEncodingTermMenu  →  MEStorageM
 | 类型锁 | `PatternDiskContents.type` | 磁盘**自己的事实**。写入第一枚样板时锁死，之后写进去必然成功（与写入路径的 `acceptsType` 是同一个比较）。这类盘**不需要打过标记** |
 | 标记 | `DISK_PREFIX` 组件 | 玩家或导入留下的**意图**。写法是 `#<配方类别>` 或 `#mode:<模式>`；雕凿有专属字面量，开在注册表的 `ExtraTier.ownMark` 里 |
 
-**档位 → 该档编出的样板类型**（开在 `ExtraTier.patternTypeId`；常规四档由模式名推，不另写表）：
+**档位 → 该档编出的样板类型**（开在 `ExtraTier.patternTypeId`；常规四档由模式推，不另写表）：
 
 | 档位 | 样板类型 id |
 |---|---|
@@ -214,7 +218,7 @@ PatternDiskManagementTermMenu  →  PatternDiskEncodingTermMenu  →  MEStorageM
 
 这些 id 与 `PatternDiskItem.KNOWN_TYPES` 的键对齐——那张表是「类型 → tooltip 名字」的权威出处，新增类型时两处一起加。
 
-四个坑：
+七个坑：
 
 - **空盘不算对得上**（`type == null`）：否则每张空盘都来抢这个唯一目标。
 - **标记那条不是每档都能用**，用错就要付代价：它会把样板引到一张类型根本不符的盘上（写入被拒、聊天栏报
@@ -229,8 +233,20 @@ PatternDiskManagementTermMenu  →  PatternDiskEncodingTermMenu  →  MEStorageM
   空盘不受此限（它还没表过态，标记是它唯一的依据）。
 - **额外档优先于 `mode`**：雕凿/高级/过载档下菜单的 `mode` 仍停在「进入本档之前那个常规档」（已记录行为），
   直接问它会答错。
+- **两个终端的「算目标」是两条路，别只改一条**：编码终端走本节的 `updateDiskEntries`（搜索栏顺位 / 唯一匹配），
+  管理终端走自己的 `buildAutoDiskCandidates`（选中盘 + 同容器其他盘 / 表格行序 / 唯一匹配）——它是子类，
+  且**每帧在 `super.updateBeforeRender()` 之后覆盖一次 `setClientAutoDisks`**，所以基类算出的值对管理终端
+  无效。`matchesCurrentType` 与 `soleMatchingDisk` 都在基类，两侧共用；改匹配口径时请确认两条路都走到。
+- **两个终端共同的那一格**（没选中盘、也没搜索）：只有**唯一**一张对得上的盘才自动落盘。管理终端原本
+  这一格返回空，于是“盘明明对得上、点编写样板却没反应”在那边会复现一次。
 - 「对得上」只决定**谁是目标**，不决定**写得进写不进** —— 后者一律由 `PatternDiskItem.tryInsert` 说了算。
   两条判据可以只有一条成立，也可能同一张盘两条都成立。
+- 〔已知项〕**管理终端的「唯一」判定域比它显示的表大**：`soleMatchingDisk()` 读的是基类 `diskEntries`
+  （只过滤名称/标记搜索 + 无标记开关），而管理终端表格还另有 `hideEmptySlots`（默认开）与内容搜索两个
+  维度。后果两面：一张「被标记、但是空的、被隐藏了」的盘可能成为目标（写进去合法，只是玩家在表里看不到）；
+  这类隐藏盘与看得见的盘同时匹配时会凑成 2 张 ⟹ 按「多张不写」不落盘，玩家会觉得「明明有一张对得上却没反应」。
+  编码终端没有这个问题（它的判定域就是它显示的列表）。要收口得让 `soleMatchingDisk` 接一个由子类提供的
+  可见性谓词，属产品口径选择，尚未做。
 
 ## 八、档位跟随样板输出栏
 
