@@ -102,13 +102,21 @@ public class JeiDiskEncodeRecipeHandler implements IUniversalRecipeTransferHandl
             var handledAsChiseling = DiskEncodingHelper.selectChiselingTierForImport(menu,
                     chiselingInputs.isEmpty() || chiselingInputs.get(0).isEmpty() ? null : chiselingInputs.get(0).get(0),
                     chiselingOutputs.isEmpty() ? null : chiselingOutputs.get(0));
-            if (!handledAsChiseling) {
-                DiskEncodingHelper.selectTierForImport(menu, recipe);
+            if (handledAsChiseling) {
+                // 雕凿的导入已经做完了（档位、输入、候选都摆好了）：**必须在这里就结束**。
+                // 继续往下不是「带掉」而是写坏——Rechiseled 的雕凿配方不是原版配方类型，会落到
+                // encodeProcessingRecipe 去，而它内部会 setMode(PROCESSING) 并把隐藏的处理编辑区覆盖掉；
+                // 若某条被认成 supported crafting，encodeCraftingRecipe 首行又会把刚设好的雕凿档关掉。
+                var chiselingCategory = JeiTransferCategory.take();
+                var chiselingCategoryId = chiselingCategory == null ? null : chiselingCategory.toString();
+                menu.setPendingRecipeCategory(chiselingCategoryId);
+                menu.noteCategoryImported(chiselingCategoryId);
+                return null;
             }
-        } else {
-            // 探问阶段（doTransfer == false）不改状态，只回答「能不能转移」。
             DiskEncodingHelper.selectTierForImport(menu, recipe);
         }
+        // 探问阶段（doTransfer == false）不改任何状态，只回答「能不能转移」：那是 JEI 选中/渲染配方时
+        // 反复来问的路径，在这上面改档会让「悬停一张合成配方」就把玩家从额外档踢出去，而且每次都发包。
 
         // doTransfer == false is JEI asking whether the transfer would work; the answer here is "yes" as long
         // as the checks above passed, so the button stays enabled.

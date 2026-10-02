@@ -60,6 +60,14 @@ public class DiskEncodePatternHandler extends AbstractDiskRecipeHandler<PatternD
                     chiselingOutputs.isEmpty() ? null : chiselingOutputs.get(0));
             if (!handledAsChiseling) {
                 DiskEncodingHelper.selectTierForImport(menu, recipe);
+            } else {
+                // 雕凿的导入已经在上面做完了：这里直接结束，不能再往下走
+                // （下面那段 encodeProcessingRecipe 内部会 setMode(PROCESSING)，把刚设好的雕凿档覆盖掉）。
+                var chiselingCategory = emiRecipe.getCategory();
+                var chiselingCategoryId = chiselingCategory == null ? null : chiselingCategory.getId().toString();
+                menu.setPendingRecipeCategory(chiselingCategoryId);
+                menu.noteCategoryImported(chiselingCategoryId);
+                return Result.createSuccessful();
             }
         }
         // 探问阶段（doTransfer == false）不改任何状态，只回答「能不能转移」。

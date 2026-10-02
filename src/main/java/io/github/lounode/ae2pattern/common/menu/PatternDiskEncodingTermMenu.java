@@ -25,6 +25,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 import io.github.lounode.ae2pattern.integration.ae2lt.OverloadPatterns;
 
@@ -47,6 +48,9 @@ import appeng.api.networking.IGrid;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
+import appeng.core.network.ServerboundPacket;
+import appeng.core.network.serverbound.InventoryActionPacket;
+import appeng.helpers.InventoryAction;
 import appeng.core.definitions.AEItems;
 import appeng.crafting.pattern.AECraftingPattern;
 import appeng.crafting.pattern.AEProcessingPattern;
@@ -106,7 +110,6 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
     private static final String ACTION_SET_ADVANCED_MODE = "setAdvancedMode";
     private static final String ACTION_SET_CHISELING_MODE = "setChiselingMode";
     private static final String ACTION_SET_CHISELING = "setChiseling";
-    private static final String ACTION_SET_CHISELING_INPUT = "setChiselingInput";
     private static final String ACTION_SET_ADVANCED_SIDE = "setAdvancedSide";
     private static final String ACTION_SET_OVERLOADED_MODE = "setOverloadedMode";
     private static final String ACTION_SET_OVERLOADED_ROW = "setOverloadedRow";
@@ -415,7 +418,6 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
         registerClientAction(ACTION_SET_ADVANCED_MODE, Boolean.class, this::setAdvancedMode);
         registerClientAction(ACTION_SET_CHISELING_MODE, Boolean.class, this::setChiselingMode);
         registerClientAction(ACTION_SET_CHISELING, Integer.class, this::setChiseling);
-        registerClientAction(ACTION_SET_CHISELING_INPUT, ItemStack.class, this::setChiselingInput);
         registerClientAction(ACTION_SET_ADVANCED_SIDE, AdvancedSideChange.class,
                 change -> applyAdvancedSide(change.input(), change.side()));
         registerClientAction(ACTION_SET_OVERLOADED_MODE, Boolean.class, this::setOverloadedMode);
@@ -2029,14 +2031,19 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
     /**
      * 面板上那一个雕凿输入格（与选中的候选一起决定「把谁雕成谁」）。
      *
-     * <p>与 {@link #setChiseling} 同款：客户端先改本地、再发 action；服务端直接改。JEI/EMI 的 + 要导入雕凿
-     * 配方时靠它把输入方块填进去（两侧都要填：面板读的是槽，落盘时读的是服务端那份）。</p>
+     * <p>与 {@link #setChiseling} 不同，这个参数是 <b>ItemStack</b>，不能当 client action 的参数——
+     * AE2 那条路走裸 Gson、没有 ItemStack 适配器（它自用的参数类型只有 Boolean/Integer/Long/String/
+     * ResourceLocation/枚举几种），而 ItemStack 带着 Holder&lt;Item&gt; 与组件表，序列化不了。所以走
+     * AE2 给槽位准备的 {@link InventoryActionPacket}（SET_FILTER），也就是本项目导入配方时用的同一条路。</p>
      */
     public void setChiselingInput(ItemStack stack) {
         var value = stack == null ? ItemStack.EMPTY : stack;
         if (isClientSide()) {
+            // 本地先改，面板下一帧就能按新输入重算候选。
             this.chiselingInputSlot.set(value);
-            sendClientAction(ACTION_SET_CHISELING_INPUT, value);
+            ServerboundPacket message = new InventoryActionPacket(
+                    InventoryAction.SET_FILTER, this.chiselingInputSlot.index, value);
+            PacketDistributor.sendToServer(message);
             return;
         }
         this.chiselingInputSlot.set(value);

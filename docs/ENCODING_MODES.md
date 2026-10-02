@@ -104,6 +104,12 @@ PatternDiskManagementTermMenu  →  PatternDiskEncodingTermMenu  →  MEStorageM
 
 **档位状态要跟着终端走。** 权威值存 `DiskEncodingLogic`（它随部件持久化），菜单只做每 tick 回读与同步；
 客户端点一下先改本地显示字段再发 action，否则等一个往返会看到闪回。
+（`mode` 与三个额外档开关不走 action 的即时生效，所以 `pickXxx` 里还要补一次本地赋值。）
+
+**有参数的 action 只能用 JSON 能往返的类型。** AE2 那条 client action 路走裸 Gson、**没有 `ItemStack` 适配器**
+（AE2 自用的参数类型只有 `Boolean` / `Integer` / `Long` / `String` / `ResourceLocation` / 枚举）。要传物品
+不要往 action 里塞 `ItemStack`（它带着 `Holder<Item>` 与组件表）——走 AE2 给槽位准备的
+`InventoryActionPacket(InventoryAction.SET_FILTER, slot.index, stack)`。
 
 **额外档没有专属映射标记。** 它继承「进入该档之前那个常规档」的标记——这是已记录行为（见 `docs/TODO.md` 的 L 条；那条只点名了高级档，过载档同理）
 不是缺陷。除非该档的样板语义真的不同（如雕凿自己给了 `#mode:chiseling`），否则不要新造标记。
@@ -158,6 +164,8 @@ PatternDiskManagementTermMenu  →  PatternDiskEncodingTermMenu  →  MEStorageM
 | 常规档 | `logic.mode` | 恢复 |
 | 高级 / 雕凿 / 过载档开关 | `logic.advancedMode` / `chiselingMode` / `overloadedMode` | 恢复 |
 | 过载的两张行表 | `logic.overloadedSides` / `overloadedMatchModes` | 恢复 |
+| 雕凿的输入方块 | `logic.chiselingInput`（NBT 键 `chiselingInput`） | 恢复 |
+| 切石选中的配方 id | `logic.stonecuttingRecipeId` | 恢复（切石面板靠它列产物） |
 | 高级的方向表 | 菜单字段（不进存档） | **不恢复**，重新进档时从输出栏那张样板上回读 |
 | 雕凿的候选选中项 | 菜单字段（不进存档） | **不恢复**，输入一变就作废重算 |
 | 高级 / 过载的可用性 | `logic` 不存，每 tick 看升级槽 | 跟着升级槽走 |
