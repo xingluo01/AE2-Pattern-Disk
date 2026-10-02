@@ -16,6 +16,10 @@ import appeng.parts.encoding.EncodingMode;
  *
  * <p>磁盘名清洗是服务端侧的收紧：改包客户端可以送任意长、含格式码的串，而名字要写进物品组件。上限与
  * 原版铁砧一致。</p>
+ *
+ * <p><b>已知行为（不是缺陷）</b>：{@code #mode:} 这一支只覆盖 AE2 的四个常规档与雕凿（雕凿的常量直接写在这里）；
+ * <b>高级档没有专属标记</b>，它继承「进入高级档之前那个常规档」的标记。已记在 {@code TODO.md} 的 L 条里，
+ * 后续审查不必当新问题报。</p>
  */
 public final class DiskMarkRules {
 

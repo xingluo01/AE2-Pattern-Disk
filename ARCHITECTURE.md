@@ -71,6 +71,9 @@
 
 规则集中在 `common/menu/DiskMarkRules.java`（模式 → 标记、标记 → 可读名前的清洗）；可读名与 tooltip 那一侧在 `client/gui/PatternDiskMarks.java`。
 
+**已知行为**：雕凿档有专属标记 `#mode:chiseling`（它不在 AE2 的 `EncodingMode` 里、也没有配方类别，标记由上传路径直给）；
+而**高级档没有专属标记**，它继承「进入高级档之前那个常规档」的标记——这是已记录项，不是缺陷，详见 `TODO.md` 的 L 条。
+
 ### 2.3 宿主、视图、序列号
 
 一台"支持磁盘的机器"实现 `api/IPatternDiskHost.java`（有磁盘槽的库存）。它的终端视图由 `api/PatternDiskHostView.java` 拼装：自己的行在前，盘内样板在后。

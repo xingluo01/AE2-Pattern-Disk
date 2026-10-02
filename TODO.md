@@ -211,12 +211,24 @@ P0 不应新造范式，同文件里已有两处“每 tick 限量”的先例�
   切进它时 **不改 `mode`**（`PatternDiskEncodingTermScreen.pickAdvanced()` 只 `setAdvancedMode(true)`），而绑盘用的
   `deriveMarkId()` 读的正是 `menu.mode` ⟹ **高级档下写出的标记就是「进入高级档之前那个常规档」的标记**。
   从处理档进高级档，写出的就是处理档的标记（`#mode:processing`，或导入过配方时那个 `#<配方类别>`）。
-- **影响**：行为上不丢东西、不报错，只是磁盘列表/搜索里那张盘看起来像「处理样板」，玩家看不出它是在高级档下写的。
-- **为何暂不做**：给高级档一个固定的 `#mode:adv_processing` 需要同时改 `DiskMarkRules`（加常量与显示名）、
-  `deriveMarkId`/`uploadMark` 的分支、`PatternDiskMarks` 的识别、`matchesCurrentType` 的匹配与中英文案——面与
-  雕凿那一轮完全相同。雕凿已于 2026-10 补上专属标记（`#mode:chiseling`），**高级档当时按用户要求未动**。
-- **若要做，照雕凿那一套改**（见 `uploadMark()` 与 `DiskMarkRules.CHISELING_MARK` 的写法）；注意固定标记只应加在
-  **编码上传路径**上，不要写进 `deriveMarkId()`——右键打标有自己的语义（「以光标上工作方块的配方类型覆写」）。
+- **影响**：不崩、不丢东西；但有两层后果——① 磁盘列表/搜索里那张盘看起来像「处理样板」，玩家看不出它是在高级档下写的；
+  ② 从处理档进入时，`matchesCurrentType` 会跟着恒为 false（`categoryForMode(PROCESSING)` 本来就是 null，
+  `PatternDiskEncodingTermScreen:657-660`），于是「唯一目标自动落盘」这个便利也不生效——只能靠搜索栏筛盘。
+  另：继承来的 `#mode:processing` 会让该盘在处理档成为落盘目标，若其内容是高级处理样板，写入会被类型锁拒绝并给回执
+  （`disk_refused.type_locked`）——那是正常拒绝，不是异常。
+- **为何暂不做**：给高级档一个固定的 `#mode:adv_processing`，面与雕凿那一轮完全相同：`DiskMarkRules`（常量与显示名）、
+  `uploadMark()` 分支、`PatternDiskMarks` 识别、`matchesCurrentType` 匹配、中英文案。雕凿已于 2026-10 补上专属标记
+  （`#mode:chiseling`），**高级档当时按用户要求未动**。
+- **⚠ 若要做，先定一个取舍**：雕凿的 `uploadMark()` 是**先短路再回退** `deriveMarkId()`，所以它天然顶掉了
+  「导入过配方就写 `#<配方类别>`」那一支。高级档照抄就会把那一支也顶掉——而它存在的理由正是
+  「把同一台机器下的不同类别分开」（见 `deriveMarkId` 的 javadoc）。所以先决定：高级档要不要也放弃类别信息？
+  （要保留的话，得让固定标记只在「没导入过」时生效。）
+- **若要做，照雕凿那一套改**，但注意四个位置约束（雕凿那轮踩过）：
+  · 常量放 `DiskMarkRules`，形状与 `CHISELING_MARK` 一致；**`modeMarkId` 不需要重载**（枚举拿不到高级档）。
+  · 分支**只加在上传路径**（`uploadMark()`），**不要改 `deriveMarkId()`**——右键打标有自己的语义。
+  · `PatternDiskMarks.displayName` 的识别分支必须落在 `parseMode` 返回 null **之后**、`literal` 回落**之前**。
+  · `matchesCurrentType` 的分支必须在 `categoryForMode` 早退**之前**，否则从处理档进入时 `category == null` 会先 return false，分支成死代码。
+  · 别忘了 `PatternDiskMarks` 直接引用 `DiskMarkRules` 的常量，别再抄一份字面量。
 - **⚠ 审查提示**：这是**已记录项**，不是新发现的缺陷。后续审查/代码检阅时不要再把它当 bug 报一遍。
 
 ## 四、执行约束
