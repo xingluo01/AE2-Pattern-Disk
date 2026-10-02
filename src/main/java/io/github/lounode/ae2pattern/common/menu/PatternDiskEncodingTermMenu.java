@@ -1656,7 +1656,8 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
         }
         // 三个额外档是并列的，但服务端字段可能同时到位（存档残留、或两个 action 同一 tick 到达）：
         // 这里也归一一次，不只依赖 broadcastChanges 那条路——只在一边归一，另一边就会停在两块同坐标
-        // 面板叠画的状态上。归一顺序就按 dropExtraTiersExcept 的既定优先级，只留一个。
+        // 面板叠画的状态上。优先级固定为「高级 > 雕凿 > 过载」（与屏幕上 extraTiers 的排序一致），
+        // 每次只关一个：关掉的那个会写回 logic，权威值变假后不会再触发，收敛即停。
         if (this.advancedMode && this.chiselingMode) {
             this.setAdvancedMode(false);
         }

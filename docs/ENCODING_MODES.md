@@ -158,6 +158,8 @@ PatternDiskManagementTermMenu  →  PatternDiskEncodingTermMenu  →  MEStorageM
   `contains(...) ? ... : 默认值`——旧存档里缺键时直接 `getBoolean` 会把缺失读成 `false`，把开关反过来。
 - **子类的 `onServerDataSync` 也要归一**：它是服务端字段同步回客户端后的钩子，和 `broadcastChanges`
   是两条独立的路径。只在其中一处归一，另一条路径下就会停在两个额外档同时开着的状态（两块同坐标面板叠画）。
+  优先级固定为「高级 > 雕凿 > 过载」（与屏幕上注册表的排序一致），每次只关一个：关掉的那个写回 `logic`，
+  权威值变假后不会再触发，收敛即停。
 
 | 状态 | 存在哪 | 关闭终端后 |
 |---|---|---|
