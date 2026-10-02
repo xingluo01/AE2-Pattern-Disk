@@ -289,6 +289,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
     /** 当前是否停在过载编码模式。同样不在 AE2 的 {@link EncodingMode} 里，是并列的一档。 */
     @GuiSync(98)
     public boolean overloadedMode;
+
     /** 过载档每行是输出(1)还是输入(0)，逗号分隔、按行序。面板上的行与编码区的槽一一对应。 */
     @GuiSync(102)
     public String overloadedSides = "";
