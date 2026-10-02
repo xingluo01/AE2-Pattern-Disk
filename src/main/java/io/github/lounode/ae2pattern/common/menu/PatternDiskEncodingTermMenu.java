@@ -457,10 +457,11 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
     // ---- Encoding ------------------------------------------------------------
 
     /**
-     * 编一枚雕凿样板：输入取自切石输入槽里那个方块（雕凿档下它也是可见的），输出取自面板上选中的候选。
+     * 编一枚雕凿样板：输入取自雕凿自己的输入槽（与切石那个互不影响），输出取自面板上选中的候选。
      *
-     * <p>槽空着或没选就返回 null（编码路径会到此为止），但先给一句提示——否则玩家点了「编写样板」
-     * 只会看到没反应，而那一档的规矩本来就是「先放一个方块、再选一个候选」。</p>
+     * <p>槽空着或没选候选就返回 null，但**不在这里发提示**：编不出来不等于什么都没发生——编码槽里停着
+     * 一枚写好的样板时，下面会把它顺位写进唯一的目标盘（与合成/锻造/切石同款），那时再说「需要先选候选」
+     * 就成了自相矛盾的两句话。提示统一由 {@link #encode()} 在确实什么都没写之后发。</p>
      */
     @Nullable
     private ItemStack encodeChiselingPattern() {
@@ -1058,6 +1059,9 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
         if (isClientSide()) {
             // The mark depends on the imported recipe's category, which only the client knows, so it travels
             // as its own action just ahead of the bind.
+            //
+            // 这条分支会丢掉 markOverride：带它进来的只有 encode() 的服务端段（雕凿的固定标记在那里算），
+            // 客户端永远不带。将来真要客户端带标记的话，得照转发类别那样多送一个 action。
             var category = pendingRecipeCategory;
             sendClientAction("setPendingRecipeCategory", category == null ? "" : category);
             sendClientAction(ACTION_BIND_PREFIX, serial);
@@ -1105,9 +1109,10 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
      * 要绑到磁盘上的标记：导入过配方就用它自己的类别（同一台机器下的不同类别分得开），否则回退到编码模式。
      * 两者都存成 {@code #} 开头的标识符。
      *
-     * <p>{@code #mode:} 那一支现在只在「没导入过」时供显示层使用：绑盘这一路（{@link #bindPrefix(long)}）会先
-     * 判掉空的类别，所以协议上写不出模式标记；要刻意给磁盘打模式标记得走 Shift+右键
-     * （{@link #bindSearchMark(long)}，它把搜索栏文本原样存下）。</p>
+     * <p>{@code #mode:} 那一支在绑盘链路上通常出不来：{@link #bindPrefix(long)} 会先判掉空的类别。例外是
+     * 编码上传路径（{@link #uploadMark()}）——雕凿不在 {@link EncodingMode} 里、也没有配方类别，它带着
+     * 一个固定标记进 {@link #bindPrefix(long, boolean, String)}，绕过了那个判断。要刻意给磁盘打模式标记
+     * 还可以走 Shift+右键（{@link #bindSearchMark(long)}，它把搜索栏文本原样存下）。</p>
      *
      * <p>两套写法看起来是两种标记，但显示与搜索会把模式标记归一成对应的类别（见
      * {@link DiskMarkRules#categoryForMode}），所以玩家看到的、搜到的名字是一致的。</p>
