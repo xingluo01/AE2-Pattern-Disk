@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.Map;
@@ -240,6 +241,7 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
                 new ExtraTier(ICON_ADVANCED,
                         "gui.ae2_pattern_disk.encoding_terminal.advanced_mode",
                         null,
+                        "advanced_ae:adv_processing_pattern",
                         this.advancedPanel,
                         () -> getMenu().advancedModeAvailable,
                         () -> getMenu().advancedMode,
@@ -247,6 +249,7 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
                 new ExtraTier(ICON_CHISELING,
                         "gui.ae2_pattern_disk.encoding_terminal.chiseling_mode",
                         DiskMarkRules.CHISELING_MARK,
+                        "rechiseledae:chiseling_pattern",
                         this.chiselingPanel,
                         () -> getMenu().chiselingModeAvailable
                                 && PatternDiskEncodingTermMenu.CHISELING_TIER_ENABLED,
@@ -255,6 +258,7 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
                 new ExtraTier(ICON_OVERLOADED,
                         "gui.ae2_pattern_disk.encoding_terminal.overloaded_mode",
                         null,
+                        "ae2lt:overload_pattern",
                         this.overloadedPanel,
                         () -> getMenu().overloadedModeAvailable,
                         () -> getMenu().overloadedMode,
@@ -484,10 +488,27 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             Blitter icon,
             String nameKey,
             /**
-             * 该档的专属标记字面量；null = 没有，继承进入本档之前那个常规档的标记
-             * （见 docs/ARCHITECTURE.md 关于「高级档没有专属标记」的那条）。
+             * 该档的专属标记字面量，**匹配时**用它跟磁盘标记比。
+             *
+             * <p>{@code null} = 该档没有专属标记：匹配时**不认标记**，只认类型锁（见 {@link #matchesCurrentType}）。
+             * 别把它读成「继承进入本档之前那个常规档的标记」——那是**写盘侧**的行为（{@code deriveMarkId} 读
+             * {@code menu.mode}，而额外档不改 mode），两侧不一样：高级/过载档下 {@code mode} 停在进入本档
+             * 之前那个常规档，拿它去匹盘会把两种处理类样板引到错误的匹配项上。
+             * 详见 {@code docs/ENCODING_MODES.md} §七与 {@code docs/ARCHITECTURE.md}。</p>
              */
             @Nullable String ownMark,
+            /**
+             * 该档编出的样板物品 id，也就是磁盘类型锁里存的那个串（{@code PatternDiskContents.type}）。
+             *
+             * <p>用来判「这张盘固定住的类型就是当前档要编的那一类」——那比标记硬：写进去走的
+             * {@code PatternDiskContents.acceptsType} 就是同一个比较，类型锁相同就一定收得下。
+             * 三个额外档各有各的样板物品；常规四档不用填，它们的 id 由模式名推得（见
+             * {@link #patternTypeForMode}）。</p>
+             *
+             * <p>这些串与 {@code PatternDiskItem.KNOWN_TYPES} 的键对齐——那张表是「已知类型 → tooltip
+             * 名字」的权威出处，新增类型时两处一起加。</p>
+             */
+            @Nullable String patternTypeId,
             @Nullable DiskEncodingModePanel panel,
             BooleanSupplier available,
             BooleanSupplier active,
@@ -708,8 +729,8 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         // 编码按钮要不要直接落盘。这一步必须等过滤做完：玩家点按钮时看到的就是这份列表，早一帧算出来就可能
         // 把目标算成此刻已经看不到的那张盘。
         // ① 搜索栏筛过盘：按列表顺位写（沿用原语义）；
-        // ② 没搜索：不再「随手塞第一张」，但若是符合当前样板类型的盘全网只剩这一张，它就是唯一目标——
-        //    直接落盘，省掉先点中那张盘的两步。判定只认标记，不靠显示名猜类型。
+        // ② 没搜索：不再「随手塞第一张」，但若是符合当前档位的盘全网只剩这一张，它就是唯一目标——
+        //    直接落盘，省掉先点中那张盘的两步。判定只看盘自己的类型锁与标记，不靠显示名猜。
         long[] autoDisks = NO_DISKS;
         if (isDiskSearchActive()) {
             autoDisks = capCandidates(diskEntries.stream().mapToLong(DiskListPanel.DiskEntry::serial).toArray());
@@ -735,30 +756,91 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     }
 
     /**
-     * 这张盘的标记是否算「符合当前样板类型」。
+     * 这张盘是不是「当前档位编出的样板」的候选目标：可能落盘，且判断只认盘自己的东西，不猜显示名。
      *
-     * <p>磁盘标记有两种写法：导入过配方时写 {@code #<配方类别>}（如 {@code #minecraft:crafting}），
-     * 手动编码留下的写 {@code #mode:<模式>}——同一台机器两种都得认。比较基准是当前模式的规范类别，
-     * 加工样板没有公认类别（见 {@code categoryForMode}），一律不算，免得把样板随机送进某台机器。</p>
+     * <p>两条判据，先硬后软：</p>
+     *
+     * <ol>
+     * <li><b>类型锁</b>：磁盘写入第一枚样板之后类型就固定下来了（{@code PatternDiskContents.type}）。
+     * 锁住的类型正是当前档要编的那一类，那写进去必然成功——写入路径走的 {@code acceptsType} 就是同一个
+     * 比较。这就是「固定匹配」：盘锁了哪一类、当前档编的就是哪一类，于是它就算那个目标，<b>不需要它打过标记</b>。
+     * 一张空盘（没锁类型）不算，否则每张空盘都会来抢这个唯一目标。</li>
+     * <li><b>标记</b>：类型锁没命中时，退回标记那条。磁盘标记有两种写法：导入过配方时写
+     * {@code #<配方类别>}（如 {@code #minecraft:crafting}），手动编码留下的写 {@code #mode:<模式>}
+     * ——同一台机器两种都得认。</li>
+     * </ol>
+     *
+     * <p><b>但标记这条不是每档都能用</b>，而它用错时的后果很重：它会把样板引到一张类型根本不符的盘上。
+     * 那时写入会被 {@code tryInsert} 拒掉（聊天栏报「已锁定为其它样板类型」），更糟的是那张被误认的盘
+     * 会占掉「唯一目标」这个名额，真正类型对得上的那张盘反而没被试。所以没有可靠标记的档一律只认类型锁：</p>
+     *
+     * <ul>
+     * <li><b>处理档</b>：处理没有公认类别（见 {@code DiskMarkRules.categoryForMode}），本来就不会
+     * 走到标记那条（{@code category == null} 直接 false）。</li>
+     * <li><b>高级档 / 过载档</b>：它们<b>没有专属标记</b>，而 {@code mode} 在额外档下停在「进入本档之前
+     * 那个常规档」。若让它们落回模式标记，高级处理/过载处理样板就会去匹「合成 / 切石 / …」标记的盘
+     * ——三条处理类的样板各是自己的类型（{@code ae2:processing_pattern} /
+     * {@code advanced_ae:adv_processing_pattern} / {@code ae2lt:overload_pattern}），不能互串，也不能
+     * 跟别的档串。所以它们到此为止，只认上面那条类型锁。</li>
+     * <li><b>雕凿档</b>：有自己的固定字面量（注册表的 {@code ownMark}），比它自己的。</li>
+     * </ul>
      */
     private boolean matchesCurrentType(DiskEntry entry) {
+        // ① 类型锁（盘自己的事实）
+        var locked = lockedTypeOf(entry);
+        if (locked != null && locked.equals(currentPatternTypeId())) {
+            return true;
+        }
+        // ② 标记（玩家/导入留下的意图）——只给有可靠标记的档用
+        //
+        // 已经被锁成别类的盘先退出：它的类型锁已经替它回答了「它要哪一种样板」，再按标记把它当候选只会
+        // 挤掉真正对得上的那张盘（写进去也必然被拒）。这种盘系统自己会造出来——高级/过载档写盘时盖的是
+        // 「继承来的常规档标记」，而类型锁是那个高级/过载类型，于是它回到常规档下就会被标记误认。
+        // 空盘（locked == null）不受此限：它还没表过态，标记就是它唯一的依据。
+        if (locked != null && !locked.equals(currentPatternTypeId())) {
+            return false;
+        }
         var raw = entry.stack().get(AEPatternRegistries.DISK_PREFIX.get());
         if (raw == null || raw.isEmpty()) {
             return false;
         }
-        var mode = menu.getMode();
-        // 雕凿不在 EncodingMode 里也没有配方类别，它的标记是唯一的固定字面量，直接比；
-        // 其余额外档（高级/过载）没有专属标记，继承进入本档之前那个常规档的。哪档有专属标记
-        // 写在注册表的 ownMark 里，不再写 if。
+        // 额外档先判，不管有没有专属标记都到此为止：没有专属标记的那两档（高级/过载）不能落回下面那条
+        // mode 判据，理由见 javadoc——那是「处理类样板被引到错误匹配项」的来源。
         var tier = activeTier();
-        if (tier >= 0 && this.extraTiers.get(tier).ownMark() != null) {
-            return this.extraTiers.get(tier).ownMark().equals(raw);
+        if (tier >= 0) {
+            var ownMark = this.extraTiers.get(tier).ownMark();
+            return ownMark != null && ownMark.equals(raw);
         }
+        // 常规档：雕凿不在 EncodingMode 里也没有配方类别，它的标记是唯一的固定字面量，已在上面比过；
+        // 常规四档则比当前模式的规范类别与模式标记。处理没有公认类别，一律不算，免得把样板送错机器。
+        var mode = menu.getMode();
         var category = DiskMarkRules.categoryForMode(mode);
         if (category == null) {
             return false;
         }
         return ("#" + category).equals(raw) || DiskMarkRules.modeMarkId(mode).equals(raw);
+    }
+
+    /** 这张盘锁定的样板类型；它不是磁盘、或还是空盘（未锁定）时返回 null。 */
+    @Nullable
+    private static String lockedTypeOf(DiskEntry entry) {
+        return entry.stack().getItem() instanceof PatternDiskItem disk
+                ? disk.contents(entry.stack()).type()
+                : null;
+    }
+
+    /**
+     * 当前档位编出的样板物品 id。额外档各问自己注册表里那一格；常规四档由模式名推——AE2 那四个编码样板
+     * 就是 {@code ae2:<模式名小写>_pattern}（crafting / processing / smithing_table / stonecutting）。
+     */
+    private String currentPatternTypeId() {
+        var tier = activeTier();
+        // 额外档优先：雕凿/高级/过载档下 mode 仍停着「进入本档之前那个常规档」，直接问它会答错。
+        return tier >= 0 ? this.extraTiers.get(tier).patternTypeId() : patternTypeForMode(menu.getMode());
+    }
+
+    private static String patternTypeForMode(EncodingMode mode) {
+        return "ae2:" + mode.name().toLowerCase(Locale.ROOT) + "_pattern";
     }
 
     /** Renames the disk {@code serial} after the machine its mark stands for. */

@@ -23,6 +23,7 @@ import io.github.lounode.ae2pattern.common.block.entity.MeteoritePatternProvider
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskProviderBlockEntity;
 import io.github.lounode.ae2pattern.common.block.entity.PatternTransfererBlockEntity;
 import io.github.lounode.ae2pattern.integration.ae2cs.AecsSoftDep;
+import io.github.lounode.ae2pattern.integration.ae2lt.OverloadPatterns;
 import io.github.lounode.ae2pattern.integration.advancedae.AdvancedPatternEncoder;
 import io.github.lounode.ae2pattern.integration.appflux.AppFluxInductionCard;
 import io.github.lounode.ae2pattern.integration.rechiseledae.ChiselingPatternEncoder;
@@ -264,6 +265,11 @@ public class AE2PatternDisk {
         // 它是方块物品（只能按物品 id 取），自己也只在世界里工作，在这儿纯粹当一把钥匙。
         ChiselingPatternEncoder.register(AEPatternRegistries.ITEM_PATTERN_DISK_ENCODING_TERMINAL.get());
 
+        // AE2 Lightning Tech 的过载样板编码器：同一条路——装上它，编码终端才多出过载编码模式。
+        // 它必须登记：那枚卡不是 UpgradeCardItem 的子类，升级槽只靠 Upgrades 表收它（细节见 OverloadPatterns，
+        // 漏登记的表现为「档位就在那儿、卡拖进槽里弹回来、还没任何提示」）。
+        OverloadPatterns.register(AEPatternRegistries.ITEM_PATTERN_DISK_ENCODING_TERMINAL.get());
+
         // 两个无线终端再单独登记一次：不走 AE2WTLib 的 UpgradeHelper——它只遍历上游自己的终端表、
         // 且 readyForUpgrades 置位前后行为不同，本模组这两个终端在不在其中不由我们说了算。放到这里而不是
         // 物品的注册回调里：那边 AdvancedAE 的物品可能还没注册好，取不到卡就只有一条 debug 日志，
@@ -274,6 +280,8 @@ public class AE2PatternDisk {
             AdvancedPatternEncoder.registerFor(AEPatternRegistries.wirelessEncodingItem(),
                     AEPatternRegistries.wirelessManagementItem());
             ChiselingPatternEncoder.registerFor(AEPatternRegistries.wirelessEncodingItem(),
+                    AEPatternRegistries.wirelessManagementItem());
+            OverloadPatterns.registerFor(AEPatternRegistries.wirelessEncodingItem(),
                     AEPatternRegistries.wirelessManagementItem());
         }
     }

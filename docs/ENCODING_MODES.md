@@ -26,7 +26,7 @@
 private record ExtraTier(
         Blitter icon,                       // 下拉里的档位图标（states.png 一格）
         String nameKey,                     // 档位名（lang 键）
-        @Nullable String ownMark,           // 专属标记字面量；null = 没有，继承上一个常规档的
+        @Nullable String ownMark,           // 专属标记字面量；null = 该档匹配时不认标记，只认类型锁
         @Nullable DiskEncodingModePanel panel,  // 该档的面板；null = 面板缺席，该档不进下拉
         BooleanSupplier available,          // 可用性：读菜单同步下来的字段，不自己判环境
         BooleanSupplier active,             // 当前是否停在这一档
@@ -48,7 +48,9 @@ private Blitter currentModeIcon();          // 模式钮画哪个图标
   `pickMode`/`pickAdvanced` 两处：前者导致回常规档后编辑区一片空白，后者导致两块面板同坐标叠画）。
 - **面板可见性**：常规面板 `visible = regular && mode == 该档`；额外档面板 `visible = 该档 active`。
 - **模式钮的图标与提示语**：都取 `activeTier()` 对应的那项，不要写三元链。
-- **专属标记**：只有 `ownMark != null` 的档才拦截标记判定（现有只有雕凿），其余继承常规档的。
+- **专属标记**：只有 `ownMark != null` 的档才拦截标记判定（现有只有雕凿）。`ownMark == null` 的额外档
+  （高级/过载）**匹配时不认标记**——它们没有专属标记，而 `mode` 停在进入本档之前那个常规档，拿它去匹盘会把
+  两种处理类样板引到错误的匹配项上。注意这与**写盘侧**不同：写盘侧仍继承（见 §六/§七）。
 
 ---
 
@@ -111,8 +113,12 @@ PatternDiskManagementTermMenu  →  PatternDiskEncodingTermMenu  →  MEStorageM
 不要往 action 里塞 `ItemStack`（它带着 `Holder<Item>` 与组件表）——走 AE2 给槽位准备的
 `InventoryActionPacket(InventoryAction.SET_FILTER, slot.index, stack)`。
 
-**额外档没有专属映射标记。** 它继承「进入该档之前那个常规档」的标记——这是已记录行为（见 `docs/TODO.md` 的 L 条；那条只点名了高级档，过载档同理）
-不是缺陷。除非该档的样板语义真的不同（如雕凿自己给了 `#mode:chiseling`），否则不要新造标记。
+**额外档没有专属映射标记。** 这是指**写盘侧**：绑盘盖什么标记，读的是 `menu.mode`，而额外档不改 `mode`，
+于是盖出来的就是「进入该档之前那个常规档」的标记（见 `docs/TODO.md` 的 L 条；那条只点名了高级档，过载档同理）。
+这不是缺陷，也不要在写盘侧新造标记。
+
+但**匹配侧不一样**：`ownMark == null` 的档（高级/过载）不得拿那个「继承来的模式标记」去选目标盘——
+两种处理类样板会因此被引到错误的匹配项上。细节与理由见 §七。
 
 ---
 
@@ -173,7 +179,51 @@ PatternDiskManagementTermMenu  →  PatternDiskEncodingTermMenu  →  MEStorageM
 | 高级 / 过载的可用性 | `logic` 不存，每 tick 看升级槽 | 跟着升级槽走 |
 | `selectedChiseling` 等瞬时选择 | 菜单字段 | 不恢复（有意：序号在新列表里可能对应别的物品） |
 
-## 七、加一个磁盘类型
+## 七、上传目标：类型锁与标记
+
+点「编写样板」要不要自动落盘、落给谁，由 `PatternDiskEncodingTermScreen` 的两处决定：
+
+- **搜索栏有内容**：按列表顺序顺位试，写进第一张能接收的（`transferToFirstWritable`）；
+- **搜索栏为空**：只有**唯一**一张「对得上当前档位」的盘才自动落盘（`matchesCurrentType`），
+  零张或多张都不写（多张时让玩家用搜索栏自己选，不猜）。
+
+`matchesCurrentType` 有两条判据，任一条成立即可 —— **先硬后软**：
+
+| 判据 | 依据 | 说明 |
+|---|---|---|
+| 类型锁 | `PatternDiskContents.type` | 磁盘**自己的事实**。写入第一枚样板时锁死，之后写进去必然成功（与写入路径的 `acceptsType` 是同一个比较）。这类盘**不需要打过标记** |
+| 标记 | `DISK_PREFIX` 组件 | 玩家或导入留下的**意图**。写法是 `#<配方类别>` 或 `#mode:<模式>`；雕凿有专属字面量，开在注册表的 `ExtraTier.ownMark` 里 |
+
+**档位 → 该档编出的样板类型**（开在 `ExtraTier.patternTypeId`；常规四档由模式名推，不另写表）：
+
+| 档位 | 样板类型 id |
+|---|---|
+| 合成 / 切石 / 锻造 / 处理 | `ae2:<模式名小写>_pattern` |
+| 雕凿 | `rechiseledae:chiseling_pattern` |
+| 高级 | `advanced_ae:adv_processing_pattern` |
+| 过载 | `ae2lt:overload_pattern` |
+
+这些 id 与 `PatternDiskItem.KNOWN_TYPES` 的键对齐——那张表是「类型 → tooltip 名字」的权威出处，新增类型时两处一起加。
+
+四个坑：
+
+- **空盘不算对得上**（`type == null`）：否则每张空盘都来抢这个唯一目标。
+- **标记那条不是每档都能用**，用错就要付代价：它会把样板引到一张类型根本不符的盘上（写入被拒、聊天栏报
+  「已锁定为其它样板类型」），而那张被误认的盘还会占掉「唯一目标」这个名额，真正类型对得上的盘反而没被试。
+  所以只给有**可靠**标记的档用：
+  - **处理档**：没有公认类别（`categoryForMode` 返回 null），本来就到不了标记那条。
+  - **高级档 / 过载档**：没有专属标记，而 `mode` 停在「进入本档之前那个常规档」——若落回模式标记，
+    高级处理/过载处理样板就会去匹「合成 / 切石 / …」标记的盘。它们已改为到此为止，**只认类型锁**。
+  - **雕凿档**：有专属字面量（`ExtraTier.ownMark`），照比。
+- **已被锁成别类的盘不参与标记判据**：同一后果的另一面。系统自己会造出这种盘——高级/过载档写盘时盖的是
+  「继承来的常规档标记」（写盘侧行为），而类型锁是那个高级/过载类型；回到常规档后它就会被标记误认。
+  空盘不受此限（它还没表过态，标记是它唯一的依据）。
+- **额外档优先于 `mode`**：雕凿/高级/过载档下菜单的 `mode` 仍停在「进入本档之前那个常规档」（已记录行为），
+  直接问它会答错。
+- 「对得上」只决定**谁是目标**，不决定**写得进写不进** —— 后者一律由 `PatternDiskItem.tryInsert` 说了算。
+  两条判据可以只有一条成立，也可能同一张盘两条都成立。
+
+## 八、加一个磁盘类型
 
 磁盘的「类型」就是**编码样板物品的注册 id**（`PatternClassifier` 取 `details.getDefinition().getId()`），
 所以一个新类型必须挂在某个真实存在、且能被认成 `IPatternDetails` 的样板物品上。
@@ -188,7 +238,7 @@ PatternDiskManagementTermMenu  →  PatternDiskEncodingTermMenu  →  MEStorageM
 
 ---
 
-## 八、编码模式相关的小抄
+## 九、编码模式相关的小抄
 
 - 面板几何：`Blitter.texture(uri).src(...)` 的坐标按 **256×256** 换算（`Blitter.DEFAULT_TEXTURE_WIDTH/HEIGHT`）。
   图集是 256×256 时数字可直接照抄；不是就得改 `.src()`。
