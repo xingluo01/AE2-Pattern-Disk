@@ -579,7 +579,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
                 // 写进去了才顺手把标记写成它的工作方块：写盘被拒（容量/重复产出/类型锁定）时盘里没这份
                 // 样板，再去改标记只会让盘与样板对不上。
                 if (transferToFirstWritable(autoDisks) && autoDisks.length == 1) {
-                    bindPrefix(autoDisks[0], false, uploadMark());
+                    bindMarkIfUnmarked(autoDisks[0]);
                 }
             }
         } else {
@@ -592,7 +592,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
                     // 走既有的写盘路径：写进去、清空编码槽、退回空白样板，一处口径。
                     // 同样只在真写进去之后才绑标记（理由见上一处调用点）。
                     if (transferToFirstWritable(autoDisks) && autoDisks.length == 1) {
-                        bindPrefix(autoDisks[0], false, uploadMark());
+                        bindMarkIfUnmarked(autoDisks[0]);
                     }
                 } else {
                     notifyExtraTierNeedsInput();
@@ -1108,6 +1108,31 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
      * tooltip instead of renaming the item, which used to make every disk of a kind look identical.
      * Renaming is a separate interaction (see {@link #renameDisk(long)}).
      */
+    /**
+     * 自动写盘成功后顺手把标记绑成当前工作方块——**只在盘上还没有标记时**。
+     *
+     * <p>这两条（编码后写盘、拿编码槽里现成的样板写盘）是系统替玩家办的事，不该顺手改掉玩家的组织意图，
+     * 所以盘上已有的标记一律保留：无论是导入配方留下的 {@code #<类别>}，还是玩家自己写的文本。
+     * 手动右键（{@link #bindPrefix(long)}）是玩家明确要改那张盘的标记，那才覆盖。</p>
+     */
+    private void bindMarkIfUnmarked(long serial) {
+        var ref = diskIndex.refOf(serial);
+        if (ref == null) {
+            return;
+        }
+        var stack = ref.host().getDiskInventory().getStackInSlot(ref.slot());
+        if (stack.isEmpty()) {
+            return;
+        }
+        // 与分组侧的判据保持一致（{@code tierTypeOf}）：空串当「没标记」，免得两边对同一张盘
+        // 一个说有、一个说没有。（正常路径不会写出空串标记：bindSearchMark 在空文本时是 remove。）
+        var existing = stack.get(AEPatternRegistries.DISK_PREFIX.get());
+        if (existing != null && !existing.isEmpty()) {
+            return;
+        }
+        bindPrefix(serial, false, uploadMark());
+    }
+
     public void bindPrefix(long serial) {
         bindPrefix(serial, true, null);
     }
