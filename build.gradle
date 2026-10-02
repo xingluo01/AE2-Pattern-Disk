@@ -390,7 +390,11 @@ dependencies {
     // 而它至今仍留下一组指向 data_energistics 旧包 ...util 的 mixin（实测 DE 3.1.3 及以后那类在
     // ...menu.patternprovider，旧包 ...util 已无此类），即它的 DE 桥本来就接不上。
     localRuntime 'curse.maven:data-energistics-1565514:8841396'            // 3.2.2
-    localRuntime 'maven.modrinth:configuration:3.1.1'                      // data-energistics 的前置
+    // 用版本 id 而不是版本号：Modrinth 上 configuration 的 3.1.1 有 fabric / neoforge / forge 三个
+    // 同名版本，写 3.1.1 会被解析到 forge 那份——FML 直接跳过该 jar（"is for Minecraft Forge or an
+    // older version of NeoForge"），连带 data_energistics 的必需前置落空、整个客户端加载失败。
+    // 6Mztfq1u 才是 neoforge 那份（META-INF/neoforge.mods.toml，loaderVersion [2,)）。
+    localRuntime 'maven.modrinth:configuration:6Mztfq1u'                   // data-energistics 的前置
     localRuntime 'maven.modrinth:ae2utility:1.8.0'
     localRuntime 'maven.modrinth:a-useless-mod:1.21.1-2.4.5.4'
 
@@ -429,7 +433,11 @@ dependencies {
         // AE2 的 JEI 集成是独立模组（AE2 本体不带），它的元数据又把 jei 标成 required：只能跟着 JEI 分支
         // 走——放进 EMI 口径会让客户端因缺 JEI 直接加载失败。没有它，JEI 里根本不会出现与本项目（及
         // AE2 终端）相关的配方转移入口，本项目的 JEI 兼容层也就无从验证。与 EAE+ 开发环境同一份坐标。
-        localRuntime 'curse.maven:ae2-jei-integration-1074338:5748513'
+        // 1.2.1（fileId 7727898）而不是 1.2.0：data_energistics 把 ae2jeiintegration 标成 optional
+        // [1.2.1,)，而 FML 对**已安装**的可选依赖同样做版本检查，装 1.2.0 会让整个客户端加载失败
+        // （"Unsupported installed optional dependencies"）。1.2.1 要求 AE2 [19.0.22-beta,) 与
+        // JEI [19.19.3,)，两边都满足。
+        localRuntime 'curse.maven:ae2-jei-integration-1074338:7727898'
     }
 
     // ModDevMCP 0.3 没有发布到任何公共 maven（Central / NeoForged / modmaven / BlameJared 都没有）。
