@@ -1116,6 +1116,13 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
      *
      * <p>两套写法看起来是两种标记，但显示与搜索会把模式标记归一成对应的类别（见
      * {@link DiskMarkRules#categoryForMode}），所以玩家看到的、搜到的名字是一致的。</p>
+     *
+     * <p><b>已知行为（不是缺陷）</b>：高级档（{@code advancedMode}）不在 {@link EncodingMode} 里、切进去时也不改
+     * {@code mode}，所以它<b>没有专属标记</b>——读到的 {@code mode} 是「进入高级档之前那个常规档」，
+     * 写出来就是那个常规档的标记（从处理档进去就是处理档的）。
+     * 已记在 {@code TODO.md} 的「功能缺口」一节里，后续审查不必再把它当新问题报。雕凿档因为样板语义不同
+     * （记「把谁雕成谁」，与导入的配方类别无关），单独走 {@link #uploadMark()} 给了固定标记；若日后要给高级档
+     * 补一个，照 {@link DiskMarkRules#CHISELING_MARK} 那一套加，且同样<b>只加在上传路径上</b>。</p>
      */
     public String deriveMarkId() {
         return DiskMarkRules.deriveMarkId(pendingRecipeCategory, this.mode);
@@ -1128,6 +1135,10 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
      * <p>这个雕凿分支只在**上传路径**上生效，没有写进 {@code deriveMarkId()}：右键打标是一条独立手势，
      * 它承诺「以光标上那个工作方块的配方类型覆写」（见 {@code tooltip.disk.right_click}），雕凿档下
      * 也该照办。</p>
+     *
+     * <p>只给雕凿开分支，是因为它的样板语义与常规档不同（记的是「把谁雕成谁」，与导入的配方类别无关）。
+     * <b>高级档没有专属标记</b>——它继承进入本档之前那个常规档的，属已记录项（见 {@code TODO.md}）；
+     * 不要顺手在这里补一个：那会改变磁盘上现有标记的含义，不是修复。</p>
      */
     private String uploadMark() {
         return this.chiselingMode ? DiskMarkRules.CHISELING_MARK : deriveMarkId();

@@ -205,6 +205,20 @@ P0 不应新造范式，同文件里已有两处“每 tick 限量”的先例�
   3. 内存层面**无实质优化空间**（现状正确）。
 - **关联**：条目 F（1024 截断行为待补文档）、批处理装配室与供应器共用同一套磁盘内容 API。
 
+### L. 高级档没有专属标记，继承「进入本档之前那个常规档」的 — P3 ⬜（2026-10 记录，**已知行为，非缺陷**）
+
+- **现状**：高级档（`advancedMode`，也就是物品 tooltip 里那个「高级处理」类型）不在 AE2 的 `EncodingMode` 枚举里，
+  切进它时 **不改 `mode`**（`PatternDiskEncodingTermScreen.pickAdvanced()` 只 `setAdvancedMode(true)`），而绑盘用的
+  `deriveMarkId()` 读的正是 `menu.mode` ⟹ **高级档下写出的标记就是「进入高级档之前那个常规档」的标记**。
+  从处理档进高级档，写出的就是处理档的标记（`#mode:processing`，或导入过配方时那个 `#<配方类别>`）。
+- **影响**：行为上不丢东西、不报错，只是磁盘列表/搜索里那张盘看起来像「处理样板」，玩家看不出它是在高级档下写的。
+- **为何暂不做**：给高级档一个固定的 `#mode:adv_processing` 需要同时改 `DiskMarkRules`（加常量与显示名）、
+  `deriveMarkId`/`uploadMark` 的分支、`PatternDiskMarks` 的识别、`matchesCurrentType` 的匹配与中英文案——面与
+  雕凿那一轮完全相同。雕凿已于 2026-10 补上专属标记（`#mode:chiseling`），**高级档当时按用户要求未动**。
+- **若要做，照雕凿那一套改**（见 `uploadMark()` 与 `DiskMarkRules.CHISELING_MARK` 的写法）；注意固定标记只应加在
+  **编码上传路径**上，不要写进 `deriveMarkId()`——右键打标有自己的语义（「以光标上工作方块的配方类型覆写」）。
+- **⚠ 审查提示**：这是**已记录项**，不是新发现的缺陷。后续审查/代码检阅时不要再把它当 bug 报一遍。
+
 ## 四、执行约束
 - 目标：NeoForge 21.1.241 / MC 1.21.1 / JDK 21 / AE2 19.2.17（编译依赖口径；`gradle.properties` 中的 `ae2_version=19.2.8` 为未使用的历史键）
 - 只用 AE2 公共 API；机器美术资源统一放本项目 `assets/ae2_pattern_disk/textures/`，不直接引用 `ae2:` 纹理（借用的复制件见 README 授权表；零件/物品显示模型仍继承 `ae2:item/display_base`、`ae2:part/display_off`、`ae2:item/cable_interface`）
