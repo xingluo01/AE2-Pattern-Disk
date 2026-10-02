@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 import com.supermartijn642.rechiseled.ae.RechiseledAE;
 import com.supermartijn642.rechiseled.ae.chiseling_pattern.EncodedChiselingPattern;
@@ -38,6 +39,39 @@ public final class ChiselingRecipes {
 
     /** 一项候选：把输入槽里那个物品雕成 {@code output}。输入是查询入口，不进候选项。 */
     public record Candidate(Item output) {
+    }
+
+    /** 一枚雕凿样板记下的那一对：把 {@code input} 雕成 {@code output}。 */
+    public record Pair(Item input, Item output) {
+    }
+
+    /**
+     * 读出这枚雕凿样板记的「把谁雕成谁」；不是雕凿样板、或读不出东西时返回 null。
+     *
+     * <p>给「往样板输出栏放一枚雕凿样板就切到雕凿档、并把输入与候选一起摆好」用——与过载档进档时摊行、
+     * 高级档进档时读方向表同一个口径。</p>
+     */
+    @Nullable
+    public static Pair decode(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return null;
+        }
+        try {
+            var pattern = stack.get(EncodedChiselingPattern.COMPONENT_TYPE);
+            if (pattern == null || pattern.containsMissingContent()) {
+                // 缺内容：上游那件物品被移除过，这一对里会有一个已经不在册，反推没有意义。
+                return null;
+            }
+            var input = pattern.input();
+            var output = pattern.output();
+            if (input == null || output == null || input == Items.AIR || output == Items.AIR) {
+                return null;
+            }
+            return new Pair(input, output);
+        } catch (RuntimeException | LinkageError e) {
+            LOGGER.warn("Could not read an encoded chiseling pattern", e);
+            return null;
+        }
     }
 
     /**
@@ -85,10 +119,23 @@ public final class ChiselingRecipes {
      * 而两侧的候选顺序一致，所以只需传一个序号（与 {@link #serverCandidateAt} 同一口径）。</p>
      */
     public static int clientIndexOf(@Nullable Item input, @Nullable Item output) {
+        return indexOf(true, input, output);
+    }
+
+    /**
+     * 在服务端那份候选表里找 {@code output} 的序号，找不到返回 -1。
+     *
+     * <p>给「放入雕凿样板就切档」用：那一步在服务端（槽内容的权威侧），只能读服务端那份表。</p>
+     */
+    public static int serverIndexOf(@Nullable Item input, @Nullable Item output) {
+        return indexOf(false, input, output);
+    }
+
+    private static int indexOf(boolean client, @Nullable Item input, @Nullable Item output) {
         if (input == null || output == null) {
             return -1;
         }
-        var all = candidates(true, input);
+        var all = candidates(client, input);
         for (int i = 0; i < all.size(); i++) {
             if (all.get(i).output() == output) {
                 return i;

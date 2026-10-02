@@ -232,7 +232,49 @@ PatternDiskManagementTermMenu  →  PatternDiskEncodingTermMenu  →  MEStorageM
 - 「对得上」只决定**谁是目标**，不决定**写得进写不进** —— 后者一律由 `PatternDiskItem.tryInsert` 说了算。
   两条判据可以只有一条成立，也可能同一张盘两条都成立。
 
-## 八、加一个磁盘类型
+## 八、档位跟随样板输出栏
+
+往样板输出栏里放一枚已编码样板时，终端会**切到与它对应的那一档**
+（`PatternDiskEncodingTermMenu.syncTierWithPatternOutput`，在服务端 `broadcastChanges` 里看槽内容的变化）。
+理由很直接：放进去就是要接着编辑它（或者是回来改它），而终端可能停在另一个档上——雕凿样板停在合成档、
+高级处理样板停在处理档，面板显示的东西与槽里那枚样板对不上。
+
+它与「进档时从这张样板摊东西」是同一套口径，只是方向相反：切过去之后编辑区已经按那枚样板摆好，
+玩家不用再手点一次候选。
+
+| 槽里那枚样板的类型 | 切到 | 切过去时顺带做什么 |
+|---|---|---|
+| `ae2:crafting_pattern` / `ae2:processing_pattern` / `ae2:smithing_table_pattern` / `ae2:stonecutting_pattern` | 对应常规档 | 无（常规档的编辑区与输出栏无关） |
+| `advanced_ae:adv_processing_pattern` | 高级档 | 摊输入输出 + 读回每格的面（`setAdvancedMode` 自己会做） |
+| `rechiseledae:chiseling_pattern` | 雕凿档 | 按 `EncodedChiselingPattern` 的「输入 → 产物」反推，摆输入并定好选中（`seedChiselingFromPattern`，用**服务端**那份候选表） |
+| `ae2lt:overload_pattern` | 过载档 | 摊每行的物品与「输入/输出」标记 |
+| `useless_mod:omniversal_pattern` | —— | 认不出，不动（编码侧还没接） |
+
+那些类型 id 全部取自 `PatternDiskItem` 的那组常量，不要再写字面量。
+
+坑：
+
+- **只比物品身份，不比组件**：档位只由样板物品类型决定，同物品的另一枚样板（不同配方）不需要重新切档。
+- **开屏第一帧只建基线**（`outputTierBaselineSet`）：存档里本来就停着一枚样板（玩家上次没拿走），那是现状
+  而不是「刚放进去」，据此改档会盖掉玩家存下来的档位。
+- **被拿走 / 被清成空白样板时不动档位**：玩家可能正要往这个档里写东西，替他把档切走只会碍事。
+- **额外档连可用性一起判**：切过去的前提是升级槽里有那枚编码器，否则只会是一屏空的隐藏面板。
+- **已在档内也要重推**：换的是另一枚同类样板，编辑区得跟着它变（所以雕凿档总是跑 `seedChiselingFromPattern`，
+  高级/过载档总是再调一次自己的 setter——那两个 setter 自己会重摊一遍）。
+- **切回常规档时，关额外档不跟 `mode` 比较挂钩**：三个额外档与常规档并列，而额外档下 `mode` 停在进入本档
+  之前那个常规档——人在高级档、放进去的却是合成样板时 `mode` 本就等于 `CRAFTING`。先关额外档、后判
+  `mode` 要不要变；合成那一步不拆开。
+- **切档本身不改输出栏**，所以那次检测不会自我触发；唯一的例外是**编码自己写进输出栏**那一枚
+  ——所以写完要立即调 `adoptOutputPatternAsBaseline()` 把基线跟上。不跟上的话，高级档补面编出的那张
+  普通处理样板会在下一帧把人踢出高级档。
+- **检测必须留在 `super.broadcastChanges()` 之后**：AE2 在那一句里先发 `@GuiSync` 数据、再发槽刷新，
+  两者同 tick 按序下发。挪到它之前，客户端会先收到槽、后收到 `chiselingInputRevision`，雕凿面板那一下
+  就会把程序设的选中序号当成「玩家换了输入」清掉。
+- **面板别把这一步设的选中序号清掉**：雕凿档会连着设输入与选中，而面板一发现输入变了就把选中作废
+  （见 §五）。菜单用一个 `@GuiSync` 的输入修订号（`chiselingInputRevision`）把「程序设的输入」与
+  「玩家换的输入」分开，面板据此跳过清空——配方导入那条路也用同一个修订号。
+
+## 九、加一个磁盘类型
 
 磁盘的「类型」就是**编码样板物品的注册 id**（`PatternClassifier` 取 `details.getDefinition().getId()`），
 所以一个新类型必须挂在某个真实存在、且能被认成 `IPatternDetails` 的样板物品上。
@@ -247,7 +289,7 @@ PatternDiskManagementTermMenu  →  PatternDiskEncodingTermMenu  →  MEStorageM
 
 ---
 
-## 九、编码模式相关的小抄
+## 十、编码模式相关的小抄
 
 - 面板几何：`Blitter.texture(uri).src(...)` 的坐标按 **256×256** 换算（`Blitter.DEFAULT_TEXTURE_WIDTH/HEIGHT`）。
   图集是 256×256 时数字可直接照抄；不是就得改 `.src()`。

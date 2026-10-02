@@ -24,10 +24,12 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import io.github.lounode.ae2pattern.integration.ae2lt.OverloadPatterns;
+import io.github.lounode.ae2pattern.integration.rechiseledae.ChiselingRecipes;
 
 import appeng.api.upgrades.IUpgradeInventory;
 import appeng.menu.SlotSemantic;
@@ -83,6 +85,7 @@ import io.github.lounode.ae2pattern.common.menu.slot.PatternOutputSlot;
 import io.github.lounode.ae2pattern.common.part.PatternDiskEncodingTerminalPart;
 import io.github.lounode.ae2pattern.api.IPatternDiskHost;
 import io.github.lounode.ae2pattern.api.PatternDiskApi;
+import io.github.lounode.ae2pattern.api.PatternClassifier;
 import io.github.lounode.ae2pattern.network.DiskListPayload;
 
 /**
@@ -264,6 +267,16 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
 
     @GuiSync(85)
     public int selectedChiseling = -1;
+
+    /**
+     * 雕凿输入槽被程序设过几次（配方导入、放入雕凿样板切档）。
+     *
+     * <p>同步到客户端，面板靠它区分「输入槽的变化是程序干的」与「玩家自己换了输入」：前者连着把选中序号
+     * 也设好了，清掉会让导入变成「档位对、输入对、却没有选中项」，点「编写样板」只得到一句「需要先选候选」；
+     * 后者才该把旧序号作废。理由与完整推演见 {@code docs/ENCODING_MODES.md} 的配方导入那一节。</p>
+     */
+    @GuiSync(104)
+    public int chiselingInputRevision;
 
     @GuiSync(87)
     public boolean chiselingModeAvailable;
@@ -558,6 +571,8 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
                 }
             }
             this.encodedPatternSlot.set(encodedPattern);
+            // 基线跟上：这一枚是本菜单按当前档位自己编出来的，不是玩家放进去的（理由见 adoptOutputPatternAsBaseline）。
+            adoptOutputPatternAsBaseline();
             // 搜索栏有内容时，刚编好的样板按列表顺序顺位写进第一张能收的盘——省掉「编出一个样板再点
             // 磁盘」两步。候选由客户端给出（顺序就是屏幕上的顺序）；全部写不进时由顺位路径报原因。
             if (autoDisks.length > 0) {
@@ -1639,6 +1654,11 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
             if ((!this.chiselingModeAvailable || !CHISELING_TIER_ENABLED) && this.chiselingMode) {
                 this.setChiselingMode(false);
             }
+            // 放在可用性回读之后：切到某一个额外档之前得先知道那一档在不在（升级槽里有没有那枚编码器）。
+            // 也必须留在 super.broadcastChanges() 之后：AE2 在那一句里先发 @GuiSync 数据、再发槽刷新，
+            // 两者同 tick 按序下发。挪到它之前的话，客户端会先收到槽、后收到 chiselingInputRevision，
+            // 面板那一下就会把程序设的选中序号当成「玩家换了输入」清掉。
+            syncTierWithPatternOutput();
         }
     }
 
@@ -1815,6 +1835,161 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
             return;
         }
         seedOverloadedRowsFromPattern();
+    }
+
+    // ---- 档位跟随样板输出栏 ----
+
+    /** 上一次看到的输出栏物件身份（null = 空）。比物品身份就够：档位只由样板物品类型决定。 */
+    @Nullable
+    private Item lastOutputPatternItem;
+
+    /** 上一次看到的输出栏是不是空的。 */
+    private boolean lastOutputWasEmpty;
+
+    /**
+     * 输出栏那份快照是不是建过基线了。
+     *
+     * <p>开屏第一帧只记值、不动作：存档里本来就停着一枚样板（玩家上次没拿走），那是现状而不是
+     * 「刚放进去」，据此改档会盖掉玩家存下来的档位。</p>
+     */
+    private boolean outputTierBaselineSet;
+
+    /**
+     * 样板输出栏里出现一枚样板时，把档位切到与它对应的那一档。
+     *
+     * <p>玩家的意图很直接：往输出栏里放一枚样板就是要接着编辑它（或者干脆是回来改它）。终端却可能停在
+     * 另一个档上——雕凿样板停在合成档、高级处理样板停在处理档——面板显示的东西与槽里那枚样板对不上。
+     * 所以槽里那枚样板的类型就是档位的依据。这与「进档时从这张样板摊东西」是同一套口径：过载档摊行、
+     * 高级档读方向表与输入输出，它们都在本类的 setter 里，切过去就自然跑。</p>
+     *
+     * <p>只在**内容真的变了**时才判，且只比物品身份：同物品的另一枚样板（不同配方）不需要重新切档。
+     * 编码路径自己写进输出栏那一次也会走到这里，那时档位本来就对得上，是空操作。</p>
+     */
+    private void syncTierWithPatternOutput() {
+        var current = this.encodedPatternSlot.getItem();
+        var item = current.isEmpty() ? null : current.getItem();
+        if (!this.outputTierBaselineSet) {
+            this.outputTierBaselineSet = true;
+            adoptOutputPatternAsBaseline();
+            return;
+        }
+        if (item == this.lastOutputPatternItem && current.isEmpty() == this.lastOutputWasEmpty) {
+            return;
+        }
+        adoptOutputPatternAsBaseline();
+        if (item == null) {
+            // 被拿走 / 被清成空白样板：不动档位。玩家可能正要往这个档里写东西，替他把档切走只会碍事。
+            return;
+        }
+        switchToTierForPatternType(PatternClassifier.typeOf(current, getLevel()));
+    }
+
+    /**
+     * 把输出栏当前内容记成基线，表示「这一次变化已消化过」。
+     *
+     * <p>编码路径写完输出栏后也会调它：那一枚是本菜单按当前档位自己编出来的，不是玩家放进去的。
+     * 不跟上的话，下一帧 {@link #syncTierWithPatternOutput} 会把它当成「玩家换了样板」而反过来改档位
+     * ——高级档补面时编出的那张普通处理样板能把人踢出高级档。</p>
+     */
+    private void adoptOutputPatternAsBaseline() {
+        var current = this.encodedPatternSlot.getItem();
+        this.lastOutputPatternItem = current.isEmpty() ? null : current.getItem();
+        this.lastOutputWasEmpty = current.isEmpty();
+    }
+
+    /**
+     * 按一枚已编码样板的类型切到对应的编码档；认不出的类型（如万象——编码侧还没接）不动。
+     *
+     * <p>额外档要连它的可用性一起判：不可用就是「升级槽里没那枚编码器」，切过去只会是一屏空的隐藏面板，
+     * 比停着不动更让人困惑。</p>
+     */
+    private void switchToTierForPatternType(@Nullable String patternTypeId) {
+        if (patternTypeId == null) {
+            return;
+        }
+        if (PatternDiskItem.CHISELING_PATTERN.equals(patternTypeId)) {
+            if (this.chiselingModeAvailable && CHISELING_TIER_ENABLED) {
+                if (!this.chiselingMode) {
+                    closeExtraTiers();
+                    setChiselingMode(true);
+                }
+                // 已经在雕凿档也要重推：换的是另一枚雕凿样板，输入与选中得跟着它变。
+                seedChiselingFromPattern();
+            }
+            return;
+        }
+        if (PatternDiskItem.ADVANCED_PROCESSING_PATTERN.equals(patternTypeId)) {
+            if (this.advancedModeAvailable) {
+                if (!this.advancedMode) {
+                    closeExtraTiers();
+                }
+                // 与雕凿档同理：setAdvancedMode(true) 自己会从输出栏那张样板重新摊一遍输入输出与方向表，
+                // 所以已经在档时也要再调一次。
+                setAdvancedMode(true);
+            }
+            return;
+        }
+        if (PatternDiskItem.OVERLOAD_PATTERN.equals(patternTypeId)) {
+            if (this.overloadedModeAvailable) {
+                if (!this.overloadedMode) {
+                    closeExtraTiers();
+                }
+                setOverloadedMode(true);
+            }
+            return;
+        }
+        var mode = DiskMarkRules.modeForPatternType(patternTypeId);
+        if (mode == null) {
+            return;   // 认不出的类型（万象等）不动。
+        }
+        // 常规档与额外档是并列的：切过去之前**一律**先关掉三个额外档，这一步不跟「mode 是否变化」挂钩
+        // ——人在高级档、放进去的却是合成样板时 mode 本来就等于 CRAFTING，不关的话屏幕会继续停在高级档，
+        // 而那正是本功能要消除的「面板与槽里那枚样板对不上」。
+        closeExtraTiers();
+        if (mode != this.mode) {
+            setMode(mode);
+        }
+    }
+
+    /**
+     * 关掉三个并列的额外档。
+     *
+     * <p>与客户端侧 {@code DiskEncodingHelper.closeExtraTiers} 同口径；那一个在 client 源集里，
+     * 菜单（common）用不了，所以这里自己一份——它只碰菜单字段与 logic。</p>
+     */
+    private void closeExtraTiers() {
+        if (this.advancedMode) {
+            setAdvancedMode(false);
+        }
+        if (this.chiselingMode) {
+            setChiselingMode(false);
+        }
+        if (this.overloadedMode) {
+            setOverloadedMode(false);
+        }
+    }
+
+    /**
+     * 进雕凿档时从那枚雕凿样板反推「把谁雕成谁」，把输入摆上、选中项定好。
+     *
+     * <p>与过载档摊行、高级档读方向表同一个口径：进档时就把编辑区按输出栏那枚样板摆好，玩家不用再手点
+     * 一次候选。样板不是雕凿样板、或它的产物不在候选表里（数据包换过、那件物品不再参与雕凿）就什么都不
+     * 做——留一个空档出来，玩家自己去选。</p>
+     */
+    private void seedChiselingFromPattern() {
+        var decoded = ChiselingRecipes.decode(this.encodedPatternSlot.getItem());
+        if (decoded == null) {
+            return;
+        }
+        var index = ChiselingRecipes.serverIndexOf(decoded.input(), decoded.output());
+        if (index < 0) {
+            return;
+        }
+        // 顺序要紧：先摆输入、再定选中。面板每帧看输入槽是否变过，一变就把选中项作废并重算候选
+        // ——选中写在填输入之前会被那一下清掉（setChiselingInput 会把修订号推上去，面板因此知道
+        // 这一次的输入变化是程序干的，见 chiselingInputRevision）。
+        setChiselingInput(new ItemStack(decoded.input()));
+        setChiseling(index);
     }
 
     /**
@@ -2039,6 +2214,8 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
      */
     public void setChiselingInput(ItemStack stack) {
         var value = stack == null ? ItemStack.EMPTY : stack;
+        // 先记一笔「这次输入是程序设的」：面板重算候选时要靠它与「玩家自己换了输入」区分开。
+        this.chiselingInputRevision++;
         if (isClientSide()) {
             // 本地先改，面板下一帧就能按新输入重算候选。
             this.chiselingInputSlot.set(value);

@@ -71,22 +71,35 @@ public class PatternDiskItem extends Item implements IPatternDisk {
     private record KnownType(float propertyValue, String nameKey) {
     }
 
+    /**
+     * 本模组认得（并给过名字）的样板类型 id。它们既是 {@link #KNOWN_TYPES} 的键，也是磁盘类型锁
+     * （{@code PatternDiskContents.type}）里存的那个串；菜单与屏幕都引用这里，不要另写一套字面量。
+     */
+    public static final String CRAFTING_PATTERN = "ae2:crafting_pattern";
+    public static final String PROCESSING_PATTERN = "ae2:processing_pattern";
+    public static final String SMITHING_PATTERN = "ae2:smithing_table_pattern";
+    public static final String STONECUTTING_PATTERN = "ae2:stonecutting_pattern";
+    public static final String ADVANCED_PROCESSING_PATTERN = "advanced_ae:adv_processing_pattern";
+    public static final String CHISELING_PATTERN = "rechiseledae:chiseling_pattern";
+    public static final String OVERLOAD_PATTERN = "ae2lt:overload_pattern";
+    public static final String OMNIVERSAL_PATTERN = "useless_mod:omniversal_pattern";
+
     private static final Map<String, KnownType> KNOWN_TYPES = Map.of(
-            "ae2:crafting_pattern", new KnownType(1, "ae2_pattern_disk.tooltip.type.crafting"),
-            "ae2:processing_pattern", new KnownType(2, "ae2_pattern_disk.tooltip.type.processing"),
-            "ae2:smithing_table_pattern", new KnownType(3, "ae2_pattern_disk.tooltip.type.smithing"),
-            "ae2:stonecutting_pattern", new KnownType(4, "ae2_pattern_disk.tooltip.type.stonecutting"),
+            CRAFTING_PATTERN, new KnownType(1, "ae2_pattern_disk.tooltip.type.crafting"),
+            PROCESSING_PATTERN, new KnownType(2, "ae2_pattern_disk.tooltip.type.processing"),
+            SMITHING_PATTERN, new KnownType(3, "ae2_pattern_disk.tooltip.type.smithing"),
+            STONECUTTING_PATTERN, new KnownType(4, "ae2_pattern_disk.tooltip.type.stonecutting"),
             // AdvancedAE 的高级处理样板：它是自己的物品（带插入面等组件），不归 AE2 那四种。
-            "advanced_ae:adv_processing_pattern", new KnownType(5, "ae2_pattern_disk.tooltip.type.adv_processing"),
+            ADVANCED_PROCESSING_PATTERN, new KnownType(5, "ae2_pattern_disk.tooltip.type.adv_processing"),
             // Rechiseled: Applied Energistics 的雕凿样板：同样是自己的物品（普通 IPatternDetails，
             // 在分子装配室里执行），不归 AE2 那四种，也不归高级处理。
-            "rechiseledae:chiseling_pattern", new KnownType(6, "ae2_pattern_disk.tooltip.type.chiseling"),
+            CHISELING_PATTERN, new KnownType(6, "ae2_pattern_disk.tooltip.type.chiseling"),
             // AE2 Lightning Tech 的过载样板：同样是它自己的物品，由本终端的「过载」档编出，每槽带
             // 「输入/输出」与组件匹配模式。
-            "ae2lt:overload_pattern", new KnownType(7, "ae2_pattern_disk.tooltip.type.overloaded"),
+            OVERLOAD_PATTERN, new KnownType(7, "ae2_pattern_disk.tooltip.type.overloaded"),
             // Useless Mod 的万象样板：先占位——类型表与覆盖层就位，编码侧等接上它的
             // OmniversalPatternData 再补。未装该模组时这个类型永远不会出现。
-            "useless_mod:omniversal_pattern", new KnownType(8, "ae2_pattern_disk.tooltip.type.omniversal"));
+            OMNIVERSAL_PATTERN, new KnownType(8, "ae2_pattern_disk.tooltip.type.omniversal"));
 
     /**
      * Item property value for the encoded-pattern type, used to drive the disk's rendered model:

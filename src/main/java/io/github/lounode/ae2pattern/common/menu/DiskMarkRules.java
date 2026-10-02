@@ -7,6 +7,8 @@ import org.jetbrains.annotations.Nullable;
 
 import appeng.parts.encoding.EncodingMode;
 
+import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
+
 /**
  * 磁盘标记与磁盘名的规则：编码模式怎么变成一个标记、标记怎么写回可读名、玩家给的名字怎么清洗。
  *
@@ -62,6 +64,41 @@ public final class DiskMarkRules {
     /** The mark standing for an encoding mode, for disks marked without an imported recipe. */
     public static String modeMarkId(EncodingMode mode) {
         return "#mode:" + mode.name().toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * 该编码模式编出的样板物品 id，也就是磁盘类型锁（{@code PatternDiskContents.type}）里存的那个串。
+     *
+     * <p>写成 switch 而不是拼字符串：值直接取自 {@link PatternDiskItem} 那组常量（那里是类型的单一
+     * 事实源），且 {@code EncodingMode} 将来多一项时编译器会当场拦下来。</p>
+     */
+    public static String patternTypeForMode(EncodingMode mode) {
+        return switch (mode) {
+            case CRAFTING -> PatternDiskItem.CRAFTING_PATTERN;
+            case PROCESSING -> PatternDiskItem.PROCESSING_PATTERN;
+            case SMITHING_TABLE -> PatternDiskItem.SMITHING_PATTERN;
+            case STONECUTTING -> PatternDiskItem.STONECUTTING_PATTERN;
+        };
+    }
+
+    /**
+     * 反查：这个样板类型属于哪个常规档；不是常规四档时返回 null。
+     *
+     * <p>三个额外档的样板不在这里——它们不在 {@link EncodingMode} 里，调用方得先判
+     * {@link PatternDiskItem#CHISELING_PATTERN} / {@link PatternDiskItem#ADVANCED_PROCESSING_PATTERN} /
+     * {@link PatternDiskItem#OVERLOAD_PATTERN}，剩下的才轮到本方法。</p>
+     */
+    @Nullable
+    public static EncodingMode modeForPatternType(@Nullable String patternTypeId) {
+        if (patternTypeId == null) {
+            return null;
+        }
+        for (var mode : EncodingMode.values()) {
+            if (patternTypeForMode(mode).equals(patternTypeId)) {
+                return mode;
+            }
+        }
+        return null;
     }
 
     /**

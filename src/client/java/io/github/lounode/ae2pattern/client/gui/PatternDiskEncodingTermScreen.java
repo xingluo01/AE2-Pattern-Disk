@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.Map;
@@ -241,7 +240,7 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
                 new ExtraTier(ICON_ADVANCED,
                         "gui.ae2_pattern_disk.encoding_terminal.advanced_mode",
                         null,
-                        "advanced_ae:adv_processing_pattern",
+                        PatternDiskItem.ADVANCED_PROCESSING_PATTERN,
                         this.advancedPanel,
                         () -> getMenu().advancedModeAvailable,
                         () -> getMenu().advancedMode,
@@ -249,7 +248,7 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
                 new ExtraTier(ICON_CHISELING,
                         "gui.ae2_pattern_disk.encoding_terminal.chiseling_mode",
                         DiskMarkRules.CHISELING_MARK,
-                        "rechiseledae:chiseling_pattern",
+                        PatternDiskItem.CHISELING_PATTERN,
                         this.chiselingPanel,
                         () -> getMenu().chiselingModeAvailable
                                 && PatternDiskEncodingTermMenu.CHISELING_TIER_ENABLED,
@@ -258,7 +257,7 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
                 new ExtraTier(ICON_OVERLOADED,
                         "gui.ae2_pattern_disk.encoding_terminal.overloaded_mode",
                         null,
-                        "ae2lt:overload_pattern",
+                        PatternDiskItem.OVERLOAD_PATTERN,
                         this.overloadedPanel,
                         () -> getMenu().overloadedModeAvailable,
                         () -> getMenu().overloadedMode,
@@ -497,17 +496,17 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
              * 详见 {@code docs/ENCODING_MODES.md} §七与 {@code docs/ARCHITECTURE.md}。</p>
              */
             @Nullable String ownMark,
-            /**
-             * 该档编出的样板物品 id，也就是磁盘类型锁里存的那个串（{@code PatternDiskContents.type}）。
-             *
-             * <p>用来判「这张盘固定住的类型就是当前档要编的那一类」——那比标记硬：写进去走的
-             * {@code PatternDiskContents.acceptsType} 就是同一个比较，类型锁相同就一定收得下。
-             * 三个额外档各有各的样板物品；常规四档不用填，它们的 id 由模式名推得（见
-             * {@link #patternTypeForMode}）。</p>
-             *
-             * <p>这些串与 {@code PatternDiskItem.KNOWN_TYPES} 的键对齐——那张表是「已知类型 → tooltip
-             * 名字」的权威出处，新增类型时两处一起加。</p>
-             */
+    /**
+     * 该档编出的样板物品 id，也就是磁盘类型锁里存的那个串（{@code PatternDiskContents.type}）。
+     *
+     * <p>用来判「这张盘固定住的类型就是当前档要编的那一类」——那比标记硬：写进去走的
+     * {@code PatternDiskContents.acceptsType} 就是同一个比较，类型锁相同就一定收得下。
+     * 三个额外档各有各的样板物品；常规四档不用填，它们的 id 由模式推得（见
+     * {@code DiskMarkRules.patternTypeForMode}）。</p>
+     *
+     * <p>值全部取自 {@code PatternDiskItem} 那组常量——那里是类型的单一事实源（“类型 ↔ tooltip
+     * 名字”那张表也用它），不要在这里另写一遍字面量。</p>
+     */
             @Nullable String patternTypeId,
             @Nullable DiskEncodingModePanel panel,
             BooleanSupplier available,
@@ -830,17 +829,15 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     }
 
     /**
-     * 当前档位编出的样板物品 id。额外档各问自己注册表里那一格；常规四档由模式名推——AE2 那四个编码样板
-     * 就是 {@code ae2:<模式名小写>_pattern}（crafting / processing / smithing_table / stonecutting）。
+     * 当前档位编出的样板物品 id。额外档各问自己注册表里那一格；常规四档由模式推
+     * （AE2 那四个编码样板就是 {@code ae2:<模式名小写>_pattern}，值与映射都在 {@code DiskMarkRules}）。
      */
     private String currentPatternTypeId() {
         var tier = activeTier();
         // 额外档优先：雕凿/高级/过载档下 mode 仍停着「进入本档之前那个常规档」，直接问它会答错。
-        return tier >= 0 ? this.extraTiers.get(tier).patternTypeId() : patternTypeForMode(menu.getMode());
-    }
-
-    private static String patternTypeForMode(EncodingMode mode) {
-        return "ae2:" + mode.name().toLowerCase(Locale.ROOT) + "_pattern";
+        return tier >= 0
+                ? this.extraTiers.get(tier).patternTypeId()
+                : DiskMarkRules.patternTypeForMode(menu.getMode());
     }
 
     /** Renames the disk {@code serial} after the machine its mark stands for. */
