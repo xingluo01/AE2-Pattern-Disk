@@ -210,14 +210,16 @@ PatternDiskManagementTermMenu  →  PatternDiskEncodingTermMenu  →  MEStorageM
 1. **组（标记体系）**：这张盘归到哪一类样板？`DiskMarkRules` 负责标记 ↔ 类型互转：
    - 有标记：`patternTypeForMark(mark)` 反查它代表哪类样板（玩家的意图优先）；
    - 没标记：用它锁定的类型（类型当**默认值**）。两者都拿不到 → null（空盘、认不出的自定义标记、万象）。
-2. **序（挑哪张）**：组内按**已存配方数升序**——写进存量最少的那张。同标记的盘本来就该是「填平」的一组，
-   不该要求玩家先搜掉其他盘、或点中某一张。平手时保持显示名序（稳定，不会每次刷新换一张盘）。
-3. **试（准入，类型体系）**：列表交给菜单的 `transferToFirstWritable`，它从少到多**逐张** `tryInsert`，
+2. **序（挑哪张）**：组内按**剩余空间降序**——写进还剩得多的那张（大容量盘优先填）。平手时保持显示名序
+   （稳定，不会每次刷新换一张盘）。想改成沿列表顺序把一张填满再下一张，写 `@order`。
+   〔副作用〕大容量盘只要还剩空间就一直被选中，所以同组里的小盘可能长时期不动——要轮着填就写 `@order`，
+   或直接点那一张盘。
+3. **试（准入，类型体系）**：列表交给菜单的 `transferToFirstWritable`，它按上面的顺序**逐张** `tryInsert`，
    第一张能收的就收了。容量 / 类型锁 / 主产物互斥都在那里判，不在选盘时不预判（预判得先有编好的样板，
    而候选是编码之前算的）。
 
 ```java
-protected long[] tierGroupByUsage()   // 组 + 序：组内按 used 升序，capCandidates 后返回
+protected long[] tierGroupByUsage()   // 组 + 序：组内按剩余空间降序，capCandidates 后返回
 private    boolean isInCurrentTierGroup(DiskEntry)  // 组：tierTypeOf(盘) == currentPatternTypeId()
 private    String  tierTypeOf(DiskEntry)            // 标记反查优先，没标记用类型锁兜底
 ```
@@ -226,9 +228,15 @@ private    String  tierTypeOf(DiskEntry)            // 标记反查优先，没�
 
 共用上面这条分层，区别只在「候选从哪来」：
 
-- **编码终端**（`updateDiskEntries`）：搜索栏有内容 → 列表顺位；搜索栏为空 → `tierGroupByUsage()`。
+- **编码终端**（`updateDiskEntries`）：写了 `@order` → 列表顺位；否则恒 `tierGroupByUsage()`。
 - **管理终端**（`buildAutoDiskCandidates`，每帧在 `super.updateBeforeRender()` 之后覆盖一次）：右键选中的盘
-  + 同容器其他盘 → 否则表格行序 → 否则 `tierGroupByUsage()`（与编码终端同口径）。
+  + 同容器其他盘 → 否则写了 `@order` 时表格行序 → 否则 `tierGroupByUsage()`（与编码终端同口径）。
+
+**筛选与策略正交**（`DiskEntryFilter.Query`）：`preferOrder` 是**写入策略**，`isActive()` 不看它，所以
+「筛出哪几张」与「写哪张」互不干涉。`tierGroupByUsage` 遍历的就是**已过滤**的 `diskEntries`，于是
+「筛出两张、在这两张里挑剩余多的」天然成立——这正是导入场景要的行为。策略词只从搜索文本**末尾**剥
+（标记与盘名都可能含空格，按空格切 token 会把 `#铁 厂` 拆坏），打标时也要剥（`stripModifiers`），
+免得 `@order` 被判进磁盘标记里。
 
 **档位 → 该档编出的样板类型**（`ExtraTier.patternTypeId`；常规四档由模式推，不另写表）：
 
@@ -257,14 +265,15 @@ private    String  tierTypeOf(DiskEntry)            // 标记反查优先，没�
   所以 `currentPatternTypeId()` 必须先问 `activeTier()`。
 - **两个终端的「算目标」是两条路，别只改一条**：管理终端是子类，且每帧覆盖一次 `setClientAutoDisks`，
   基类算出的值对它无效。`tierGroupByUsage` 在基类，两侧共用；改口径时请确认两条路都走到。
-- **搜索栏既筛盘、又选策略（有内容 → 顺位；为空 → 挑最少），而这是有意的**：导入配方（JEI/EMI
-  点「+」）会把搜索栏自动填上 `#<配方类别>`，这不是副作用，而是**组合技的起手**——紧接着 Shift+右键
-  一张盘，就用搜索栏里的文本给它打标（{@code onDiskShiftRightClick} → {@code bindSearchMark}），
+- **搜索栏只筛盘、不再选策略**：`DiskEntryFilter.Query.preferOrder` 是写入策略，`isActive()` 不看它。
+  导入配方（JEI/EMI 点「+」）会把搜索栏自动填上 `#<配方类别>`，这不是副作用，而是**组合技的起手**——
+  紧接着 Shift+右键一张盘，就用搜索栏里的文本给它打标（{@code onDiskShiftRightClick} → {@code bindSearchMark}），
   一步把新拿到的、还没标记的盘归到刚导入的那个类别下。
-  **不要**把「自动填搜索栏」或「搜索栏影响策略」当成缺陷去拆：拆了组合技就断了。
-  代价是导入后那一瞬间写盘从「挑最少」变成了「按显示名顺位第一张」——想要前一行为就先清空搜索栏。
-- **一张候选都没有时静默**：搜索栏为空且没有任何盘属于本组时，`autoDisks` 为空，菜单里 `if (autoDisks.length > 0)`
+  **不要**把「自动填搜索栏」当成缺陷去拆：拆了组合技就断了。填空之后写盘依旧按剩余空间挑
+  （筛出哪几张 → 在这几张里挑还剩得多的），两个行为互不干涉。
+- **一张候选都没有时静默**：没有任何盘属于本组时，`autoDisks` 为空，菜单里 `if (autoDisks.length > 0)`
   整段跳过——不写盘也不提示，样板留在编码槽。这是「没找到目标」而非写盘失败，属已知行为。
+  筛出空盘也没用：空盘不属于任何一组，想写它就直接点它。
 - 〔已知缺口〕**雕凿的配方类别文本不是一个被认得的标记**：雕凿自己写的是 `#mode:chiseling`（识），
   但 Rechiseled 在 JEI 里的类别 id 是 `rechiseled:chiseling`——它会被导入自动填进搜索栏，玩家若此时
   Shift+右键拿它打标，存的标记反查不出类型（四常规档的类别里没这一条）。补它得把上游那个类别 id 写进这里

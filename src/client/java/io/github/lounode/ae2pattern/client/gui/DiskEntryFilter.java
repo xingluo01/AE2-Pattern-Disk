@@ -1,6 +1,7 @@
 package io.github.lounode.ae2pattern.client.gui;
 
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 import org.jetbrains.annotations.Nullable;
 
@@ -25,21 +26,28 @@ public final class DiskEntryFilter {
     /**
      * 解析后的搜索条件。
      *
-     * @param needle     比较用的针（已小写；标记搜索时已去掉前导 {@code #}）
-     * @param markSearch 这一针是标记搜索（输入以 {@code #} 开头）
+     * @param needle       比较用的针（已小写；标记搜索时已去掉前导 {@code #}）
+     * @param markSearch   这一针是标记搜索（输入以 {@code #} 开头）
+     * @param preferOrder  写了「按列表顺序」修饰词（{@code @order} / {@code @顺位}）——这是**写入策略**，
+     *                     不是筛选条件，{@link #isActive()} 不看它。**默认按剩余空间挑**：同组的盘谁还剩得多
+     *                     先写谁（大容量盘优先填）；写了它才改成沿列表顺序把一张填满再下一张。
      */
-    public record Query(String needle, boolean markSearch) {
+    public record Query(String needle, boolean markSearch, boolean preferOrder) {
 
         public static Query of(@Nullable String raw) {
             // 输入先 strip，免得一串空格被当成搜索条件把列表清空。
             var text = raw == null ? "" : raw.strip();
-            if (text.isEmpty()) {
-                return new Query("", false);
+            // 剥掉修饰词前后不一样 = 玩家写了修饰词（两个策略词都剥，所以不能拿它判是哪一个）。
+            var stripped = stripModifiers(text);
+            // 策略词在末尾（含 `$`），find 即匹配末尾。
+            var preferOrder = ORDER_MODIFIER.matcher(text).find();
+            if (stripped.isEmpty()) {
+                return new Query("", false, preferOrder);
             }
-            var needle = text.toLowerCase(Locale.ROOT);
+            var needle = stripped.toLowerCase(Locale.ROOT);
             var markSearch = needle.startsWith("#");
             // `#` 之后也 strip：玩家习惯输入 `# 合成`，多一个空格不该把结果清空（标记本身也存不下首尾空格）。
-            return new Query(markSearch ? needle.substring(1).strip() : needle, markSearch);
+            return new Query(markSearch ? needle.substring(1).strip() : needle, markSearch, preferOrder);
         }
 
         /** 有没有搜索条件。只有空白、或者只有规则本身，都不算。 */
@@ -49,6 +57,34 @@ public final class DiskEntryFilter {
     }
 
     private DiskEntryFilter() {
+    }
+
+    /**
+     * 末尾的写入策略修饰词，如 {@code #合成 @order}、{@code @顺位}。**默认按剩余空间挑**，
+     * 写它才改成沿列表顺序把一张填满再下一张。
+     *
+     * <p>只从末尾剥，不是按空格切 token：标记与盘名都可能含空格，切开会把 {@code #铁 厂} 这种搜索拆坏。
+     * 剥剩下的部分照旧走名称/标记两维，所以修饰词与筛选是正交的两件事——它只影响“写进哪张盘”，
+     * 不影响“列表里剩哪几张”。</p>
+     *
+     * <p>认不出的 {@code @xxx} 不动它，照旧当普通搜索文本（静默，不报错也不提示）。</p>
+     */
+    private static final Pattern ORDER_MODIFIER = Pattern.compile("(?i)\\s*@(?:order|顺位|顺序)\\s*$");
+
+    /**
+     * 剥掉末尾的修饰词后剩下的搜索原文。
+     *
+     * <p>打标组合技也要用它（Shift+右键把搜索栏文本写进磁盘标记）：修饰词是写入策略，
+     * 不该被写进标记里。</p>
+     */
+    public static String stripModifiers(@Nullable String raw) {
+        var out = raw == null ? "" : raw;
+        String previous;
+        do {
+            previous = out;
+            out = ORDER_MODIFIER.matcher(out).replaceFirst("");
+        } while (!out.equals(previous));
+        return out.strip();
     }
 
     /**

@@ -487,17 +487,18 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
                     }
                 }
             }
-        } else if (isDiskSearchActive()) {
-            // 没选中盘时按表格行序顺位（与玩家看到的顺序一致）。
+        } else if (diskSearchQuery().preferOrder()) {
+            // 没选中盘、且写了 {@code @order}/{@code @顺位}：按表格行序把一张填满再下一张（与玩家看到的顺序一致）。
+            // 默认不写这个修饰词，所以“筛了盘之后写哪张”仍然是按剩余空间挑（与编码终端同口径）。
             for (var row : rows) {
                 if (row instanceof DiskRow disk && disk.from() == 0) {
                     out.add(disk.serial());
                 }
             }
         } else {
-            // 没选中、也没搜索：当前档位那一组盘按存量升序，写最少的那张（与编码终端同口径，见基类
-            // tierGroupByUsage）。本分支原本返回空，而「盘明明对得上、点编写样板却没反应」正是那个空造成的。
-            // 选中盘与搜索栏两条分支都不动：它们的优先级在本分支之上，已选中的目标不会被这里抢走。
+            // 没选中盘（搜索与否都一样）：当前档位那一组盘按存量升序，写最少的那张
+            // （与编码终端同口径，见基类 tierGroupByUsage）。本分支原本返回空，而「盘明明对得上、点编写样板
+            // 却没反应」正是那个空造成的。选中盘的优先级在本分支之上，已选中的目标不会被这里抢走。
             return tierGroupByUsage();
         }
         var serials = new long[out.size()];

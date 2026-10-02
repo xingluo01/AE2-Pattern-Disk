@@ -695,7 +695,7 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         // 一个搜索条件只筛它自己那一维：名字搜索只比名字（无标记的盘照常参与，它也有名字），`#` 标记搜索
         // 只比标记（无标记的盘没东西可匹配，自然不出现）。开关打开 = 无标记的盘不受本次搜索约束，一律留下。
         // 输入先 strip，免得一串空格被当成搜索条件把列表清空。
-        var query = DiskEntryFilter.Query.of(diskListPanel.getSearchText());
+        var query = diskSearchQuery();
         if (query.isActive()) {
             diskEntries.removeIf(d -> !DiskEntryFilter.keep(d, query, menu.isShowUnmarkedDisks()));
         }
@@ -710,10 +710,11 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
 
         // 编码按钮要不要直接落盘。这一步必须等过滤做完：玩家点按钮时看到的就是这份列表，早一帧算出来就可能
         // 把目标算成此刻已经看不到的那张盘。
-        // ① 搜索栏筛过盘：按列表顺位写（沿用原语义）；
-        // ② 没搜索：交给 tierGroupByUsage（当前档位那一组按存量升序，写最少的那张）。
-        long[] autoDisks = NO_DISKS;
-        if (isDiskSearchActive()) {
+        // ① 写了 `@order`/`@顺位`：按列表顺序把一张填满再下一张；
+        // ② 其余：默认按剩余空间挑（大容量盘优先填）——**搜索只负责“剩哪几张”，不改变“写哪张”**。
+        //    tierGroupByUsage 遍历的就是已过滤的 diskEntries，所以“筛出两张、在这两张里挑少的”天然成立。
+        long[] autoDisks;
+        if (query.preferOrder()) {
             autoDisks = capCandidates(diskEntries.stream().mapToLong(DiskListPanel.DiskEntry::serial).toArray());
         } else {
             autoDisks = tierGroupByUsage();
@@ -808,13 +809,13 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     }
 
     /**
-     * 没搜索条件时的写盘候选：当前档位那一组盘，<b>按已存配方数升序</b>全部列出。
+     * 没搜索条件时的写盘候选：当前档位那一组盘，<b>按剩余空间降序</b>全部列出。
      *
-     * <p>写进存量最少的那张，而不是要求全网只剩一张：同标记的盘本来就该是「填平」的一组，让玩家
-     * 为了写一枚样板先去把其他盘搜掉、或点中某一张，是没有理由的负担。</p>
+     * <p>写进还剩得最多的那张（大容量盘优先填），而不是要求全网只剩一张：让玩家为了写一枚样板
+     * 先去把其他盘搜掉、或点中某一张，是没有理由的负担。</p>
      *
-     * <p><b>“逐张试”不在这里做</b>：列表交给菜单的 {@code transferToFirstWritable}，它从少到多逐张
-     * 试，第一张能收的就收了。所以「存量最少」只是候选顺序，不是唯一目标——写不进自然顺位到次少的
+     * <p><b>“逐张试”不在这里做</b>：列表交给菜单的 {@code transferToFirstWritable}，它按这个顺序逐张
+     * 试，第一张能收的就收了。所以「剩余最多」只是候选顺序，不是唯一目标——写不进自然顺位到次多的
      * 那张，而「能不能写」由那里的 {@code PatternDiskItem.tryInsert} 说了算（容量 / 类型锁 / 主产物
      * 互斥），不在本方法里预判：判它得先有编好的样板，而这份候选是在编码之前算的。</p>
      *
@@ -828,8 +829,9 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
                 matched.add(entry);
             }
         }
-        // 已存配方数升序：写进最少的那张。平手时保持列表原序（显示名序）——稳定，不会每次刷新换一张盘。
-        matched.sort(Comparator.comparingInt(DiskEntry::used));
+        // 剩余空间降序：还剩得多的那张先写（大容量盘优先填）。平手时保持列表原序（显示名序）——
+        // 稳定，不会每次刷新换一张盘。想改成沿列表顺序依次填满，写 {@code @order} 修饰词。
+        matched.sort(Comparator.comparingInt((DiskEntry entry) -> entry.capacity() - entry.used()).reversed());
         var serials = new long[matched.size()];
         for (int i = 0; i < serials.length; i++) {
             serials[i] = matched.get(i).serial();
@@ -881,6 +883,17 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     }
 
     /** 磁盘搜索框里有没有内容；编码与管理的自动写盘都按它决定要不要顺位。 */
+    /**
+     * 当前搜索栏的解析结果。筛选与写入策略共用这一份，避免两处各解析一次而分叉。
+     *
+     * <p>它比 {@link #isDiskSearchActive()} 多分出一层：那边只问「有没有内容」，这边还分出
+     * 「{@code @order} 一类修饰词」（见 {@link DiskEntryFilter#stripModifiers}）。修饰词只改写入策略，
+     * 不是筛选条件——所以 {@code DiskEntryFilter.Query.isActive()} 不看它。</p>
+     */
+    protected DiskEntryFilter.Query diskSearchQuery() {
+        return DiskEntryFilter.Query.of(diskListPanel.getSearchText());
+    }
+
     protected boolean isDiskSearchActive() {
         var search = miniSearchField().getValue();
         return search != null && !search.isBlank();
@@ -1003,8 +1016,9 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             return;
         }
         // 搜索栏为空 = 没有标记可打，那就把这张盘已有的标记去掉。
-        var search = diskListPanel.getSearchText();
-        menu.setPendingMarkText(search == null ? "" : search);
+        // 先剥掉 `@order` 一类修饰词：它是写入策略，不该被写进磁盘标记。
+        var search = DiskEntryFilter.stripModifiers(diskListPanel.getSearchText());
+        menu.setPendingMarkText(search);
         menu.bindSearchMark(entry.serial());
     }
 
