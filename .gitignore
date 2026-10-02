@@ -32,7 +32,7 @@ libs/*.jar
 src/main/resources/assets/ae2_pattern_disk.zip
 
 # 本机路径声明：兄弟仓库与 libs jar 的绝对路径索引，换机器要改，不进版本库。
-LOCAL_DEPS.md
+docs/LOCAL_DEPS.md
 
 # Pi workflow metadata
 plans/

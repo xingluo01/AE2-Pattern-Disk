@@ -2,7 +2,9 @@
 
 给接手这套代码的人：这页讲**代码怎么组织、东西放在哪、改哪里**。
 
-玩法说明在 `README.md`（英文，商店页与 GitHub 首页用），平台差异在 `PLATFORM.md`（MCMOD 版在 `PLATFORM_MCMOD.md`），未完成与已知欠账在 `TODO.md`，历次改动在 `CHANGELOG.md`，本地依赖怎么凑齐在 `LOCAL_DEPS.md`。本手册不重复它们。
+玩法说明在 `../README.md`（英文，商店页与 GitHub 首页用），平台差异在 `PLATFORM.md`（MCMOD 版在 `PLATFORM_MCMOD.md`），未完成与已知欠账在 `TODO.md`，历次改动在 `../CHANGELOG.md`，本地依赖怎么凑齐在 `LOCAL_DEPS.md`。本手册不重复它们。
+
+（本目录 `docs/` 只放文档：本手册、平台说明两份、待办、本机路径索引，以及《编码模式注册规范》`ENCODING_MODES.md`。仓库根只留 `README.md` 与 `CHANGELOG.md` 这两个按惯例必须在根的文件。）
 
 版本基线：NeoForge 21.1.241 / MC 1.21.1 / AE2 19.2.18 / Java 21。
 
@@ -276,8 +278,8 @@ NEO ECO 的类型名与方法名集中在 `NeoECOTypes.java`，改版本时先�
 
 **加一个邻居适配**：新建 `integration/<邻居>`，客户端侧放 `client/integration/<邻居>`；门禁写在独立的小类里（照 `AecsSoftDep` 或 `ClientExtendedAEPlusCompat` 的写法），不要让编译期可选类型的名字漏进总是加载的类。
 
-**加一个磁盘容量档**：`PatternDiskTier` → 物品注册 → lang 两份 → `README.md` 的容量表 →（若档位参与排序）`client/sort/SortTiers` 的配置。
+**加一个磁盘容量档**：`PatternDiskTier` → 物品注册 → lang 两份 → `../README.md` 的容量表 →（若档位参与排序）`client/sort/SortTiers` 的配置。
 
 **改终端布局**：`assets/ae2/screens/ae2_pattern_disk/*.json` 是唯一布局源，屏幕代码只按它给的位置摆放。
 
-**动 API**：`api/package-info.java` 写明这个包是稳定面。改签名等于破坏第三方兼容，改之前先在 `CHANGELOG.md` 记一笔。
+**动 API**：`api/package-info.java` 写明这个包是稳定面。改签名等于破坏第三方兼容，改之前先在 `../CHANGELOG.md` 记一笔。

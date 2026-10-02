@@ -2,23 +2,23 @@ name: Sync project description
 
 # 把仓库里的描述源文本同步到 Modrinth 项目页：
 #   短描述 ← gradle.properties 的 mod_description（与 neoforge.mods.toml 同源）
-#   正  文 ← PLATFORM.md（面向玩家的正文；README.md 是仓库自用的开发者文档，不参与同步）
+#   正  文 ← docs/PLATFORM.md（面向玩家的正文；README.md 是仓库自用的开发者文档，不参与同步）
 #
 # 描述源只有上面这两处。日后新增源文件必须同时加进下面的 paths，
 # 否则本 workflow 会静默不跑——workflow_dispatch 可以手动补一次（本文件自身也在 paths 内，改守卫会触发一次校验）。
 #
-# MC百科（mcmod.cn）：正文另见 PLATFORM_MCMOD.md。那里用百科自己的 [h1=] / [h2=] 标签排版，
+# MC百科（mcmod.cn）：正文另见 docs/PLATFORM_MCMOD.md。那里用百科自己的 [h1=] / [h2=] 标签排版，
 # 与 Markdown 不通用，只能人工粘贴，因此不接入本 workflow（它永远不会被自动发布）。
 #
 # 为什么不并进 release.yml：这段同步要求 PAT 带 PROJECT_WRITE，scope 一旦缺失就会失败；放在发版流程里
 # 会变成「版本已发布、job 却变红」，而重跑同一个 tag 既会因 Modrinth 版本号已存在而失败、CurseForge 又
 # 会重复上传一份。独立成 workflow 后，描述同步出问题不影响发版本身。
 #
-# 注意：Modrinth 项目页正文以 PLATFORM.md 为唯一事实源——每次同步都会整体覆盖，页面上手改过的内容会被冲掉。
+# 注意：Modrinth 项目页正文以 docs/PLATFORM.md 为唯一事实源——每次同步都会整体覆盖，页面上手改过的内容会被冲掉。
 #
 # CurseForge：公开的 v1 Core API 里没有可写项目描述的端点（只有只读的 GET /v1/mods/{modId}/description，
 # 官方需求单 CF-I-6366 至今仍在请求这个能力；本仓库用的 curseforge-upload action 也没有描述类输入）。
-# 所以那边的项目描述只能人工在站点上改——改的时候把 PLATFORM.md 整份粘过去即可。
+# 所以那边的项目描述只能人工在站点上改——改的时候把 docs/PLATFORM.md 整份粘过去即可。
 #
 # GitHub：仓库描述是另一处手工设置的副本（gh repo edit --description），与 gradle.properties 没有机械绑定，
 # 改这句时记得两边一起改；README 是仓库自用的开发者文档（含构建说明），随提交自动更新，不上项目页。
@@ -28,7 +28,7 @@ on:
   push:
     branches: [main]
     paths:
-      - PLATFORM.md
+      - docs/PLATFORM.md
       - gradle.properties
       - .github/workflows/sync-project-pages.yml
   workflow_dispatch:
@@ -64,8 +64,8 @@ jobs:
             exit 1
           fi
 
-          # 正文直接取 PLATFORM.md 全文：它专供项目页，构建说明那类内容只留在 README 里。
-          body_src=PLATFORM.md
+          # 正文直接取 docs/PLATFORM.md 全文：它专供项目页，构建说明那类内容只留在 README 里。
+          body_src=docs/PLATFORM.md
           if [ ! -f "$body_src" ]; then
             echo "::error title=正文源缺失::$body_src 不存在，拒绝发布。"
             exit 1
@@ -77,13 +77,13 @@ jobs:
             exit 1
           fi
 
-          # 兜底：PLATFORM.md 面向玩家，混进构建章节说明属于误编辑，拦下不发。
+          # 兜底：docs/PLATFORM.md 面向玩家，混进构建章节说明属于误编辑，拦下不发。
           if grep -qE '^## Building$|gradlew' /tmp/body.md; then
             echo "::error title=正文含开发章节::$body_src 里出现了构建说明，拒绝发布。"
             exit 1
           fi
 
-          # PLATFORM_MCMOD.md 用的是百科标签，误粘进来会原样发到 Modrinth。
+          # docs/PLATFORM_MCMOD.md 用的是百科标签，误粘进来会原样发到 Modrinth。
           if grep -qE '^\[h[0-9]+=' /tmp/body.md; then
             echo "::error title=正文含百科标签::$body_src 看起来是 MC百科 的正文，拒绝发布。"
             exit 1
