@@ -283,19 +283,19 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
     public String advancedSides = "";
 
     /** 装没装 AE2 Lightning Tech——过载档因此可用（屏幕上才会多出那一档）。 */
-    @GuiSync(92)
+    @GuiSync(99)
     public boolean overloadedModeAvailable;
 
     /** 当前是否停在过载编码模式。同样不在 AE2 的 {@link EncodingMode} 里，是并列的一档。 */
-    @GuiSync(91)
+    @GuiSync(98)
     public boolean overloadedMode;
 
     /** 过载档每行是输出(1)还是输入(0)，逗号分隔、按行序。面板上的行与编码区的槽一一对应。 */
-    @GuiSync(93)
+    @GuiSync(100)
     public String overloadedSides = "";
 
     /** 过载档每行是否「忽略组件匹配」（1=忽略）。缺位一律当 0，也就是开关的默认态「启用组件匹配」。 */
-    @GuiSync(94)
+    @GuiSync(101)
     public String overloadedMatchModes = "";
 
     /**
@@ -495,7 +495,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
         if (candidate == null) {
             // 不在这里发提示：编不出来不等于什么都没发生——编码槽里停着一枚写好的样板时，下面会把它
             // 顺位写进唯一的目标盘（与合成/锻造/切石同款），那时再发「需要先选候选」就成了自相矛盾的两句。
-            // 提示统一由 encode() 在确实什么都没写之后发（见 notifyChiselingNeedsTarget）。
+            // 提示统一由 encode() 在确实什么都没写之后发（见 notifyExtraTierNeedsInput）。
             return null;
         }
         return ChiselingRecipes.encode(input.getItem(), candidate.output());
@@ -507,7 +507,8 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
      * <p>待接：AE2LT 的模型里过载样板必须带一份「源样板快照」（它自己的编码器也是「拿一张源样板转出
      * 来」），而源快照要从一个 ItemStack 取。面板与档位、存储都已就位，就差这一步接线——需要
      * {@code compileOnly} 上 AE2LT 才能在隔离包里调它的 Builder API（照 Rechiseled 那套）。
-     * 在那之前这里返回 null，等于「编不出来」，encode() 会照常发提示。</p>
+     * 在那之前这里返回 null，等于「编不出来」，{@code encode()} 会经
+     * {@code notifyExtraTierNeedsInput()} 给一句提示（不是默默无反应）。</p>
      */
     @Nullable
     private ItemStack encodeOverloadedPattern() {
@@ -574,28 +575,34 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
                         bindPrefix(autoDisks[0], false, uploadMark());
                     }
                 } else {
-                    notifyChiselingNeedsTarget();
+                    notifyExtraTierNeedsInput();
                 }
                 return;
             }
-            notifyChiselingNeedsTarget();
+            notifyExtraTierNeedsInput();
             clearPattern();
         }
     }
 
     /**
-     * 雕凿档无从下笔时给一句提示。非雕凿档静默——那几个档「网格里没东西可编」是正常状态，不必报告。
+     * 额外档无从下笔时给一句提示。常规四档静默——那几档「网格里没东西可编」是正常状态，不必报告。
      *
      * <p>只在本轮确实什么都没写时调：编码槽里停着写好的样板且找到了唯一目标时，样板会被顺位写进盘，
      * 那时再说「需要选目标」就与写盘回执自相矛盾了。</p>
+     *
+     * <p>过载档也要说话：它现在的编码侧还没接上 AE2LT，不提示就成「点了完全没反应」。</p>
      */
-    private void notifyChiselingNeedsTarget() {
-        if (!this.chiselingMode) {
+    private void notifyExtraTierNeedsInput() {
+        if (this.chiselingMode) {
+            if (getPlayer() instanceof ServerPlayer serverPlayer) {
+                serverPlayer.sendSystemMessage(Component.translatable(
+                        "gui.ae2_pattern_disk.encoding_terminal.chiseling_needs_target"));
+            }
             return;
         }
-        if (getPlayer() instanceof ServerPlayer serverPlayer) {
+        if (this.overloadedMode && getPlayer() instanceof ServerPlayer serverPlayer) {
             serverPlayer.sendSystemMessage(Component.translatable(
-                    "gui.ae2_pattern_disk.encoding_terminal.chiseling_needs_target"));
+                    "gui.ae2_pattern_disk.encoding_terminal.overloaded_needs_input"));
         }
     }
 
@@ -1832,6 +1839,10 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
      * 才并进去。</p>
      */
     public void setOverloadedRow(int row, boolean output, boolean ignoreComponents) {
+        // 上界也要查：行号来自客户端，越界会把那张 0/1 表撑成一条没有意义的长串（并照样写进存档）。
+        if (row < 0 || row >= encodedInputsInv.size()) {
+            return;
+        }
         if (isClientSide()) {
             applyOverloadedRow(row, output, ignoreComponents);
             sendClientAction(ACTION_SET_OVERLOADED_ROW,

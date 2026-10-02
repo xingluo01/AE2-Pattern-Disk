@@ -63,6 +63,7 @@
   "gui.ae2_pattern_disk.encoding_terminal.overloaded_side_output": "输出",
   "gui.ae2_pattern_disk.encoding_terminal.overloaded_match_ignore": "忽略组件匹配",
   "gui.ae2_pattern_disk.encoding_terminal.overloaded_match_strict": "启用组件匹配",
+  "gui.ae2_pattern_disk.encoding_terminal.overloaded_needs_input": "过载编码：请先在编辑区放入物品",
   "gui.ae2_pattern_disk.encoding_terminal.merge_same_items_off": "同物品合并",
   "gui.ae2_pattern_disk.encoding_terminal.merge_same_items_on": "同物品合并",
   "gui.ae2_pattern_disk.encoding_terminal.mode_cycle": "点击选择档位",

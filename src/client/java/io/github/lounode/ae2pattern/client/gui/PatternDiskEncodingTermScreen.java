@@ -447,7 +447,9 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         var currentMode = getMenu().getMode();
         var advancedOn = getMenu().advancedMode;
         var chiselingOn = getMenu().chiselingMode;
-        var regular = !advancedOn && !chiselingOn;
+        // 过载也得算进来：它是第三个平行档，漏掉就不是「哪个高亮」的问题——
+        // 过载档下常规档会同时显示选中，看上去像两档叠着开。
+        var regular = !advancedOn && !chiselingOn && !getMenu().overloadedMode;
 
         var choices = new ArrayList<ModeDropdownButton.Choice>();
         for (var mode : EncodingMode.values()) {
@@ -502,6 +504,10 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         if (getMenu().chiselingMode) {
             getMenu().setChiselingMode(false);
         }
+        // 三个额外档是互斥的：少清这一个，回常规档时过载面板不让位，编辑区会停在一片空白上。
+        if (getMenu().overloadedMode) {
+            getMenu().setOverloadedMode(false);
+        }
         getMenu().setMode(mode);
         // 等一个往返才切过去的话，从额外档回来时会先回落到上一次的常规档，中间那一下看着像「闪了一下」。
         getMenu().mode = mode;
@@ -510,6 +516,10 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     private void pickAdvanced() {
         if (getMenu().chiselingMode) {
             getMenu().setChiselingMode(false);
+        }
+        // 高级与过载的面板在同一坐标、同尺寸，两边都开着就是两块叠画。
+        if (getMenu().overloadedMode) {
+            getMenu().setOverloadedMode(false);
         }
         getMenu().setAdvancedMode(true);
     }

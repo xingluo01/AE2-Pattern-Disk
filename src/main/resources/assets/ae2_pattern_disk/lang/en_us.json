@@ -63,6 +63,7 @@
   "gui.ae2_pattern_disk.encoding_terminal.overloaded_side_output": "Output",
   "gui.ae2_pattern_disk.encoding_terminal.overloaded_match_ignore": "Ignore component matching",
   "gui.ae2_pattern_disk.encoding_terminal.overloaded_match_strict": "Enable component matching",
+  "gui.ae2_pattern_disk.encoding_terminal.overloaded_needs_input": "Overloaded: put the items in the editing area first",
   "gui.ae2_pattern_disk.encoding_terminal.merge_same_items_off": "Merge Same Items",
   "gui.ae2_pattern_disk.encoding_terminal.merge_same_items_on": "Merge Same Items",
   "gui.ae2_pattern_disk.encoding_terminal.mode_cycle": "Click to pick a mode",
