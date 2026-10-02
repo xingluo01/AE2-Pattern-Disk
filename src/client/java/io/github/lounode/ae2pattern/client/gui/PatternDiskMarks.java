@@ -87,10 +87,13 @@ public final class PatternDiskMarks {
     }
 
     /**
-     * 雕凿档的显示名。它不在 {@link EncodingMode} 里，也没有对应的配方类别，所以单独认一下这两个名字，
+     * 雕凿档的显示名。它不在 {@link EncodingMode} 里，也没有对应的配方类别，所以单独认一下这个名字，
      * 让雕凿标记走与其它模式标记同一套翻译，而不是回落到「显示原文」那一支。
+     *
+     * <p>用 {@link DiskMarkRules#CHISELING_MARK_NAME} 而不是另写一份字面量：两份一旦不同步，症状是
+     * 「能绑但显示原文、搜不到」，很难查。</p>
      */
-    private static final String CHISELING_MARK_NAME = "chiseling";
+    private static final String CHISELING_MARK_NAME = DiskMarkRules.CHISELING_MARK_NAME;
 
     private static final String MODE_PREFIX = "#mode:";
     private static final String ID_PREFIX = "#";

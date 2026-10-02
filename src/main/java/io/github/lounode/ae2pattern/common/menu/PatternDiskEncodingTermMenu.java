@@ -469,10 +469,9 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
                 ? null
                 : ChiselingRecipes.serverCandidateAt(this.selectedChiseling, input.getItem());
         if (candidate == null) {
-            if (getPlayer() instanceof ServerPlayer serverPlayer) {
-                serverPlayer.sendSystemMessage(Component.translatable(
-                        "gui.ae2_pattern_disk.encoding_terminal.chiseling_needs_target"));
-            }
+            // 不在这里发提示：编不出来不等于什么都没发生——编码槽里停着一枚写好的样板时，下面会把它
+            // 顺位写进唯一的目标盘（与合成/锻造/切石同款），那时再发「需要先选候选」就成了自相矛盾的两句。
+            // 提示统一由 encode() 在确实什么都没写之后发（见 notifyChiselingNeedsTarget）。
             return null;
         }
         return ChiselingRecipes.encode(input.getItem(), candidate.output());
@@ -500,12 +499,6 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
         ItemStack encodedPattern = this.chiselingMode
                 ? encodeChiselingPattern()
                 : patternEncodingLogic.encodePattern();
-        // 雕凿档编不出来（没选候选、或编码失败）时到此为止：不能再走下面那条 else 分支——它是给
-        // 「网格里没东西可编、而编码槽里已经停着一枚写好的样板」准备的顺位上传路径，雕凿档下走它会
-        // 把玩家还没选候选的样板搬进磁盘。
-        if (this.chiselingMode && encodedPattern == null) {
-            return;
-        }
         if (encodedPattern != null) {
             var encodeOutput = this.encodedPatternSlot.getItem();
             if (!encodeOutput.isEmpty()
@@ -526,7 +519,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
                 // 写进去了才顺手把标记写成它的工作方块：写盘被拒（容量/重复产出/类型锁定）时盘里没这份
                 // 样板，再去改标记只会让盘与样板对不上。
                 if (transferToFirstWritable(autoDisks) && autoDisks.length == 1) {
-                    bindPrefix(autoDisks[0], false);
+                    bindPrefix(autoDisks[0], false, uploadMark());
                 }
             }
         } else {
@@ -539,7 +532,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
                     // 走既有的写盘路径：写进去、清空编码槽、退回空白样板，一处口径。
                     // 同样只在真写进去之后才绑标记（理由见上一处调用点）。
                     if (transferToFirstWritable(autoDisks) && autoDisks.length == 1) {
-                        bindPrefix(autoDisks[0], false);
+                        bindPrefix(autoDisks[0], false, uploadMark());
                     }
                 } else {
                     notifyChiselingNeedsTarget();
@@ -1050,15 +1043,18 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
      * Renaming is a separate interaction (see {@link #renameDisk(long)}).
      */
     public void bindPrefix(long serial) {
-        bindPrefix(serial, true);
+        bindPrefix(serial, true, null);
     }
 
     /**
      * @param announceSkip 类别缺失、写不出标记时，是否在聊天栏说一句。玩家右键打标要说——他明确是冲着标记来的；
      *                     而编码后的顺手绑盘不说：那一刻已经在写盘路径上回执过成败，再补一句「标记未写入」
      *                     会被读成写盘失败。
+     * @param markOverride 非 null 时直接用它当作要写的标记、跳过 {@link #deriveMarkId()}。编码上传路径用它
+     *                     给雕凿档指定固定标记（雕凿不在 {@link EncodingMode} 里、也不对应任何配方类别）；
+     *                     右键打标那条手势传 null，沿用「光标上工作方块的类别 / 当前模式」那一套。
      */
-    private void bindPrefix(long serial, boolean announceSkip) {
+    private void bindPrefix(long serial, boolean announceSkip, @Nullable String markOverride) {
         if (isClientSide()) {
             // The mark depends on the imported recipe's category, which only the client knows, so it travels
             // as its own action just ahead of the bind.
@@ -1087,8 +1083,8 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
         // 对这张盘的判断，写下去只会把盘上原有的标记冲成「处理样板」。这种右键不写，并且跟上传链路一样把结果
         // 说进聊天栏：写没写成，玩家得看得到。
         //
-        // 雕凿档不适用这条：它的标记本来就是固定的模式标记，不需要「导入过类别」这个前提。
-        if (!this.chiselingMode && (pendingRecipeCategory == null || pendingRecipeCategory.isEmpty())) {
+        // 带着 markOverride 进来时不适用这条：雕凿的标记本来就是固定的，不需要「导入过类别」这个前提。
+        if (markOverride == null && (pendingRecipeCategory == null || pendingRecipeCategory.isEmpty())) {
             LOGGER.info("Bind skipped for disk {}: nothing on the cursor and nothing imported", serial);
             if (announceSkip) {
                 notifyMarkNotWritten();
@@ -1096,7 +1092,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
             return;
         }
 
-        var mark = deriveMarkId();
+        var mark = markOverride != null ? markOverride : deriveMarkId();
         LOGGER.info("Binding mark {} to disk {}", mark, serial);
 
         var updated = stack.copy();
@@ -1117,12 +1113,19 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
      * {@link DiskMarkRules#categoryForMode}），所以玩家看到的、搜到的名字是一致的。</p>
      */
     public String deriveMarkId() {
-        // 雕凿不在 EncodingMode 里，也不对应任何配方类别：它的标记是固定的模式标记，与「导入的类别」无关
-        // （雕凿样板记的是「把谁雕成谁」）。
-        if (this.chiselingMode) {
-            return DiskMarkRules.CHISELING_MARK;
-        }
         return DiskMarkRules.deriveMarkId(pendingRecipeCategory, this.mode);
+    }
+
+    /**
+     * 从磁盘编码上传（顺位写盘）时该绑的标记：雕凿档用固定的模式标记——它的样板记的是「把谁雕成谁」，
+     * 与导入的类别无关；其它档沿用 {@link #deriveMarkId()}。
+     *
+     * <p>这个雕凿分支只在**上传路径**上生效，没有写进 {@code deriveMarkId()}：右键打标是一条独立手势，
+     * 它承诺「以光标上那个工作方块的配方类型覆写」（见 {@code tooltip.disk.right_click}），雕凿档下
+     * 也该照办。</p>
+     */
+    private String uploadMark() {
+        return this.chiselingMode ? DiskMarkRules.CHISELING_MARK : deriveMarkId();
     }
 
     /** The mark standing for an encoding mode, for disks marked without an imported recipe. */
