@@ -22,6 +22,18 @@ public final class DiskMarkRules {
     /** 磁盘名的上限，与原版铁砧一致。 */
     public static final int MAX_DISK_NAME_LENGTH = 50;
 
+    /**
+     * 雕凿档的标记。
+     *
+     * <p>雕凿不在 {@link EncodingMode} 里（那个枚举不可扩展）也不对应任何配方类别，所以它的标记是一个
+     * 写死的模式标记——雕凿样板记的是「把谁雕成谁」，跟配方类别无关。写法与 {@link #modeMarkId} 同构，
+     * 显示时走 {@code ae2_pattern_disk.mark.mode.<名>} 那一套翻译。</p>
+     */
+    public static final String CHISELING_MARK = "#mode:chiseling";
+
+    /** {@link #CHISELING_MARK} 里 {@code #mode:} 之后那一段，显示与识别都用它。 */
+    public static final String CHISELING_MARK_NAME = "chiseling";
+
     /** 名字里不允许出现的字符：控制字符与 § 格式码。客户端送来的串不能带着它们进物品组件。 */
     private static final Pattern DISALLOWED_NAME_CHARS = Pattern.compile("[\\p{Cntrl}\u00a7]");
 

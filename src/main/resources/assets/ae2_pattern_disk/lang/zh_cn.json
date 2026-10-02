@@ -4,6 +4,7 @@
   "ae2_pattern_disk.mark.mode.processing": "处理样板",
   "ae2_pattern_disk.mark.mode.smithing_table": "锻造样板",
   "ae2_pattern_disk.mark.mode.stonecutting": "切石样板",
+  "ae2_pattern_disk.mark.mode.chiseling": "雕凿样板",
   "ae2_pattern_disk.tooltip.capacity": "%s / %s 个样板",
   "ae2_pattern_disk.tooltip.disk.click": "左键：向该样板磁盘写入当前样板",
   "ae2_pattern_disk.tooltip.disk.middle_click": "中键：以该样板磁盘标记所属工作方块的名字重命名",

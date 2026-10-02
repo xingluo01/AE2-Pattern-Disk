@@ -541,10 +541,29 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
                     if (transferToFirstWritable(autoDisks) && autoDisks.length == 1) {
                         bindPrefix(autoDisks[0], false);
                     }
+                } else {
+                    notifyChiselingNeedsTarget();
                 }
                 return;
             }
+            notifyChiselingNeedsTarget();
             clearPattern();
+        }
+    }
+
+    /**
+     * 雕凿档无从下笔时给一句提示。非雕凿档静默——那几个档「网格里没东西可编」是正常状态，不必报告。
+     *
+     * <p>只在本轮确实什么都没写时调：编码槽里停着写好的样板且找到了唯一目标时，样板会被顺位写进盘，
+     * 那时再说「需要选目标」就与写盘回执自相矛盾了。</p>
+     */
+    private void notifyChiselingNeedsTarget() {
+        if (!this.chiselingMode) {
+            return;
+        }
+        if (getPlayer() instanceof ServerPlayer serverPlayer) {
+            serverPlayer.sendSystemMessage(Component.translatable(
+                    "gui.ae2_pattern_disk.encoding_terminal.chiseling_needs_target"));
         }
     }
 
@@ -1067,7 +1086,9 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
         // 光标上没有可识别的工作方块、也没有刚导入的配方时，deriveMarkId() 给出的只是当前模式标记——那不是玩家
         // 对这张盘的判断，写下去只会把盘上原有的标记冲成「处理样板」。这种右键不写，并且跟上传链路一样把结果
         // 说进聊天栏：写没写成，玩家得看得到。
-        if (pendingRecipeCategory == null || pendingRecipeCategory.isEmpty()) {
+        //
+        // 雕凿档不适用这条：它的标记本来就是固定的模式标记，不需要「导入过类别」这个前提。
+        if (!this.chiselingMode && (pendingRecipeCategory == null || pendingRecipeCategory.isEmpty())) {
             LOGGER.info("Bind skipped for disk {}: nothing on the cursor and nothing imported", serial);
             if (announceSkip) {
                 notifyMarkNotWritten();
@@ -1096,6 +1117,11 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
      * {@link DiskMarkRules#categoryForMode}），所以玩家看到的、搜到的名字是一致的。</p>
      */
     public String deriveMarkId() {
+        // 雕凿不在 EncodingMode 里，也不对应任何配方类别：它的标记是固定的模式标记，与「导入的类别」无关
+        // （雕凿样板记的是「把谁雕成谁」）。
+        if (this.chiselingMode) {
+            return DiskMarkRules.CHISELING_MARK;
+        }
         return DiskMarkRules.deriveMarkId(pendingRecipeCategory, this.mode);
     }
 

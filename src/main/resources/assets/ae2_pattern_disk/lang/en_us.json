@@ -4,6 +4,7 @@
   "ae2_pattern_disk.mark.mode.processing": "Processing pattern",
   "ae2_pattern_disk.mark.mode.smithing_table": "Smithing pattern",
   "ae2_pattern_disk.mark.mode.stonecutting": "Stonecutting pattern",
+  "ae2_pattern_disk.mark.mode.chiseling": "Chiseling pattern",
   "ae2_pattern_disk.tooltip.capacity": "%s / %s patterns",
   "ae2_pattern_disk.tooltip.disk.click": "Left click: write the current pattern onto this disk",
   "ae2_pattern_disk.tooltip.disk.middle_click": "Middle click: rename this disk after the work block its mark stands for",

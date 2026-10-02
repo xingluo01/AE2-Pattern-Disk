@@ -650,6 +650,10 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             return false;
         }
         var mode = menu.getMode();
+        // 雕凿不在 EncodingMode 里也没有配方类别，它的标记是唯一的固定字面量，直接比。
+        if (menu.chiselingMode) {
+            return DiskMarkRules.CHISELING_MARK.equals(raw);
+        }
         var category = DiskMarkRules.categoryForMode(mode);
         if (category == null) {
             return false;

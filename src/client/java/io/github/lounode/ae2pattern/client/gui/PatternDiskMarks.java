@@ -60,6 +60,10 @@ public final class PatternDiskMarks {
                 return Component.literal(mark);
             }
             var mode = parseMode(modeName);
+            if (mode == null && CHISELING_MARK_NAME.equals(modeName)) {
+                // 雕凿是唯一一个「不在 EncodingMode 里、但确实会写进磁盘」的模式名。
+                return Component.translatable("ae2_pattern_disk.mark.mode." + CHISELING_MARK_NAME);
+            }
             if (mode == null) {
                 // 认不出是哪个模式（例如玩家自己写下的 #mode:xyz）：显示原文，别丢一串未翻译的键名。
                 return Component.literal(modeName);
@@ -81,6 +85,12 @@ public final class PatternDiskMarks {
 
         return Component.literal(mark);
     }
+
+    /**
+     * 雕凿档的显示名。它不在 {@link EncodingMode} 里，也没有对应的配方类别，所以单独认一下这两个名字，
+     * 让雕凿标记走与其它模式标记同一套翻译，而不是回落到「显示原文」那一支。
+     */
+    private static final String CHISELING_MARK_NAME = "chiseling";
 
     private static final String MODE_PREFIX = "#mode:";
     private static final String ID_PREFIX = "#";
