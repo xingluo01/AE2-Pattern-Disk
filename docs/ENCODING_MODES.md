@@ -110,7 +110,60 @@ PatternDiskManagementTermMenu  →  PatternDiskEncodingTermMenu  →  MEStorageM
 
 ---
 
-## 五、加一个磁盘类型
+## 五、配方页导入：按对照表切到匹配的那一档
+
+从编码界面进 JEI/EMI，点配方页上的「+」时，**必须把当前档位切到这份配方匹配的那一档**——否则玩家看到的是
+「配方面板在、编辑区却是另一档的形状」。对照表（实现：`DiskEncodingHelper.modeForRecipe`）：
+
+| 配方页类别 | 匹配的档 | 说明 |
+|---|---|---|
+| 合成 | 合成 `CRAFTING` | 必顶能塞进 3×3 网格，否则报「配方过大」不导 |
+| 切石 | 切石 `STONECUTTING` | 同时把配方 id 交给菜单（切石面板靠它列产物） |
+| 锻造 | 锻造 `SMITHING_TABLE` | |
+| 雕凿 | 雕凿（额外档） | **不走这张表**，见下 |
+| 其余加工 | 处理 `PROCESSING` | 「无固定」：处理本身不绑唯一配方类型，一律落处理 |
+| 高级 | 无匹配 | 导入只写编辑区的普通输入输出，不写方向表；不切过去 |
+| 过载 | 无匹配 | 同上：不写逐行的输入/输出与匹配模式；不切过去 |
+| 万象 | 万象 | 尚未接编码（类型已占位） |
+
+规则：
+- **先关掉三个额外档**再切（`closeExtraTiers`）。不关的话导入会落在另一个档的面板上，看上去像「转移到
+  高级/过载档了」，实际什么都没发生。
+- **没有配方本体**的（JEI 交上来的不是 `RecipeHolder`）算「其余加工」，**不是合成**——它随后的导入
+  走的就是处理路径，切错了会被那一路径再改一次，看着像闪。
+- **雕凿靠「输入物品 + 产物」反推**，不靠类别 id：雕凿配方不在原版 `RecipeType` 里，类别 id 又只在
+  客户端能拿到，拿不到就静默失效。反推不出（缺输入/产物、或产物不在输入的候选里）就返回 `false`，
+  调用方按普通路径继续导，**不要**把玩家丢进一个空面板。
+- 雕凿那一路的顺序要紧：**先切档 → 再填输入槽 → 最后选中候选号**。面板每帧看输入槽变没变，一变就把
+  选中项作废重算候选（`ChiselingEncodingPanel.updateBeforeRender`），选中写在填输入之前会被那一下清掉。
+- 两个入口（JEI `JeiDiskEncodeRecipeHandler` / EMI `DiskEncodePatternHandler`）都要走同一组方法，
+  不要在各自里面另写一套判断。
+
+## 六、不变量：关闭终端后仍要记得
+
+**一条硬规则：档位与档位自己的配置，在关闭终端（卸下终端、离开世界）后必须原样恢复。**
+
+- 权威值一律存在 **`DiskEncodingLogic`**：常规档存 `mode`，额外档存各自的 boolean（`advancedMode` /
+  `chiselingMode` / `overloadedMode`），额外档自己的配置（如过载的两张行表）也存那里。
+  菜单字段是 `@GuiSync`，每次开局从 logic 回读。
+- 改档位时 **必须同时写 logic**（`encodingLogic.setXxxMode(...)` → 内部 `saveChanges()` → `host.markForSave()`），
+  只改菜单字段会随关屏丢失。
+- **`readFromNBT` / `writeToNBT` 成对**：新增一个要存的字段，两处都要加，且 `readFromNBT` 里必须写成
+  `contains(...) ? ... : 默认值`——旧存档里缺键时直接 `getBoolean` 会把缺失读成 `false`，把开关反过来。
+- **子类的 `onServerDataSync` 也要归一**：它是服务端字段同步回客户端后的钩子，和 `broadcastChanges`
+  是两条独立的路径。只在其中一处归一，另一条路径下就会停在两个额外档同时开着的状态（两块同坐标面板叠画）。
+
+| 状态 | 存在哪 | 关闭终端后 |
+|---|---|---|
+| 常规档 | `logic.mode` | 恢复 |
+| 高级 / 雕凿 / 过载档开关 | `logic.advancedMode` / `chiselingMode` / `overloadedMode` | 恢复 |
+| 过载的两张行表 | `logic.overloadedSides` / `overloadedMatchModes` | 恢复 |
+| 高级的方向表 | 菜单字段（不进存档） | **不恢复**，重新进档时从输出栏那张样板上回读 |
+| 雕凿的候选选中项 | 菜单字段（不进存档） | **不恢复**，输入一变就作废重算 |
+| 高级 / 过载的可用性 | `logic` 不存，每 tick 看升级槽 | 跟着升级槽走 |
+| `selectedChiseling` 等瞬时选择 | 菜单字段 | 不恢复（有意：序号在新列表里可能对应别的物品） |
+
+## 七、加一个磁盘类型
 
 磁盘的「类型」就是**编码样板物品的注册 id**（`PatternClassifier` 取 `details.getDefinition().getId()`），
 所以一个新类型必须挂在某个真实存在、且能被认成 `IPatternDetails` 的样板物品上。
@@ -125,7 +178,7 @@ PatternDiskManagementTermMenu  →  PatternDiskEncodingTermMenu  →  MEStorageM
 
 ---
 
-## 六、编码模式相关的小抄
+## 八、编码模式相关的小抄
 
 - 面板几何：`Blitter.texture(uri).src(...)` 的坐标按 **256×256** 换算（`Blitter.DEFAULT_TEXTURE_WIDTH/HEIGHT`）。
   图集是 256×256 时数字可直接照抄；不是就得改 `.src()`。

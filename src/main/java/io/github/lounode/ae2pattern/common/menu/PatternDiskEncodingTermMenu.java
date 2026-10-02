@@ -106,6 +106,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
     private static final String ACTION_SET_ADVANCED_MODE = "setAdvancedMode";
     private static final String ACTION_SET_CHISELING_MODE = "setChiselingMode";
     private static final String ACTION_SET_CHISELING = "setChiseling";
+    private static final String ACTION_SET_CHISELING_INPUT = "setChiselingInput";
     private static final String ACTION_SET_ADVANCED_SIDE = "setAdvancedSide";
     private static final String ACTION_SET_OVERLOADED_MODE = "setOverloadedMode";
     private static final String ACTION_SET_OVERLOADED_ROW = "setOverloadedRow";
@@ -414,6 +415,7 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
         registerClientAction(ACTION_SET_ADVANCED_MODE, Boolean.class, this::setAdvancedMode);
         registerClientAction(ACTION_SET_CHISELING_MODE, Boolean.class, this::setChiselingMode);
         registerClientAction(ACTION_SET_CHISELING, Integer.class, this::setChiseling);
+        registerClientAction(ACTION_SET_CHISELING_INPUT, ItemStack.class, this::setChiselingInput);
         registerClientAction(ACTION_SET_ADVANCED_SIDE, AdvancedSideChange.class,
                 change -> applyAdvancedSide(change.input(), change.side()));
         registerClientAction(ACTION_SET_OVERLOADED_MODE, Boolean.class, this::setOverloadedMode);
@@ -1650,6 +1652,18 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
             this.getAndUpdateOutput();
             this.updateStonecuttingRecipes();
         }
+        // 三个额外档是并列的，但服务端字段可能同时到位（存档残留、或两个 action 同一 tick 到达）：
+        // 这里也归一一次，不只依赖 broadcastChanges 那条路——只在一边归一，另一边就会停在两块同坐标
+        // 面板叠画的状态上。归一顺序就按 dropExtraTiersExcept 的既定优先级，只留一个。
+        if (this.advancedMode && this.chiselingMode) {
+            this.setAdvancedMode(false);
+        }
+        if (this.advancedMode && this.overloadedMode) {
+            this.setAdvancedMode(false);
+        }
+        if (this.chiselingMode && this.overloadedMode) {
+            this.setChiselingMode(false);
+        }
     }
 
     @Override
@@ -2012,6 +2026,22 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
      * <p>序号在服务端可能对不上（配方表是同步过来的，理论上与客户端同源，但服务端总是权威）：
      * 落盘时按序号现查，查不到就什么也不做，比写出一枚错的雕凿样板好。</p>
      */
+    /**
+     * 面板上那一个雕凿输入格（与选中的候选一起决定「把谁雕成谁」）。
+     *
+     * <p>与 {@link #setChiseling} 同款：客户端先改本地、再发 action；服务端直接改。JEI/EMI 的 + 要导入雕凿
+     * 配方时靠它把输入方块填进去（两侧都要填：面板读的是槽，落盘时读的是服务端那份）。</p>
+     */
+    public void setChiselingInput(ItemStack stack) {
+        var value = stack == null ? ItemStack.EMPTY : stack;
+        if (isClientSide()) {
+            this.chiselingInputSlot.set(value);
+            sendClientAction(ACTION_SET_CHISELING_INPUT, value);
+            return;
+        }
+        this.chiselingInputSlot.set(value);
+    }
+
     public void setChiseling(int index) {
         if (isClientSide()) {
             this.selectedChiseling = index;

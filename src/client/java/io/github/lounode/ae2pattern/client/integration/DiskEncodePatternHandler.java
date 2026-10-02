@@ -50,10 +50,19 @@ public class DiskEncodePatternHandler extends AbstractDiskRecipeHandler<PatternD
             return Result.createFailed(ItemModText.RECIPE_TOO_LARGE.text());
         }
 
-        // 高级编码是并列的一个档位，不是配方转移的目标：先退回普通档再导入（理由同 JEI 侧）。
-        if (doTransfer && menu.advancedMode) {
-            menu.setAdvancedMode(false);
+        // 导入前先把档位调到这份配方对应的那一档（映射表见 docs/ENCODING_MODES.md）。雕凿那条先试
+        // （输入产物一对，配不上则返回 false 按普通路径继续导），它会先把三个额外档关掉。
+        if (doTransfer) {
+            var chiselingInputs = EmiStackHelper.ofInputs(emiRecipe);
+            var chiselingOutputs = EmiStackHelper.ofOutputs(emiRecipe);
+            var handledAsChiseling = DiskEncodingHelper.selectChiselingTierForImport(menu,
+                    chiselingInputs.isEmpty() || chiselingInputs.get(0).isEmpty() ? null : chiselingInputs.get(0).get(0),
+                    chiselingOutputs.isEmpty() ? null : chiselingOutputs.get(0));
+            if (!handledAsChiseling) {
+                DiskEncodingHelper.selectTierForImport(menu, recipe);
+            }
         }
+        // 探问阶段（doTransfer == false）不改任何状态，只回答「能不能转移」。
 
         if (doTransfer) {
             if (craftingRecipe && recipeId != null) {

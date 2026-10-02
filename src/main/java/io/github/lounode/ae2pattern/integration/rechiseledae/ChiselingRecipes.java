@@ -78,6 +78,25 @@ public final class ChiselingRecipes {
         }
     }
 
+    /**
+     * 在客户端那份候选表里找 {@code output} 的序号，找不到返回 -1。
+     *
+     * <p>给配方导入用：JEI/EMI 的 + 要把雕凿档恢复成「输入 = 某方块、选中 = 某个产物」，
+     * 而两侧的候选顺序一致，所以只需传一个序号（与 {@link #serverCandidateAt} 同一口径）。</p>
+     */
+    public static int clientIndexOf(@Nullable Item input, @Nullable Item output) {
+        if (input == null || output == null) {
+            return -1;
+        }
+        var all = candidates(true, input);
+        for (int i = 0; i < all.size(); i++) {
+            if (all.get(i).output() == output) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
     private static List<Candidate> candidates(boolean client, @Nullable Item input) {
         if (input == null) {
             return List.of();

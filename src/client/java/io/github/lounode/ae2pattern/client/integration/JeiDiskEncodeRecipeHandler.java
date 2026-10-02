@@ -92,10 +92,22 @@ public class JeiDiskEncodeRecipeHandler implements IUniversalRecipeTransferHandl
             return helper.createUserErrorWithTooltip(ItemModText.RECIPE_TOO_LARGE.text());
         }
 
-        // 高级编码是并列的一个档位，不是配方转移的目标：在它上面点转移会让人以为「转移到高级面板了」，
-        // 而转移只改编辑区的普通输入输出，与方向表无关。所以先退回普通档，再按原路导入。
-        if (doTransfer && menu.advancedMode) {
-            menu.setAdvancedMode(false);
+        // 导入前先把档位调到这份配方对应的那一档（映射表见 docs/ENCODING_MODES.md）：合成→合成、切石→切石、
+        // 锻造→锻造、雕凿→雕凿、其余加工→处理；高级/过载两个额外档先关掉（导入不写它们的面/行表，
+        // 留着只会让屏幕停在另一个面板上，看起来像「转移过去了」实际没动）。
+        // 雕凿那条先试：它的输入与产物是一对，配不上则返回 false，按普通路径继续导。
+        if (doTransfer) {
+            var chiselingInputs = collectInputs(recipeSlots);
+            var chiselingOutputs = collectOutputs(recipeSlots);
+            var handledAsChiseling = DiskEncodingHelper.selectChiselingTierForImport(menu,
+                    chiselingInputs.isEmpty() || chiselingInputs.get(0).isEmpty() ? null : chiselingInputs.get(0).get(0),
+                    chiselingOutputs.isEmpty() ? null : chiselingOutputs.get(0));
+            if (!handledAsChiseling) {
+                DiskEncodingHelper.selectTierForImport(menu, recipe);
+            }
+        } else {
+            // 探问阶段（doTransfer == false）不改状态，只回答「能不能转移」。
+            DiskEncodingHelper.selectTierForImport(menu, recipe);
         }
 
         // doTransfer == false is JEI asking whether the transfer would work; the answer here is "yes" as long
