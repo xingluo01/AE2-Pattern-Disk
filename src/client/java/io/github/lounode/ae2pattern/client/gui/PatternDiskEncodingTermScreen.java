@@ -444,6 +444,18 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     }
 
     /** 直接点到某个常规档：先把两个额外档关掉，它们与常规档互斥（否则面板会叠加显示）。 */
+    /**
+     * 直接点到某个常规档。
+     *
+     * <p>档位与那两个额外开关要在**同一帧内**全部落定，否则屏幕会看见一个中间态：{@code mode} 是
+     * {@code @GuiSync} 的服务端权威字段，{@code setMode} 在客户端只发包、不本地改，要等一个往返才切过去；
+     * 而 {@code advancedMode} / {@code chiselingMode} 在客户端是立即生效的。两者不同步，从额外档切到常规档
+     * 时就会先回落到上一次的常规档去（等往返才到目标），看起来像「闪了一下」。所以最后补一句本地赋值。
+     * AE2 自己不必补，是因为它四个档全走 {@code mode}，切换只是单次延迟、不存在中间态。</p>
+     *
+     * <p>赋值必须在 {@code setMode} <b>之后</b>：那个方法内部要读 {@code this.mode != mode} 来决定是否
+     * 重算切石配方，先改本地值会把那一步跳过。</p>
+     */
     private void pickMode(EncodingMode mode) {
         if (getMenu().advancedMode) {
             getMenu().setAdvancedMode(false);
@@ -452,6 +464,8 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             getMenu().setChiselingMode(false);
         }
         getMenu().setMode(mode);
+        // 等一个往返才切过去的话，从额外档回来时会先回落到上一次的常规档，中间那一下看着像「闪了一下」。
+        getMenu().mode = mode;
     }
 
     private void pickAdvanced() {
