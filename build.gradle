@@ -337,6 +337,8 @@ dependencies {
     // CAUTION: Thunderbolt Core replaces/auges AE2's autocrafting internals, so this is a deep-coupling
     // mod family (same risk shape as the Rechiseled JEI mixin that broke JEI pages - note above). After
     // any AE2 version bump, smoke test: AE2 terminal -> autocrafting panels -> a JEI recipe page.
+    // Note the AE2 lower bound is exactly 19.2.17 for ae2lt/thunderbolt, so dropping the runtime AE2
+    // below that (or touching the AE2 localRuntime coordinate) trips the same FML dependency check.
     localRuntime 'maven.modrinth:ae2-lightning-tech:2.1.1'
     localRuntime 'maven.modrinth:thunderbolt-core:2.0.1'
     localRuntime 'maven.modrinth:ae2lt-packaged-pattern-provider:1.2.1'
@@ -349,7 +351,8 @@ dependencies {
 
     // 兼容性测试用的 AE2 生态模组（只进开发环境，不参与发布依赖）：
     //   万象构序 OmniSequence Transfinite、闪电科技重生 AE2 Lightning Tech Reborn
-    //   及后者的封包样板供应器附属。三者与本模组的样板/供应器功能有重叠，重点测共存。
+    //   及后者的封包样板供应器附属（**本体版的封包已在上方装上**，这里指重生版那一支）。
+    //   三者与本模组的样板/供应器功能有重叠，重点测共存。
     //
     // 2026-09-30 停用：三者都缺必需的**前置模组**，而这几条来自 CurseForge maven 的构件不带依赖
     // 元数据，前置 jar 从未进入开发运行时；FML 的依赖检查只认已安装的 mod，因此在 pre-loading
@@ -363,8 +366,8 @@ dependencies {
     //
     // 2026-10-02 部分恢复：**闪电科技与它的封包已改用 Modrinth 正式版装上（见上方三条）**，
     // thunderbolt-core 2.0.1 已发布、区间放宽为 [2.0.1,3.0.0)，死结解除。
-    // 下面只留仍未解决的两条——**不要再取消注释 ae2lt / ae2ltpp 那两行**，那会让同一个 modId
-    // 装两份（Modrinth 正式版 + CF 旧版），FML 会报错或随机取胜。
+    // 下面只留仍未解决的两条。**不要再从 CF 把 ae2lt / ae2ltpp 加回来**（不论是本体还是重生版）：
+    // 同一个 modId 装两份会让 FML 报错或随机取胜。
     // 另："闪电科技重生"（AE2 Lightning Tech Reborn）与"闪电科技"（AE2 Lightning Tech）**同为
     // modId ae2lt**，两者只能装其一——上方装的是本体，不是重生版。
     // localRuntime 'curse.maven:omnisequence-transfinite-1624558:8991983'
