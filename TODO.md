@@ -214,8 +214,10 @@ P0 不应新造范式，同文件里已有两处“每 tick 限量”的先例�
 - **影响**：不崩、不丢东西；但有两层后果——① 磁盘列表/搜索里那张盘看起来像「处理样板」，玩家看不出它是在高级档下写的；
   ② 从处理档进入时，`matchesCurrentType` 会跟着恒为 false（`categoryForMode(PROCESSING)` 本来就是 null，
   `PatternDiskEncodingTermScreen:657-660`），于是「唯一目标自动落盘」这个便利也不生效——只能靠搜索栏筛盘。
-  另：继承来的 `#mode:processing` 会让该盘在处理档成为落盘目标，若其内容是高级处理样板，写入会被类型锁拒绝并给回执
-  （`disk_refused.type_locked`）——那是正常拒绝，不是异常。
+  另：继承来的 `#mode:processing` 会让该盘在搜索栏筛出它（或玩家直接点它）时成为写入目标，
+  若其内容是高级处理样板，而在处理档写普通处理样板，写入会被类型锁拒绝并给回执
+  （`disk_refused.type_locked`）——那是正常拒绝，不是异常。（处理档下「唯一目标自动落盘」本来就不生效，
+  见上一条后果。）
 - **为何暂不做**：给高级档一个固定的 `#mode:adv_processing`，面与雕凿那一轮完全相同：`DiskMarkRules`（常量与显示名）、
   `uploadMark()` 分支、`PatternDiskMarks` 识别、`matchesCurrentType` 匹配、中英文案。雕凿已于 2026-10 补上专属标记
   （`#mode:chiseling`），**高级档当时按用户要求未动**。

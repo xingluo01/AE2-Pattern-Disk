@@ -326,6 +326,21 @@ dependencies {
     // Modrinth version id k444ySGT = AE Omni Cells 1.1.6 for 1.21.1 neoforge.
     localRuntime 'maven.modrinth:ae2-omni-cells:k444ySGT'
 
+    // AE2 Lightning Tech ("闪电科技", modId ae2lt) + its required core library Thunderbolt Core, plus
+    // AE2LT Packaged Pattern Provider ("闪电科技封包", modId ae2ltpp) - an addon of the former that routes
+    // AE2/AE2LT autocrafting into other mods' special crafting systems. Dev-only (localRuntime): this mod
+    // neither imports nor bundles any of their classes, they are here to test that we coexist.
+    //
+    // Version choice: Thunderbolt Core 2.0.1 declares AE2 19.2.17-19.2.x, which covers both the AE2 we
+    // compile against and the latest 1.21.1 release (19.2.18). All three shipped 2026-10-01.
+    //
+    // CAUTION: Thunderbolt Core replaces/auges AE2's autocrafting internals, so this is a deep-coupling
+    // mod family (same risk shape as the Rechiseled JEI mixin that broke JEI pages - note above). After
+    // any AE2 version bump, smoke test: AE2 terminal -> autocrafting panels -> a JEI recipe page.
+    localRuntime 'maven.modrinth:ae2-lightning-tech:2.1.1'
+    localRuntime 'maven.modrinth:thunderbolt-core:2.0.1'
+    localRuntime 'maven.modrinth:ae2lt-packaged-pattern-provider:1.2.1'
+
     // Polymorph（多态合成）：开发环境装上用于集成测试，不进发布依赖——
     // 正式运行时它是可选前置（未装时本模组需完全不受影响）。
     // 服务端（main）与客户端（client）两侧都要它：菜单走配方查询，屏幕走 widget。
