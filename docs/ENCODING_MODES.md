@@ -59,7 +59,7 @@ private Blitter currentModeIcon();          // 模式钮画哪个图标
 | 1 | `PatternDiskEncodingTermMenu` | 加一对 `@GuiSync` 字段：`xxxMode`（是否停在该档）、`xxxModeAvailable`（是否可用） |
 | 2 | 同上 | 加 `ACTION_SET_XXX_MODE` 常量 + `registerClientAction(...)` |
 | 3 | 同上 | `setXxxMode(boolean)`：客户端先改本地显示字段 + 发 action，服务端写权威值进 `encodingLogic` 并做「进档初始化」 |
-| 4 | 同上 | `isXxxMode()`（供编码路径判档） |
+| 4 | 同上 | 暴露判档入口：`isXxxMode()` 或直接读字段（雕凿档就没有方法，编码路径直接读字段；与既有一致即可） |
 | 5 | 同上 | 可用性：`hasXxxEncoder()`（扫升级槽的物品 id）+ 在 `broadcastChanges()` 里每 tick 回读；**不可用时立刻退档** |
 | 6 | 同上 | `broadcastChanges()` 回读 `xxxMode` 与所有该档状态字段（服务端权威 → 客户端） |
 | 7 | 同上 | `encode()`：**在 `patternEncodingLogic.encodePattern()` 之前**加该档分支 |
@@ -105,7 +105,7 @@ PatternDiskManagementTermMenu  →  PatternDiskEncodingTermMenu  →  MEStorageM
 **档位状态要跟着终端走。** 权威值存 `DiskEncodingLogic`（它随部件持久化），菜单只做每 tick 回读与同步；
 客户端点一下先改本地显示字段再发 action，否则等一个往返会看到闪回。
 
-**额外档没有专属映射标记。** 它继承「进入该档之前那个常规档」的标记——这是已记录行为（见 `docs/TODO.md`），
+**额外档没有专属映射标记。** 它继承「进入该档之前那个常规档」的标记——这是已记录行为（见 `docs/TODO.md` 的 L 条；那条只点名了高级档，过载档同理）
 不是缺陷。除非该档的样板语义真的不同（如雕凿自己给了 `#mode:chiseling`），否则不要新造标记。
 
 ---

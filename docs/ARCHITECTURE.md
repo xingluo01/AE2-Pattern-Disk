@@ -125,7 +125,7 @@
 
 ### 3.5 编码终端与管理终端
 
-编码终端 = 菜单 `PatternDiskEncodingTermMenu`（1585 行）+ 屏幕 `client/gui/PatternDiskEncodingTermScreen.java`（874 行）。菜单里塞了四套编码模式、磁盘列表协议、写盘/取盘、标记与命名。屏幕侧有 4 个模式面板（`CraftingEncodingPanel` / `ProcessingEncodingPanel` / `SmithingTableEncodingPanel` / `StonecuttingEncodingPanel`）与磁盘列表面板 `DiskListPanel`。
+编码终端 = 菜单 `PatternDiskEncodingTermMenu`（~2300 行）+ 屏幕 `client/gui/PatternDiskEncodingTermScreen.java`（~1160 行）。菜单里塞了四套常规编码模式、磁盘列表协议、写盘/取盘、标记与命名。屏幕侧有 4 个常规档面板（`CraftingEncodingPanel` / `ProcessingEncodingPanel` / `SmithingTableEncodingPanel` / `StonecuttingEncodingPanel`）、磁盘列表面板 `DiskListPanel`，以及**三个额外档**（高级 `AdvancedEncodingPanel` / 雕凿 `ChiselingEncodingPanel` / 过载 `OverloadedEncodingPanel`）——额外档的图标、可用性、互斥与可见性由屏幕里一张注册表 `List<ExtraTier>` 统一派生，加档流程见 `ENCODING_MODES.md`。
 
 管理终端继承编码终端的两侧（菜单加 `PatternDiskManagementTermMenu`，屏幕加 `PatternDiskManagementTermScreen`），多出来的是"按机器分组的整表"：行模型 `DiskTableRowBuilder` / `DiskTableRowModel`，盘内样板的搜索与排序 `DiskPatternView`，粘贴过滤 `DiskEntryFilter`。
 
