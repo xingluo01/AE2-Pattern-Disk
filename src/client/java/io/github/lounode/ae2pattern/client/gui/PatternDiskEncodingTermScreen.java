@@ -239,7 +239,6 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         this.extraTiers = List.of(
                 new ExtraTier(ICON_ADVANCED,
                         "gui.ae2_pattern_disk.encoding_terminal.advanced_mode",
-                        null,
                         PatternDiskItem.ADVANCED_PROCESSING_PATTERN,
                         this.advancedPanel,
                         () -> getMenu().advancedModeAvailable,
@@ -247,7 +246,6 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
                         getMenu()::setAdvancedMode),
                 new ExtraTier(ICON_CHISELING,
                         "gui.ae2_pattern_disk.encoding_terminal.chiseling_mode",
-                        DiskMarkRules.CHISELING_MARK,
                         PatternDiskItem.CHISELING_PATTERN,
                         this.chiselingPanel,
                         () -> getMenu().chiselingModeAvailable
@@ -256,7 +254,6 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
                         getMenu()::setChiselingMode),
                 new ExtraTier(ICON_OVERLOADED,
                         "gui.ae2_pattern_disk.encoding_terminal.overloaded_mode",
-                        null,
                         PatternDiskItem.OVERLOAD_PATTERN,
                         this.overloadedPanel,
                         () -> getMenu().overloadedModeAvailable,
@@ -474,10 +471,6 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     }
 
     /**
-     * 选择钮展开列表的内容。两个额外档排在四个常规档后面（高级在前、雕凿在后），与它们的可用性判断放在一起
-     * —— 与下面给面板做可见性判断的地方用同一组条件。
-     */
-    /**
      * 一个额外档的全部声明。顺序 = 下拉列表里额外档的排列顺序。
      *
      * <p>{@code panel} 为 null 时该档不进下拉（面板缺席）；{@code available}/{@code active} 用
@@ -486,16 +479,6 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     private record ExtraTier(
             Blitter icon,
             String nameKey,
-            /**
-             * 该档的专属标记字面量，**匹配时**用它跟磁盘标记比。
-             *
-             * <p>{@code null} = 该档没有专属标记：匹配时**不认标记**，只认类型锁（见 {@link #matchesCurrentType}）。
-             * 别把它读成「继承进入本档之前那个常规档的标记」——那是**写盘侧**的行为（{@code deriveMarkId} 读
-             * {@code menu.mode}，而额外档不改 mode），两侧不一样：高级/过载档下 {@code mode} 停在进入本档
-             * 之前那个常规档，拿它去匹盘会把两种处理类样板引到错误的匹配项上。
-             * 详见 {@code docs/ENCODING_MODES.md} §七与 {@code docs/ARCHITECTURE.md}。</p>
-             */
-            @Nullable String ownMark,
     /**
      * 该档编出的样板物品 id，也就是磁盘类型锁里存的那个串（{@code PatternDiskContents.type}）。
      *
@@ -728,12 +711,12 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         // 编码按钮要不要直接落盘。这一步必须等过滤做完：玩家点按钮时看到的就是这份列表，早一帧算出来就可能
         // 把目标算成此刻已经看不到的那张盘。
         // ① 搜索栏筛过盘：按列表顺位写（沿用原语义）；
-        // ② 没搜索：交给 soleMatchingDisk（唯一对得上的盘才算目标）。
+        // ② 没搜索：交给 tierGroupByUsage（当前档位那一组按存量升序，写最少的那张）。
         long[] autoDisks = NO_DISKS;
         if (isDiskSearchActive()) {
             autoDisks = capCandidates(diskEntries.stream().mapToLong(DiskListPanel.DiskEntry::serial).toArray());
         } else {
-            autoDisks = soleMatchingDisk();
+            autoDisks = tierGroupByUsage();
         }
         menu.setClientAutoDisks(autoDisks);
 
@@ -752,83 +735,53 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     /**
      * 这张盘是不是「当前档位编出的样板」的候选目标：可能落盘，且判断只认盘自己的东西，不猜显示名。
      *
-     * <p>两条判据，先硬后软：</p>
+     * <p><b>判据只有一条：这张盘属于的那类样板 == 当前档位编出的那类。</b>而「属于哪类」两个来源有主次：</p>
      *
      * <ol>
-     * <li><b>类型锁</b>：磁盘写入第一枚样板之后类型就固定下来了（{@code PatternDiskContents.type}）。
-     * 锁住的类型正是当前档要编的那一类，那写进去必然成功——写入路径走的 {@code acceptsType} 就是同一个
-     * 比较。这就是「固定匹配」：盘锁了哪一类、当前档编的就是哪一类，于是它就算那个目标，<b>不需要它打过标记</b>。
-     * 一张空盘（没锁类型）不算，否则每张空盘都会来抢这个唯一目标。</li>
-     * <li><b>标记</b>：类型锁没命中时，退回标记那条。磁盘标记有两种写法：导入过配方时写
-     * {@code #<配方类别>}（如 {@code #minecraft:crafting}），手动编码留下的写 {@code #mode:<模式>}
-     * ——同一台机器两种都得认。</li>
+     * <li>盘自己的标记（{@code DISK_PREFIX}）——玩家的组织意图，优先级高，按标记反查它代表哪类样板；</li>
+     * <li>没打过标记时，用它锁定的类型——类型是数据事实，这里当默认值。</li>
      * </ol>
      *
-     * <p><b>但标记这条不是每档都能用</b>，而它用错时的后果很重：它会把样板引到一张类型根本不符的盘上。
-     * 那时写入会被 {@code tryInsert} 拒掉（聊天栏报「已锁定为其它样板类型」），更糟的是那张被误认的盘
-     * 会占掉「唯一目标」这个名额，真正类型对得上的那张盘反而没被试。所以没有可靠标记的档一律只认类型锁：</p>
+     * <p><b>为什么锚点是样板类型而不是标记字面量</b>：标记是类型的一种写法（{@code #minecraft:crafting}
+     * 或 {@code #mode:crafting} 都是「合成类」），两者在 {@code DiskMarkRules} 里已经可互转。拿标记字面量
+     * 当锚点会掉进两个坑：玩家 Shift+右键写的任意文本没有对应类型（得判无效），而高级/过载档没有专属标记
+     * （于是锁了这两类类型、却没打过标记的盘就被排除——写盘侧它们盖的只是继承来的常规档标记）。以类型为锚点，
+     * 两边都自然对上。</p>
      *
-     * <ul>
-     * <li><b>处理档</b>：处理没有公认类别（见 {@code DiskMarkRules.categoryForMode}），本来就不会
-     * 走到标记那条（{@code category == null} 直接 false）。</li>
-     * <li><b>高级档 / 过载档</b>：它们<b>没有专属标记</b>，而 {@code mode} 在额外档下停在「进入本档之前
-     * 那个常规档」。若让它们落回模式标记，高级处理/过载处理样板就会去匹「合成 / 切石 / …」标记的盘
-     * ——三条处理类的样板各是自己的类型（{@code ae2:processing_pattern} /
-     * {@code advanced_ae:adv_processing_pattern} / {@code ae2lt:overload_pattern}），不能互串，也不能
-     * 跟别的档串。所以它们到此为止，只认上面那条类型锁。</li>
-     * <li><b>雕凿档</b>：有自己的固定字面量（注册表的 {@code ownMark}），比它自己的。</li>
-     * </ul>
+     * <p>判不出来的一律不算（否则每张空盘都会来抢）：空盘既没标记也没锁类型；玩家写了个认不出的标记
+     * （如「铁厂」）；万象那个类型尚未接编码，反推不出档位。</p>
      */
-    private boolean matchesCurrentType(DiskEntry entry) {
-        // ① 类型锁（盘自己的事实）
-        var locked = lockedTypeOf(entry);
-        if (locked != null && locked.equals(currentPatternTypeId())) {
-            return true;
-        }
-        // ② 标记（玩家/导入留下的意图）——只给有可靠标记的档用
-        //
-        // 已经被锁成别类的盘先退出：它的类型锁已经替它回答了「它要哪一种样板」，再按标记把它当候选只会
-        // 挤掉真正对得上的那张盘（写进去也必然被拒）。这种盘系统自己会造出来——高级/过载档写盘时盖的是
-        // 「继承来的常规档标记」，而类型锁是那个高级/过载类型，于是它回到常规档下就会被标记误认。
-        // 空盘（locked == null）不受此限：它还没表过态，标记就是它唯一的依据。
-        if (locked != null && !locked.equals(currentPatternTypeId())) {
-            return false;
-        }
-        var raw = entry.stack().get(AEPatternRegistries.DISK_PREFIX.get());
-        if (raw == null || raw.isEmpty()) {
-            return false;
-        }
-        // 额外档先判，不管有没有专属标记都到此为止：没有专属标记的那两档（高级/过载）不能落回下面那条
-        // mode 判据，理由见 javadoc——那是「处理类样板被引到错误匹配项」的来源。
-        var tier = activeTier();
-        if (tier >= 0) {
-            var ownMark = this.extraTiers.get(tier).ownMark();
-            return ownMark != null && ownMark.equals(raw);
-        }
-        // 常规档：雕凿不在 EncodingMode 里也没有配方类别，它的标记是唯一的固定字面量，已在上面比过；
-        // 常规四档则比当前模式的规范类别与模式标记。处理没有公认类别，一律不算，免得把样板送错机器。
-        var mode = menu.getMode();
-        var category = DiskMarkRules.categoryForMode(mode);
-        if (category == null) {
-            return false;
-        }
-        return ("#" + category).equals(raw) || DiskMarkRules.modeMarkId(mode).equals(raw);
+    private boolean isInCurrentTierGroup(DiskEntry entry) {
+        var type = tierTypeOf(entry);
+        return type != null && type.equals(currentPatternTypeId());
     }
 
     /**
-     * 没有搜索条件时的「唯一目标」：符合当前档位的盘只剩这一张时返回它，否则返回空。
+     * 这张盘归到哪一类样板：认得出的标记优先（玩家的组织意图），否则退回它锁定的类型。
      *
-     * <p>判定就是 {@link #matchesCurrentType}——磁盘自己的类型锁与标记任一成立即可，不靠显示名猜。
-     * 不再「随手塞第一张」：多张对得上时让玩家自己用搜索栏或点盘选，不猜。</p>
+     * <p><b>退回而不是排除</b>：标记认不出（玩家自定义文本，或处理档导入的 `#<非规范类别>` 如
+     * {@code #minecraft:smelting}）时，那张盘不能因此就进不了组——它的类型锁很可能正好能收当前样板。
+     * 后果就是上面那句「盘明明对得上、点编写样板却没反应」。</p>
      *
-     * <p><b>两个终端共用</b>：管理终端的写盘目标多半来自右键选中的那张盘，但在「没选中、也没搜索」
-     * 那一格上它走的是本方法（见其 {@code buildAutoDiskCandidates}）——不共用的话，同一个症状
-     * （盘明明对得上、点「编写样板」却没任何反应）会在管理终端里复现一次。</p>
+     * <p>两个来源都拿不到时返回 null：空盘（既没标记也没锁类型）。反查链在
+     * {@code DiskMarkRules.patternTypeForMark}：雕凿的固定字面量、{@code #mode:<模式>} 与
+     * {@code #<配方类别>} 三种写法都认。</p>
      */
-    protected long[] soleMatchingDisk() {
-        var matched = diskEntries.stream().filter(this::matchesCurrentType)
-                .mapToLong(DiskListPanel.DiskEntry::serial).toArray();
-        return matched.length == 1 ? matched : NO_DISKS;
+    @Nullable
+    private String tierTypeOf(DiskEntry entry) {
+        var raw = entry.stack().get(AEPatternRegistries.DISK_PREFIX.get());
+        if (raw != null && !raw.isEmpty()) {
+            var byMark = DiskMarkRules.patternTypeForMark(raw);
+            // 认得出的标记优先（玩家/导入留下的组织意图）；**认不出的不屏蔽类型兜底**，否则下面这种盘就没法用了：
+            // 导入一条熔炉配方会把 {@code #minecraft:smelting} 写进标记，而处理档没有规范类别（{@code
+            // categoryForMode} 返回 null），反查不出类型——那张盘类型锁明明是处理样板、却进不了处理组，
+            // 症状正是「盘明明对得上、点编写样板却没反应」。
+            if (byMark != null) {
+                return byMark;
+            }
+        }
+        // 没标记，或标记认不出：用它锁定的类型——类型是数据事实，这里当默认值。
+        return lockedTypeOf(entry);
     }
 
     /** 这张盘锁定的样板类型；它不是磁盘、或还是空盘（未锁定）时返回 null。 */
@@ -840,15 +793,48 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     }
 
     /**
-     * 当前档位编出的样板物品 id。额外档各问自己注册表里那一格；常规四档由模式推
-     * （AE2 那四个编码样板就是 {@code ae2:<模式名小写>_pattern}，值与映射都在 {@code DiskMarkRules}）。
+     * 当前档位编出的样板物品 id——本档判「哪张盘属于我这一组」的锚点。
+     *
+     * <p>额外档各问自己注册表里那一格（雕凿/高级/过载各有各的样板物品，且它们的 {@code mode} 停在
+     * 进入本档之前那个常规档，直接问 {@code getMode()} 会答错）；常规四档由模式推，值与映射都在
+     * {@code DiskMarkRules}。</p>
      */
     private String currentPatternTypeId() {
-        var tier = activeTier();
         // 额外档优先：雕凿/高级/过载档下 mode 仍停着「进入本档之前那个常规档」，直接问它会答错。
+        var tier = activeTier();
         return tier >= 0
                 ? this.extraTiers.get(tier).patternTypeId()
                 : DiskMarkRules.patternTypeForMode(menu.getMode());
+    }
+
+    /**
+     * 没搜索条件时的写盘候选：当前档位那一组盘，<b>按已存配方数升序</b>全部列出。
+     *
+     * <p>写进存量最少的那张，而不是要求全网只剩一张：同标记的盘本来就该是「填平」的一组，让玩家
+     * 为了写一枚样板先去把其他盘搜掉、或点中某一张，是没有理由的负担。</p>
+     *
+     * <p><b>“逐张试”不在这里做</b>：列表交给菜单的 {@code transferToFirstWritable}，它从少到多逐张
+     * 试，第一张能收的就收了。所以「存量最少」只是候选顺序，不是唯一目标——写不进自然顺位到次少的
+     * 那张，而「能不能写」由那里的 {@code PatternDiskItem.tryInsert} 说了算（容量 / 类型锁 / 主产物
+     * 互斥），不在本方法里预判：判它得先有编好的样板，而这份候选是在编码之前算的。</p>
+     *
+     * <p><b>两个终端共用</b>：管理终端的写盘目标多半来自右键选中的那张盘，但在「没选中、也没搜索」
+     * 那一格上它走的是本方法。</p>
+     */
+    protected long[] tierGroupByUsage() {
+        var matched = new ArrayList<DiskEntry>();
+        for (var entry : diskEntries) {
+            if (isInCurrentTierGroup(entry)) {
+                matched.add(entry);
+            }
+        }
+        // 已存配方数升序：写进最少的那张。平手时保持列表原序（显示名序）——稳定，不会每次刷新换一张盘。
+        matched.sort(Comparator.comparingInt(DiskEntry::used));
+        var serials = new long[matched.size()];
+        for (int i = 0; i < serials.length; i++) {
+            serials[i] = matched.get(i).serial();
+        }
+        return capCandidates(serials);
     }
 
     /** Renames the disk {@code serial} after the machine its mark stands for. */

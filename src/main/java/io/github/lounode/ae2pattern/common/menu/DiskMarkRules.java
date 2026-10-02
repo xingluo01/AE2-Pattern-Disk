@@ -40,6 +40,9 @@ public final class DiskMarkRules {
     /** {@link #CHISELING_MARK} 里 {@code #mode:} 之后那一段，显示与识别都用它。 */
     public static final String CHISELING_MARK_NAME = "chiseling";
 
+    /** {@link #modeMarkId} 里 {@code #} 之后那一段。 */
+    private static final String MODE_MARK_PREFIX = "mode:";
+
     /** 名字里不允许出现的字符：控制字符与 § 格式码。客户端送来的串不能带着它们进物品组件。 */
     private static final Pattern DISALLOWED_NAME_CHARS = Pattern.compile("[\\p{Cntrl}\u00a7]");
 
@@ -63,7 +66,41 @@ public final class DiskMarkRules {
 
     /** The mark standing for an encoding mode, for disks marked without an imported recipe. */
     public static String modeMarkId(EncodingMode mode) {
-        return "#mode:" + mode.name().toLowerCase(Locale.ROOT);
+        return "#" + MODE_MARK_PREFIX + mode.name().toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * 反查：这个磁盘标记属于哪一类样板；不是档位标记（玩家 Shift+右键写的任意文本）返回 null。
+     *
+     * <p><b>标记与样板类型是同一件事的两种写法</b>，互转规则收在这里：{@code #mode:<模式>} 与
+     * {@code #<配方类别>} 都归一到该档位编出的样板类型 id（见 {@link #patternTypeForMode}），
+     * 雕凿用它自己的固定字面量。选盘时把盘的有效标记先归一到类型再比，两边就只有一个锚点。
+     * 玩家随手写的那种标记（它未必是档位标记）反查不出，返回 null——不参与分组。</p>
+     */
+    @Nullable
+    public static String patternTypeForMark(@Nullable String mark) {
+        if (mark == null || mark.isEmpty() || !mark.startsWith("#")) {
+            return null;
+        }
+        if (CHISELING_MARK.equals(mark)) {
+            return PatternDiskItem.CHISELING_PATTERN;
+        }
+        var body = mark.substring(1);
+        if (body.startsWith(MODE_MARK_PREFIX)) {
+            var name = body.substring(MODE_MARK_PREFIX.length());
+            for (var mode : EncodingMode.values()) {
+                if (mode.name().toLowerCase(Locale.ROOT).equals(name)) {
+                    return patternTypeForMode(mode);
+                }
+            }
+            return null;
+        }
+        for (var mode : EncodingMode.values()) {
+            if (body.equals(categoryForMode(mode))) {
+                return patternTypeForMode(mode);
+            }
+        }
+        return null;
     }
 
     /**
