@@ -146,6 +146,15 @@ PatternDiskManagementTermMenu  →  PatternDiskEncodingTermMenu  →  MEStorageM
 - **雕凿靠「输入物品 + 产物」反推**，不靠类别 id：雕凿配方不在原版 `RecipeType` 里，类别 id 又只在
   客户端能拿到，拿不到就静默失效。反推不出（缺输入/产物、或产物不在输入的候选里）就返回 `false`，
   调用方按普通路径继续导，**不要**把玩家丢进一个空面板。
+- **雕凿反推必须遍历「所有输入变体 × 所有产物」**，不能只看第一格。一个雕凿类别页里同时摆着同一组的
+  不同形状（普通方块 / 楼梯 / 台阶）与多个候选产物，第一个输入格里的东西未必配得上第一个产物格；而候选
+  表**只列同组同形状**的，于是拿方块去反推台阶必然失败——那一页就退化成处理档、编出一枚处理样板
+  （实机见过）。实现就在 `DiskEncodingHelper.selectChiselingTierForImport` 的两层循环里，不要再改回取 `get(0)`。
+- **面板别把导入设的选中序号清掉**：`ChiselingEncodingPanel.updateBeforeRender` 一发现输入槽变了就把
+  `selectedChiseling` 清成 -1（那个序号在新候选表里会对应别的物品）。而导入恰好是「先填输入、再设选中」
+  ——不区分的话，导入后下一帧选中就被清掉：档位对、输入对，却没有选中项，点「编写样板」只能得到
+  一句「需要先选候选」，等于导入没做完。所以面板用菜单的导入修订号（`getCategoryImportRevision`，
+  与搜索栏自动填充同一套机制）把「导入引起的输入变化」从「玩家自己换了输入」里区分出来。
 - 雕凿那一路的顺序要紧：**先切档 → 再填输入槽 → 最后选中候选号**。面板每帧看输入槽变没变，一变就把
   选中项作废重算候选（`ChiselingEncodingPanel.updateBeforeRender`），选中写在填输入之前会被那一下清掉。
 - 两个入口（JEI `JeiDiskEncodeRecipeHandler` / EMI `DiskEncodePatternHandler`）都要走同一组方法，

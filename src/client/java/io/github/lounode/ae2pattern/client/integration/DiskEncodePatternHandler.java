@@ -56,8 +56,7 @@ public class DiskEncodePatternHandler extends AbstractDiskRecipeHandler<PatternD
             var chiselingInputs = EmiStackHelper.ofInputs(emiRecipe);
             var chiselingOutputs = EmiStackHelper.ofOutputs(emiRecipe);
             var handledAsChiseling = DiskEncodingHelper.selectChiselingTierForImport(menu,
-                    chiselingInputs.isEmpty() || chiselingInputs.get(0).isEmpty() ? null : chiselingInputs.get(0).get(0),
-                    chiselingOutputs.isEmpty() ? null : chiselingOutputs.get(0));
+                    chiselingInputs, chiselingOutputs);
             if (!handledAsChiseling) {
                 DiskEncodingHelper.selectTierForImport(menu, recipe);
             } else {

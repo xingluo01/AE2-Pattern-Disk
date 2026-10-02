@@ -82,8 +82,17 @@ public final class ChiselingEncodingPanel extends DiskEncodingModePanel {
     /** 上一次的可见性：用来识别「刚进本档」这个跃迁（见 {@link #setVisible}）。 */
     private boolean lastVisible;
 
+    /**
+     * 已消费过的「导入修订号」。导入（JEI/EMI 配方页的 +）也会连带把输入槽与选中序号设好，
+     * 面板得能分辨「这次输入变化是导入引起的」与「玩家自己换了输入」（见 {@link #updateBeforeRender}）。
+     *
+     * <p>构造时对齐当前值，不假设「新屏幕一定配新菜单」（与屏幕那侧同一个理由）。</p>
+     */
+    private int seenImportRevision;
+
     public ChiselingEncodingPanel(PatternDiskEncodingTermScreen screen, WidgetContainer widgets) {
         super(screen, widgets);
+        this.seenImportRevision = menu.getCategoryImportRevision();
         // 自己一条滚动条：切石那条不能借用（两条滚动条会同时可见，而且位置绑定在两个不同的面板上）。
         // 样式文档没这一格时退化成「不可滚动」，不影响其余部分（同高级面板）。
         Scrollbar bar = null;
@@ -120,13 +129,22 @@ public final class ChiselingEncodingPanel extends DiskEncodingModePanel {
 
     @Override
     public void updateBeforeRender() {
+        // 导入也走「改输入槽」这条路（它连着设好输入与选中序号），所以先取一次导入修订号把它区分出来。
+        var importRevision = menu.getCategoryImportRevision();
+        var importedNow = importRevision != this.seenImportRevision;
+        this.seenImportRevision = importRevision;
+
         // 输入槽里换了东西：候选换一批，顺带把上一批的选中项与滚动位作废（那个序号在新列表里对应别的物品，
         // 留着它落盘时会编出一枚跟屏幕对不上的样板）。
+        //
+        // **但导入那一下要除外**：JEI/EMI 的 + 先把输入槽填上、再把选中序号设好，序号正是为这一批候选选的。
+        // 不做这个区分的话，导入后下一帧就会把它清成 -1——面板上档位对、输入对，却没有选中项，
+        // 点「编写样板」只能得到一句「需要先选候选」，等于导入没做完。
         var input = inputItem();
         if (this.cachedInput != input) {
             this.cachedInput = input;
             this.cachedCandidates = ChiselingRecipes.clientCandidates(input);
-            if (menu.selectedChiseling != -1) {
+            if (menu.selectedChiseling != -1 && !importedNow) {
                 menu.setChiseling(-1);
             }
             this.scroll = 0;

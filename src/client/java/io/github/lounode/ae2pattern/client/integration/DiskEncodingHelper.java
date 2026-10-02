@@ -125,23 +125,39 @@ public final class DiskEncodingHelper {
      * @return 是否已按雕凿导入处理
      */
     public static boolean selectChiselingTierForImport(PatternDiskEncodingTermMenu menu,
-            @Nullable GenericStack chiselingInput, @Nullable GenericStack chiselingOutput) {
-        var inputKey = chiselingInput == null ? null : itemOf(chiselingInput);
-        var outputKey = chiselingOutput == null ? null : itemOf(chiselingOutput);
-        if (inputKey == null || outputKey == null) {
-            return false;
+            List<List<GenericStack>> chiselingInputs, List<GenericStack> chiselingOutputs) {
+        // **所有输入变体 × 所有产物都要试，不能只看第一格**：一个雕凿类别页里同时摆着同一组的不同形状
+        // （普通方块 / 楼梯 / 台阶），也摆着多个候选产物，第一个输入格里的东西未必配得上第一个产物格。
+        // 拿方块去反推台阶时，候选表里根本没有台阶（候选只列同组同形状的），反推必然失败，于是那一页
+        // 就退化成处理档、编出一枚处理样板。配对只认一条事实：输入与产物在 Rechiseled 的候选表里对得上。
+        for (var variants : chiselingInputs) {
+            for (var candidate : variants) {
+                var inputKey = itemOf(candidate);
+                if (inputKey == null) {
+                    continue;
+                }
+                for (var output : chiselingOutputs) {
+                    var outputKey = itemOf(output);
+                    if (outputKey == null) {
+                        continue;
+                    }
+                    var index = ChiselingRecipes.clientIndexOf(inputKey, outputKey);
+                    if (index < 0) {
+                        continue;
+                    }
+                    closeExtraTiers(menu);
+                    // 顺序要紧：先调档，再填输入、最后选中。面板每帧看输入槽是否变过，一变就把选中项作废
+                    // 并重算候选——选中写在填输入之前会被那一下清掉。
+                    menu.setChiselingMode(true);
+                    menu.setChiselingInput(new ItemStack(inputKey));
+                    menu.setChiseling(index);
+                    return true;
+                }
+            }
         }
-        var index = ChiselingRecipes.clientIndexOf(inputKey, outputKey);
-        if (index < 0) {
-            return false;
-        }
-        closeExtraTiers(menu);
-        // 顺序要紧：先调档，再填输入、最后选中。面板每帧看输入槽是否变过，一变就把选中项作废并重算候选
-        // ——选中写在填输入之前会被那一下清掉。
-        menu.setChiselingMode(true);
-        menu.setChiselingInput(new ItemStack(inputKey));
-        menu.setChiseling(index);
-        return true;
+        // 页面上不存在任何一对能对上的：不切雕凿档，调用方按普通路径继续导（也不静默改成「切了档但什么
+        // 都不填」——那会把玩家丢进一个空面板）。
+        return false;
     }
 
     /** 关掉三个并列的额外档；导入只认常规档与雕凿档。 */
@@ -159,7 +175,10 @@ public final class DiskEncodingHelper {
 
     /** 从配方页给的一格输入里取物品；取不到返回 null（非物品的输入不参与雕凿反推）。 */
     @Nullable
-    private static Item itemOf(GenericStack stack) {
+    private static Item itemOf(@Nullable GenericStack stack) {
+        if (stack == null) {
+            return null;
+        }
         return stack.what() instanceof AEItemKey itemKey ? itemKey.getItem() : null;
     }
 

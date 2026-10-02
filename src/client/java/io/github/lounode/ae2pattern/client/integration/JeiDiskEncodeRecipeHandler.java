@@ -100,8 +100,7 @@ public class JeiDiskEncodeRecipeHandler implements IUniversalRecipeTransferHandl
             var chiselingInputs = collectInputs(recipeSlots);
             var chiselingOutputs = collectOutputs(recipeSlots);
             var handledAsChiseling = DiskEncodingHelper.selectChiselingTierForImport(menu,
-                    chiselingInputs.isEmpty() || chiselingInputs.get(0).isEmpty() ? null : chiselingInputs.get(0).get(0),
-                    chiselingOutputs.isEmpty() ? null : chiselingOutputs.get(0));
+                    chiselingInputs, chiselingOutputs);
             if (handledAsChiseling) {
                 // 雕凿的导入已经做完了（档位、输入、候选都摆好了）：**必须在这里就结束**。
                 // 继续往下不是「带掉」而是写坏——Rechiseled 的雕凿配方不是原版配方类型，会落到
