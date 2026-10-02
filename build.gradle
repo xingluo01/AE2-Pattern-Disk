@@ -364,8 +364,7 @@ dependencies {
     //   Applied Enhancements：long 大数量合成 + 可选 MAX_FAST 规划器 + 样板终端的重复输出查找，
     //     正面压本模组的大订单吞吐与样板管理面。它自述「默认不接管 MAX_FAST 以免与其他规划器竞争」
     //     ——这句话本身就是四方（它 / ECO / Mek Energistics / 本模组）抢同一改动面的证据。
-    //   Mek Energistics：与 ECO 双向集成（ECO 侧有 compat/mekenergistics），批量派发枢纽；另需
-    //     Applied Mekanistics，详见下方那段。
+    //   Mek Energistics：**2026-10-02 试装后摘掉**（原因见下方那段），不在这里。
     //   Data Energistics：ECO 的 integration 与 compat 里都有；它另需 configuration 与 ldlib2。
     //   AE2 Utility：JEI 里直接「样板编码 + 上传」，与本模组的样板上传面重叠。
     //   a-useless-mod：万象合金炉的大数量目标 API，ECO 声明改进了它的大数量合成与批量派发。
@@ -380,19 +379,15 @@ dependencies {
     // **同为 modId ae2lt / thunderbolt**，只能整线择一，不能并存。
     localRuntime 'curse.maven:omnisequence-transfinite-1624558:8991983'    // 2.0.6-hotfix
     localRuntime 'curse.maven:applied-enhancements-1665696:8990232'        // 1.0.9-config-fix
-    // Mek Energistics：与 ECO 双向集成（ECO 侧有 compat/mekenergistics），批量派发枢纽。它自身需要
-    // Applied Mekanistics 1.6.3+（实测：缺它会直接报 "Mod mekenergistics requires appmek 1.6.3 or
-    // above" 并在 pre-loading 中止，而 Modrinth 页面的元数据里并没有这条）。
-    // 版本取 CurseForge 的 3.0.8 而不是 Modrinth 上的 2.0.2（两个平台版本号不同步）：2.0.2 带两条指向
-    // data_energistics 旧包 ...util 的 mixin，而 DE 自 3.1.3 起已把这两个类移到 ...menu.patternprovider，
-    // 于是两条都找不到目标；3.0.8 只剩一条（PatternProviderNameHelper），即 Mek-E 的 DE 桥在本环境仍然
-    // 接不上，只是噪声少一条。
-    // 已知噪声（实测，不影响加载，服务器照常 Done）：Mek-E 为 Mekanism 系可选集成镜像的 me_* 机器方块
-    // 只在对应 mod 在场时才注册，而 loot 表无条件随包发行 —— 启动会刷约 335 条
-    // "Unknown registry key … item: mekenergistics:me_*" 的 ERROR。补装 Mekanism:More Machine（mekmm）
-    // 后这批降到 262，但 mekmm 自己又添 80 条同类错误，净增，故不装；要清零得把 Mekanism 系可选集装齐。
-    localRuntime 'curse.maven:mek-energistics-1564287:8969316'             // 3.0.8
-    localRuntime 'maven.modrinth:applied-mekanistics:1.6.3'                // mek-energistics 要求 1.6.3+
+    // 试装后又摘掉的：**Mek Energistics（mekenergistics）**。它与 ECO 双向集成（ECO 侧有
+    // compat/mekenergistics），但代价太大：每次启动会刷约 335 条 "Unknown registry key … item:
+    // mekenergistics:me_*" 的 ERROR —— 它为 Mekanism 系可选集成镜像的 me_* 机器方块只在对应 mod
+    // 在场时才注册，而 loot 表是无条件随包发行的。补 Mekanism:More Machine 让这批降到 262、但对方
+    // 自己又添 80 条；补 Mekanism Extras 只解决 36 条、自己还多两条 mixin 警告；两条都是净亏，要
+    // 清零得把整个 Mekanism 系可选集装齐。它当时还需一个元数据里没声明的必需前置 Applied
+    // Mekanistics（appmek），随它一并摘掉。它要的版本也麻烦：CF 3.0.8 与 Modrinth 2.0.2 版本号体系
+    // 不同步，而它至今仍留下一组指向 data_energistics 旧包 ...util 的 mixin（DE 自 3.1.3 起已把那些
+    // 类移到 ...menu.patternprovider），即它的 DE 桥本来就接不上。
     localRuntime 'curse.maven:data-energistics-1565514:8841396'            // 3.2.2
     localRuntime 'maven.modrinth:configuration:3.1.1'                      // data-energistics 的前置
     localRuntime 'maven.modrinth:ae2utility:1.8.0'
