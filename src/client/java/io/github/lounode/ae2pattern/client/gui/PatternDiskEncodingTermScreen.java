@@ -48,6 +48,7 @@ import appeng.parts.encoding.EncodingMode;
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 import io.github.lounode.ae2pattern.client.integration.MachineRecipeTypes;
 import io.github.lounode.ae2pattern.client.sort.NaturalSort;
+import io.github.lounode.ae2pattern.integration.ae2lt.OverloadPatterns;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
 import io.github.lounode.ae2pattern.common.menu.DiskMarkRules;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
@@ -102,6 +103,11 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/states.png"))
             .src(80, 16, 16, 16);
 
+    // states.png (96,16,16,16)：过载编码模式的档位图标（同上一步长）。装上 AE2 Lightning Tech 后才会进循环。
+    private static final Blitter ICON_OVERLOADED = Blitter
+            .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/states.png"))
+            .src(96, 16, 16, 16);
+
     // states.png (16,0,16,8)：左 8x8 = 强制列出全部磁盘（含无标记的），右 8x8 = 只列有标记的
     private static final Blitter ICON_SHOW_UNMARKED_ON = Blitter
             .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/states.png"))
@@ -125,6 +131,10 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     /** 雕凿档面板；没装 Rechiseled 或 RechiseledAE2 时为 null（那一档也就不会进轮换）。 */
     @Nullable
     private ChiselingEncodingPanel chiselingPanel;
+
+    /** 过载档面板；没装 AE2 Lightning Tech 时为 null（那一档也就不会进轮换）。 */
+    @Nullable
+    private OverloadedEncodingPanel overloadedPanel;
     private final DiskListPanel diskListPanel;
     protected final ModeDropdownButton modeButton;
 
@@ -210,6 +220,10 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             // 真装上了面板，它每帧的 setVisible 会在雕凿档里把它重新显示出来。
             setSlotsHidden(AEPatternRegistries.CHISELING_INPUT, true);
         }
+
+        // 过载面板：与雕凿同款的条件挂载。它不占自己的槽位（面板上的行就是编辑区那些槽），
+        // 所以没有上面那段「面板缺席就先把槽藏起来」的顾虑。
+        this.overloadedPanel = createOverloadedPanel(widgets);
 
         // 注册磁盘列表面板（管理终端不要这个面板：它把磁盘铺进自己的表里，复用面板只为共享搜索状态）
         this.diskListPanel = new DiskListPanel();
@@ -320,6 +334,24 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             return panel;
         } catch (Throwable t) {
             AELog.debug("Could not set up the chiseling encoding panel: %s", t.toString());
+            return null;
+        }
+    }
+
+    /**
+     * 过载档面板。过载样板是 AE2 Lightning Tech 的物品，那个模组不在时这一档没意义，直接不挂。
+     */
+    @Nullable
+    private OverloadedEncodingPanel createOverloadedPanel(WidgetContainer widgets) {
+        if (!OverloadPatterns.isAvailable()) {
+            return null;
+        }
+        try {
+            var panel = new OverloadedEncodingPanel(this, widgets);
+            widgets.add("overloadedPanel", panel);
+            return panel;
+        } catch (Throwable t) {
+            AELog.debug("Could not set up the overloaded encoding panel: %s", t.toString());
             return null;
         }
     }
@@ -440,6 +472,13 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
                     chiselingOn,
                     this::pickChiseling));
         }
+        if (this.overloadedPanel != null && getMenu().overloadedModeAvailable) {
+            choices.add(new ModeDropdownButton.Choice(
+                    ICON_OVERLOADED,
+                    Component.translatable("gui.ae2_pattern_disk.encoding_terminal.overloaded_mode"),
+                    getMenu().overloadedMode,
+                    this::pickOverloaded));
+        }
         return choices;
     }
 
@@ -479,7 +518,23 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         if (getMenu().advancedMode) {
             getMenu().setAdvancedMode(false);
         }
+        if (getMenu().overloadedMode) {
+            getMenu().setOverloadedMode(false);
+        }
         getMenu().setChiselingMode(true);
+    }
+
+    /**
+     * 切到过载档。与另两个额外档互斥：它们共用同一块屏幕区域，同时开着会叠在一起。
+     */
+    private void pickOverloaded() {
+        if (getMenu().advancedMode) {
+            getMenu().setAdvancedMode(false);
+        }
+        if (getMenu().chiselingMode) {
+            getMenu().setChiselingMode(false);
+        }
+        getMenu().setOverloadedMode(true);
     }
 
     @Override
@@ -520,12 +575,16 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         var currentMode = menu.getMode();
         var advanced = menu.advancedMode;
         var chiseling = menu.chiselingMode;
+        var overloaded = menu.overloadedMode;
         for (var entry : modePanels.entrySet()) {
-            entry.getValue().setVisible(!advanced && !chiseling && entry.getKey() == currentMode);
+            entry.getValue().setVisible(!advanced && !chiseling && !overloaded && entry.getKey() == currentMode);
         }
         this.advancedPanel.setVisible(advanced);
         if (this.chiselingPanel != null) {
             this.chiselingPanel.setVisible(chiseling);
+        }
+        if (this.overloadedPanel != null) {
+            this.overloadedPanel.setVisible(overloaded);
         }
 
         // 刷新磁盘列表（过滤 PatternDiskItem + 搜索过滤）。

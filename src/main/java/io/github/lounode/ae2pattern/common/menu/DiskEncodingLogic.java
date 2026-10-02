@@ -63,6 +63,19 @@ public class DiskEncodingLogic implements InternalInventoryHost {
      * 是「当前在哪一档」，得跟着终端走。
      */
     private boolean chiselingMode;
+    /**
+     * 是否停在过载编码模式。与上面两档同处一个理由：它也不在 AE2 的枚举里，但对玩家而言同样是「当前在哪一档」。
+     */
+    private boolean overloadedMode;
+    /**
+     * 过载档每行是输出(1)还是输入(0)，逗号分隔、按行序；未写过的行缺位。
+     *
+     * <p>与 {@code advancedSides} 不同，这两张表在存档里存着——高级方向表能从输出栏那张样板上回读，而
+     * 过载档目前没有回读侧，不存就意味着关屏重开就丢。</p>
+     */
+    private String overloadedSides = "";
+    /** 过载档每行是否忽略组件匹配（1=忽略）。逗号分隔、按行序；缺位一律当 0，也就是默认的「启用组件匹配」。 */
+    private String overloadedMatchModes = "";
     private boolean substitute = false;
     private boolean substituteFluids = true;
     private boolean mergeSameItems = true;
@@ -170,6 +183,12 @@ public class DiskEncodingLogic implements InternalInventoryHost {
     public void setAdvancedMode(boolean v) { this.advancedMode = v; saveChanges(); }
     public boolean isChiselingMode() { return chiselingMode; }
     public void setChiselingMode(boolean v) { this.chiselingMode = v; saveChanges(); }
+    public boolean isOverloadedMode() { return overloadedMode; }
+    public void setOverloadedMode(boolean v) { this.overloadedMode = v; saveChanges(); }
+    public String getOverloadedSides() { return overloadedSides; }
+    public void setOverloadedSides(String v) { this.overloadedSides = v == null ? "" : v; saveChanges(); }
+    public String getOverloadedMatchModes() { return overloadedMatchModes; }
+    public void setOverloadedMatchModes(String v) { this.overloadedMatchModes = v == null ? "" : v; saveChanges(); }
     public boolean isSubstitution() { return substitute; }
     public void setSubstitution(boolean v) { this.substitute = v; saveChanges(); }
     public boolean isFluidSubstitution() { return substituteFluids; }
@@ -227,6 +246,10 @@ public class DiskEncodingLogic implements InternalInventoryHost {
             // 后加的键，旧存档里没有：缺键时落回「不在高级档」，不能直接 getBoolean 把它读成已开启。
             this.advancedMode = data.contains("advancedMode") && data.getBoolean("advancedMode");
             this.chiselingMode = data.contains("chiselingMode") && data.getBoolean("chiselingMode");
+            // 后加的键，旧存档里没有：缺键必须落回「不在过载档」与两张空表，不能直接 getBoolean/getString。
+            this.overloadedMode = data.contains("overloadedMode") && data.getBoolean("overloadedMode");
+            this.overloadedSides = data.contains("overloadedSides") ? data.getString("overloadedSides") : "";
+            this.overloadedMatchModes = data.contains("overloadedMatchModes") ? data.getString("overloadedMatchModes") : "";
             this.substitute = data.getBoolean("substitute");
             this.substituteFluids = data.getBoolean("substituteFluids");
             // 这两个键是后加的：旧存档里没有。缺键时必须落到各自的默认值（合并默认开、无标记默认不列），
@@ -259,6 +282,9 @@ public class DiskEncodingLogic implements InternalInventoryHost {
         data.putString("mode", this.mode.name());
         data.putBoolean("advancedMode", this.advancedMode);
         data.putBoolean("chiselingMode", this.chiselingMode);
+        data.putBoolean("overloadedMode", this.overloadedMode);
+        data.putString("overloadedSides", this.overloadedSides);
+        data.putString("overloadedMatchModes", this.overloadedMatchModes);
         data.putBoolean("substitute", this.substitute);
         data.putBoolean("substituteFluids", this.substituteFluids);
         data.putBoolean("mergeSameItems", this.mergeSameItems);

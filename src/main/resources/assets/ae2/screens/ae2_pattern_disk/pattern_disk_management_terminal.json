@@ -272,6 +272,17 @@
    "width": 115,
    "height": 66
   },
+  "overloadedPatternModeScrollbar": {
+   "left": 180,
+   "bottom": 69,
+   "height": 54
+  },
+  "overloadedPanel": {
+   "left": 175,
+   "bottom": 75,
+   "width": 115,
+   "height": 66
+  },
   "encodePattern": {
    "left": 305,
    "bottom": 55

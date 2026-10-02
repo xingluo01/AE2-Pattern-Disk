@@ -40,6 +40,18 @@
         "ae2_pattern_disk:pattern_type": 6
       },
       "model": "ae2_pattern_disk:item/pattern_disk_4k_chiseling"
+    },
+    {
+      "predicate": {
+        "ae2_pattern_disk:pattern_type": 7
+      },
+      "model": "ae2_pattern_disk:item/pattern_disk_4k_overloaded"
+    },
+    {
+      "predicate": {
+        "ae2_pattern_disk:pattern_type": 8
+      },
+      "model": "ae2_pattern_disk:item/pattern_disk_4k_omniversal"
     }
   ]
 }

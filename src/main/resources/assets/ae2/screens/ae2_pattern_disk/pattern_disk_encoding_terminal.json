@@ -241,6 +241,17 @@
    "width": 115,
    "height": 66
   },
+  "overloadedPatternModeScrollbar": {
+   "left": 41,
+   "bottom": 159,
+   "height": 54
+  },
+  "overloadedPanel": {
+   "left": 36,
+   "bottom": 165,
+   "width": 115,
+   "height": 66
+  },
   "diskList": {
    "left": 8,
    "bottom": 165,

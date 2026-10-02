@@ -80,7 +80,13 @@ public class PatternDiskItem extends Item implements IPatternDisk {
             "advanced_ae:adv_processing_pattern", new KnownType(5, "ae2_pattern_disk.tooltip.type.adv_processing"),
             // Rechiseled: Applied Energistics 的雕凿样板：同样是自己的物品（普通 IPatternDetails，
             // 在分子装配室里执行），不归 AE2 那四种，也不归高级处理。
-            "rechiseledae:chiseling_pattern", new KnownType(6, "ae2_pattern_disk.tooltip.type.chiseling"));
+            "rechiseledae:chiseling_pattern", new KnownType(6, "ae2_pattern_disk.tooltip.type.chiseling"),
+            // AE2 Lightning Tech 的过载样板：同样是它自己的物品，由本终端的「过载」档编出，每槽带
+            // 「输入/输出」与组件匹配模式。
+            "ae2lt:overload_pattern", new KnownType(7, "ae2_pattern_disk.tooltip.type.overloaded"),
+            // Useless Mod 的万象样板：先占位——类型表与覆盖层就位，编码侧等接上它的
+            // OmniversalPatternData 再补。未装该模组时这个类型永远不会出现。
+            "useless_mod:omniversal_pattern", new KnownType(8, "ae2_pattern_disk.tooltip.type.omniversal"));
 
     /**
      * Item property value for the encoded-pattern type, used to drive the disk's rendered model:

@@ -27,7 +27,7 @@ import appeng.menu.SlotSemantics;
  * 而本模组的供应器按面投递时要读的东西。分配完之后点「编写样板」，编码路径会把方向表并进去，翻出高级处理
  * 样板，再走原有的顺位写盘。</p>
  *
- * <p>贴图 {@code advanced_encoding.png} 的 (0,0,115,66) 就是这一整块：左侧 (6,6,5,54) 是滚动轨道、
+ * <p>贴图 {@code pattern_modes_ext.png} 的 (0,0,115,66) 就是这一整块：左侧 (6,6,5,54) 是滚动轨道、
  * (14,6,18,54) 是三行原料格、右侧是 7&times;3 的方向按钮格。按钮格的上边框在 x=33/44/55/66/77/88/99
  * （格宽 10、连同分隔线间距 11），三行的上边框在 y=8/26/44（行距 18）。那三行原料格是画在**底图**上的，
  * 实际物品由本面板自己渲染——槽本身归处理模式的 3 列布局管，不借来用。</p>
@@ -38,7 +38,7 @@ import appeng.menu.SlotSemantics;
 public class AdvancedEncodingPanel extends DiskEncodingModePanel {
 
     private static final Blitter BG = Blitter
-            .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/advanced_encoding.png"))
+            .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/pattern_modes_ext.png"))
             .src(0, 0, 115, 66);
 
     /** 底图上的几何：第一颗按钮的左上角、格距、可见行数、原料格的位置。 */

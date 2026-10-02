@@ -26,6 +26,8 @@ import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 
+import io.github.lounode.ae2pattern.integration.ae2lt.OverloadPatterns;
+
 import appeng.api.upgrades.IUpgradeInventory;
 import appeng.menu.SlotSemantic;
 import appeng.menu.slot.AppEngSlot;
@@ -104,6 +106,8 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
     private static final String ACTION_SET_CHISELING_MODE = "setChiselingMode";
     private static final String ACTION_SET_CHISELING = "setChiseling";
     private static final String ACTION_SET_ADVANCED_SIDE = "setAdvancedSide";
+    private static final String ACTION_SET_OVERLOADED_MODE = "setOverloadedMode";
+    private static final String ACTION_SET_OVERLOADED_ROW = "setOverloadedRow";
     private static final String ACTION_TRANSFER_TO_DISK = "transferToDisk";
     private static final String ACTION_EXTRACT_FROM_DISK = "extractFromDisk";
 
@@ -278,6 +282,22 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
     @GuiSync(88)
     public String advancedSides = "";
 
+    /** 装没装 AE2 Lightning Tech——过载档因此可用（屏幕上才会多出那一档）。 */
+    @GuiSync(92)
+    public boolean overloadedModeAvailable;
+
+    /** 当前是否停在过载编码模式。同样不在 AE2 的 {@link EncodingMode} 里，是并列的一档。 */
+    @GuiSync(91)
+    public boolean overloadedMode;
+
+    /** 过载档每行是输出(1)还是输入(0)，逗号分隔、按行序。面板上的行与编码区的槽一一对应。 */
+    @GuiSync(93)
+    public String overloadedSides = "";
+
+    /** 过载档每行是否「忽略组件匹配」（1=忽略）。缺位一律当 0，也就是开关的默认态「启用组件匹配」。 */
+    @GuiSync(94)
+    public String overloadedMatchModes = "";
+
     /**
      * 客户端侧：最近一次从 EMI/JEI 导入的配方类别 id。绑定标记时优先用它——它才是「这是一台什么
      * 机器」的答案，编码模式只是四个粗类。为空则退回编码模式。
@@ -395,6 +415,9 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
         registerClientAction(ACTION_SET_CHISELING, Integer.class, this::setChiseling);
         registerClientAction(ACTION_SET_ADVANCED_SIDE, AdvancedSideChange.class,
                 change -> applyAdvancedSide(change.input(), change.side()));
+        registerClientAction(ACTION_SET_OVERLOADED_MODE, Boolean.class, this::setOverloadedMode);
+        registerClientAction(ACTION_SET_OVERLOADED_ROW, OverloadedRowChange.class,
+                change -> applyOverloadedRow(change.row(), change.output(), change.ignoreComponents()));
         registerClientAction(ACTION_CLEAR, this::clear);
         registerClientAction(ACTION_SET_MODE, EncodingMode.class, encodingLogic::setMode);
         registerClientAction(ACTION_CYCLE_PROCESSING_OUTPUT, this::cycleProcessingOutput);
@@ -478,6 +501,19 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
         return ChiselingRecipes.encode(input.getItem(), candidate.output());
     }
 
+    /**
+     * 过载档的编码：把面板上每行的「输入/输出 + 组件匹配」与输出栏那张样板并成一枚过载样板。
+     *
+     * <p>待接：AE2LT 的模型里过载样板必须带一份「源样板快照」（它自己的编码器也是「拿一张源样板转出
+     * 来」），而源快照要从一个 ItemStack 取。面板与档位、存储都已就位，就差这一步接线——需要
+     * {@code compileOnly} 上 AE2LT 才能在隔离包里调它的 Builder API（照 Rechiseled 那套）。
+     * 在那之前这里返回 null，等于「编不出来」，encode() 会照常发提示。</p>
+     */
+    @Nullable
+    private ItemStack encodeOverloadedPattern() {
+        return null;
+    }
+
     /** 四套编码的实现已搬去 {@link PatternEncodingLogic}，这里只留一个引用。 */
     private final PatternEncodingLogic patternEncodingLogic = new PatternEncodingLogic(this);
 
@@ -497,9 +533,11 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
         // 雕凿档的产物不从输出栏那张样板推，而是由选中的候选项直接决定（它自己记着「把谁雕成谁」），所以
         // 在这里就把结果定下来，后面扣空白样板与顺位写盘那段照旧复用。与高级档同理：不先判的话会落到
         // patternEncodingLogic 的默认分支上（雕凿档下 mode 仍停在 CRAFTING）。
-        ItemStack encodedPattern = this.chiselingMode
-                ? encodeChiselingPattern()
-                : patternEncodingLogic.encodePattern();
+        ItemStack encodedPattern = this.overloadedMode
+                ? encodeOverloadedPattern()
+                : this.chiselingMode
+                        ? encodeChiselingPattern()
+                        : patternEncodingLogic.encodePattern();
         if (encodedPattern != null) {
             var encodeOutput = this.encodedPatternSlot.getItem();
             if (!encodeOutput.isEmpty()
@@ -1554,6 +1592,10 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
             // 高级档与 mode 并列，权威值同样在 logic 里：那是唯一跟着终端持久化的地方，关屏重开不掉档。
             this.advancedMode = encodingLogic.isAdvancedMode();
             this.chiselingMode = encodingLogic.isChiselingMode();
+            this.overloadedMode = encodingLogic.isOverloadedMode();
+            // 两张行表也回读：它们是服务端权威（客户端点一下只是先改自己的那份），关屏重开要从 logic 拉回来。
+            this.overloadedSides = encodingLogic.getOverloadedSides();
+            this.overloadedMatchModes = encodingLogic.getOverloadedMatchModes();
             this.substitute = encodingLogic.isSubstitution();
             this.substituteFluids = encodingLogic.isFluidSubstitution();
             // 两个开关的权威值在部件自己的 logic 里（与替换同款），服务端每 tick 回读进菜单字段再下发客户端。
@@ -1571,6 +1613,11 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
             if (!this.advancedModeAvailable && this.advancedMode) {
                 // 卡被拿走了：模式立刻退出去，否则面板会停在一个再也读不出方向的空档上。
                 this.setAdvancedMode(false);
+            }
+            // 过载档不靠升级卡，靠 AE2LT 在不在场——过载样板是它的物品。模组被摘掉时同样立刻退出去。
+            this.overloadedModeAvailable = OverloadPatterns.isAvailable();
+            if (!this.overloadedModeAvailable && this.overloadedMode) {
+                this.setOverloadedMode(false);
             }
             this.chiselingModeAvailable = hasChiselingEncoder();
             // 卡不在、或这一档还没开放时，模式立刻退出去。后半句不是多余的：存档里可能残留一个为真的
@@ -1720,6 +1767,102 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
     /** 是否停在高级编码模式（供编码路径判断要不要编成高级处理样板）。 */
     public boolean isAdvancedMode() {
         return this.advancedMode;
+    }
+
+    /** 是否停在过载编码模式（供编码路径判断要不要编成过载样板）。 */
+    public boolean isOverloadedMode() {
+        return this.overloadedMode;
+    }
+
+    /** 过载档第 row 行是输出还是输入。没写过的行按输入算。 */
+    public boolean overloadedRowIsOutput(int row) {
+        return flagAt(this.overloadedSides, row);
+    }
+
+    /** 过载档第 row 行是否忽略组件匹配。没写过的行按不忽略算——也就是开关的默认态。 */
+    public boolean overloadedRowIgnoresComponents(int row) {
+        return flagAt(this.overloadedMatchModes, row);
+    }
+
+    /** 逗号分隔的 0/1 表里取第 index 位；越界或格式不对一律当 false（“没配置过”的那个默认态）。 */
+    private static boolean flagAt(String flags, int index) {
+        if (index < 0 || flags == null || flags.isEmpty()) {
+            return false;
+        }
+        var parts = flags.split(",");
+        if (index >= parts.length) {
+            return false;
+        }
+        try {
+            return Integer.parseInt(parts[index].trim()) != 0;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
+    /** 把逗号分隔的 0/1 表里的第 index 位改成 value（不够长就补齐），其余保持。 */
+    private static String withFlag(String flags, int index, boolean value) {
+        if (index < 0) {
+            return flags == null ? "" : flags;
+        }
+        var parts = flags == null || flags.isEmpty() ? new String[0] : flags.split(",");
+        var size = Math.max(index + 1, parts.length);
+        var out = new StringBuilder();
+        for (int i = 0; i < size; i++) {
+            var current = i < parts.length && "1".equals(parts[i].trim());
+            if (i == index) {
+                current = value;
+            }
+            if (out.length() > 0) {
+                out.append(',');
+            }
+            out.append(current ? 1 : 0);
+        }
+        return out.toString();
+    }
+
+    /** 过载档某一行改了什么（物品属性 = 输入/输出，加上那个组件匹配开关）。 */
+    public record OverloadedRowChange(int row, boolean output, boolean ignoreComponents) {
+    }
+
+    /**
+     * 客户端点过载档某一行：本地先改（界面立刻响应），再发给服务端；服务端的改动会同步回来。
+     *
+     * <p>与高级档的方向按钮同口径：只改菜单上的两张表，样板一个字节也不动——它在点「编写样板」那一刻
+     * 才并进去。</p>
+     */
+    public void setOverloadedRow(int row, boolean output, boolean ignoreComponents) {
+        if (isClientSide()) {
+            applyOverloadedRow(row, output, ignoreComponents);
+            sendClientAction(ACTION_SET_OVERLOADED_ROW,
+                    new OverloadedRowChange(row, output, ignoreComponents));
+        } else {
+            applyOverloadedRow(row, output, ignoreComponents);
+        }
+    }
+
+    /** 改本次编辑的过载行表，并把结果交给 logic 存住（关屏重开不掉）。 */
+    private void applyOverloadedRow(int row, boolean output, boolean ignoreComponents) {
+        this.overloadedSides = withFlag(this.overloadedSides, row, output);
+        this.overloadedMatchModes = withFlag(this.overloadedMatchModes, row, ignoreComponents);
+        this.encodingLogic.setOverloadedSides(this.overloadedSides);
+        this.encodingLogic.setOverloadedMatchModes(this.overloadedMatchModes);
+    }
+
+    /**
+     * 切过载编码模式。与高级/雕凿同形：客户端先换显示状态、服务端把权威值写进 logic。
+     *
+     * <p>不动输出栏那张样板，也不清编辑区：过载档的行就是编辑区那些槽，进去时看到的就是原来那批输入。
+     * 退出时两张表照旧留着，下次进来接着用。</p>
+     */
+    public void setOverloadedMode(boolean on) {
+        if (isClientSide()) {
+            this.overloadedMode = on;
+            sendClientAction(ACTION_SET_OVERLOADED_MODE, on);
+            return;
+        }
+        this.overloadedMode = on;
+        this.encodingLogic.setOverloadedMode(on);
     }
 
     /**
