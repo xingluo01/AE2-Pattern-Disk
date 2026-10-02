@@ -46,6 +46,7 @@ import appeng.api.inventories.InternalInventory;
 import appeng.api.networking.IGrid;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
+import appeng.api.stacks.GenericStack;
 import appeng.core.definitions.AEItems;
 import appeng.crafting.pattern.AECraftingPattern;
 import appeng.crafting.pattern.AEProcessingPattern;
@@ -1621,8 +1622,9 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
                 // 卡被拿走了：模式立刻退出去，否则面板会停在一个再也读不出方向的空档上。
                 this.setAdvancedMode(false);
             }
-            // 过载档不靠升级卡，靠 AE2LT 在不在场——过载样板是它的物品。模组被摘掉时同样立刻退出去。
-            this.overloadedModeAvailable = OverloadPatterns.isAvailable();
+            // 过载档与高级档同口径：可用性看升级槽里那枚过载样板编码器（AE2LT 的物品）。模组被摘掉、
+            // 或卡被拿走时同様立刻退档——否则面板会停在一个再也编不出东西的空档上。
+            this.overloadedModeAvailable = hasOverloadEncoder();
             if (!this.overloadedModeAvailable && this.overloadedMode) {
                 this.setOverloadedMode(false);
             }
@@ -1776,6 +1778,97 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
         return this.advancedMode;
     }
 
+    public void setOverloadedMode(boolean on) {
+        if (isClientSide()) {
+            // 客户端只换自己的显示状态：要摆进编辑区的那些物得由服务端从样板里摊（那是世界数据）。
+            this.overloadedMode = on;
+            this.overloadedSides = "";
+            this.overloadedMatchModes = "";
+            sendClientAction(ACTION_SET_OVERLOADED_MODE, on);
+            return;
+        }
+        this.overloadedMode = on;
+        // 两张表先清：每次进档都重新从输出栏那张样板摊一遍，不做跨次残留。
+        this.overloadedSides = "";
+        this.overloadedMatchModes = "";
+        this.encodingLogic.setOverloadedMode(on);
+        this.encodingLogic.setOverloadedSides("");
+        this.encodingLogic.setOverloadedMatchModes("");
+        if (!on) {
+            return;
+        }
+        seedOverloadedRowsFromPattern();
+    }
+
+    /**
+     * 进过载档时从输出栏那张样板摊一行。
+     *
+     * <p>与高级档不同的一点是：**输出产物也要摊进编辑区**，因为过载档的每一行就是一个物品，得由玩家
+     * 自己说它是输入还是输出。摊进来的行里输入在前、输出在后，后者直接标成「输出」——那是主产物
+     * 的定义所在，不标的话默认会当成一个输入项。</p>
+     *
+     * <p>输出栏空着或不是可解码的样板时直接返回：玩家常常先切进来、再往输出栏放东西，那是正常路径。</p>
+     */
+    private void seedOverloadedRowsFromPattern() {
+        var details = PatternDetailsHelper.decodePattern(this.encodedPatternSlot.getItem(), getLevel());
+        if (details == null) {
+            return;
+        }
+        encodedInputsInv.clear();
+        var sides = new StringBuilder();
+        var modes = new StringBuilder();
+        var row = 0;
+        // 输入优先取「实际材料表」（getSparseInputs 给的是每格真正用到的那个，而不是候选模板），
+        // 只有 AE2 自己的处理样板公开了这个视图；其余样板退回候选表的第一项。
+        var sparseInputs = details instanceof AEProcessingPattern processing
+                ? processing.getSparseInputs()
+                : null;
+        var inputs = details.getInputs();
+        for (int i = 0; i < inputs.length && row < encodedInputsInv.size(); i++) {
+            GenericStack stack = sparseInputs != null && i < sparseInputs.size()
+                    ? sparseInputs.get(i)
+                    : firstCandidate(inputs[i]);
+            if (stack == null || stack.what() == null) {
+                continue;
+            }
+            encodedInputsInv.setStack(row, stack);
+            row = appendOverloadedRow(sides, modes, row, false);
+        }
+        for (var output : details.getOutputs()) {
+            if (row >= encodedInputsInv.size()) {
+                break;
+            }
+            if (output == null || output.what() == null) {
+                continue;
+            }
+            encodedInputsInv.setStack(row, output);
+            // 标成输出：主产物就在这一批里，不标的话编码时会把它当成又一个输入项。
+            row = appendOverloadedRow(sides, modes, row, true);
+        }
+        this.overloadedSides = sides.toString();
+        this.overloadedMatchModes = modes.toString();
+        this.encodingLogic.setOverloadedSides(this.overloadedSides);
+        this.encodingLogic.setOverloadedMatchModes(this.overloadedMatchModes);
+    }
+
+    /** 追加一行：记下它是输入(0)还是输出(1)，以及该行的组件匹配（新行一律默认「启用组件匹配」）。 */
+    private static int appendOverloadedRow(StringBuilder sides, StringBuilder modes, int row, boolean output) {
+        if (sides.length() > 0) {
+            sides.append(',');
+            modes.append(',');
+        }
+        sides.append(output ? 1 : 0);
+        modes.append(0);
+        return row + 1;
+    }
+
+    /** 一个输入格的候选表里挑第一个；一格多个候选时挑不准，挑一个总比空着强（玩家可自己改编辑区）。 */
+    @Nullable
+    private static GenericStack firstCandidate(IPatternDetails.IInput input) {
+        var candidates = input.getPossibleInputs();
+        return candidates.length == 0 ? null : candidates[0];
+    }
+
     /** 是否停在过载编码模式（供编码路径判断要不要编成过载样板）。 */
     public boolean isOverloadedMode() {
         return this.overloadedMode;
@@ -1861,22 +1954,6 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
     }
 
     /**
-     * 切过载编码模式。与高级/雕凿同形：客户端先换显示状态、服务端把权威值写进 logic。
-     *
-     * <p>不动输出栏那张样板，也不清编辑区：过载档的行就是编辑区那些槽，进去时看到的就是原来那批输入。
-     * 退出时两张表照旧留着，下次进来接着用。</p>
-     */
-    public void setOverloadedMode(boolean on) {
-        if (isClientSide()) {
-            this.overloadedMode = on;
-            sendClientAction(ACTION_SET_OVERLOADED_MODE, on);
-            return;
-        }
-        this.overloadedMode = on;
-        this.encodingLogic.setOverloadedMode(on);
-    }
-
-    /**
      * 编辑区每个输入槽分配的面，按 {@link AEKey} 索引；没分配（相邻）的不放键。
      *
      * <p>编码路径上的「同物品合并」会改变输入的下标，所以方向表按 key 递过去。</p>
@@ -1903,6 +1980,16 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
         for (var stack : host.getUpgrades()) {
             if (!stack.isEmpty()
                     && BuiltInRegistries.ITEM.getKey(stack.getItem()).equals(AdvPatternSupport.ADVANCED_ENCODER)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 升级槽里是否装着过载样板编码器。与上一支同形：只认物品 id、不看数量。 */
+    private boolean hasOverloadEncoder() {
+        for (var stack : host.getUpgrades()) {
+            if (OverloadPatterns.isEncoder(stack)) {
                 return true;
             }
         }

@@ -48,7 +48,6 @@ import appeng.parts.encoding.EncodingMode;
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 import io.github.lounode.ae2pattern.client.integration.MachineRecipeTypes;
 import io.github.lounode.ae2pattern.client.sort.NaturalSort;
-import io.github.lounode.ae2pattern.integration.ae2lt.OverloadPatterns;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
 import io.github.lounode.ae2pattern.common.menu.DiskMarkRules;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
@@ -339,13 +338,11 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     }
 
     /**
-     * 过载档面板。过载样板是 AE2 Lightning Tech 的物品，那个模组不在时这一档没意义，直接不挂。
+     * 过载档面板。与高级面板同款：**无条件**创建（档位可不可用由升级槽里那枚编码器决定，那是每 tick
+     * 算的菜单字段，不是建屏时能定的），样式文档缺键就吞掉、面板不显示。
      */
     @Nullable
     private OverloadedEncodingPanel createOverloadedPanel(WidgetContainer widgets) {
-        if (!OverloadPatterns.isAvailable()) {
-            return null;
-        }
         try {
             var panel = new OverloadedEncodingPanel(this, widgets);
             widgets.add("overloadedPanel", panel);

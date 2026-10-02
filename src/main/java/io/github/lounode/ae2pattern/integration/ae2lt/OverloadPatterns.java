@@ -1,12 +1,14 @@
 package io.github.lounode.ae2pattern.integration.ae2lt;
 
-import net.neoforged.fml.ModList;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
 
 /**
  * AE2 Lightning Tech（modId {@code ae2lt}）的过载样板：本终端「过载」档编出来的就是它的物品。
  *
- * <p>隔离在这一包里，与其它集成同一个理由：AE2LT 缺席时这些类不会被解析，本模组照常工作——那个档
- * 根本不会出现（见 {@link #isAvailable()}）。</p>
+ * <p>隔离在这一包里，与其它集成同一个理由：AE2LT 缺席时这些类不会被解析，本模组照常工作——那一档
+ * 也就不会出现（它的可用性看升级槽里有没有那枚编码器，见 {@link #isEncoder(ItemStack)}）。</p>
  *
  * <p>过载样板带两个别处没有的东西：每个槽位声明自己是<b>输入还是输出</b>，以及该槽的<b>组件匹配模式</b>
  * （{@code MatchMode.STRICT} 连组件一起比，{@code ID_ONLY} 只比物品 id）。后者就是面板上那个「忽略组件
@@ -14,19 +16,25 @@ import net.neoforged.fml.ModList;
  */
 public final class OverloadPatterns {
 
-    /** AE2LT 的 modId。只在这里出现一次，别处一律走 {@link #isAvailable()}。 */
+    /** AE2LT 的 modId。 */
     private static final String MOD_ID = "ae2lt";
+
+    /** AE2LT 的「过载样板编码器」（{@code item.ae2lt.overload_pattern_encoder}）。 */
+    private static final ResourceLocation OVERLOAD_ENCODER =
+            ResourceLocation.fromNamespaceAndPath(MOD_ID, "overload_pattern_encoder");
 
     private OverloadPatterns() {
     }
 
     /**
-     * AE2LT 是否在场。
+     * 这一叠升级卡里是否装着过载样板编码器——那一档的可用性就按它判，与高级档同口径（升级槽里那张卡）。
      *
-     * <p>档位的可用性按它判：过载样板是那个模组的物品，它不在时装不了也用不上。这里只问 ModList、
-     * 不探类——缺席的可选模组不该让本模组在加载期去定义它的类。</p>
+     * <p>只查物品 id，不碰 AE2LT 的任何类：注册表按 id 查，模组不在场时同样安全（查不到就是 false），
+     * 所以这里不会把缺席的可选模组拖进「加载期定义它的类」那个老坑。</p>
      */
-    public static boolean isAvailable() {
-        return ModList.get().isLoaded(MOD_ID);
+    public static boolean isEncoder(ItemStack stack) {
+        return stack != null
+                && !stack.isEmpty()
+                && BuiltInRegistries.ITEM.getKey(stack.getItem()).equals(OVERLOAD_ENCODER);
     }
 }

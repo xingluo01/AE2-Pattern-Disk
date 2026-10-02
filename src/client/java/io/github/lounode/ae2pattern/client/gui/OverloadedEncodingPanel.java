@@ -1,9 +1,11 @@
 package io.github.lounode.ae2pattern.client.gui;
 
 import java.util.List;
+import java.util.function.Consumer;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -12,8 +14,8 @@ import net.minecraft.util.Mth;
 import org.jetbrains.annotations.Nullable;
 
 import appeng.client.Point;
+import appeng.client.gui.AEBaseScreen;
 import appeng.client.gui.Icon;
-import appeng.client.gui.Tooltip;
 import appeng.client.gui.WidgetContainer;
 import appeng.client.gui.style.Blitter;
 import appeng.client.gui.widgets.Scrollbar;
@@ -105,7 +107,29 @@ public class OverloadedEncodingPanel extends DiskEncodingModePanel {
                     });
             button.setHalfSize(true);
             button.setDisableBackground(true);
+            // tooltip 交给按钮自己：AE2 在 AEBaseScreen 里遍历子控件、收实现了 ITooltip 的那些
+            // （AEBaseScreen:347），所以注册进屏幕的控件会自带悬停提示，不需要面板再代管。
+            button.setTooltipOn(List.of(Component.translatable(
+                    "gui.ae2_pattern_disk.encoding_terminal.overloaded_match_ignore")));
+            button.setTooltipOff(List.of(Component.translatable(
+                    "gui.ae2_pattern_disk.encoding_terminal.overloaded_match_strict")));
             this.matchButtons[row] = button;
+        }
+    }
+
+    /**
+     * 把三个开关交给屏幕注册。这是 AE2 给复合控件的正道（{@code AEBaseScreen.init()} 会调
+     * {@code widgets.populateScreen(this::addRenderableWidget, ...)}）：注册成屏幕的 vanilla 控件后，
+     * 渲染、鼠标命中、悬停提示都走原版那套，不需要面板自己代劳。
+     *
+     * <p>自己调 {@code button.render(...)} 是不行的——那一下不会把它们挂进屏幕的控件表，实测就是
+     * 「按钮根本不出现」。位置每帧在 {@link #updateBeforeRender()} 里更新（要跟滚动走）。</p>
+     */
+    @Override
+    public void populateScreen(java.util.function.Consumer<AbstractWidget> addWidget, Rect2i bounds,
+            AEBaseScreen<?> screen) {
+        for (var button : this.matchButtons) {
+            addWidget.accept(button);
         }
     }
 
@@ -153,6 +177,11 @@ public class OverloadedEncodingPanel extends DiskEncodingModePanel {
         if (this.scrollbar != null) {
             this.scrollbar.setVisible(visible);
         }
+        // 三个开关现在注册在屏幕的控件表里，而屏幕只对**可见**的复合控件调 updateBeforeRender
+        // （WidgetContainer.updateBeforeRender）——不在这里藏，切到别的档后它们会继续浮在上面。
+        for (var button : this.matchButtons) {
+            button.visible = false;
+        }
     }
 
     @Override
@@ -184,45 +213,7 @@ public class OverloadedEncodingPanel extends DiskEncodingModePanel {
                     : Component.translatable("gui.ae2_pattern_disk.encoding_terminal.overloaded_side_input");
             guiGraphics.drawString(font, label, originX + LABEL_X, originY + rowCenterY(row) - font.lineHeight / 2,
                     0x404040, false);
-
-            // 组件匹配开关：手动摆、手动画（理由见 matchButtons 字段注释）。
-            var button = this.matchButtons[row];
-            if (button.visible) {
-                button.render(guiGraphics, mouse.getX(), mouse.getY(), 0);
-            }
         }
-    }
-
-    @Override
-    public boolean onMouseDown(Point mousePos, int button) {
-        if (button != 0) {
-            return false;
-        }
-        // 开关不在 widgets 里，屏幕不会替我们派发，自己转发一次。
-        for (int row = 0; row < ROWS; row++) {
-            var toggle = this.matchButtons[row];
-            if (toggle.visible && toggle.isMouseOver(mousePos.getX(), mousePos.getY())) {
-                toggle.mouseClicked(mousePos.getX(), mousePos.getY(), button);
-                return true;
-            }
-        }
-        return false;
-    }
-
-    @Override
-    public Tooltip getTooltip(int mouseX, int mouseY) {
-        for (int row = 0; row < ROWS; row++) {
-            var toggle = this.matchButtons[row];
-            if (!toggle.visible || !toggle.isMouseOver(mouseX, mouseY)) {
-                continue;
-            }
-            // 开关的提示按它的**当前**状态给：关着说的是「怎么开」，开着说的是「怎么关」。
-            var key = menu.overloadedRowIgnoresComponents(row + scroll)
-                    ? "gui.ae2_pattern_disk.encoding_terminal.overloaded_match_ignore"
-                    : "gui.ae2_pattern_disk.encoding_terminal.overloaded_match_strict";
-            return new Tooltip(List.of(Component.translatable(key)));
-        }
-        return null;
     }
 
     @Override
