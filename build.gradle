@@ -180,15 +180,20 @@ dependencies {
     // libs/neoecoae-21.2.0-beta7.jar, which is NOT tracked in git: build it from the fork
     // https://github.com/xingluo01/NeoECOAEExtension at branch feature/pattern-disk-v21.1.2-merge (the
     // branch carrying the parallel intake registry), then copy build/libs/neoecoae-<version>.jar into
-    // libs/ under that name - the branch build reports its version as 21.2.0, and the file name is kept
-    // only so the release workflow's fetch step and this comment stay in step. Note it needs a JDK 21
-    // build - the wrapper is Gradle 8.12.1, which cannot run under the JDK 25 this machine defaults to.
+    // libs/ under that name. The branch reports its version as 21.2.0 and names its own artifact
+    // neoecoae-21.2.0.jar; the "-beta7" on our copy is a leftover the release workflow's fetch step
+    // shares - do not read it as a version. Last rebuilt 2026-10-02 from f447d0ae. Note it needs a JDK
+    // 21 build - the wrapper is Gradle 8.12.1, which cannot run under the JDK 25 this machine defaults
+    // to; pass -Dorg.gradle.java.home=C:/Java/jdk-21.
     //
     // The jar must be a build carrying ECO's side of this integration: the binary is compiled against
     // "ECOParallelCraftingProviders" (the registry this mod registers the batch assembler with) and against
     // the reporting upload, and the disk side is served by ECO itself, which compiles against this mod's
-    // PatternDiskApi. A stock release up to and including 21.2.0-beta7 predates all of that - the local jar
-    // therefore has to come from the NEO ECO branch that adds it, not from that tag.
+    // PatternDiskApi. No published build carries that registry, so there is no maven coordinate to point
+    // at: 21.2.0 - the newest 1.21.1 release, tagged 2026-09-26 - predates the commit that adds it
+    // (f5acccd9, 2026-09-27), and so does every older release. Swap all three references (this one, the
+    // clientCompileOnly below, and the localRuntime) to a published coordinate once a release newer than
+    // 21.2.0 exists and carries ECOParallelCraftingProviders; then this paragraph goes away.
     //
     // At runtime an older NEO ECO is not an error: every feature this integration asks for is guarded on
     // its own, so a build missing one simply does not get that feature. Keep it that way - naming a type
@@ -218,14 +223,15 @@ dependencies {
 
     // AE2WTLib: the two wireless terminals this mod adds build on it (item base, host, screens, terminal
     // registration), so the dev runtime needs both the mod and its api.
-    localRuntime 'de.mari_023:ae2wtlib:19.5.0'
-    localRuntime 'de.mari_023:ae2wtlib_api:19.5.0'
+    // 19.5.1（而不是 19.5.0）：Applied Enhancements 只支持 ae2wtlib 19.5.1 及以上，低于它就拒绝加载。
+    localRuntime 'de.mari_023:ae2wtlib:19.5.1'
+    localRuntime 'de.mari_023:ae2wtlib_api:19.5.1'
 
     // 无线终端（本模组两个终端的无线版）编译期靠 ae2wtlib_api：
     // 物品继承 ItemWT、宿主继承 WTMenuHost、屏幕实现 IUniversalTerminalCapable、登记走 AddTerminalEvent，
     // 全在这份 api 里。main 与 client 两个源集都要看得到。
-    compileOnly 'de.mari_023:ae2wtlib_api:19.5.0'
-    clientCompileOnly 'de.mari_023:ae2wtlib_api:19.5.0'
+    compileOnly 'de.mari_023:ae2wtlib_api:19.5.1'
+    clientCompileOnly 'de.mari_023:ae2wtlib_api:19.5.1'
     // Polymorph（多态合成）：客户端要继承它的 widget API（PlayerRecipesWidget），
     // 所以必须进 client 源集的编译类路径——项目是双源集，main 侧的 compileOnly 看不到这里。
     clientCompileOnly 'maven.modrinth:polymorph:9yWvrF5o'
@@ -349,29 +355,48 @@ dependencies {
     localRuntime 'maven.modrinth:polymorph:9yWvrF5o'
     clientLocalRuntime 'maven.modrinth:polymorph:9yWvrF5o'
 
-    // 兼容性测试用的 AE2 生态模组（只进开发环境，不参与发布依赖）：
-    //   万象构序 OmniSequence Transfinite、闪电科技重生 AE2 Lightning Tech Reborn
-    //   及后者的封包样板供应器附属（**本体版的封包已在上方装上**，这里指重生版那一支）。
-    //   三者与本模组的样板/供应器功能有重叠，重点测共存。
+    // ECO 关联附属（NEO ECO AE Extension 官方联动清单里、与本模组功能面有交叉的那些）：只进开发
+    // 环境，不参与发布依赖。下面这批的名单来自 ECO 源码树自己的 compat/ 与 integration/ 目录、以及
+    // 它 21.2.0 的 changelog 依赖表；这里挑的是「会去抢同一批 AE2 派发/合成路径」的高优先几个，
+    // 那是最该实测的共存组合。
+    //   OmniSequence Transfinite（molecularmanipulator）：Omni Batch Provider API，已成 Mek
+    //     Energistics 等附属的集成点；ECO 要求 2.0.5+。
+    //   Applied Enhancements：long 大数量合成 + 可选 MAX_FAST 规划器 + 样板终端的重复输出查找，
+    //     正面压本模组的大订单吞吐与样板管理面。它自述「默认不接管 MAX_FAST 以免与其他规划器竞争」
+    //     ——这句话本身就是四方（它 / ECO / Mek Energistics / 本模组）抢同一改动面的证据。
+    //   Mek Energistics：与 ECO 双向集成（ECO 侧有 compat/mekenergistics），批量派发枢纽；另需
+    //     Applied Mekanistics，详见下方那段。
+    //   Data Energistics：ECO 的 integration 与 compat 里都有；它另需 configuration 与 ldlib2。
+    //   AE2 Utility：JEI 里直接「样板编码 + 上传」，与本模组的样板上传面重叠。
+    //   a-useless-mod：万象合金炉的大数量目标 API，ECO 声明改进了它的大数量合成与批量派发。
     //
-    // 2026-09-30 停用：三者都缺必需的**前置模组**，而这几条来自 CurseForge maven 的构件不带依赖
-    // 元数据，前置 jar 从未进入开发运行时；FML 的依赖检查只认已安装的 mod，因此在 pre-loading
-    // 阶段直接中止启动（missing mandatory dependencies）。
-    //   omnisequence(molecularmanipulator) → 需 appliedenhancements [1.0.9,)；
-    //     可用坐标 applied-enhancements-1665696:8990232（1.0.9-config-fix），
-    //     本次按「等可用版本一并恢复」一起停用；
-    //   ae2lt        → 当时需 thunderbolt **精确 [2.0.0]**，而该版本尚未发布（只有 2.0.0-beta.4），
-    //                   beta < 2.0.0 不满足精确范围；
-    //   ae2ltpp      → 除 ae2lt 外还需 thunderbolt，被同一个死结拖住。
-    //
-    // 2026-10-02 部分恢复：**闪电科技与它的封包已改用 Modrinth 正式版装上（见上方三条）**，
-    // thunderbolt-core 2.0.1 已发布、区间放宽为 [2.0.1,3.0.0)，死结解除。
-    // 下面只留仍未解决的两条。**不要再从 CF 把 ae2lt / ae2ltpp 加回来**（不论是本体还是重生版）：
-    // 同一个 modId 装两份会让 FML 报错或随机取胜。
-    // 另："闪电科技重生"（AE2 Lightning Tech Reborn）与"闪电科技"（AE2 Lightning Tech）**同为
-    // modId ae2lt**，两者只能装其一——上方装的是本体，不是重生版。
-    // localRuntime 'curse.maven:omnisequence-transfinite-1624558:8991983'
-    // localRuntime 'curse.maven:applied-enhancements-1665696:8990232'
+    // 前两条是 2026-09-30 停用、2026-10-02 恢复的：当时它们缺前置 appliedenhancements [1.0.9,)，
+    // 而 CF 构件不带依赖元数据、前置 jar 从未进入运行时，FML 在 pre-loading 直接中止启动。
+    // 现在本体与前置都列在这里，且已按各自 jar 内的 neoforge.mods.toml 逐条核过区间：
+    //   omnisequence 需 extendedae [1.21-2.2.32-neoforge,) / ldlib2 [2.2.18,) / appliedenhancements [1.0.9,)；
+    //   data-energistics 需 configuration [3.1.1,4) / ldlib2 [2.2.38.a,)；
+    //   ae2utility 需 JEI（已在环境里）。
+    // 未恢复的是「闪电科技重生」那一支（AE2 Lightning Tech Reborn 等）：它与上方已装的「闪电科技」
+    // **同为 modId ae2lt / thunderbolt**，只能整线择一，不能并存。
+    localRuntime 'curse.maven:omnisequence-transfinite-1624558:8991983'    // 2.0.6-hotfix
+    localRuntime 'curse.maven:applied-enhancements-1665696:8990232'        // 1.0.9-config-fix
+    // Mek Energistics：与 ECO 双向集成（ECO 侧有 compat/mekenergistics），批量派发枢纽。它自身需要
+    // Applied Mekanistics 1.6.3+（实测：缺它会直接报 "Mod mekenergistics requires appmek 1.6.3 or
+    // above" 并在 pre-loading 中止，而 Modrinth 页面的元数据里并没有这条）。
+    // 版本取 CurseForge 的 3.0.8 而不是 Modrinth 上的 2.0.2（两个平台版本号不同步）：2.0.2 带两条指向
+    // data_energistics 旧包 ...util 的 mixin，而 DE 自 3.1.3 起已把这两个类移到 ...menu.patternprovider，
+    // 于是两条都找不到目标；3.0.8 只剩一条（PatternProviderNameHelper），即 Mek-E 的 DE 桥在本环境仍然
+    // 接不上，只是噪声少一条。
+    // 已知噪声（实测，不影响加载，服务器照常 Done）：Mek-E 为 Mekanism 系可选集成镜像的 me_* 机器方块
+    // 只在对应 mod 在场时才注册，而 loot 表无条件随包发行 —— 启动会刷约 335 条
+    // "Unknown registry key … item: mekenergistics:me_*" 的 ERROR。补装 Mekanism:More Machine（mekmm）
+    // 后这批降到 262，但 mekmm 自己又添 80 条同类错误，净增，故不装；要清零得把 Mekanism 系可选集装齐。
+    localRuntime 'curse.maven:mek-energistics-1564287:8969316'             // 3.0.8
+    localRuntime 'maven.modrinth:applied-mekanistics:1.6.3'                // mek-energistics 要求 1.6.3+
+    localRuntime 'curse.maven:data-energistics-1565514:8841396'            // 3.2.2
+    localRuntime 'maven.modrinth:configuration:3.1.1'                      // data-energistics 的前置
+    localRuntime 'maven.modrinth:ae2utility:1.8.0'
+    localRuntime 'maven.modrinth:a-useless-mod:1.21.1-2.4.5.4'
 
     // 整理模组（Inventory Profiles Next + 它的库 libIPN）：开发环境装上用于验证「整理」不会把终端里
     // 非玩家槽（升级槽、样板输出槽）的物品移到光标。两个都是 mod，都只能进开发环境。

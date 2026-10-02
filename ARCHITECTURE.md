@@ -228,7 +228,7 @@ NEO ECO 的类型名与方法名集中在 `NeoECOTypes.java`，改版本时先�
 
 - AE2 / GuideME：在 `gradle/libs.versions.toml` 里声明，`compileOnly`（AE2 另加 `accessCompileOnly` 与 `clientCompileOnly`），运行时由整合包提供。
 - JEI / EMI：`clientCompileOnly`，只是编译期 API。AE2WTLib / Jade / Polymorph / IPN 经 maven 或 CurseForge 自动解析，不需要本地 jar。
-- NEO ECO：需要**带并行入口那个分支**的构建，放到 `libs/neoecoae-21.2.0-beta7.jar`。上游正式版到 beta7 都没有本模组要的那半（见 `build.gradle` 那段注释）。
+- NEO ECO：需要**带并行入口那个分支**的构建，放到 `libs/neoecoae-21.2.0-beta7.jar`。上游正式版到 1.21.1 线最新的 `21.2.0` 都没有本模组要的那半（见 `build.gradle` 那段注释）。
 - ExtendedAE Plus：需要 `libs/extendedae_plus-1.6.2-dev.jar`（用 `-PeaePlusJar=<路径>` 可换别的构建）。缺它时构建会回退到商店上的发布件，而那个版本与 JEI 19.56 不兼容、进世界会崩——做 EAE+ 相关的事之前先确认手上是本地 dev jar。
 - AECS：放到 `libs/ae2cs-1.21.1-1.3.0.jar`，只作运行时。
 

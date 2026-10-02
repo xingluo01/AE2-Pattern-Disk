@@ -64,9 +64,10 @@ jobs:
       # 构建产物，见 README）。把 fork（xingluo01/NeoECOAEExtension，分支
       # feature/pattern-disk-v21.1.2-merge）构建出的 jar 传到一个 release asset / 可直链，再把地址填进
       # 仓库变量 NEOECOAE_JAR_URL。
-      # 必须用这个分支的构建：官方发布（含 v21.1.2 与 21.2.0-beta7）都没有
-      # ECOParallelCraftingProviders，batch assembler 的注册会因缺类编不过。fork 构建的模组版本号显示
-      # 21.2.0（分支基于上游 21.2.0 基线），这里沿用旧文件名只为与 build.gradle 对齐，不要据名判断内容。
+      # 必须用这个分支的构建：官方发布（截至 1.21.1 线最新的 21.2.0）都没有 ECOParallelCraftingProviders，
+      # batch assembler 的注册会因缺类编不过。fork 构建的模组版本号显示 21.2.0（分支基于上游 21.2.0
+      # 基线），这里沿用旧文件名只为与 build.gradle 对齐，不要据名判断内容。jar 最近一次重建于
+      # 2026-10-02（分支提交 f447d0ae），哈希已同步。
       # 第二个 jar（ModDevMCP 0.3）同样未发布到公共 maven，由变量 MODDEVMCP_JAR_URL 提供，
       # 对应 build.gradle 里的 compileOnly files('libs/moddevmcp-0.3.jar')（那份 0.3 jar 只上编译类路径，
       # 开发运行期的工具来自 dev.vfyjxf:moddevmcp，src 里不引用它）。
@@ -100,7 +101,7 @@ jobs:
           curl -fL --retry 3 --retry-delay 5 -o libs/extendedae_plus-1.6.2-dev.jar "$EAEPLUS_JAR_URL"
           # 校验下载内容：Gradle 对 files() 里不存在的文件是静默跳过，靠这里把“下错文件”挡在构建前。
           # 若日后替换 deps-v1 上的同名 jar，必须同步更新下面三条哈希。
-          echo "559787e68bc651ad3adb0feca24196ee1353c809d6bfe8781c370b182ce12f1e  libs/neoecoae-21.2.0-beta7.jar" | sha256sum -c -
+          echo "e52a217dc59c87b54a4b4241fa8ce6c333f56f3eff802013db08a8bfdc5b9a75  libs/neoecoae-21.2.0-beta7.jar" | sha256sum -c -
           echo "ce22ff7266a8462e1ae7062d17df1fdbdd06bdf29e5501c2f6d6ded6daf33789  libs/moddevmcp-0.3.jar" | sha256sum -c -
           echo "f789723bde98d709885501184f5335ae06a84a9ad6ad5a4c51366eabb3a2fcd1  libs/extendedae_plus-1.6.2-dev.jar" | sha256sum -c -
           ls -l libs
