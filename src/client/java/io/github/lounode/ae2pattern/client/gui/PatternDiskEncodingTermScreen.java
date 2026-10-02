@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
+import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.Map;
 import org.anti_ad.mc.ipn.api.IPNPlayerSideOnly;
 import org.jetbrains.annotations.Nullable;
@@ -124,6 +126,9 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             .src(226, 224, 18, 20);
 
     private final Map<EncodingMode, DiskEncodingModePanel> modePanels = new EnumMap<>(EncodingMode.class);
+
+    /** 额外档注册表（构造器里建好，之后只读）。加一档就在这里加一项。 */
+    private final List<ExtraTier> extraTiers;
     /** 高级编码模式面板。它不在 {@link EncodingMode} 里（那个枚举不可扩展），所以单拎一份。 */
     private final AdvancedEncodingPanel advancedPanel;
 
@@ -137,13 +142,16 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
     private final DiskListPanel diskListPanel;
     protected final ModeDropdownButton modeButton;
 
-    /** 上次写进模式轮换按钮的 tooltip 输入；变了才重建那几行文本，不必每帧新建。 */
+    /** 上次写进模式选择钮的 tooltip 输入；变了才重建那几行文本，不必每帧新建。 */
     private EncodingMode tooltipMode;
 
-    /** 上一次提示语用的是不是高级档；与 tooltipMode 一起决定何时重写它。 */
-    private boolean tooltipAdvanced;
-    /** 同上，雕凿档。 */
-    private boolean tooltipChiseling;
+    /**
+     * 上次提示语用的是哪个额外档（{@link #activeTier()} 的序号，-1 = 常规档）。
+     *
+     * <p>与 {@link #tooltipMode} 一起决定何时重写提示语。以前是每档一个 boolean（高/雕两个），
+     * 加第三档就得再加一个；现在收成一个序号，加档不用动这里。</p>
+     */
+    private int tooltipTier = -1;
 
     /**
      * 附加排序开关：按 mod 排序时出现的二级排序，默认开。按钮贴在 AE2 那枚「排序按」后面，只在
@@ -224,6 +232,34 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         // 所以没有上面那段「面板缺席就先把槽藏起来」的顾虑。
         this.overloadedPanel = createOverloadedPanel(widgets);
 
+        // 额外档注册表：图标/名称/面板/可用性/是否开/怎么开，五样各一处。下拉列表、互斥、
+        // 可见性、常规档高亮全从它派生（见 docs/ENCODING_MODES.md）。
+        // 面板在构造器里已全部建好，所以这张表可以一次定下来；表里的 available/active 是
+        // Supplier，每帧重新求值，不会因为菜单字段变化而变旧。
+        this.extraTiers = List.of(
+                new ExtraTier(ICON_ADVANCED,
+                        "gui.ae2_pattern_disk.encoding_terminal.advanced_mode",
+                        null,
+                        this.advancedPanel,
+                        () -> getMenu().advancedModeAvailable,
+                        () -> getMenu().advancedMode,
+                        getMenu()::setAdvancedMode),
+                new ExtraTier(ICON_CHISELING,
+                        "gui.ae2_pattern_disk.encoding_terminal.chiseling_mode",
+                        DiskMarkRules.CHISELING_MARK,
+                        this.chiselingPanel,
+                        () -> getMenu().chiselingModeAvailable
+                                && PatternDiskEncodingTermMenu.CHISELING_TIER_ENABLED,
+                        () -> getMenu().chiselingMode,
+                        getMenu()::setChiselingMode),
+                new ExtraTier(ICON_OVERLOADED,
+                        "gui.ae2_pattern_disk.encoding_terminal.overloaded_mode",
+                        null,
+                        this.overloadedPanel,
+                        () -> getMenu().overloadedModeAvailable,
+                        () -> getMenu().overloadedMode,
+                        getMenu()::setOverloadedMode));
+
         // 注册磁盘列表面板（管理终端不要这个面板：它把磁盘铺进自己的表里，复用面板只为共享搜索状态）
         this.diskListPanel = new DiskListPanel();
         if (usesDiskListPanel()) {
@@ -250,9 +286,7 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         // 编码模式选择钮（左侧工具栏）：按本体展开一列档位，点其中一个直接切过去——不再循环轮换，
         // 档位一多那种「点几下才到」的交互就难用了。可选列表每帧现算（哪些档可用要看菜单字段）。
         this.modeButton = new ModeDropdownButton(
-                () -> getMenu().advancedMode ? ICON_ADVANCED
-                        : getMenu().chiselingMode ? ICON_CHISELING
-                                : iconFor(getMenu().getMode()),
+                this::currentModeIcon,
                 this::modeChoices);
         this.modeButton.setBackground(BG_MODE_NORMAL, BG_MODE_HOVER);
         addToLeftToolbar(this.modeButton);
@@ -440,13 +474,47 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
      * 选择钮展开列表的内容。两个额外档排在四个常规档后面（高级在前、雕凿在后），与它们的可用性判断放在一起
      * —— 与下面给面板做可见性判断的地方用同一组条件。
      */
+    /**
+     * 一个额外档的全部声明。顺序 = 下拉列表里额外档的排列顺序。
+     *
+     * <p>{@code panel} 为 null 时该档不进下拉（面板缺席）；{@code available}/{@code active} 用
+     * Supplier 而不是即时值，因为它们是菜单字段，每帧都可能在变（升级槽里的卡被拿走、服务端回读等）。</p>
+     */
+    private record ExtraTier(
+            Blitter icon,
+            String nameKey,
+            /**
+             * 该档的专属标记字面量；null = 没有，继承进入本档之前那个常规档的标记
+             * （见 docs/ARCHITECTURE.md 关于「高级档没有专属标记」的那条）。
+             */
+            @Nullable String ownMark,
+            @Nullable DiskEncodingModePanel panel,
+            BooleanSupplier available,
+            BooleanSupplier active,
+            Consumer<Boolean> setter) {
+    }
+
+    /** 当前开着的是第几个额外档；都没开时返回 -1（即停在常规档）。 */
+    private int activeTier() {
+        for (int i = 0; i < this.extraTiers.size(); i++) {
+            if (this.extraTiers.get(i).active().getAsBoolean()) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /** 模式钮上画哪个图标：停在额外档就用那一档的图标，否则用常规档的。 */
+    private Blitter currentModeIcon() {
+        var tier = activeTier();
+        return tier >= 0 ? this.extraTiers.get(tier).icon() : iconFor(getMenu().getMode());
+    }
+
     private List<ModeDropdownButton.Choice> modeChoices() {
         var currentMode = getMenu().getMode();
-        var advancedOn = getMenu().advancedMode;
-        var chiselingOn = getMenu().chiselingMode;
-        // 过载也得算进来：它是第三个平行档，漏掉就不是「哪个高亮」的问题——
-        // 过载档下常规档会同时显示选中，看上去像两档叠着开。
-        var regular = !advancedOn && !chiselingOn && !getMenu().overloadedMode;
+        // 常规档是否高亮：只要**没有任何**额外档开着。不要展开成 !a && !b && !c——加一档必漏，
+        // 漏了就不是「哪个高亮」的问题：过载档下常规档会同时显示选中，看上去像两档叠着开。
+        var regular = !anyExtraTierActive();
 
         var choices = new ArrayList<ModeDropdownButton.Choice>();
         for (var mode : EncodingMode.values()) {
@@ -456,32 +524,22 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
                     regular && currentMode == mode,
                     () -> pickMode(mode)));
         }
-        if (getMenu().advancedModeAvailable) {
+        // 额外档在四个常规档后面，顺序就是 extraTiers 里的顺序；面板缺席或当前不可用的不进列表。
+        for (int i = 0; i < this.extraTiers.size(); i++) {
+            var tier = this.extraTiers.get(i);
+            if (tier.panel() == null || !tier.available().getAsBoolean()) {
+                continue;
+            }
+            var index = i;
             choices.add(new ModeDropdownButton.Choice(
-                    ICON_ADVANCED,
-                    Component.translatable("gui.ae2_pattern_disk.encoding_terminal.advanced_mode"),
-                    advancedOn,
-                    this::pickAdvanced));
-        }
-        if (this.chiselingPanel != null && PatternDiskEncodingTermMenu.CHISELING_TIER_ENABLED
-                && getMenu().chiselingModeAvailable) {
-            choices.add(new ModeDropdownButton.Choice(
-                    ICON_CHISELING,
-                    Component.translatable("gui.ae2_pattern_disk.encoding_terminal.chiseling_mode"),
-                    chiselingOn,
-                    this::pickChiseling));
-        }
-        if (this.overloadedPanel != null && getMenu().overloadedModeAvailable) {
-            choices.add(new ModeDropdownButton.Choice(
-                    ICON_OVERLOADED,
-                    Component.translatable("gui.ae2_pattern_disk.encoding_terminal.overloaded_mode"),
-                    getMenu().overloadedMode,
-                    this::pickOverloaded));
+                    tier.icon(),
+                    Component.translatable(tier.nameKey()),
+                    tier.active().getAsBoolean(),
+                    () -> pickExtraTier(index)));
         }
         return choices;
     }
 
-    /** 直接点到某个常规档：先把两个额外档关掉，它们与常规档互斥（否则面板会叠加显示）。 */
     /**
      * 直接点到某个常规档。
      *
@@ -495,53 +553,36 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
      * 重算切石配方，先改本地值会把那一步跳过。</p>
      */
     private void pickMode(EncodingMode mode) {
-        if (getMenu().advancedMode) {
-            getMenu().setAdvancedMode(false);
-        }
-        if (getMenu().chiselingMode) {
-            getMenu().setChiselingMode(false);
-        }
-        // 三个额外档是互斥的：少清这一个，回常规档时过载面板不让位，编辑区会停在一片空白上。
-        if (getMenu().overloadedMode) {
-            getMenu().setOverloadedMode(false);
-        }
+        closeAllExtraTiers();
         getMenu().setMode(mode);
         // 等一个往返才切过去的话，从额外档回来时会先回落到上一次的常规档，中间那一下看着像「闪了一下」。
         getMenu().mode = mode;
     }
 
-    private void pickAdvanced() {
-        if (getMenu().chiselingMode) {
-            getMenu().setChiselingMode(false);
-        }
-        // 高级与过载的面板在同一坐标、同尺寸，两边都开着就是两块叠画。
-        if (getMenu().overloadedMode) {
-            getMenu().setOverloadedMode(false);
-        }
-        getMenu().setAdvancedMode(true);
-    }
-
-    private void pickChiseling() {
-        if (getMenu().advancedMode) {
-            getMenu().setAdvancedMode(false);
-        }
-        if (getMenu().overloadedMode) {
-            getMenu().setOverloadedMode(false);
-        }
-        getMenu().setChiselingMode(true);
-    }
-
     /**
-     * 切到过载档。与另两个额外档互斥：它们共用同一块屏幕区域，同时开着会叠在一起。
+     * 切到某一个额外档。
+     *
+     * <p>互斥由 {@link #closeAllExtraTiers()} 统一收：**不要**在这一档里手动去清另外两个
+     * ——那是 O(n²)，加一档必漏（上一版就漏了回常规档与进高级档两处，前者让编辑区一片空白、
+     * 后者让两块同坐标的面板叠画）。</p>
      */
-    private void pickOverloaded() {
-        if (getMenu().advancedMode) {
-            getMenu().setAdvancedMode(false);
+    private void pickExtraTier(int index) {
+        closeAllExtraTiers();
+        this.extraTiers.get(index).setter().accept(true);
+    }
+
+    /** 收掉所有开着的额外档。只对真正开着的那个发关闭，免得平白多发一次客户端动作。 */
+    private void closeAllExtraTiers() {
+        for (var tier : this.extraTiers) {
+            if (tier.active().getAsBoolean()) {
+                tier.setter().accept(false);
+            }
         }
-        if (getMenu().chiselingMode) {
-            getMenu().setChiselingMode(false);
-        }
-        getMenu().setOverloadedMode(true);
+    }
+
+    /** 当前是否停在某个额外档上（常规档的高亮与可见性都看它）。 */
+    private boolean anyExtraTierActive() {
+        return activeTier() >= 0;
     }
 
     @Override
@@ -559,39 +600,29 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         }
 
         // 模式选择钮的提示语：第一行就是它现在所处的档位，第二行说明点它会发生什么。
-        // 两个额外档不在 EncodingMode 里，但它们同样是一次「当前在哪儿」，所以一并跟。
+        // 额外档不在 EncodingMode 里，但它们同样是一次「当前在哪儿」，所以一并跟。
         var mode = menu.getMode();
-        var advancedOn = menu.advancedMode;
-        var chiselingOn = menu.chiselingMode;
-        if (mode != this.tooltipMode || advancedOn != this.tooltipAdvanced
-                || chiselingOn != this.tooltipChiseling) {
+        var tierIndex = activeTier();
+        if (mode != this.tooltipMode || tierIndex != this.tooltipTier) {
             this.tooltipMode = mode;
-            this.tooltipAdvanced = advancedOn;
-            this.tooltipChiseling = chiselingOn;
+            this.tooltipTier = tierIndex;
             this.modeButton.setTooltip(List.of(
-                    advancedOn
-                            ? Component.translatable("gui.ae2_pattern_disk.encoding_terminal.advanced_mode")
-                            : chiselingOn
-                                    ? Component.translatable(
-                                            "gui.ae2_pattern_disk.encoding_terminal.chiseling_mode")
-                                    : modeName(mode),
+                    tierIndex >= 0
+                            ? Component.translatable(this.extraTiers.get(tierIndex).nameKey())
+                            : modeName(mode),
                     Component.translatable("gui.ae2_pattern_disk.encoding_terminal.mode_cycle")));
         }
 
-        // 根据当前模式切换面板可见性。两个额外档是并列的：任一开着时四个常规面板全让位。
+        // 根据当前模式切换面板可见性。额外档是并列的：任一开着时四个常规面板全让位。
         var currentMode = menu.getMode();
-        var advanced = menu.advancedMode;
-        var chiseling = menu.chiselingMode;
-        var overloaded = menu.overloadedMode;
+        var regular = !anyExtraTierActive();
         for (var entry : modePanels.entrySet()) {
-            entry.getValue().setVisible(!advanced && !chiseling && !overloaded && entry.getKey() == currentMode);
+            entry.getValue().setVisible(regular && entry.getKey() == currentMode);
         }
-        this.advancedPanel.setVisible(advanced);
-        if (this.chiselingPanel != null) {
-            this.chiselingPanel.setVisible(chiseling);
-        }
-        if (this.overloadedPanel != null) {
-            this.overloadedPanel.setVisible(overloaded);
+        for (var tier : this.extraTiers) {
+            if (tier.panel() != null) {
+                tier.panel().setVisible(tier.active().getAsBoolean());
+            }
         }
 
         // 刷新磁盘列表（过滤 PatternDiskItem + 搜索过滤）。
@@ -716,9 +747,12 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
             return false;
         }
         var mode = menu.getMode();
-        // 雕凿不在 EncodingMode 里也没有配方类别，它的标记是唯一的固定字面量，直接比。
-        if (menu.chiselingMode) {
-            return DiskMarkRules.CHISELING_MARK.equals(raw);
+        // 雕凿不在 EncodingMode 里也没有配方类别，它的标记是唯一的固定字面量，直接比；
+        // 其余额外档（高级/过载）没有专属标记，继承进入本档之前那个常规档的。哪档有专属标记
+        // 写在注册表的 ownMark 里，不再写 if。
+        var tier = activeTier();
+        if (tier >= 0 && this.extraTiers.get(tier).ownMark() != null) {
+            return this.extraTiers.get(tier).ownMark().equals(raw);
         }
         var category = DiskMarkRules.categoryForMode(mode);
         if (category == null) {
