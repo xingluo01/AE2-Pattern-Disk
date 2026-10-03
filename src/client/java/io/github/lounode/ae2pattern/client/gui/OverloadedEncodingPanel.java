@@ -71,8 +71,8 @@ public class OverloadedEncodingPanel extends DiskEncodingModePanel {
      *
      * <p><b>参考尺寸必须写成 {@value #CHECKBOX_TEX}&times;{@value #CHECKBOX_TEX}</b>：Blitter 默认按
      * 256×256 把 src 矩形换算成归一化 UV，对这张 64×64 的小图会把 (0,28,22,12) 读成「256 分之 28」——
-     * 只在图中间采到一个亚像素块，表观就是开关整个不见了。同样的坑本项目已经记过两回（管理终端那张
-     * 512×512 的底图、高级档那套 16×16 的方向按钮），加新贴图时先看它的真实像素尺寸。</p>
+     * 只在左上偏下一小块（约 6×3 像素）再放大，基本是空白，表观就是开关整个不见了。同样的坑本项目已经记过两回
+     * （管理终端那张 512×512 的底图、高级档那套 16×16 的方向按钮），加新贴图时先看它的真实像素尺寸。</p>
      */
     private static final int CHECKBOX_TEX = 64;
     private static final Blitter CHECKBOX_OFF = Blitter

@@ -92,10 +92,14 @@ PatternDiskManagementTermMenu  →  PatternDiskEncodingTermMenu  →  MEStorageM
 面板挂样式键失败要 `catch`（`IllegalStateException`）——AE2 对缺失的 widget 键是**开屏那一刻抛异常**，
 不是「不画」。面板缺席时该档不进下拉即可。
 
-**子控件必须经 `populateScreen` 注册。** 复合控件的子控件要交给
+**子控件必须经 `populateScreen` 注册。** 复合控件的**子控件**（`AbstractWidget`）要交给
 `populateScreen(addWidget, bounds, screen)` → `addRenderableWidget`，渲染、鼠标命中、悬停提示（AE2 会遍历
 子控件收 `ITooltip`）才走原版那套。**自己摆位置、自己调 `button.render(...)` 是不行的**：那一下不把它们挂进
 屏幕控件表，实测现象就是「按钮根本不出现」。
+
+〔例外〕**完全自绘的非 widget 控件不受此限**：画在 `drawBackgroundLayer` 里、命中靠自己的 `onMouseDown` /
+`getTooltip`（例：过载档每行那枚组件匹配开关、高级档那排方向按钮）。判据就是「是不是 `AbstractWidget`」——
+不是就不用注册，也别去注册。
 
 **`updateBeforeRender` 只对**可见**的复合控件调用**（`WidgetContainer`）。所以子控件的位置要在那里设，
 同时必须在 `setVisible(false)` 里把子控件也置为不可见——否则切到别的档后它们继续浮在上面。
@@ -338,8 +342,10 @@ private    String  tierTypeOf(DiskEntry)            // 标记反查优先，没�
 
 ## 十、编码模式相关的小抄
 
-- 面板几何：`Blitter.texture(uri).src(...)` 的坐标按 **256×256** 换算（`Blitter.DEFAULT_TEXTURE_WIDTH/HEIGHT`）。
-  图集是 256×256 时数字可直接照抄；不是就得改 `.src()`。
+- 面板几何：`Blitter.texture(uri, 真实宽, 真实高).src(...)`，`.src()` 一律按 **PNG 像素坐标**写。单参的
+  `texture(uri)` 内部就是 `texture(uri, 256, 256)`（`Blitter.DEFAULT_TEXTURE_WIDTH/HEIGHT`），UV 按它折算
+  ——**图不是 256×256 时必须显式给尺寸**，否则取样会跑到图外，表观是「控件整个不见了」。踩过三回：管理终端
+  512×512 底图、高级档 16×16 方向按钮、过载档 64×64 复选框（复制新贴图前先看真实像素尺寸）。
 - 滚动条不在面板坐标系里：位置来自样式文档，且必须满足
   `left = 面板 left + (TRACK_X - 1)`、`bottom = 面板 bottom - TRACK_Y`。面板挪了要同步两份 JSON。
 - 面板的 `setVisible` 要同步滚动条（它是屏幕级 widget，不会跟着面板藏）。
