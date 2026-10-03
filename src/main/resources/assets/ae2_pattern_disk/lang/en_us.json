@@ -66,7 +66,7 @@
   "gui.ae2_pattern_disk.encoding_terminal.overloaded_needs_input": "Overloaded: put the items in the editing area first",
   "gui.ae2_pattern_disk.encoding_terminal.merge_same_items_off": "Merge Same Items",
   "gui.ae2_pattern_disk.encoding_terminal.merge_same_items_on": "Merge Same Items",
-  "gui.ae2_pattern_disk.encoding_terminal.mode_cycle": "Click to pick a mode",
+  "gui.ae2_pattern_disk.encoding_terminal.mode_cycle": "Switch encoding mode",
   "gui.ae2_pattern_disk.encoding_terminal.multiply": "Multiply",
   "gui.ae2_pattern_disk.encoding_terminal.multiply_line1": "Click to x2 recipe",
   "gui.ae2_pattern_disk.encoding_terminal.multiply_line2": "Shift+Click to x3 recipe",

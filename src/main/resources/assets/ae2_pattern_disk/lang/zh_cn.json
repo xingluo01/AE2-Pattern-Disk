@@ -66,7 +66,7 @@
   "gui.ae2_pattern_disk.encoding_terminal.overloaded_needs_input": "过载编码：请先在编辑区放入物品",
   "gui.ae2_pattern_disk.encoding_terminal.merge_same_items_off": "同物品合并",
   "gui.ae2_pattern_disk.encoding_terminal.merge_same_items_on": "同物品合并",
-  "gui.ae2_pattern_disk.encoding_terminal.mode_cycle": "点击选择档位",
+  "gui.ae2_pattern_disk.encoding_terminal.mode_cycle": "切换编码模式",
   "gui.ae2_pattern_disk.encoding_terminal.multiply": "倍乘",
   "gui.ae2_pattern_disk.encoding_terminal.multiply_line1": "点击使配方x2",
   "gui.ae2_pattern_disk.encoding_terminal.multiply_line2": "Shift+点击使配方x3",
