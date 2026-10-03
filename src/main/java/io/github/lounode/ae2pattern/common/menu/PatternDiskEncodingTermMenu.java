@@ -2090,6 +2090,18 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
         this.overloadedMatchModes = modes.toString();
         this.encodingLogic.setOverloadedSides(this.overloadedSides);
         this.encodingLogic.setOverloadedMatchModes(this.overloadedMatchModes);
+        // 诊断：过载档「候选栏里只有空行」的表观可能出在两处——没写进库存，或写进去了但槽位读不出来。
+        // 这条把「每个下标写完后从库存回读到的 key」记下来，一次就能分开这两种。
+        // TODO(诊断): 问题定位后删掉。
+        if (LOGGER.isInfoEnabled()) {
+            var written = new StringBuilder();
+            for (int i = 0; i < row; i++) {
+                written.append(i).append('=').append(encodedInputsInv.getKey(i)).append(' ');
+            }
+            LOGGER.info("Overloaded seed: source={} inputs={} outputs={} rows={} sides=[{}] inv=[{}]",
+                    this.encodedPatternSlot.getItem().getItem(), inputs.length, details.getOutputs().size(),
+                    row, this.overloadedSides, written);
+        }
     }
 
     /** 追加一行：记下它是输入(0)还是输出(1)，以及该行的组件匹配（新行一律默认「启用组件匹配」）。 */
