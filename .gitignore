@@ -37,3 +37,6 @@ docs/LOCAL_DEPS.md
 # Pi workflow metadata
 plans/
 .pi/
+
+# 给视频创作者的兼容清单：只作交付件发出，不入库
+/docs/COMPATIBILITY.md
