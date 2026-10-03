@@ -74,6 +74,34 @@ public class AdvancedEncodingPanel extends DiskEncodingModePanel {
      * 就是 {@link Direction} 的六个面。</p>
      */
     private static final String[] OPTION_NAMES = { "any", "north", "south", "west", "east", "up", "down" };
+
+    /**
+     * 七个方向 &times; 选中与否 的按钮图，7&times;2 张，[列][选中?1:0]。建一次用一辈子。
+     *
+     * <p>它们只是**模板**：{@code Blitter.dest()} 是原地修改，直接拿模板去定位会把它改坏——绘制时必须
+     * {@code .copy()}。原先每帧每按钮现建一个（每帧 21 次字符串拼接 + {@code ResourceLocation.parse} +
+     * 构造），换到这里之后每帧只剩一次 copy。</p>
+     *
+     * <p><b>参考尺寸必须写成 16×16</b>：Blitter 默认按 256×256 把 src 矩形换算成归一化 UV，对这张小图
+     * 会把 (0,0,10,14) 读成「256 分之 10」，只采到一个亚像素块再放大成糊。复制新贴图前先看真实像素尺寸。</p>
+     * <p><b>模板别设 {@code zOffset}/{@code transform}/{@code blending}</b>：{@code copy()} 只带走
+     * texture / 参考尺寸 / srcRect / destRect / 颜色，这三项不在其中——在模板上设会给副本静默丢掉。</p>
+     */
+    private static final Blitter[][] ADJ_BUTTON_ICONS = new Blitter[OPTION_NAMES.length][2];
+
+    static {
+        for (int column = 0; column < OPTION_NAMES.length; column++) {
+            for (int selected = 0; selected < 2; selected++) {
+                ADJ_BUTTON_ICONS[column][selected] = Blitter
+                        .texture(ResourceLocation.parse(
+                                "ae2_pattern_disk:textures/guis/adv_button/" + OPTION_NAMES[column] + "_button"
+                                        + (selected == 1 ? "_selected" : "") + ".png"),
+                                16, 16)
+                        // 只取左上那 10×14 的内容：文件是 16×16 画布，余下部分是透明的。
+                        .src(0, 0, ICON_W, ICON_H);
+            }
+        }
+    }
     private static final int[] OPTION_SIDES = {
             -1,
             Direction.NORTH.ordinal(),
@@ -168,15 +196,9 @@ public class AdvancedEncodingPanel extends DiskEncodingModePanel {
             var current = menu.advancedSideAt(index);
             for (int column = 0; column < COLUMNS; column++) {
                 var selected = OPTION_SIDES[column] == current;
-                var icon = Blitter
-                        // 参考尺寸必须写成 16×16：Blitter 默认按 256×256 把 src 矩形换算成归一化 UV，
-                        // 对这张小图会把 (0,0,10,14) 读成「256 分之 10」，只采样到一个亚像素块再放大成糊。
-                        .texture(ResourceLocation.parse(
-                                "ae2_pattern_disk:textures/guis/adv_button/" + OPTION_NAMES[column] + "_button"
-                                        + (selected ? "_selected" : "") + ".png"),
-                                16, 16)
-                        // 只取左上那 10×14 的内容：文件是 16×16 画布，余下部分是透明的。
-                        .src(0, 0, ICON_W, ICON_H)
+                // 模板拿方向与选中两维的图；copy 才能 dest（dest 是原地改）。
+                var icon = ADJ_BUTTON_ICONS[column][selected ? 1 : 0]
+                        .copy()
                         .dest(originX + BUTTONS_X + column * BUTTON_W, originY + BUTTONS_Y + row * BUTTON_H,
                                 ICON_W, ICON_H);
                 icon.blit(guiGraphics);
