@@ -3,10 +3,9 @@ package io.github.lounode.ae2pattern.client.gui;
 import java.util.List;
 import java.util.function.Supplier;
 
-import org.jetbrains.annotations.Nullable;
-
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
@@ -104,6 +103,7 @@ public final class ModeDropdownButton extends StatesIconButton {
         var panelY = panelY();
         BackgroundGenerator.draw(panelWidth(), panelHeight(), guiGraphics, panelX, panelY);
 
+        Component hoveredName = null;
         for (int i = 0; i < entries.size(); ++i) {
             var entry = entries.get(i);
             var itemX = itemX(i);
@@ -116,6 +116,17 @@ public final class ModeDropdownButton extends StatesIconButton {
             var bg = hovered ? ITEM_BG_HOVERED : entry.selected() ? ITEM_BG_SELECTED : ITEM_BG;
             bg.dest(itemX, itemY + yOffset).zOffset(2).blit(guiGraphics);
             entry.icon().dest(itemX + ICON_OFFSET, itemY + ICON_OFFSET + yOffset).zOffset(3).blit(guiGraphics);
+
+            if (hovered) {
+                hoveredName = entry.name();
+            }
+        }
+
+        // 列表项只有图标，名字得给出来；但它**不能**走 ITooltip：那只能用一块矩形描述判定区，而
+        // 「按钮 ∪ 列表」不是矩形，包络会把中间的背景也圈进来（鼠标扫过就弹提示）。所以就地自绘，
+        // 命中用的是与绘制同一套 isInItem。
+        if (hoveredName != null) {
+            guiGraphics.renderComponentTooltip(Minecraft.getInstance().font, List.of(hoveredName), mouseX, mouseY);
         }
     }
 
@@ -192,7 +203,7 @@ public final class ModeDropdownButton extends StatesIconButton {
         return PADDING * 2 + columns * ITEM_W + Math.max(0, columns - 1) * GAP;
     }
 
-    /** 多出的 2 是照攄 AE2WTLib 的取值：上下内边距不对称（上 PADDING、下 PADDING+2）。 */
+    /** 多出的 2 是照抄 AE2WTLib 的取值：上下内边距不对称（上 PADDING、下 PADDING+2）。 */
     private int panelHeight() {
         var rows = rows();
         return PADDING * 2 + 2 + rows * ITEM_H + Math.max(0, rows - 1) * GAP;
