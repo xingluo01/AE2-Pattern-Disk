@@ -1,11 +1,9 @@
 package io.github.lounode.ae2pattern.client.gui;
 
 import java.util.List;
-import java.util.function.Consumer;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -14,12 +12,11 @@ import net.minecraft.util.Mth;
 import org.jetbrains.annotations.Nullable;
 
 import appeng.client.Point;
-import appeng.client.gui.AEBaseScreen;
 import appeng.client.gui.Icon;
+import appeng.client.gui.Tooltip;
 import appeng.client.gui.WidgetContainer;
 import appeng.client.gui.style.Blitter;
 import appeng.client.gui.widgets.Scrollbar;
-import appeng.client.gui.widgets.ToggleButton;
 import appeng.core.AELog;
 import appeng.menu.SlotSemantics;
 
@@ -31,13 +28,14 @@ import appeng.menu.SlotSemantics;
  * 相对位置一致，改这里时别只改一边。</p>
  *
  * <p>与高级档的区别全在右侧那两条：没有方向按钮，取而代之的是每行一枚「输入/输出」文字（贴在物品格
- * 右侧 {@value #LABEL_GAP}px、与行垂直居中）和一枚 AE2 原版的 {@link ToggleButton}（组件匹配开关）。
- * 文字左端起于 x={@value #LABEL_X}，开关右边缘停在 {@value #PANEL_W}-{@value #BUTTON_MARGIN}，
- * 两者都不越出 115 宽的覆盖层。</p>
+ * 右侧 {@value #LABEL_GAP}px、与行垂直居中）和一枚组件匹配开关。文字左端起于 x={@value #LABEL_X}，
+ * 开关右边缘停在 {@value #PANEL_W}-{@value #BUTTON_MARGIN}，两者都不越出 115 宽的覆盖层。</p>
  *
- * <p>开关是**关=启用组件匹配**（默认）、开=忽略组件匹配。这与 AE2 那枚「可替换」开关的语义方向一致
- * （点亮即放宽匹配），所以直接沿用它的图标对（{@code S_SUBSTITUTION_ENABLED/DISABLED}）。尺寸用默认的
- * 正常尺寸，不用 halfSize：这一枚是每行可点的主交互，半尺寸太小。</p>
+ * <p>开关是**关=启用组件匹配**（默认）、开=忽略组件匹配，用 AE2 那枚 22&times;12 的左右切换条
+ * （{@code checkbox.png}，关 v=28、开 v=40）——与 AE2LT 自己的过载样板编码器同一枚、同一区域。
+ * 它**不用 widget**（那是屏幕级容器，位置由样式文档给死，而这里每显示行一枚、还要跟滚动走），
+ * 所以绘制与命中都在本面板里手工做；命中判定只有一份（{@link #switchRowAt}），绘制、点击、悬停提示
+ * 三处共用，免得各算一遍坐标而分叉。</p>
  */
 public class OverloadedEncodingPanel extends DiskEncodingModePanel {
 
@@ -58,9 +56,25 @@ public class OverloadedEncodingPanel extends DiskEncodingModePanel {
     private static final int LABEL_GAP = 10;
     /** 开关右边缘与覆盖层右边缘的间隔。 */
     private static final int BUTTON_MARGIN = 6;
+    /** 开关尺寸：AE2 那枚复选框就是 22&times;12。 */
+    private static final int SWITCH_W = 22;
+    private static final int SWITCH_H = 12;
 
     /** 文字左端：物品格右边缘 + 10px。 */
     private static final int LABEL_X = SLOT_X + SLOT_SIZE + LABEL_GAP;
+    /** 开关左端：右边缘倒推边距与自身宽度。 */
+    private static final int SWITCH_X = PANEL_W - BUTTON_MARGIN - SWITCH_W;
+
+    /**
+     * 组件匹配开关的两个状态，取自 AE2 的 {@code checkbox.png}（本模组自带一份，见同目录 resources）。
+     * 与 AE2LT 的过载样板编码器用的是同一张图的同一段区域。
+     */
+    private static final Blitter CHECKBOX_OFF = Blitter
+            .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/checkbox.png"))
+            .src(0, 28, SWITCH_W, SWITCH_H);
+    private static final Blitter CHECKBOX_ON = Blitter
+            .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/checkbox.png"))
+            .src(0, 40, SWITCH_W, SWITCH_H);
 
     /** 第几行正在滚动到窗口顶部。 */
     private int scroll;
@@ -68,14 +82,6 @@ public class OverloadedEncodingPanel extends DiskEncodingModePanel {
     /** 与其它可滚动档同款的滚动条；底图左侧那条轨道就是给它留的。样式文档没这一格时为 null。 */
     @Nullable
     private final Scrollbar scrollbar;
-
-    /**
-     * 每显示行一枚组件匹配开关。
-     *
-     * <p>它们不进 {@code widgets}（那是**屏幕级**容器，位置由样式文档给死），而是跟着面板走、每帧摆一次：
-     * 面板会随模式切换显示/隐藏、还会滚动，静态键位满足不了。绘制与命中都在本面板里手动转发。</p>
-     */
-    private final ToggleButton[] matchButtons = new ToggleButton[ROWS];
 
     public OverloadedEncodingPanel(PatternDiskEncodingTermScreen screen, WidgetContainer widgets) {
         super(screen, widgets);
@@ -90,39 +96,6 @@ public class OverloadedEncodingPanel extends DiskEncodingModePanel {
             AELog.debug("Screen style has no 'overloadedPatternModeScrollbar' widget; the overloaded panel stays unscrollable");
         }
         this.scrollbar = bar;
-
-        for (int row = 0; row < ROWS; row++) {
-            final int displayRow = row;
-            // 回调里现算槽号：滚动之后同一个显示行对应的是另一格，固定下标会把开关接到错的行上。
-            var button = new ToggleButton(Icon.S_SUBSTITUTION_ENABLED, Icon.S_SUBSTITUTION_DISABLED,
-                    on -> {
-                        var slot = displayRow + this.scroll;
-                        if (slot < rowCount()) {
-                            menu.setOverloadedRow(slot, menu.overloadedRowIsOutput(slot), on);
-                        }
-                    });
-            button.setTooltipOn(List.of(Component.translatable(
-                    "gui.ae2_pattern_disk.encoding_terminal.overloaded_match_ignore")));
-            button.setTooltipOff(List.of(Component.translatable(
-                    "gui.ae2_pattern_disk.encoding_terminal.overloaded_match_strict")));
-            this.matchButtons[row] = button;
-        }
-    }
-
-    /**
-     * 把三个开关交给屏幕注册。这是 AE2 给复合控件的正道（{@code AEBaseScreen.init()} 会调
-     * {@code widgets.populateScreen(this::addRenderableWidget, ...)}）：注册成屏幕的 vanilla 控件后，
-     * 渲染、鼠标命中、悬停提示都走原版那套，不需要面板自己代劳。
-     *
-     * <p>自己调 {@code button.render(...)} 是不行的——那一下不会把它们挂进屏幕的控件表，实测就是
-     * 「按钮根本不出现」。位置每帧在 {@link #updateBeforeRender()} 里更新（要跟滚动走）。</p>
-     */
-    @Override
-    public void populateScreen(java.util.function.Consumer<AbstractWidget> addWidget, Rect2i bounds,
-            AEBaseScreen<?> screen) {
-        for (var button : this.matchButtons) {
-            addWidget.accept(button);
-        }
     }
 
     private int rowCount() {
@@ -138,6 +111,60 @@ public class OverloadedEncodingPanel extends DiskEncodingModePanel {
         return SLOT_Y + row * SLOT_SIZE + SLOT_SIZE / 2;
     }
 
+    /**
+     * 点(mousePos)命中了哪一行的开关；没命中返回 -1。返回的是**槽号**（已加滚动偏移），不是显示行号。
+     *
+     * <p>绘制、点击、悬停提示共用这一份判定。坐标是「鼠标的绝对位置减面板原点」，与高级档的方向按钮
+     * 同一口径。</p>
+     */
+    private int switchRowAt(Point point) {
+        if (!this.visible) {
+            return -1;
+        }
+        var localX = point.getX() - x;
+        var localY = point.getY() - y;
+        // 两端都要查：只看右端的话，面板左侧那片空当与开关同处一个高度带，会被当成命中了某一行的开关。
+        if (localX < SWITCH_X || localX >= SWITCH_X + SWITCH_W) {
+            return -1;
+        }
+        for (int row = 0; row < ROWS; row++) {
+            var top = rowCenterY(row) - SWITCH_H / 2;
+            if (localY >= top && localY < top + SWITCH_H) {
+                var index = row + scroll;
+                return index < rowCount() ? index : -1;
+            }
+        }
+        return -1;
+    }
+
+    @Override
+    public boolean onMouseDown(Point mousePos, int button) {
+        if (button != 0) {
+            return false;
+        }
+        var slot = switchRowAt(mousePos);
+        if (slot < 0) {
+            return false;
+        }
+        // 点开关只翻「忽略组件」这一位；行的输入/输出去点物品格那条（本档暂无），不是这里。
+        menu.setOverloadedRow(slot, menu.overloadedRowIsOutput(slot),
+                !menu.overloadedRowIgnoresComponents(slot));
+        return true;
+    }
+
+    @Nullable
+    @Override
+    public Tooltip getTooltip(int mouseX, int mouseY) {
+        var slot = switchRowAt(new Point(mouseX, mouseY));
+        if (slot < 0) {
+            return null;
+        }
+        var key = menu.overloadedRowIgnoresComponents(slot)
+                ? "gui.ae2_pattern_disk.encoding_terminal.overloaded_match_ignore"
+                : "gui.ae2_pattern_disk.encoding_terminal.overloaded_match_strict";
+        return new Tooltip(List.of(Component.translatable(key)));
+    }
+
     @Override
     public void updateBeforeRender() {
         if (this.scrollbar == null) {
@@ -149,20 +176,6 @@ public class OverloadedEncodingPanel extends DiskEncodingModePanel {
             // 滚动条 = 面板位置 + (TRACK_X - 1, TRACK_Y)，即 left = 面板 left + 5、bottom = 面板 bottom - 6。
             scroll = Mth.clamp(this.scrollbar.getCurrentScroll(), 0, maxScroll());
         }
-
-        // 每帧摆一次开关：位置跟着面板与滚动走，状态跟着菜单字段走（服务端权威，回读后下发）。
-        for (int row = 0; row < ROWS; row++) {
-            var button = this.matchButtons[row];
-            var slot = row + scroll;
-            var inRange = slot < rowCount();
-            // 位置按开关**自己的**宽高算（右边缘贴齐面板右边缘减边距、与行垂直居中）。不用常量硬编码尺寸：
-            // 那是 halfSize 时代的写法，尺寸一改就偏半个身位。
-            button.setPosition(
-                    x + PANEL_W - BUTTON_MARGIN - button.getWidth(),
-                    y + rowCenterY(row) - button.getHeight() / 2);
-            button.visible = this.visible && inRange;
-            button.setState(inRange && menu.overloadedRowIgnoresComponents(slot));
-        }
     }
 
     @Override
@@ -172,11 +185,6 @@ public class OverloadedEncodingPanel extends DiskEncodingModePanel {
         // 它不会跟着藏起来。判空是必须的：屏幕构造完 widget 就会设一次可见性，那一刻 scrollbar 可能还没赋值。
         if (this.scrollbar != null) {
             this.scrollbar.setVisible(visible);
-        }
-        // 三个开关现在注册在屏幕的控件表里，而屏幕只对**可见**的复合控件调 updateBeforeRender
-        // （WidgetContainer.updateBeforeRender）——不在这里藏，切到别的档后它们会继续浮在上面。
-        for (var button : this.matchButtons) {
-            button.visible = false;
         }
     }
 
@@ -209,6 +217,10 @@ public class OverloadedEncodingPanel extends DiskEncodingModePanel {
                     : Component.translatable("gui.ae2_pattern_disk.encoding_terminal.overloaded_side_input");
             guiGraphics.drawString(font, label, originX + LABEL_X, originY + rowCenterY(row) - font.lineHeight / 2,
                     0x404040, false);
+
+            // 组件匹配开关：忽略组件时用「开」那一格。
+            var checkbox = menu.overloadedRowIgnoresComponents(index) ? CHECKBOX_ON : CHECKBOX_OFF;
+            checkbox.dest(originX + SWITCH_X, originY + rowCenterY(row) - SWITCH_H / 2).blit(guiGraphics);
         }
     }
 
