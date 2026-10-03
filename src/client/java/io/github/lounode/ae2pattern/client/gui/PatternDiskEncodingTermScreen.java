@@ -1147,10 +1147,13 @@ public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEn
         if (this.modeButton.handleMenuClick(xCoord, yCoord)) {
             return true;
         }
-        // 点到了别的地方就收起来。展开时 getTooltipArea 是「按钮 ∪ 列表」的包络，所以点在按钮本体或列表上
-        // 都不会被误收（那两种情形分别交给按钮自己的 onPress 与上面的 handleMenuClick）。
-        var menuArea = this.modeButton.getTooltipArea();
-        if (!menuArea.contains((int) xCoord, (int) yCoord)) {
+        // 点到了别的地方就收起来。判定的两块必须**分别**查，不能像以前那样拿包络矩形一笔带过：
+        // 列表比按钮宽，包络会连按钮旁边那块背景一起圈进来，鼠标扫过那里本不该有任何反应。
+        // （旧写法把「按钮 ∪ 列表」的外接框既当收合判定又当 tooltip 判定，其结果就是背景也弹提示。）
+        var onButton = this.modeButton.getTooltipArea();
+        var onPanel = this.modeButton.getPanelArea();
+        if (!onButton.contains((int) xCoord, (int) yCoord)
+                && !onPanel.contains((int) xCoord, (int) yCoord)) {
             this.modeButton.closeMenu();
         }
         return false;

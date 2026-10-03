@@ -65,10 +65,6 @@ public final class ModeDropdownButton extends StatesIconButton {
 
     private boolean menuOpen;
 
-    /** 悬停到的那一项的名字，由 {@link #renderWidget} 每帧更新，供 tooltip 用。 */
-    @Nullable
-    private Component hoveredName;
-
     public ModeDropdownButton(BlitterProvider blitterProvider, Supplier<List<Choice>> choices) {
         super(blitterProvider, btn -> {
         });
@@ -93,7 +89,6 @@ public final class ModeDropdownButton extends StatesIconButton {
     public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         super.renderWidget(guiGraphics, mouseX, mouseY, partialTick);
 
-        this.hoveredName = null;
         if (this.menuOpen && this.visible) {
             renderMenu(guiGraphics, mouseX, mouseY);
         }
@@ -121,10 +116,6 @@ public final class ModeDropdownButton extends StatesIconButton {
             var bg = hovered ? ITEM_BG_HOVERED : entry.selected() ? ITEM_BG_SELECTED : ITEM_BG;
             bg.dest(itemX, itemY + yOffset).zOffset(2).blit(guiGraphics);
             entry.icon().dest(itemX + ICON_OFFSET, itemY + ICON_OFFSET + yOffset).zOffset(3).blit(guiGraphics);
-
-            if (hovered) {
-                this.hoveredName = entry.name();
-            }
         }
     }
 
@@ -161,37 +152,20 @@ public final class ModeDropdownButton extends StatesIconButton {
         return true;
     }
 
-    /** 展开时提示区要跟着外扩，否则列表上的 tooltip 会被判成「不在本按钮范围内」而不显示。 */
-    @Override
-    public net.minecraft.client.renderer.Rect2i getTooltipArea() {
-        if (!this.menuOpen) {
-            return super.getTooltipArea();
-        }
-        var panelX = panelX();
-        var panelY = panelY();
-        var left = Math.min(getX() - 1, panelX - 1);
-        var top = Math.min(getY(), panelY - 1);
-        var right = Math.max(getX() + getWidth() + 1, panelX + panelWidth() + 1);
-        var bottom = Math.max(getY() + getHeight() + 1, panelY + panelHeight() + 1);
-        return new net.minecraft.client.renderer.Rect2i(left, top, right - left, bottom - top);
-    }
-
-    @Override
-    public List<Component> getTooltipMessage() {
-        if (this.menuOpen && this.hoveredName != null) {
-            return List.of(this.hoveredName);
-        }
-        return super.getTooltipMessage();
-    }
-
-    @Override
-    public boolean isTooltipAreaVisible() {
-        return super.isTooltipAreaVisible() || (this.menuOpen && this.hoveredName != null);
-    }
-
     /** 展开状态下把列表收起来。屏幕侧的 mouseClicked 会调它，因为点到别的控件上时本按钮收不到点击。 */
     public void closeMenu() {
         this.menuOpen = false;
+    }
+
+    /**
+     * 展开列表的占地（屏幕坐标）。给「点到别处就收起」用。
+     *
+     * <p>不能拿 {@link #getTooltipArea()} 代替：列表比按钮宽，那个包络会把中间的背景也算进去，
+     * 而提示区必须停在按钮本体。
+     */
+    public net.minecraft.client.renderer.Rect2i getPanelArea() {
+        return new net.minecraft.client.renderer.Rect2i(panelX() - 1, panelY() - 1,
+                panelWidth() + 2, panelHeight() + 2);
     }
 
     // ---- 几何 ----------------------------------------------------------------
