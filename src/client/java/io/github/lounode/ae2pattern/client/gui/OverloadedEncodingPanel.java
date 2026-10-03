@@ -32,12 +32,12 @@ import appeng.menu.SlotSemantics;
  *
  * <p>与高级档的区别全在右侧那两条：没有方向按钮，取而代之的是每行一枚「输入/输出」文字（贴在物品格
  * 右侧 {@value #LABEL_GAP}px、与行垂直居中）和一枚 AE2 原版的 {@link ToggleButton}（组件匹配开关）。
- * 文字左端起于 x={@value #LABEL_X}，开关右边缘严格停在 x={@value #BUTTON_X}+{@value #BUTTON_SIZE}
- * = {@value #PANEL_W}-{@value #BUTTON_MARGIN}，两者都不越出 115 宽的覆盖层。</p>
+ * 文字左端起于 x={@value #LABEL_X}，开关右边缘停在 {@value #PANEL_W}-{@value #BUTTON_MARGIN}，
+ * 两者都不越出 115 宽的覆盖层。</p>
  *
  * <p>开关是**关=启用组件匹配**（默认）、开=忽略组件匹配。这与 AE2 那枚「可替换」开关的语义方向一致
- * （点亮即放宽匹配），所以直接沿用它的图标对（{@code S_SUBSTITUTION_ENABLED/DISABLED}）与 halfSize
- * 尺寸，观感与终端里既有的那几枚开关一致。</p>
+ * （点亮即放宽匹配），所以直接沿用它的图标对（{@code S_SUBSTITUTION_ENABLED/DISABLED}）。尺寸用默认的
+ * 正常尺寸，不用 halfSize：这一枚是每行可点的主交互，半尺寸太小。</p>
  */
 public class OverloadedEncodingPanel extends DiskEncodingModePanel {
 
@@ -56,15 +56,11 @@ public class OverloadedEncodingPanel extends DiskEncodingModePanel {
     private static final int PANEL_W = 115;
     /** 输入/输出文字与物品格右边缘的距离。 */
     private static final int LABEL_GAP = 10;
-    /** 切换按钮右边缘与覆盖层右边缘的间隔——规格要求严格 6px。 */
+    /** 开关右边缘与覆盖层右边缘的间隔。 */
     private static final int BUTTON_MARGIN = 6;
-    /** halfSize 的 IconButton 就是 8×8。 */
-    private static final int BUTTON_SIZE = 8;
 
     /** 文字左端：物品格右边缘 + 10px。 */
     private static final int LABEL_X = SLOT_X + SLOT_SIZE + LABEL_GAP;
-    /** 开关左端：右边缘倒推 6px 边距与 8px 自身宽度。 */
-    private static final int BUTTON_X = PANEL_W - BUTTON_MARGIN - BUTTON_SIZE;
 
     /** 第几行正在滚动到窗口顶部。 */
     private int scroll;
@@ -105,10 +101,6 @@ public class OverloadedEncodingPanel extends DiskEncodingModePanel {
                             menu.setOverloadedRow(slot, menu.overloadedRowIsOutput(slot), on);
                         }
                     });
-            button.setHalfSize(true);
-            button.setDisableBackground(true);
-            // tooltip 交给按钮自己：AE2 在 AEBaseScreen 里遍历子控件、收实现了 ITooltip 的那些
-            // （AEBaseScreen:347），所以注册进屏幕的控件会自带悬停提示，不需要面板再代管。
             button.setTooltipOn(List.of(Component.translatable(
                     "gui.ae2_pattern_disk.encoding_terminal.overloaded_match_ignore")));
             button.setTooltipOff(List.of(Component.translatable(
@@ -163,7 +155,11 @@ public class OverloadedEncodingPanel extends DiskEncodingModePanel {
             var button = this.matchButtons[row];
             var slot = row + scroll;
             var inRange = slot < rowCount();
-            button.setPosition(x + BUTTON_X, y + rowCenterY(row) - BUTTON_SIZE / 2);
+            // 位置按开关**自己的**宽高算（右边缘贴齐面板右边缘减边距、与行垂直居中）。不用常量硬编码尺寸：
+            // 那是 halfSize 时代的写法，尺寸一改就偏半个身位。
+            button.setPosition(
+                    x + PANEL_W - BUTTON_MARGIN - button.getWidth(),
+                    y + rowCenterY(row) - button.getHeight() / 2);
             button.visible = this.visible && inRange;
             button.setState(inRange && menu.overloadedRowIgnoresComponents(slot));
         }

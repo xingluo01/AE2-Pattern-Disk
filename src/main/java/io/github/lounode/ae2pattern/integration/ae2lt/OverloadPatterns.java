@@ -1,11 +1,15 @@
 package io.github.lounode.ae2pattern.integration.ae2lt;
 
+import java.util.List;
+
+import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ItemLike;
+import net.minecraft.world.level.Level;
 import net.neoforged.fml.ModList;
 
 import org.jetbrains.annotations.Nullable;
@@ -40,6 +44,24 @@ public final class OverloadPatterns {
     private static final String UPGRADE_HELPER = "de.mari_023.ae2wtlib.api.registration.UpgradeHelper";
 
     private static final Logger LOGGER = LoggerFactory.getLogger("ae2_pattern_disk.integration.ae2lt");
+
+    // ---- 编码路径要用的类名 ----
+    //
+    // AE2LT 是 localRuntime：编译期刻意不依赖它（它缺席时本模组照常编译），所以下面这些调用全走反射。
+    // 类名与方法名对着 2.1.1 写死；AE2LT 改了 API 时的表观是「点了编写样板、聊天栏回一句需要输入」
+    // （编码返回 null 就落到那句提示），同时这里留一条 WARN。这串名字由玩家点击触发、不是热路径，
+    // 所以不缓存反射结果——每次调一遍比维护一份失效缓存简单。
+    private static final String OVERLOAD_ITEM_TYPE = "com.moakiee.ae2lt.item.OverloadPatternItem";
+    private static final String MOD_ITEMS_TYPE = "com.moakiee.ae2lt.registry.ModItems";
+    private static final String CONVERSION_SERVICE_TYPE =
+            "com.moakiee.ae2lt.overload.pattern.PatternConversionService";
+    private static final String PLAIN_RESOLVER_TYPE =
+            "com.moakiee.ae2lt.overload.runtime.pattern.Ae2PlainPatternResolver";
+    private static final String PARSED_PATTERN_TYPE =
+            "com.moakiee.ae2lt.overload.runtime.pattern.ParsedPatternDefinition";
+    private static final String ENCODED_PATTERN_TYPE =
+            "com.moakiee.ae2lt.overload.runtime.model.EncodedOverloadPattern";
+    private static final String MATCH_MODE_TYPE = "com.moakiee.ae2lt.overload.runtime.model.MatchMode";
 
     /** AE2LT 的「过载样板编码器」（{@code item.ae2lt.overload_pattern_encoder}）。 */
     private static final ResourceLocation OVERLOAD_ENCODER =
@@ -107,6 +129,98 @@ public final class OverloadPatterns {
             return null;
         }
         return card;
+    }
+
+    /**
+     * 把输出栏那张样板按面板上的逐行设定编成过载样板；AE2LT 缺席、API 对不上、或这张样板它解不开时
+     * 返回 {@code null}（调用方会回一句提示）。
+     *
+     * <p>对应 AE2LT 自己那个 {@code OverloadPatternEncoderMenu.encodeResult()} 的三步：解析源样板 →
+     * 按逐槽 {@code MatchMode} 组装 {@code EncodedOverloadPattern} → 交给
+     * {@code PatternConversionService.createOverloadPatternStack} 落成物品。差别只有一处：它只让玩家改
+     * MatchMode（输入/输出哪一边由源样板固定），而本面板还让玩家逐行改「这一行算输入还是输出」，所以
+     * 这里不照搬它的 edit state，直接组装 encoded——槽号仍取源样板解析出的
+     * {@code slotIndex()}，放进哪一边听面板的。</p>
+     *
+     * @param sourcePattern        源样板（终端输出栏那一张，与摊行同源）
+     * @param rowIsOutput          每行是否算输出；行序与摊行一致（先是源样板的输入，再是它的输出）
+     * @param rowIgnoresComponents 每行是否忽略组件匹配（true → {@code MatchMode.ID_ONLY}）
+     * @param level                解析源样板要用（{@code Ae2PlainPatternResolver} 按它认配方）
+     */
+    @Nullable
+    public static ItemStack encode(
+            ItemStack sourcePattern,
+            boolean[] rowIsOutput,
+            boolean[] rowIgnoresComponents,
+            Level level) {
+        if (!ModList.get().isLoaded(MOD_ID) || sourcePattern.isEmpty() || rowIsOutput.length == 0) {
+            return null;
+        }
+        try {
+            return encodeReflectively(sourcePattern, rowIsOutput, rowIgnoresComponents, level);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            LOGGER.warn("Could not encode an overloaded pattern; AE2LT's API may have changed", e);
+            return null;
+        }
+    }
+
+    private static ItemStack encodeReflectively(
+            ItemStack sourcePattern,
+            boolean[] rowIsOutput,
+            boolean[] rowIgnoresComponents,
+            Level level) throws ReflectiveOperationException {
+        var overloadItemType = Class.forName(OVERLOAD_ITEM_TYPE);
+        // ModItems.OVERLOAD_PATTERN 是 DeferredItem，.get() 才是物品本身。
+        var deferred = Class.forName(MOD_ITEMS_TYPE).getField("OVERLOAD_PATTERN").get(null);
+        var overloadItem = deferred.getClass().getMethod("get").invoke(deferred);
+        if (!overloadItemType.isInstance(overloadItem)) {
+            LOGGER.warn("AE2LT's OVERLOAD_PATTERN is not an OverloadPatternItem; skipping");
+            return null;
+        }
+
+        // 解析源样板：用 AE2LT 自己的解析器，免得在这里重写一遍「哪张样板能当过载源」的判断。
+        var resolver = Class.forName(PLAIN_RESOLVER_TYPE).getConstructor(Level.class).newInstance(level);
+        var parsedType = Class.forName(PARSED_PATTERN_TYPE);
+        var parsed = resolver.getClass().getMethod("resolve", ItemStack.class).invoke(resolver, sourcePattern);
+        if (parsed == null) {
+            return null;
+        }
+        var inputs = (List<?>) parsedType.getMethod("inputs").invoke(parsed);
+        var outputs = (List<?>) parsedType.getMethod("outputs").invoke(parsed);
+
+        var matchModeType = Class.forName(MATCH_MODE_TYPE);
+        var matchModeValueOf = matchModeType.getMethod("valueOf", String.class);
+        var strict = matchModeValueOf.invoke(null, "STRICT");
+        var idOnly = matchModeValueOf.invoke(null, "ID_ONLY");
+
+        var encodedType = Class.forName(ENCODED_PATTERN_TYPE);
+        var builder = encodedType.getMethod("builder").invoke(null);
+        var builderType = builder.getClass();
+        var input = builderType.getMethod("input", int.class, matchModeType);
+        var output = builderType.getMethod("output", int.class, matchModeType);
+
+        // 行数与源样板解出的元素数必须相等：摊行时会跳过解不出物品的项，而这里纯按下标取，一旦两边
+        // 数目不同，行上的「输入/输出」与「忽略组件」就会套到别的槽上——静默错编，比不编更糟。
+        if (rowIsOutput.length != inputs.size() + outputs.size()) {
+            LOGGER.warn("Overload rows ({}) do not match the source pattern's {} inputs + {} outputs; "
+                    + "refusing to encode", rowIsOutput.length, inputs.size(), outputs.size());
+            return null;
+        }
+        int rows = rowIsOutput.length;
+        for (int row = 0; row < rows; row++) {
+            var element = row < inputs.size() ? inputs.get(row) : outputs.get(row - inputs.size());
+            var slotIndex = (int) element.getClass().getMethod("slotIndex").invoke(element);
+            var mode = rowIgnoresComponents[row] ? idOnly : strict;
+            (rowIsOutput[row] ? output : input).invoke(builder, slotIndex, mode);
+        }
+        var encoded = builderType.getMethod("build").invoke(builder);
+
+        var serviceType = Class.forName(CONVERSION_SERVICE_TYPE);
+        var service = serviceType.getConstructor().newInstance();
+        var stack = serviceType
+                .getMethod("createOverloadPatternStack", overloadItemType, parsedType, encodedType)
+                .invoke(service, overloadItem, parsed, encoded);
+        return stack instanceof ItemStack itemStack ? itemStack : null;
     }
 
     /**

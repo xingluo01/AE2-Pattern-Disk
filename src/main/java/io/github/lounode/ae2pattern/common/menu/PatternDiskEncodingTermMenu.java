@@ -530,7 +530,30 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
      */
     @Nullable
     private ItemStack encodeOverloadedPattern() {
-        return null;
+        // 源就是输出栏那张样板：摊行读的也是它（见 seedOverloadedRowsFromPattern），两边必须同源，
+        // 否则行的下标对上的是另一张样板的槽。
+        var source = this.encodedPatternSlot.getItem();
+        if (source.isEmpty() || !PatternDetailsHelper.isEncodedPattern(source)) {
+            return null;
+        }
+        int rows = overloadedRowCount();
+        if (rows <= 0) {
+            // 一行都没摊出来 = 进档时输出栏那张样板 AE2LT 解不开（那时它不会写下任何行）。
+            return null;
+        }
+        var isOutput = new boolean[rows];
+        var ignoresComponents = new boolean[rows];
+        for (int row = 0; row < rows; row++) {
+            isOutput[row] = overloadedRowIsOutput(row);
+            ignoresComponents[row] = overloadedRowIgnoresComponents(row);
+        }
+        return OverloadPatterns.encode(source, isOutput, ignoresComponents, getLevel());
+    }
+
+    /** 过载档已摊出的行数。两张表按行序记，项数就是行数（没进过档、或样板解不开时是 0）。 */
+    private int overloadedRowCount() {
+        var sides = this.overloadedSides;
+        return sides == null || sides.isEmpty() ? 0 : sides.split(",").length;
     }
 
     /** 四套编码的实现已搬去 {@link PatternEncodingLogic}，这里只留一个引用。 */
@@ -610,7 +633,8 @@ public class PatternDiskEncodingTermMenu extends MEStorageMenu implements IPatte
      * <p>只在本轮确实什么都没写时调：编码槽里停着写好的样板且找到了唯一目标时，样板会被顺位写进盘，
      * 那时再说「需要选目标」就与写盘回执自相矛盾了。</p>
      *
-     * <p>过载档也要说话：它现在的编码侧还没接上 AE2LT，不提示就成「点了完全没反应」。</p>
+     * <p>过载档也要说话：它的编码路径要 AE2LT 在场且那张样板它解得开，任一条不成立时就是这里提示。
+     * （AE2LT 缺席时这一档根本不会出现，所以这条提示实际上只在「样板解不开」与「没摊出行」时出现。）</p>
      */
     private void notifyExtraTierNeedsInput() {
         if (this.chiselingMode) {
