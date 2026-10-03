@@ -1,10 +1,10 @@
 # AE2 Pattern Disk
 
-An addon for [Applied Energistics 2](https://github.com/AppliedEnergistics/Applied-Energistics-2) that adds high-capacity pattern disks, a disk-backed pattern provider (block and cable-panel forms), a pattern transferer, an efficient parallel molecular assembler, a batch assembler and a pattern disk encoding terminal.
+An addon for [Applied Energistics 2](https://github.com/AppliedEnergistics/Applied-Energistics-2) that adds high-capacity pattern disks, a disk-backed pattern provider (block and cable-panel forms), a pattern transferer, an efficient parallel molecular assembler, a batch assembler, and a pattern disk encoding and management terminal.
 
 - **Loader / MC**: NeoForge 1.21.1
-- **NeoForge**: 21.1.241
-- **AE2**: 19.2.17
+- **NeoForge**: 21.1.241 up to 21.2.0
+- **AE2**: 19 or newer (built against 19.2.17)
 - **Java**: 21
 
 ## Features
@@ -20,7 +20,7 @@ Store encoded AE2 patterns in a single disk. A disk is untyped while empty; the 
 | 64k | 256 |
 | 256k | 1024 |
 
-A disk can also carry a **mark**, recording which machine or recipe type it belongs to. Marks show up in the disk list of the encoding terminal (hovering a disk adds a `Mark: ...` line, plus the raw mark ID with F3+H), never rename the disk itself, and are what that list filters on by default. See [ME Pattern Disk Encoding Terminal](#me-pattern-disk-encoding-terminal).
+A disk can also carry a **mark**, recording which machine or recipe type it belongs to. Marks show up in the disk list of the encoding terminal (hovering a disk adds a `Mark: ...` line, plus the raw mark ID with F3+H), never rename the disk itself, and can be searched for with a `#` prefix in the disk list. See [ME Pattern Disk Encoding Terminal](#me-pattern-disk-encoding-terminal).
 
 ### ME Pattern Disk Provider
 A pattern provider backed by physical pattern disks. Insert disks into its slots and it exposes their encoded patterns to the ME autocrafting system. It is a task source (it does not craft itself) and accepts returned products through its return inventory.
@@ -32,13 +32,13 @@ form keeps the same nine disk slots and the same return inventory, just in a thi
 With ExtendedAE Plus installed, its "upload pattern to a provider" button works here too: the provider has no pattern slots of its own, so the uploaded pattern lands in a free space on one of the disks it holds.
 
 ### ME Pattern Transferer
-Moves encoded patterns between AE2 blank patterns and pattern disks. Input slots accept encoded patterns or populated disks; destination slots hold the target disks. Blank patterns produced by extraction are returned to the connected ME network. Supports speed cards.
+Moves encoded patterns between AE2 blank patterns and pattern disks. It has two modes. **Store** extracts encoded patterns into pattern disks, and also moves patterns from one disk to another, emptying the source disk. **Copy** duplicates a populated disk onto another one and leaves the source alone. Input slots accept encoded patterns or populated disks; destination slots hold the target disks. Blank patterns produced by extraction are returned to the connected ME network. Supports speed cards.
 
 ### ME Pattern Disk Encoding Terminal
 
 A panel that mounts on an ME cable and ties pattern encoding to pattern disks. It scans the whole ME network for pattern disks; pick one and you can write the pattern you just encoded onto it, or review and tidy the patterns it already holds.
 
-**Encoding modes.** Crafting, processing, smithing and stonecutting views, cycled with the mode button; switching swaps the recipe grid, the output area and the tools on offer. Processing mode adds secondary-output rotation, multiply/divide (click ×2, Shift ×3, Ctrl ×5, Alt ×10 — divide does nothing unless inputs and outputs both divide evenly) and same-item merging. Stonecutting shows twelve candidates at a time over three rows, with a scrollbar when there are more.
+**Encoding modes.** The mode button opens a drop-down list of tiers rather than cycling through them. Crafting, processing, smithing and stonecutting are always listed; the encoding terminal adds advanced encoding (with AdvancedAE installed and its encoder in the upgrade slot), chiseling (with Rechiseled: Applied Energistics) and overloaded encoding (with AE2 Lightning Tech and its overloaded pattern encoder installed). Clicking a tier swaps the recipe grid, the output area and the tools on offer. Processing mode adds secondary-output rotation, multiply/divide (click ×2, Shift ×3, Ctrl ×5, Alt ×10 — divide does nothing unless inputs and outputs both divide evenly) and same-item merging. Stonecutting shows twelve candidates at a time over three rows, with a scrollbar when there are more.
 
 **Blank patterns** come from the ME network: the slot is a read-only mirror of how many the network holds, and the terminal says so when there are none, so there is no need to place a blank pattern by hand.
 
@@ -58,7 +58,9 @@ an item instead, drag it over the slot or import a recipe with `+`. Clearing a
 filter and then pressing Encode drops a pattern that was never written back to a blank pattern rather than
 losing it.
 
-**Write feedback.** Every write reports back in chat: which disk the pattern went to, or why it was refused — the disk is full, locked to another pattern type, already holds a recipe with the same output, the pattern's type cannot be resolved, or the target is no longer listed. When the search bar narrows the list to exactly one disk, pressing Encode writes the pattern straight to it rather than leaving it in the encoded slot.
+**Where a write lands.** Disks in the same group are ordered by remaining space, and Encode writes to the one with the most room left; a large disk keeps being picked until it stops being the emptiest, then the next one gets its turn. What counts as the same group is what the disk's mark says: a disk belongs to the group of the mark it carries (a mark that cannot be resolved, such as text you typed in yourself, does not count and the disk falls back to its type lock), unmarked disks are grouped by the pattern type they are locked to, and an empty disk belongs to no group and is never written automatically. If the disk with the most room cannot take the pattern, the next one in that order is tried. The search bar only narrows which disks are in the list, never which one wins. To fill disks in list order instead, end the search text with `@order` (or `@顺位`), for example `#crafting @order`; to write to one specific disk, click it.
+
+**Write feedback.** Every write reports back in chat: which disk the pattern went to, or why it was refused — the disk is full, locked to another pattern type, already holds a recipe with the same output, the pattern's type cannot be resolved, or the target is no longer listed. When the list is narrowed to a single disk that belongs to the group being encoded, pressing Encode writes the pattern straight to it rather than leaving it in the encoded slot.
 
 **NEO ECO integration.** With NEO ECO AE Extension installed, an upload button appears that sends the encoded pattern to its computation cluster and returns a blank pattern in the order network → inventory → encoded slot.
 
@@ -69,6 +71,10 @@ that slot without returning a blank pattern, exactly as in AE2's own terminal. E
 (Shift + Encode, and pushing straight to an assembler matrix after encoding) hang off AE2's terminal classes, so they
 do not apply here — use the button. The slot and the terminal are handed over through a subclass that is only loaded
 when EAE+ is present, so an install without it loads neither the interfaces nor the button.
+
+### ME Pattern Disk Management Terminal
+
+The other half of the pair. It lists the disks held by every pattern disk provider on the network, grouped by host machine, so you can review and shuffle them without walking to each provider. Disks behave as they do in the encoding terminal: left click takes one onto the cursor, Shift + left click sends it to your inventory, right click selects it as the target the Encode button writes to (with a work block in hand it marks the disk instead), middle click renames it after the machine its mark stands for. A pattern disk on the cursor can be dropped into a provider's free disk slot, and Shift + left clicking one in your inventory sends it to the container of the selected disk. Empty disk slots can be folded into a single cell to keep the list short. The sort controls are the same ones the encoding terminal has, including the additional sort, and there is a search for what is inside the patterns rather than for disk names; with a Just Enough Characters install, Chinese disk names also match by pinyin or initials.
 
 ### Efficient Molecular Assembler
 A parallel molecular assembler with **eight independent execution threads**. It accepts crafting jobs pushed by AE2 pattern providers and runs them concurrently. Each thread owns a 3×3 molecular assembler grid, an output slot, and independent progress. Like AE2's own molecular assembler it takes **no channel**; it still draws power from the grid.
@@ -112,11 +118,14 @@ Up to **four AE2 Speed Cards** add worker threads (2 / 4 / 8 / 16): those thread
 | `ae2_pattern_disk:pattern_disk_256k` | 256k Pattern Disk | Item |
 | `ae2_pattern_disk:pattern_disk_encoding_terminal` | ME Pattern Disk Encoding Terminal | Item (part) |
 | `ae2_pattern_disk:pattern_disk_management_terminal` | ME Pattern Disk Management Terminal | Item (part) |
+| `ae2_pattern_disk:wireless_pattern_disk_encoding_terminal` | Wireless Pattern Disk Encoding Terminal | Item |
+| `ae2_pattern_disk:wireless_pattern_disk_management_terminal` | Wireless Pattern Disk Management Terminal | Item |
 | `ae2_pattern_disk:pattern_transferer` | ME Pattern Transferer | Block |
 | `ae2_pattern_disk:pattern_disk_provider` | ME Pattern Disk Provider | Block |
 | `ae2_pattern_disk:cable_pattern_disk_provider` | ME Pattern Disk Provider | Item (part) |
 | `ae2_pattern_disk:pattern_disk_assembler` | Efficient Molecular Assembler | Block |
 | `ae2_pattern_disk:batch_molecular_assembler` | Batch Assembler | Block |
+| `ae2_pattern_disk:meteorite_pattern_provider` | Meteorite Pattern Disk Provider | Block (only with AE2 Crystal Science) |
 
 All items are available in the dedicated creative tab **AE2 Pattern Disk**.
 
@@ -172,10 +181,25 @@ All items are available in the dedicated creative tab **AE2 Pattern Disk**.
   - Shapeless: `ae2:pattern_encoding_terminal` + `ae2_pattern_disk:pattern_disk_1k`
 - **Pattern Disk Management Terminal**
   - Shapeless: `ae2:pattern_access_terminal` + `ae2_pattern_disk:pattern_disk_1k`
+- **Wireless Pattern Disk Encoding / Management Terminal**
+  - Shaped, a single column of three:
+    ```text
+    A
+    B
+    C
+    ```
+    `A=ae2:wireless_receiver` `B=the matching panel terminal` (`ae2_pattern_disk:pattern_disk_encoding_terminal`
+    or `ae2_pattern_disk:pattern_disk_management_terminal`) `C=ae2:dense_energy_cell`. The two combine into
+    AE2WTLib's universal wireless terminal the usual way.
+- **Meteorite Pattern Disk Provider** (only when AE2 Crystal Science is installed)
+  - Shapeless: `ae2cs:meteorite_pattern_provider` + `ae2_pattern_disk:pattern_disk_16k`
+- **Clearing a disk's mark**
+  - Put a single pattern disk that is empty but carries a mark in a crafting grid on its own: the mark is
+    washed off. A disk that still holds patterns does not match.
 
 ## Guide
 
-The mod ships a GuideME guide (in `assets/ae2_pattern_disk/ae2guide/`) covering the pattern disks (all five tiers on one page), the pattern disk provider (block and panel forms), the pattern transferer, the efficient molecular assembler, the batch assembler, the pattern disk encoding terminal and the pattern disk management terminal. Of the six machine GUIs, the encoding and management terminals declare a `helpTopic` in their screen JSON, so those two link to their guide pages straight from the screen.
+The mod ships a GuideME guide (in `assets/ae2_pattern_disk/ae2guide/`) covering the pattern disks (all five tiers on one page), the pattern disk provider (block and panel forms), the pattern transferer, the efficient molecular assembler, the batch assembler, the pattern disk encoding terminal and the pattern disk management terminal. Of the six machine GUIs, the encoding and management terminals declare a `helpTopic` in their screen JSON, so those two link to their guide pages straight from the screen; three more screens cover the same help hook in code, and the encoding terminal does both, so the guide button is reachable from five of those six screens; the batch assembler GUI has no guide entry.
 
 The pattern disk page's type table uses the 35 images under `ae2_pattern_disk/ae2guide/assets/pattern_disk_types/`, cut from the 5x7 grid of the source render kept as `ae2_pattern_disk/ae2guide/assets/pattern_disk_types.png` (rows: untyped, crafting, processing, smithing, stonecutting, AdvancedAE's advanced processing, Rechiseled: Applied Energistics' chiseling; columns: 1k, 4k, 16k, 64k, 256k). Each cell is resized to 128x128, because GuideME draws inline images at a quarter of their size - these show as 32x32. Slice names follow the model and lang-key suffix, so `smithing` maps to `pattern_disk_type_smithing_table.png` and `adv_processing` to `pattern_disk_type_adv.png`.
 
@@ -183,10 +207,47 @@ Guide image references must not go up more directory levels than the page has, s
 
 ## Dependencies
 
-- `neoforge` (required)
-- `minecraft` (required)
-- `ae2` (required, `[19.0.0,)`)
-- `guideme` (provided at build; required for the guide pages)
+Declared in `neoforge.mods.toml`. Ranges are the load-time bounds; the version each one is compiled
+against can differ and is listed in `gradle/libs.versions.toml`.
+
+**Required**
+
+- `neoforge` — `[21.1.241,21.2.0)`
+- `minecraft` — `[1.21.1,1.22)`
+- `ae2` — `[19.0.0,)`
+- `guideme` — `*`; provided at build, required for the guide pages
+- `ae2wtlib` — `[19.5.0,)`; the two wireless terminals are built on its terminal API (item base class,
+  menu host, terminal registration)
+
+**Optional**
+
+- `jei` — `[19.52.0,20.0.0)`, client; recipe transfer, and the recipe categories disk marks read names from
+- `emi` — `[1.1.22,)`, client; supplies those category names when JEI is absent
+- `ae2jeiintegration` — `*`, client; this is the AE2↔JEI bridge that registers AE2's JEI recipe categories
+- `jade` — `[15.10.6,)`, client; the top-of-screen display integration
+- `polymorph` — `*`; pick which result to encode when one set of ingredients matches several recipes
+- `neoecoae` — `*`; its smart pattern bus takes these disks, and its upload button is installed here
+- `extendedae_plus` — `*`; its terminal upload contract is implemented here
+- `ae2cs` — `*`; with it installed, the self-assembling pattern disk provider is registered
+
+**Detected at runtime, not declared**
+
+These have code on our side but no dependency entry, because the integration stands down on its own
+when the classes are missing. Install them for extra disk types and encoding tiers; with none of them
+present, nothing about the mod changes.
+
+- AdvancedAE — advanced encoding, and face-by-face input delivery
+- Applied Flux — an induction card slot on the provider
+- AE2 Lightning Tech — overloaded encoding
+- Rechiseled: Applied Energistics — the chiseling disk type
+
+One more optional mod has no dependency entry either: Inventory Profiles Next. Left alone, its handling of
+menus it does not recognise would treat every slot in these terminals as sortable storage and move items
+out of them; registering the menus as inventory-only keeps its sorting off them, the same treatment AE2's
+own terminals get.
+
+(There is also a placeholder entry for Useless Mod's "omniversal" disk type: the type table and its icon
+are in place, but the encoding path is not, so that type cannot be written yet.)
 
 ## Building
 
@@ -211,10 +272,12 @@ optional implementations, so the dev runtime loads one viewer at a time. **JEI i
 EMI stays a compile-time dependency either way (`clientCompileOnly(libs.emi)`); only the runtime viewer
 switches, so the EMI path keeps compiling and shipping unchanged.
 
-JEI is declared as an optional dependency with range `[19.56.0,)`: the version both this mod and ExtendedAE
-Plus compile against. The transfer-listener hook the disk-mark lookup reads its recipe category from has
-been there since 19.52.0, but the floor stays at the compile baseline so that two mods in one pack cannot
-disagree. An older JEI next to this mod is refused at load instead of quietly losing marks.
+JEI is declared as an optional dependency with range `[19.52.0,20.0.0)`. The floor is 19.52.0, where the
+transfer-listener hook the disk-mark lookup reads its recipe category from first appeared, so a pack is
+free to sit anywhere from there up. The ceiling is the 19.x line itself: 20.0.0 targets another Minecraft
+version and replaces `RecipeType` with `IRecipeType`, which the mark lookup still uses. What this mod is
+compiled against is 19.56.0, which is a build-time choice and not a floor for players. An older JEI next
+to this mod is refused at load instead of quietly losing marks.
 
 Manual check list with JEI loaded and EMI absent:
 
@@ -236,8 +299,9 @@ from EMI's recipe categories instead.
 
 The source compiles against a locally built **Neo ECO AE Extension** jar, referenced from `libs/`.
 That jar is not tracked in git. To produce it, check out the fork carrying the integration hooks
-(branch `feature/pattern-disk-v21.1.2` of [xingluo01/NeoECOAEExtension](https://github.com/xingluo01/NeoECOAEExtension), upstream PR
-[DancingSnow0517/NeoECOAEExtension#100](https://github.com/DancingSnow0517/NeoECOAEExtension/pull/100)),
+(branch `feature/pattern-disk-v21.1.2-merge` of [xingluo01/NeoECOAEExtension](https://github.com/xingluo01/NeoECOAEExtension), upstream PRs
+[DancingSnow0517/NeoECOAEExtension#101](https://github.com/DancingSnow0517/NeoECOAEExtension/pull/101) and
+[DancingSnow0517/NeoECOAEExtension#108](https://github.com/DancingSnow0517/NeoECOAEExtension/pull/108)),
 build it, then copy the result in:
 
 ```bash
@@ -250,7 +314,7 @@ The jar carries the branch's version string unchanged, so it can read the same a
 take it from the branch above, not from the release channels.
 
 The FD Smart Pattern Bus integration (upload-to-ECO button, disk-aware insertion, pattern access
-terminal view, encoding-terminal disk list) needs the hooks added by that PR. Against a stock NEO ECO
+terminal view, encoding-terminal disk list) needs the hooks added by those PRs. Against a stock NEO ECO
 build the hooks are absent, the integration logs a warning and the rest of the mod behaves normally.
 
 ## License

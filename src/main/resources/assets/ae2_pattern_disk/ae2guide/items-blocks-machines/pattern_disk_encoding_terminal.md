@@ -45,7 +45,7 @@ Every write reports back in chat. Success names the disk written to; failure giv
 
 ### Writing as you encode
 
-With something in the search bar, pressing Encode tries the listed disks in order and writes onto the first one that accepts the pattern, saving the "encode, then click the disk" round trip. On success the encoded slot is cleared and the freed blank pattern is returned in the order network → inventory → encoded slot. An empty search bar writes nothing automatically and the pattern stays in the encoded slot; when no listed disk accepts it, chat reports the reason from the first disk that refused.
+Pressing Encode writes to the disk in the current group that has the most room left - the search bar only narrows which disks are in the list, it does not decide which one wins. (To fill disks in list order instead, end the search text with `@order`.) On success the encoded slot is cleared and the freed blank pattern is returned in the order network → inventory → encoded slot. When the list holds no disk of the current group, Encode writes nothing and the pattern stays in the encoded slot - that is a missing target, not a failure. If some disk did refuse it, chat reports the reason from the first disk that refused.
 
 ## Uploading to NEO ECO
 
