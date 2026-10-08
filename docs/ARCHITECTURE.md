@@ -28,29 +28,38 @@
 
 | 包 | 文件数 | 职责 |
 |---|---:|---|
+| （根包） | 3 | 模组入口 `AE2PatternDisk`、注册表 `AEPatternRegistries`、AECS 在场才注册的 `MeteoritePatternProviderRegistrations` |
 | `api` | 14 | **对外稳定面**。给"搬运磁盘"与"供应样板"的第三方模组用，包路径与签名改动等于破坏兼容 |
+| `common` | 1 | capability 注册入口 `AEPatternDiskCapabilities` |
 | `common/logic` | 14 | 纯逻辑。不依赖菜单、屏幕、网络，可在服务端线程之外读懂 |
 | `common/menu` | 15 | 菜单与其逻辑（编码逻辑、磁盘索引、标记规则、输出运算） |
-| `common/block/entity` | 8 | 方块实体 |
+| `common/menu/slot` | 2 | 终端里的两个特殊槽 |
 | `common/block` | 5 | 方块类 |
-| `common/part` | 3 | 线缆面板形态的部件 |
+| `common/block/entity` | 8 | 方块实体 |
+| `common/part` | 4 | 线缆面板形态的部件 |
 | `common/pattern` | 5 | 磁盘内容的数据结构、库存适配、容量档、内容版本快照 |
 | `common/item` | 2 | 磁盘物品与升级卡包装 |
-| `common/menu/slot` | 2 | 终端里的两个特殊槽 |
+| `common/recipe` | 1 | 洗掉磁盘标记的合成 `ClearDiskMarkRecipe`（见 README「Clearing a disk's mark」） |
 | `common/util` | 2 | NBT 与掉落物小工具 |
 | `network` | 7 | 数据包（客户端与服务端各半） |
-| `integration/…` | 15 | 邻居模组适配，一个包一个邻居 |
+| `integration/…` | 22 | 邻居模组适配，一个包一个邻居（10 个子包 + `package-info`） |
 | `config` | 1 | 模组配置 |
-| `client/gui` | 24 | 屏幕、面板、按钮、表格模型 |
+| `client`（客户端源集根） | 2 | 客户端入口 `AE2PatternDiskClient`、物品显示属性 `InitPatternDiskProperties` |
+| `client/gui` | 28 | 屏幕、面板、按钮、表格模型 |
 | `client/integration` | 23 | JEI / EMI / IPN / JECH 与各邻居的客户端侧适配 |
 | `client/sort` | 4 | 排序口径（数值序、阶层表、名字门槛） |
+| `client/render` | 1 | 高效分子装配室的 BEISR |
+| `mixin` | 1 | `KeySortersMixin`，在客户端源集，见 §7 |
+
+主源集 106 个 `.java`，客户端源集 59 个。
 
 ### 分层规矩
 
 - `api` 只放第三方会写的类型（接口、数据对象、门面）。它不反向依赖 `common/menu` 或屏幕。
-- `common/logic` 里放"能单独读懂、能单独测"的东西：`CellBuffer`、`SmoothReturnQueue`、`PatternPlanCache`、`BatchSynthesisEngine`、`ProductDelivery`、`TransfererOperations`、`AssemblerOutputResolver`、`DiskSlotVersions`。它们通过构造参数接 `Supplier` / `Runnable` / 回调，不持有方块实体。
+- `common/logic` 里放"能单独读懂、能单独讲清"的东西：`CellBuffer`、`SmoothReturnQueue`、`PatternPlanCache`、`BatchSynthesisEngine`、`ProductDelivery`、`TransfererOperations`、`AssemblerOutputResolver`、`DiskSlotVersions`。回调优先——构造参数接 `Supplier` / `Runnable`，不主动抓菜单服务。确实需要宿主时可以直接收 BE 类型（`TransfererOperations` 收 `PatternTransfererBlockEntity`，`PatternDiskProviderLogic` 收 MC `BlockEntity`），该不该留在 logic 按 §9 那三个"不"判，不按"认不认识 BE"判。**"能单独测"目前只是设计意图**：`src/test` 不存在，这一包一行测试都没有（见 §1 源集表）。
 - `common/menu` 里放"必须知道菜单服务"的东西。判据很简单：一段代码要不要用 `getPlayer()`、`sendClientAction`、`notify*`、`sendPacketToClient`？要，就留在菜单。
-- `integration/<邻居>` 只写那个邻居的适配。核心代码不得反向 import 它——目前唯一的例外是 `AEPatternRegistries` 引用两个无线终端的类，因为 NeoForge 的延迟注册必须在物品注册处拿到类型（见 §6）。
+- `integration/<邻居>` 只写那个邻居的适配，**邻居的类型不得漏进总是加载的类**（这才是红线，见 §6）。核心代码引用 `integration` 包自己写的门禁与契约类是允许的，现在是 7 个文件共 19 处 import：入口 `AE2PatternDisk`（5，五个软依赖门禁）、`AEPatternRegistries`（4，NeoForge 延迟注册必须在物品注册处拿到无线终端的类型 + EAE+ 契约）、`PatternDiskEncodingTermMenu`（6，高级/雕凿/过载/polymorph）、`PatternEncodingLogic`、`PatternDiskProviderLogic`、`PatternDiskProviderMenu`、`SelfAssemblingPatternDiskProviderLogic` 各 1。客户端侧 `client` 核心包对 `client/integration` 是 **0 处 import**，比主源集更严。
+- `common/menu` 与 `common/logic` 的归属按内容判、不按"能不能单独测"判：`DiskEncodingLogic`、`PatternEncodingLogic`、`DiskIndex`、`DiskMarkRules`、`ProcessingOutputMath` 都不碰菜单服务，看着像 logic，但它们读写的是菜单的 `@GuiSync` 项与宿主接口，留在 `common/menu` 是和协议同位置，不要搬。
 
 ---
 
@@ -103,13 +112,13 @@
 
 ### 3.1 ME 样板磁盘供应器
 
-方块 `common/block/PatternDiskProviderBlock.java` + 方块实体 `PatternDiskProviderBlockEntity` + 面板 `common/part/PatternDiskProviderPart.java`（422 行，本包最大的文件）。两形态共享一个宿主契约 `PatternDiskProviderHost` 与一份逻辑 `common/logic/PatternDiskProviderLogic.java`——出样板、收回产物那条路只写了一遍。
+方块 `common/block/PatternDiskProviderBlock.java` + 方块实体 `PatternDiskProviderBlockEntity` + 面板 `common/part/PatternDiskProviderPart.java`（416 行）。两形态共享一个宿主契约 `PatternDiskProviderHost` 与一份逻辑 `common/logic/PatternDiskProviderLogic.java`——出样板、收回产物那条路只写了一遍。
 
-**自装配变体**：`MeteoritePatternProviderBlockEntity` 配 `SelfAssemblingPatternDiskProviderLogic`（405 行），能在供应器内部直接做完的合成不往外推。它整套注册在 `MeteoritePatternProviderRegistrations.java` 里，条件是 AE2 Crystal Science 在场（软依赖入口 `integration/ae2cs/AecsSoftDep.java`）。
+**自装配变体**：`MeteoritePatternProviderBlockEntity` 配 `SelfAssemblingPatternDiskProviderLogic`（378 行），能在供应器内部直接做完的合成不往外推。它整套注册在 `MeteoritePatternProviderRegistrations.java` 里，条件是 AE2 Crystal Science 在场（软依赖入口 `integration/ae2cs/AecsSoftDep.java`）。面板形态 `common/part/MeteoritePatternProviderPart.java`（本包最大的文件）共用同一份宿主契约与逻辑，自己只多两件事：自装配产物的回送由服务端的世界 tick 事件驱动（部件没有方块实体那种每 tick 回调，而网格的 `IGridTickable` 服务槽归 AE2 的供应器逻辑），贴附面顶替「推入方向」里的方位参照。
 
 ### 3.2 样板转存器
 
-`PatternTransfererBlockEntity` 留了生命周期、库存与 NBT、模式与菜单入口；四种搬运（盘→盘移动、盘→盘复制、编码样板→盘、输入槽反查）都在 `common/logic/TransfererOperations.java`（310 行）。模式枚举在 `common/pattern/TransferMode.java`。
+`PatternTransfererBlockEntity` 留了生命周期、库存与 NBT、模式与菜单入口；四种搬运（盘→盘移动、盘→盘复制、编码样板→盘、输入槽反查）都在 `common/logic/TransfererOperations.java`（285 行）。模式枚举在 `common/pattern/TransferMode.java`。
 
 ### 3.3 高效分子装配室
 
@@ -117,11 +126,11 @@
 
 ### 3.4 批处理装配室
 
-全项目最复杂的一台。`common/block/entity/BatchAssemblerBlockEntity.java`（1329 行）是编排者，真正的重活拆在 `common/logic`：
+全项目最复杂的一台。`common/block/entity/BatchAssemblerBlockEntity.java`（1313 行）是编排者，真正的重活拆在 `common/logic`：
 
 | 类 | 干什么 |
 |---|---|
-| `BatchSynthesisEngine`（522 行） | 一条作业怎么兑现成产物：摊销块与单件慢路径 |
+| `BatchSynthesisEngine`（516 行） | 一条作业怎么兑现成产物：摊销块与单件慢路径 |
 | `BatchPatternAnalyser` | 分析新入队样板的线程池（速度卡定尺寸）与失败上报 |
 | `BatchRecipePool` | 九张盘上的样板汇总成一份对 CPU 可见的池子 |
 | `PatternPlan` / `PatternPlanCache` | 把样板解析成执行计划并缓存 |
@@ -134,7 +143,7 @@
 
 ### 3.5 编码终端与管理终端
 
-编码终端 = 菜单 `PatternDiskEncodingTermMenu`（~2300 行）+ 屏幕 `client/gui/PatternDiskEncodingTermScreen.java`（~1160 行）。菜单里塞了四套常规编码模式、磁盘列表协议、写盘/取盘、标记与命名。屏幕侧有 4 个常规档面板（`CraftingEncodingPanel` / `ProcessingEncodingPanel` / `SmithingTableEncodingPanel` / `StonecuttingEncodingPanel`）、磁盘列表面板 `DiskListPanel`，以及**三个额外档**（高级 `AdvancedEncodingPanel` / 雕凿 `ChiselingEncodingPanel` / 过载 `OverloadedEncodingPanel`）——额外档的图标、可用性、互斥与可见性由屏幕里一张注册表 `List<ExtraTier>` 统一派生，加档流程见 `ENCODING_MODES.md`。
+编码终端 = 菜单 `PatternDiskEncodingTermMenu`（2324 行）+ 屏幕 `client/gui/PatternDiskEncodingTermScreen.java`（1091 行）。菜单里塞了四套常规编码模式、磁盘列表协议、写盘/取盘、标记与命名。屏幕侧有 4 个常规档面板（`CraftingEncodingPanel` / `ProcessingEncodingPanel` / `SmithingTableEncodingPanel` / `StonecuttingEncodingPanel`）、磁盘列表面板 `DiskListPanel`，以及**三个额外档**（高级 `AdvancedEncodingPanel` / 雕凿 `ChiselingEncodingPanel` / 过载 `OverloadedEncodingPanel`）——额外档的图标、可用性、互斥与可见性由屏幕里一张注册表 `List<ExtraTier>` 统一派生，加档流程见 `ENCODING_MODES.md`。
 
 管理终端继承编码终端的两侧（菜单加 `PatternDiskManagementTermMenu`，屏幕加 `PatternDiskManagementTermScreen`），多出来的是"按机器分组的整表"：行模型 `DiskTableRowBuilder` / `DiskTableRowModel`，盘内样板的搜索与排序 `DiskPatternView`，粘贴过滤 `DiskEntryFilter`。
 
@@ -157,7 +166,7 @@
 
 取件要先欠后还：先向网络借一张空白样板，再动磁盘。借不到就拒绝取件（`api/BlankPatternSink`）。AE2 样板访问终端的"交换"协议会先清空行、再在放不下时把原样板写回，本模组把这套当成"取出 + 还原"处理。
 
-`api/PatternDiskRemoveInventory.java`（543 行）就是这层可写视图。它有一个已知限制：终端按住空格拖整片区域时，那条循环读到的每个行都是副本，于是会在不收费的情况下白送副本、还把被操作的那一行真的取出来——修它要换掉菜单里的那段循环，在此之前"一行一行取"是唯一划得来的路。
+`api/PatternDiskRemoveInventory.java`（530 行）就是这层可写视图。它有一个已知限制：终端按住空格拖整片区域时，那条循环读到的每个行都是副本，于是会在不收费的情况下白送副本、还把被操作的那一行真的取出来——修它要换掉菜单里的那段循环，在此之前"一行一行取"是唯一划得来的路。
 
 ### 4.3 磁盘清单同步
 
@@ -239,7 +248,7 @@ NEO ECO 的类型名与方法名集中在 `NeoECOTypes.java`，改版本时先�
 
 - AE2 / GuideME：在 `gradle/libs.versions.toml` 里声明，`compileOnly`（AE2 另加 `accessCompileOnly` 与 `clientCompileOnly`），运行时由整合包提供。
 - JEI / EMI：`clientCompileOnly`，只是编译期 API。AE2WTLib / Jade / Polymorph / IPN 经 maven 或 CurseForge 自动解析，不需要本地 jar。
-- NEO ECO：需要**带并行入口那个分支**的构建，放到 `libs/neoecoae-21.2.0-beta7.jar`。上游正式版到 1.21.1 线最新的 `21.2.0` 都没有本模组要的那半（见 `build.gradle` 那段注释）。
+- NEO ECO：`compileOnly` 与开发运行期都用 CurseForge 发布件 `curse.maven:neo-eco-ae-extension-1460639:9095600`（21.2.1，2026-10-08 发布，已带本模组要的那半——并行接收注册表与报告式上传）。不再需要本地 jar；`21.2.1` 同时是运行期 `Neo ECO Prototype` 声明的版本地板。
 - ExtendedAE Plus：需要 `libs/extendedae_plus-1.6.2-dev.jar`（用 `-PeaePlusJar=<路径>` 可换别的构建）。缺它时构建会回退到商店上的发布件，而那个版本与 JEI 19.56 不兼容、进世界会崩——做 EAE+ 相关的事之前先确认手上是本地 dev jar。
 - AECS：放到 `libs/ae2cs-1.21.1-1.3.0.jar`，只作运行时。
 
@@ -289,6 +298,6 @@ NEO ECO 的类型名与方法名集中在 `NeoECOTypes.java`，改版本时先�
 
 **加一个磁盘容量档**：`PatternDiskTier` → 物品注册 → lang 两份 → `../README.md` 的容量表 →（若档位参与排序）`client/sort/SortTiers` 的配置。
 
-**改终端布局**：`assets/ae2/screens/ae2_pattern_disk/*.json` 是唯一布局源，屏幕代码只按它给的位置摆放。
+**改终端布局**：`assets/ae2/screens/ae2_pattern_disk/*.json` 是唯一布局源，屏幕代码只按它给的位置摆放。能进文档的不止坐标：控件尺寸（`widgets.*` 的 width/height，面板的 `getBounds` 读它）、贴图切片（`images`，管理终端的表头带/六条行带/尾饰带/空槽格都在那里）、文字颜色（`palette`，`style.getColor(PaletteColor.X)`）都归文档。管理终端的行高、表头高、尾饰高与格距是从 `images` 切片的 srcRect 反推的，不再抄写常量——但同一份文档里 `terminalStyle` 的 header/row/bottom 与 `images` 的对应带高必须一致（前者算面板总高，后者反推行数）。控件在代码里必须按 id 注册（`widgets.add`）：文档有键而代码没注册，那块永远不出现；代码注册而文档没键，开屏即抛 `IllegalStateException`。
 
 **动 API**：`api/package-info.java` 写明这个包是稳定面。改签名等于破坏第三方兼容，改之前先在 `../CHANGELOG.md` 记一笔。

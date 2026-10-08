@@ -15,7 +15,6 @@ name: Release
 #             CURSEFORGE_TOKEN       https://www.curseforge.com/account/api-tokens 生成
 #   Variables MODRINTH_PROJECT_ID    Modrinth 项目 id 或 slug
 #             CURSEFORGE_PROJECT_ID  CurseForge 数字项目 id（不是 slug）
-#             NEOECOAE_JAR_URL       libs/neoecoae-21.2.0-beta7.jar 的下载地址（见下方说明）
 #             MODDEVMCP_JAR_URL     libs/moddevmcp-0.3.jar 的下载地址（同为本地专属依赖，见下方说明）
 #             EAEPLUS_JAR_URL       libs/extendedae_plus-1.6.2-dev.jar 的下载地址（缺它 fetch 步骤会硬失败，见下方说明）
 #
@@ -60,15 +59,10 @@ jobs:
         with:
           cache-provider: basic
 
-      # build.gradle 把 libs/neoecoae-<version>.jar 当作 compileOnly 依赖，而该 jar 不入 git（第三方
-      # 构建产物，见 README）。把 fork（xingluo01/NeoECOAEExtension，分支
-      # feature/pattern-disk-v21.1.2-merge）构建出的 jar 传到一个 release asset / 可直链，再把地址填进
-      # 仓库变量 NEOECOAE_JAR_URL。
-      # 必须用这个分支的构建：官方发布（截至 1.21.1 线最新的 21.2.0）都没有 ECOParallelCraftingProviders，
-      # batch assembler 的注册会因缺类编不过。fork 构建的模组版本号显示 21.2.0（分支基于上游 21.2.0
-      # 基线），这里沿用旧文件名只为与 build.gradle 对齐，不要据名判断内容。jar 最近一次重建于
-      # 2026-10-02（分支提交 f447d0ae），哈希已同步。
-      # 第二个 jar（ModDevMCP 0.3）同样未发布到公共 maven，由变量 MODDEVMCP_JAR_URL 提供，
+      # NEO ECO 已不需要这一步：2026-10-08 起 build.gradle 直接用 CurseForge 发布件
+      # （curse.maven:neo-eco-ae-extension-1460639:9095600，21.2.1）——那个发布版已带本模组所需的接口。
+      # 剩下两个无公共 maven 的本地件仍由变量提供：
+      # 第二个 jar（ModDevMCP 0.3）未发布到公共 maven，由变量 MODDEVMCP_JAR_URL 提供，
       # 对应 build.gradle 里的 compileOnly files('libs/moddevmcp-0.3.jar')（那份 0.3 jar 只上编译类路径，
       # 开发运行期的工具来自 dev.vfyjxf:moddevmcp，src 里不引用它）。
       # 第三个 jar（ExtendedAE Plus 的本地构建，含其终端兼容层接口 IPatternUploadMenu /
@@ -78,15 +72,10 @@ jobs:
       # 版本号变化时这里的文件名要跟 build.gradle 一起改。
       - name: Fetch local-only dependency jars
         env:
-          JAR_URL: ${{ vars.NEOECOAE_JAR_URL }}
           MCP_JAR_URL: ${{ vars.MODDEVMCP_JAR_URL }}
           EAEPLUS_JAR_URL: ${{ vars.EAEPLUS_JAR_URL }}
         run: |
           set -euo pipefail
-          if [ -z "${JAR_URL}" ]; then
-            echo "::error title=缺少仓库变量::NEOECOAE_JAR_URL 未设置，compileOnly 依赖无法解析，构建必然失败。"
-            exit 1
-          fi
           if [ -z "${MCP_JAR_URL}" ]; then
             echo "::error title=缺少仓库变量::MODDEVMCP_JAR_URL 未设置，compileClasspath 上的 moddevmcp 无法解析，构建必然失败。"
             exit 1
@@ -96,12 +85,10 @@ jobs:
             exit 1
           fi
           mkdir -p libs
-          curl -fL --retry 3 --retry-delay 5 -o libs/neoecoae-21.2.0-beta7.jar "$JAR_URL"
           curl -fL --retry 3 --retry-delay 5 -o libs/moddevmcp-0.3.jar "$MCP_JAR_URL"
           curl -fL --retry 3 --retry-delay 5 -o libs/extendedae_plus-1.6.2-dev.jar "$EAEPLUS_JAR_URL"
           # 校验下载内容：Gradle 对 files() 里不存在的文件是静默跳过，靠这里把“下错文件”挡在构建前。
           # 若日后替换 deps-v1 上的同名 jar，必须同步更新下面三条哈希。
-          echo "e52a217dc59c87b54a4b4241fa8ce6c333f56f3eff802013db08a8bfdc5b9a75  libs/neoecoae-21.2.0-beta7.jar" | sha256sum -c -
           echo "ce22ff7266a8462e1ae7062d17df1fdbdd06bdf29e5501c2f6d6ded6daf33789  libs/moddevmcp-0.3.jar" | sha256sum -c -
           echo "f789723bde98d709885501184f5335ae06a84a9ad6ad5a4c51366eabb3a2fcd1  libs/extendedae_plus-1.6.2-dev.jar" | sha256sum -c -
           ls -l libs

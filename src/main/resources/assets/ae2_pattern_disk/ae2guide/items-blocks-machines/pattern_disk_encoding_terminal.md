@@ -20,6 +20,8 @@ The ME Pattern Disk Encoding Terminal adds pattern disk support to the <ItemLink
 - Blank patterns do not go into the slot: that slot only shows how many blank patterns the ME network holds, encoding takes one straight from the network, and it says so when there are none.
 - Processing mode has three further tools - multiply, divide and merge same items - for scaling a recipe's multiplier or merging input slots that hold the same item. The buttons' tooltips give the multipliers.
 
+Three more modes (advanced, chiseling, overloaded) appear once the matching encoder from another mod sits in an upgrade slot, and **dropping an encoded pattern into the output slot switches the terminal to that pattern's mode** - overloaded lays out each row's items with its input and output, advanced reads each slot's face back, chiseling works out what is being chiseled into what. Taking the pattern away does not switch back.
+
 The terminal scans the whole ME network for pattern disks; pick one and the pattern can be written onto it, or the patterns it holds reviewed and tidied.
 
 ## Disk list
@@ -45,7 +47,9 @@ Every write reports back in chat. Success names the disk written to; failure giv
 
 ### Writing as you encode
 
-Pressing Encode writes to the disk in the current group that has the most room left - the search bar only narrows which disks are in the list, it does not decide which one wins. (To fill disks in list order instead, end the search text with `@order`.) On success the encoded slot is cleared and the freed blank pattern is returned in the order network → inventory → encoded slot. When the list holds no disk of the current group, Encode writes nothing and the pattern stays in the encoded slot - that is a missing target, not a failure. If some disk did refuse it, chat reports the reason from the first disk that refused.
+Pressing Encode writes to the disk in the current group that has the most room left. The search bar decides which disks are candidates at all - a disk it filters out is never written to - and Encode picks within that set. (To fill disks in list order instead, end the search text with `@order`.) On success the encoded slot is cleared and the freed blank pattern is returned in the order network → inventory → encoded slot. When the list holds no disk of the current group, Encode writes nothing and the pattern stays in the encoded slot - that is a missing target, not a failure. If some disk did refuse it, chat reports the reason from the first disk that refused.
+
+The "current group" is the pattern kind your mode produces. A disk belongs to it either through its mark or through the type it was locked to when its first pattern was written, so a disk marked "crafting" and one locked to the crafting type are one group. An empty disk - no mark, no lock - belongs to no group and is never written to automatically, and when no disk is in the group, Encode writes nothing and says nothing.
 
 ## Uploading to NEO ECO
 

@@ -23,7 +23,7 @@ logs/
 *.bak
 
 # Local development dependency jars.
-# libs/ holds the dev jars build.gradle reaches for (NEO ECO, AECS, ModDevMCP). Each one is a build
+# libs/ holds the dev jars build.gradle reaches for (AECS, ModDevMCP, EAE+). Each one is a build
 # artifact of its own repository, copied in by hand; the comments beside each dependency say which.
 libs/*.jar
 
@@ -40,3 +40,6 @@ plans/
 
 # 给视频创作者的兼容清单：只作交付件发出，不入库
 /docs/COMPATIBILITY.md
+
+# 本地工具（Qoder 仓库知识库快照），不入库
+.qoder/

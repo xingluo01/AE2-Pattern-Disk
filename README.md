@@ -4,7 +4,7 @@ An addon for [Applied Energistics 2](https://github.com/AppliedEnergistics/Appli
 
 - **Loader / MC**: NeoForge 1.21.1
 - **NeoForge**: 21.1.241 up to 21.2.0
-- **AE2**: 19 or newer (built against 19.2.17)
+- **AE2**: 19 or newer (built against 19.2.18)
 - **Java**: 21
 
 ## Features
@@ -126,6 +126,7 @@ Up to **four AE2 Speed Cards** add worker threads (2 / 4 / 8 / 16): those thread
 | `ae2_pattern_disk:pattern_disk_assembler` | Efficient Molecular Assembler | Block |
 | `ae2_pattern_disk:batch_molecular_assembler` | Batch Assembler | Block |
 | `ae2_pattern_disk:meteorite_pattern_provider` | Meteorite Pattern Disk Provider | Block (only with AE2 Crystal Science) |
+| `ae2_pattern_disk:cable_meteorite_pattern_provider` | Meteorite Pattern Disk Provider | Item (part, only with AE2 Crystal Science) |
 
 All items are available in the dedicated creative tab **AE2 Pattern Disk**.
 
@@ -193,6 +194,8 @@ All items are available in the dedicated creative tab **AE2 Pattern Disk**.
     AE2WTLib's universal wireless terminal the usual way.
 - **Meteorite Pattern Disk Provider** (only when AE2 Crystal Science is installed)
   - Shapeless: `ae2cs:meteorite_pattern_provider` + `ae2_pattern_disk:pattern_disk_16k`
+  - Panel form (`ae2_pattern_disk:cable_meteorite_pattern_provider`): shapeless 1:1 conversion with the
+    block form in both directions, no extra material
 - **Clearing a disk's mark**
   - Put a single pattern disk that is empty but carries a mark in a crafting grid on its own: the mark is
     washed off. A disk that still holds patterns does not match.
@@ -297,25 +300,21 @@ from EMI's recipe categories instead.
 
 ### Development dependency: Neo ECO AE Extension
 
-The source compiles against a locally built **Neo ECO AE Extension** jar, referenced from `libs/`.
-That jar is not tracked in git. To produce it, check out the fork carrying the integration hooks
-(branch `feature/pattern-disk-v21.1.2-merge` of [xingluo01/NeoECOAEExtension](https://github.com/xingluo01/NeoECOAEExtension), upstream PRs
-[DancingSnow0517/NeoECOAEExtension#101](https://github.com/DancingSnow0517/NeoECOAEExtension/pull/101) and
-[DancingSnow0517/NeoECOAEExtension#108](https://github.com/DancingSnow0517/NeoECOAEExtension/pull/108)),
-build it, then copy the result in:
+The source compiles against **Neo ECO AE Extension 21.2.1** from CurseForge - no local jar is needed:
 
-```bash
-cd ../NeoECOAEExtension
-./gradlew build -x test
-cp build/libs/neoecoae-21.2.0-beta7.jar ../AE2-Pattern-Disk/libs/
+```groovy
+compileOnly 'curse.maven:neo-eco-ae-extension-1460639:9095600'
 ```
 
-The jar carries the branch's version string unchanged, so it can read the same as an official release;
-take it from the branch above, not from the release channels.
+That release (2026-10-08) is the first on CurseForge to carry the parts this mod hooks into: the
+parallel-intake registry the batch assembler registers against, and the reporting upload. Its changelog
+names **AE2 Pattern Disk 0.7.1** as a floor. `21.2.1` is also the floor declared by **Neo ECO Prototype**,
+the L1 add-on loaded at runtime.
 
 The FD Smart Pattern Bus integration (upload-to-ECO button, disk-aware insertion, pattern access
-terminal view, encoding-terminal disk list) needs the hooks added by those PRs. Against a stock NEO ECO
-build the hooks are absent, the integration logs a warning and the rest of the mod behaves normally.
+terminal view, encoding-terminal disk list) needs the hooks that arrived in NEO ECO 21.2.1, and the mod
+declares that as a dependency floor: an older NEO ECO is refused at load time with a message naming the
+required range, rather than starting with a few features quietly missing.
 
 ## License
 
@@ -427,7 +426,15 @@ JSON files referencing `ae2:*` parents (`display_base`, `display_off`, `cable_in
 works of AE2's model files as well. `models/part/pattern_disk_provider_base.json` copies the panel
 geometry of AE2's `part/pattern_provider_base` (by Sea_Kerman), and
 `models/item/cable_pattern_disk_provider.json` inherits `ae2:item/cable_interface` - both listed here for
-the same reason.
+the same reason. Their two counterparts for the self-assembling provider's panel form are
+`models/part/meteorite_pattern_provider_base.json` (the panel model supplied by the texture artist) and
+`models/item/cable_meteorite_pattern_provider.json` (its listing icon). Both inherit AE2 parents for their
+geometry (`ae2:part/pattern_provider_base` and `ae2:item/cable_interface`), and both point their faces at
+AE2 Crystal Science's own textures (`ae2cs:block/meteorite_pattern_provider/base` and `.../back`). That is
+deliberate rather than a leftover: this device only exists while AE2 Crystal Science is installed, so its
+two forms are meant to look like that mod's block. The one face this mod still supplies itself is the panel
+model's `front`, `textures/block/meteorite_pattern_provider.png` (used together with the local
+`..._alternate*.png` by the block form's models).
 
 ### Third-Party Code
 

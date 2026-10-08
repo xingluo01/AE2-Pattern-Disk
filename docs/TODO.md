@@ -99,15 +99,30 @@
 - 本项目策略：批处理装配室**不要**用该方法判组件；需要时直接用 `!stack.getComponents().isEmpty()`。
 - 待办：整理最小复现（带组件输入 + 可替换配方）后报 AE2 上游。
 
-### I. 万象构序（OmniSequence）批量发配适配 — P3 ⏸（2026-09 记录，可行性已确认，暂不实施）
+### I. 万象构序（OmniSequence）批量发配适配 — P3 ✅（2026-09 记录，2026-10-09 实施完毕，待实机）
 
 - **背景**：万象构序（`molecularmanipulator`）自 1.3.9 起提供 `Omni Batch Provider API v1`（运行时 ABI 1，包 `com.atir.molecularmanipulator.api.crafting`）。它让 CPU 一次分配多份**完整**配方，而非每份推一次——正是批处理装配室已有的能力形态。
-- **契约**：两阶段握手。`prepareOmniBatch(OmniBatchProbe)` 返回 `OmniBatchAdmission`（`maxCrafts()` < 2 视为不参与，也可直接返回 `null`）；随后 `commit(OmniBatchDelivery)` 必须**同步**调 `accept(Receipt)` 或 `reject(Rejection)` 之一。硬约束：`accept` 前整批材料必须已在持久目标内；禁止部分接收；`commit` 收到的是整批总量，**不得用 `probe × craftCount` 校验交付**（AE2 替代输入会改变 key 或比例）；拒绝需分因——`CAPACITY_CHANGED` 只压当前 tick、下 tick 可重试，其余原因会让该供应器/样板在当前作业内退回单份。
-- **本机已具备（六项对上）**：机器已是 `ICraftingProvider`（`:98`）；`acceptPatternBatch` 全有或全无（`:772`）；材料进的是存储元件，内容随物品落盘（`:445`）；`inputTotal` 直接缓冲、不做乘法校验（`:761` 注释）；全库无 CPU Mixin（`CraftingCpuLogic` 零引用，且 Omni 自己 mixin 该 CPU，不冲突）；只收物品 key、含流体的样板在发配前拒绝。
-- **障碍**：Omni 用 `instanceof OmniBatchCraftingProvider` 在 AE2 交出的 provider 实例上做类型判断（`CraftingCpuLogicMixin:1204`），**没有 provider 注册表** → 本项目 NeoECO 那种 adapter 包装（`BatchAssemblerParallelIntake`）在此不适用，机器类必须自己实现接口 ⇒ 只能走**条件 mixin**（上游文档亦如此建议；NeoECO 那条路径的注释记明团队是有意去掉 mixin 的，此处属接口形态所迫）。
-- **改动面**：① 条件 mixin 注入接口 + `MixinConfigPlugin` 按 `molecularmanipulator` 加载状态放行；② `availableParallelSlots()` 现读机器内部 `currentDispatchPattern()`（空机器首次发配返回 0，只能靠先吃一次单份把 `lastHandedPattern` 填上才进入批量轨道），需加 `availableParallelSlotsFor(IPatternDetails)` 重载改用 probe 传入的样板、原生方法转调它（**顺带修 NeoECO 路径的首发迟滞**）；③ `commit` 里区分 `CAPACITY_CHANGED` 与其他拒绝（`acceptPatternBatch` 只返回 boolean，需先探容量再定性）；④ `build.gradle` 加 `compileOnly` + `neoforge.mods.toml` 声明 `optional`/`AFTER`。
-- **待评估**：实现 `OmniPostAccountingOutputProvider`——本机产物走持久平滑回传队列（延迟交付，`:2103`），正对上游所述「`waitingFor` 窗口填满导致停顿」场景；该项**自带注册表**（`OmniPostAccountingOutputAdapterRegistry`），无需 mixin。
-- **参考来源**：`AyaYumi/OmniSequence-Transfinite` 分支 `1.21.1-neoforge`，文档 `docs/omni-batch-provider-api.md`（16K，含中文版）；本机曾克隆到 `~/.pi/tmp/omniseq-t`（临时目录，勿依赖）。
+- **【2026-10-09 更新】上游已补上适配器注册表，条件 mixin 那条路作废**：本模组曾向 `AyaYumi/OmniSequence-Transfinite` 提 issue #4（“批量契约没有适配器注册表，迫使可选集成走条件 mixin”，指 `CraftingCpuLogicMixin:1204` 的 `instanceof`）。维护者回复 **2.0.7 completes this API**，新增 `OmniBatchProviderAdapterRegistry`（带按样板的重载与 provider-only 便捷重载，`unregister`/`revision`，**无匹配则回落原生 `instanceof`**）。所以不再需要 mixin，也不需要把接口注入机器类。
+- **本次落地的形状**：
+  - 新增 `integration/omnisequence/`：`OmniSequenceSoftDep`（`ModList` 判定 + 缓存）、`OmniSequenceIntegration`（向两个注册表登记）、`OmniBatchAdapter`（`OmniBatchCraftingProvider` 的薄实现，全转调机器）。`BatchAssemblerBlockEntity` **不引用上游任何类型**，缺席时这三个类不会被加载。
+  - `AE2PatternDisk` 构造期：`if (OmniSequenceSoftDep.isLoaded()) OmniSequenceIntegration.register();`（与 `AecsSoftDep` 同一时机口径）。
+  - `BatchAssemblerBlockEntity` 新增 `availableParallelSlotsFor(IPatternDetails)`（按 probe 传入的样板估容），原 `availableParallelSlotsLong()` 转调它并**保持原有语义**（取 `currentDispatchPattern()`，空机器仍为 0）。
+    ⚠️ **NeoECO 路径的首发迟滞并没有修**：`BatchAssemblerParallelIntake` 仍调无参的 `availableParallelSlots()`，而那条接口不传样板、只能拿机器自己的猜测，所以空机器首次发配照旧报 0。要改善它得让上游契约带上样板（或另找时机把 `lastHandedPattern` 填上）——本轮没动，别按「已修」记账。
+  - 新增 `flushReturnsAfterCpuAccounting()`：登记进 `OmniPostAccountingOutputAdapterRegistry`，记账后把平滑回传队列里**已拥有**的产物补送一次（不重跑任何配方；只交出网络实际接收的量，收不下的仍留在队列里）。额度是「按累计总量算、按调用次数消耗」，所以本 tick 收了几批就会被补送几次，最多把当次额度提前花完。
+  - `build.gradle`：`compileOnly` + `localRuntime` 均换 `omnisequence-transfinite-1624558:**9043224**`（2.0.7）；`neoforge.mods.toml` 新增 `molecularmanipulator` 的 `optional`/`AFTER`/`side=BOTH`/`versionRange="*"`（与 jade 同口径，不自设区间）。
+  - **不覆写 `isBusy()`**（最初写过一版，自查后删）：上游明说 CPU 只对解析出的能力对象调 `prepareOmniBatch`，而 `isBusy()` 正是 AE2 决定「还要不要给这台机器派单份活」的判据——一旦按「这块样板凑不满两份」答忙，单份派发会一起停掉。
+- **依赖联动（升 2.0.7 的必要代价）**：2.0.7 把 `appliedenhancements` 地板从 `[1.0.9,)` 抬到 **`[1.1.0,)`**，所以 `applied-enhancements-1665696:**9043227**`（1.1.0）必须同批升——只升 omnisequence 会在预加载阶段被 FML 拦住（实测：`Mod molecularmanipulator requires appliedenhancements 1.1.0 or above`）。
+- **已验证**：`compileJava`/`compileClientJava` 通过；`runServer` 到 `Done`、无非环境噪声 ERROR，且启动日志出现 `[AE2-Pattern-Disk] Batch assembler registered for OmniSequence batch delivery`（证明注册表路径真的跑到了）。
+- **待实机确认**：① 带万象构序 CPU 的大订单是否真的走整批交付（看 CPU `waitingFor` 是否不再堆、单 tick 是否不再无预算）；② backpressure 已定取 `RECHECK_NEXT_TICK`（理由见下一条）——实机看「同一样板每 tick 只吃一批」是否成为吞吐瓶颈，若成了，正解是给 `parallelSlots.invalidate()` 补一个「缓冲写入即失效」的调用点，让同 tick 重问拿到真值；③ 记账后补送是否真的解掉「产物在队列里、CPU 已把等待量算成已送达」的停顿；④ 与 NEO ECO 同时装时两条批量路径不互斥（两套独立钩子，预期不冲）。
+- **两处按上游契约收紧的决定（审查后）**：
+  - **所有权报 `PERSISTED_PROVIDER_QUEUE`**，不是 `TRANSFERRED_TO_DURABLE_TARGET`：材料进的是**本机自己的**元件缓冲（随本机的元件物品落盘），契约原文的第二支（`persisted its own queue`）正是这种情形；第一支留给「交给外部持久目标」那种。
+  - **backpressure 报 `RECHECK_NEXT_TICK`**，不是 `MAY_ACCEPT_MORE`：本机容量估算按（样板, 游戏刻）记忆，而插材料**不会**触发 `parallelSlots.invalidate()`（全仓唯一调用点在配方池重建），所以同一 tick 对同一样板再问会读回插入前的数字、随后的 commit 必然投不进去（不会超卖，但白试一次、reject 原因也失真）。上游自家机器接受一批后也是 block 当前 tick。
+- **保留的契约要点**（写适配器时踩过的，实现已按此写）：`prepareOmniBatch` 只能只读或做**可回滚**的预留；`admission` 用后即弃、由 Omni 总是 `close`；`maxCrafts() < 2` 视为不参与（也可返回 `null`）；`commit` 同步且**只能** `accept`/`reject` 二选一，`accept` 前整批材料必须已在持久目标内，禁止部分接收；**不得用 `probe × craftCount` 校验交付**（AE2 替代输入会改变 key 或比例，`OmniBatchRequest.inputs` 才是权威）；`CAPACITY_CHANGED` 只压当前 tick、下 tick 可重试，其余原因会让该供应器/样板在当前作业内退回单份；`accept` 之后抛异常仍算已接收（防 CPU 重复注入）。
+- **向上游回报时值得问的两句**：① `Ownership` 那两个值是否只作遥测？若「进了自己的存储元件」在他们看来也算 durable target，我们可以改回第一支；② 同一 tick 是否可能并发持有两个 admission（艾琳未逐行核 62 KB 的 `MolecularBatchCraftingExtractor`——那才是真正消费 `Receipt`/`Rejection` 的地方；即便会并发，本机的失败形态只是「第二次 commit 被拒 + 本 tick 被抑制」，全有或全无 + 回滚保证不超卖）。
+- **已向上游回报（2026-10-09）**：[issue #4 comment](https://github.com/AyaYumi/OmniSequence-Transfinite/issues/4#issuecomment-6067840971)，内容：已实现且无需 mixin，并请他们判两件事——① `Ownership` 那个值是否只作遥测（如果「进自己的存储元件」也算 durable target，我们就改回第一支）；② 同一 tick 能否并发持有两个 admission（我们未能从 62 KB 的 `MolecularBatchCraftingExtractor` 确认）。另告知 2.0.7 抬 `appliedenhancements` 地板是本次唯一迁移代价。issue 保持 OPEN，等他们回。
+- **参考来源**：`AyaYumi/OmniSequence-Transfinite` 分支 `1.21.1-neoforge`（2026-10-09 时 `9e9e0ee`，`mod_version=2.0.8`），文档 `docs/omni-batch-provider-api.md`；本机克隆在 `~/.pi/tmp/omniseq-t`（**临时目录，勿依赖**）。
+  ⚠️ **`git fetch` 不改工作区**：2026-10-09 核对时它停在 `bd72375`（2.0.5-fix 树）而远端已到 `9e9e0ee`——要么先 `git checkout 1.21.1-neoforge`，要么用 `git show origin/1.21.1-neoforge:<路径>` 读；直接读工作区会得出「注册表不存在」这类错误结论（本轮真踩过）。
+
 
 ### J. 极大数（远超 2.1G）兼容性优化线路 — P2 ⏸（2026-09 记录，已审计待实施）
 
@@ -238,8 +253,38 @@ P0 不应新造范式，同文件里已有两处“每 tick 限量”的先例�
   · 别忘了 `PatternDiskMarks` 直接引用 `DiskMarkRules` 的常量，别再抄一份字面量。
 - **⚠ 审查提示**：这是**已记录项**，不是新发现的缺陷。后续审查/代码检阅时不要再把它当 bug 报一遍。
 
+### N. 上游 API 请求（ECO / ECO Prototype）— P3 ⬜（2026-10 记录）
+
+- **由来**：元件管理终端要认出 ECO 本体与青春版的「元件座 / 存储主机」，而这两家都进不了编译面（青春版是纯运行时可选；本体虽 compileOnly，但可依赖面只有 `cn.dancingsnow.neoecoae.api`，驱动器与存储主机那一层不在其中）。于是 `common/menu/CellDriveScanner.java` 现在全走**按方法名反射探**。能跑，但三处契约只能实测反推：清空要传 `null`（`ItemStack.EMPTY` 被静默拒收）、写入成败无返回值可依（靠回读兜底）、取不出来时无法区分「没装元件」与「被锁住」。
+- **已备好的草稿**：`docs/UPSTREAM_API_REQUESTS.md`。两份可直接粘贴。**状态：已提交** 2026-10-09（UTC `2026-10-08T18:55Z`）——ECO [#119](https://github.com/DancingSnow0517/NeoECOAEExtension/issues/119)、青春版 [#5](https://github.com/reliqwq/NeoECOPrototype/issues/5)（提交账号 `xingluo01`，两条均 `OPEN`、各带我方 1 条补充评论）。两个仓库的既有 issue **以中文为主**（青春版 open 全中文；ECO open 14 条里 13 中文 + #103 英文），故正文用中文。
+- **提交后补的评论（提高采纳率，要点已存档于文档）**：① 告诉 ECO 「`ICellHost` 可新增 `api` 接口 + 旧接口 `extends` 它」以保二进制兼容；② 说清**我们只需要读写那个 int，不需要上游提供界面**，且 `IPriorityHost extends ISubMenuHost`（还得 `returnToMainMenu` + `getMainMenuIcon`、而它界面是 LDLib）⇒ 预期产出是「公开 `setStoragePriority(int)`」，不是 `IPriorityHost`；③ 提取原因可用中性返回替代提嵌套枚举。给青春版那条则提醒 `setCellStack` 若直接委派 `insertCell` 会变成「静默忽略替换」。
+- **请求清单**（签名均取自实际 jar 的 `javap`，CF file 9095600 / 9098136）：
+  - 【本体】把 `util.ICellHost`（`setCellStack`/`getCellStack`/`isItemValid`/`canExtractCell`）提到 `api` 包并注明是稳定集成点；`setCellStack` 改返 `boolean`（或写清空栈/`null` 语义）；把 `getCellExtractionBlockReason()` 从实现类提到接口上。
+  - 【本体】存储优先级缺公开写入口：`ECOStorageSystemBlockEntity` 只有 `getStoragePriority()` 公开，`setStoragePriority(Player,int)` / `changeStoragePriority(Player,int)` 都是 `private`；且该类**未**实现 `IPriorityHost`。请求给公开 `setStoragePriority(int)`，或实现 `appeng.helpers.IPriorityHost`。
+  - 【青春版】`SimplifyDriveBlockEntity` 已有 `getCellStack`/`isItemValid`/`insertCell`/`removeCell`/`hasCell`/`getCellInventory`，**只差一个 `setCellStack` 就能 `implements ICellHost`**。请求加上它（前置依赖：本体先把 `ICellHost` 提公开；或仅提供同名同签名方法，无需真 `instanceof`）。
+  - 【青春版】存储优先级那侧已经够用：`SimplifyStorageHostBlockEntity` 的 `get/setStoragePriority(int)` 均公开。仅可选请求：驱动器→主机的直接访问器（现为 `getCluster().getController()`）、存储主机实现 `IPriorityHost`。
+- **如果上游提供了 API，本地该怎么改**（按请求逐项对应，未提供则保持现状）：
+  1. **`ICellHost` 进 `api`（本体）**：新增 `integration/neoecoae/NeoECOCellHosts.java` 做编译期类型化适配，核心 `CellDriveScanner` 只调接口、不再按名字探；`clearCellStack` 的三路全试（`setCellStack(null)` → `setCellStack(EMPTY)` → `removeCell()`）收敛成一次文档化调用；删除 `invokeItem(owner, "insertCell", …)` 与 `Boolean.TRUE.equals(...)` 那两条探针。
+     **怎么做到「不加载」**（这是本条的关键，不能只写一句“适配器不能硬依赖”）：`CellDriveScanner` 是无条件加载的 common 代码，只要它出现 `instanceof NeoECOCellHosts`，解析该类时就会连带解析其父接口 `ICellHost` → 缺 ECO 时 `NoClassDefFoundError`（`Class.forName(...).cast()` 同理会抛，且必须包 try）。做法照本仓既有分层：①在本项目定义中立 SPI（如 `common/menu/CellHostAccess`，方法签全用 `Object`/自有类型：`handles(owner)` / `extract(owner)` / `insert(owner, stack)` / `readPriority(owner)` / `writePriority(owner, v)`），`CellDriveScanner` 只持一个 SPI 字段且**优先**走它；②在 `NeoECOIntegration.apply()`（只在 ECO 在场时被它实例化）里注册实现；③`NeoECOCellHosts` 内部才 `instanceof ICellHost`。这样对 `ICellHost` 的引用被封在“ECO 在场”这一条件下。
+     顺带：若 `CellDriveScanner` 直接引用 `ICellHost`，`compileOnly` 面就不再只是 `api`（等于承认 `util` 也是依赖面），与本 issue 的立论矛盾。
+  2. **`setCellStack` 返 `boolean`**：取放的成功判定可以直接用返回值；回读那一层仍保留（防第三方），但不再是唯一判据；`CellDriveScanner` 里「null vs EMPTY」那段踩坑注释可删。
+  3. **提取原因提到接口**：`CellManagementTermMenu` 取不出来时按原因给回执（新增 lang 键：被锁定 / 被无限盘占用 / 不允许取出…），替代现在统一的「该槽位为空」。**前置**：这条比看起来重——`CellExtractionBlockReason` 是实现类的**嵌套枚举**，要上接口得先把枚举提到 `api`（或改用中性返回，如 `@Nullable Component`）。上游若不提供，就维持统一回执。
+  4. **优先级写入口公开（或实现 `IPriorityHost`）**：**两条上游选项都是零代码改动**——按名字探的 `getMethod("setStoragePriority", int.class)` 只看可见性是否 public，不看它原来是不是 private，所以上游把它改成 public 会自动命中（同理，实现 `IPriorityHost` 会命中 `canSetStoragePriority` 的 `owner instanceof IPriorityHost` 分支）。要改的只有**文案**：`notice.priority_unsupported`、`CellDriveScanner` / `CellManagementTermMenu` 的注释、本文件里「本体只读」的说法。**真正需要动探针的只有一种情形**：上游给的是别的名字/别的签名（例如 `setPriority(int)`，或走接口式入口）。
+     另一件值得知道的事：`IPriorityHost` 对上游而言不只是两个方法——它 `extends ISubMenuHost`，还要 `returnToMainMenu` + `getMainMenuIcon`，而 ECO 的存储界面是 LDLib、没有 AE2 菜单可回。所以**更容易被接受的是「公开 `setStoragePriority(int)`」**；`IPriorityHost` 只是为了让生态里其它终端也能直接复用（我们自己的优先级屏宿主是面板部件，不需要上游提供屏）。
+  5. **青春版实现 `ICellHost`**：与第 1 条同一条路，但**约束更紧**——青春版连 compileOnly 都没有（纯运行时可选），因此**只能走第 1 条那个 SPI 注册路线**（在 `NeoECOIntegration` 里注册，因该类的加载本就以 ECO 在场为前提），否则就永远保持名字探。删掉 `insertCell`/`removeCell` 两条名字探针与 `invokeItem` 助手后，`storageController` 的 `getCluster().getController()` 链在拿到直接访问器后可简化。
+     两个易错点：①若上游把 `setCellStack` 实现为「非空 → `insertCell`」，那我们清格应传 **`ItemStack.EMPTY`**（不是 `null`，除非对方明确接受 null）；②**回读必须保留**——接口的 `setCellStack` 是 void，且占用时可能静默忽略替换（ECO 自己的 `setCellStack` 是无条件替换，`insertCell` 在占用时返回 false，两者语义不同）。建议请上游把“替换还是忽略”写进 javadoc。
+  6. **无论哪条先落地，都要同步的收尾**：
+     - `docs/UPSTREAM_API_REQUESTS.md` 的「提交记录」表保持最新（首个版本已回填：ECO #119 / 青春版 #5）；后续若再提新需求或修订措辞，一并回填；两张表都记 **UTC 时间戳**（GitHub 时间线是 UTC，本轮是 `2026-10-08T18:55Z`，对应本地 10-09 02:55）。
+     - 条目状态字段（`OPEN` / 已回复 / 已实现 + 版本号）随进展更新。
+     - **“两条独立落地”的组合态**：只落一条时，`invokeItem` 助手与 `clearCellStack` 的三路都**不能**删，每条方案都要写清“另一条未落地时的回退形状”。
+     - 青春版**不追求**编译期类型化（那要给它加 compileOnly，与它当前的定位不符）：它那侧最多走到 SPI 实现。
+     - `docs/ARCHITECTURE.md` 的集成表若列了可选集成面，同步。
+- **已检索并确认上游无等价 API**（免后来者重查）：ECO 全仓 `IPriorityHost` **0 命中**、`command/` 无 priority、`api/`（含 `api/storage/`、`api/integration/`）无 `Priority`/`CellHost` 类型；唯一能写优先级的就是 `private void setStoragePriority(Player,int)`，且只被自家 LDLib 的 `StorageHostActionUI.Config` lambda 驱动。青春版无 `setCellStack`（只差这一个方法就能 `implements ICellHost`；其 `ICellHost.canExtractCell()` 是 `default → true`）。
+- **顺带核实（2026-10-09，结论：原怀疑已证伪，勿再按 bug 处理）**：曾怀疑 `NeoECOIntegration` 的类 javadoc（「NEO ECO 编译期就依赖本模组的 `PatternDiskApi`」）与上游不符——**javadoc 属实**。上游 `neoecoae` 21.2.1 的 jar 里含 `cn/dancingsnow/neoecoae/integration/ae2pattern/`（`AepdPatternDiskBackend`、`PatternDiskIntegration`、`MachineDiskHostAdapter`、`PatternDiskSupport` 等），release tag `21.2.1` 源码侧同样有 `AepdPatternDiskBackend.java`（`import io.github.lounode.ae2pattern.api.PatternDiskApi`），且其 `mods.toml` 把 `ae2_pattern_disk` 声明为可选依赖。**磁盘侧不是回归。**
+  当时为什么会误判（教训，值得记）：①`unzip` 抽取**静默失败**（目标目录里 0 个文件）而没查产物，于是随后的 `grep -r` 扫的是空目录 → 假阴性；②第二发又改成直接 `grep` jar 字节，而 zip 条目是压缩的，class 常量池里的字符串不以明文存在 → 必然搜不到。**结论：搜 jar 内容必须先解包并核对产物存在，不要用 `grep` 直接扫 `.jar`。**
+
 ## 四、执行约束
-- 目标：NeoForge 21.1.241 / MC 1.21.1 / JDK 21 / AE2 19.2.17（编译依赖口径；`gradle.properties` 中的 `ae2_version=19.2.8` 为未使用的历史键）
+- 目标：NeoForge 21.1.241 / MC 1.21.1 / JDK 21 / AE2 19.2.18（编译口径取 `gradle/libs.versions.toml` 的 `ae2 = "19.2.18"`，`build.gradle` 走 `libs.ae2`；`gradle.properties` 中的 `ae2_version` 仍是未使用的历史键，现值恰好也是 19.2.18）
 - 只用 AE2 公共 API；机器美术资源统一放本项目 `assets/ae2_pattern_disk/textures/`，不直接引用 `ae2:` 纹理（借用的复制件见 README 授权表；零件/物品显示模型仍继承 `ae2:item/display_base`、`ae2:part/display_off`、`ae2:item/cable_interface`）
 
 ## 五、发布配置（CI，2026-09 记录）
@@ -325,3 +370,15 @@ P0 不应新造范式，同文件里已有两处“每 tick 限量”的先例�
 - 发版注意：首次建议先开 `build.gradle` 的 `debugMode = true` 干跑 Modrinth 再发正式版；重跑同一 tag 时 Modrinth 会因版本号已存在失败、CurseForge 不去重会再传一份，中断后优先改版本号重发
 - **CHANGELOG 未发布段需发版前改名**：`## [未发布]` 必须在发版前改成 `## [<版本号>] - <日期>`——CI 的 `awk` 是按 `[版本号]` 匹配取段的，取不到会静默回退成 commit log 拼接，发布说明会变成一堆提交标题。
 - **高效分子装配室的回送方向不持久化**：`CraftUnit.pushDirection` 不进 NBT（save/load 只存网格、样板与进度），重载后一个尚未收工的供应器派发页会退化成「只回网络」。产物不会丢，只是会绕过相邻返回节点，与 AE2 契约有偏差；若要严格对齐，需把方向随 CraftUnit 一起存。
+
+### M. 自装配样板磁盘供应器面板变体（`cable_meteorite_pattern_provider`）— ✅（2026-10 记录）
+- 已实现：`common/part/MeteoritePatternProviderPart.java`，与方块共享 `MeteoritePatternProviderHost`、`SelfAssemblingPatternDiskProviderLogic`、`MeteoritePatternProviderMenu`；注册、模型、物品模型、lang、创造页与两向互换配方都在 `MeteoritePatternProviderRegistrations` / `AE2PatternDisk` 的 AE2CS 门禁内。
+- 与方块形态的两处差异：
+  - **产物回送走服务端世界 tick 事件**（`LevelTickEvent.Post` → `pumpCraftedContents`；面板在 `addToWorld`/`removeFromWorld` 里登记进一张弱引用表）。**不能占 `IGridTickable` 服务槽**：那个槽归 AE2 的 `PatternProviderLogic`（它在自己构造器里 `addService(IGridTickable.class, new Ticker())`，返回仓注入网络、待发送缓冲重试、「锁定到结果」的解锁回调全挂在那个 Ticker 的私有 `doWork()` 上），而 `addService` 是同类唯一实例（覆盖语义）。第一版面板抢了这个槽，被审查抓出：面板的字段初始化器先建逻辑、构造器体随后覆盖，于是供应器的推送/回送那条路静默失效。
+  - **贴附面顶替「推入方向」里的方位参照**（顺序固定：贴附面 → 全向 → 其余五面 → 回贴附面，换档在动作栏报一声）。
+- 已知取舍：
+  - 面板模型 `models/part/meteorite_pattern_provider_base.json` 继承 `ae2:part/pattern_provider_base`，但把五个贴图变量**全部**改指本项目自己的文件（正面 `block/meteorite_pattern_provider`；侧面/状态面/背面/粒子用 `part/pattern_disk_provider_*`，即 AE2 那几张的本地副本、已在 README 授权表内），不再引用 `ae2:`/`ae2cs:` 贴图；物品模型同口径，因此图标与放置后的侧面是同一张。代价：背面用的是 `pattern_provider_back`，与最初那份模型文件里指定的 `ae2cs:block/meteorite_pattern_provider/back` 相差 14% 像素（同一张灰背板）；要换成后者，把那张复制为 `part/meteorite_pattern_provider_back.png` 并改两处指向即可。
+  - 升级库存的卡的上下限按**方块物品**算（`SelfAssemblingPatternDiskProviderLogic` 里 `UpgradeInventories.forMachine(BLOCK, 4, ...)`），面板不单独登记速度卡/超频卡；两形态同为 4 张，行为一致，但以后若要让两形态上限不同，得把机器物品改成构造参数。副作用：按物品反查「谁吃这张卡」的地方（升级卡提示、JEI/EMI 升级卡页）只会列出方块形态。
+  - `GENERIC_INTERNAL_INV` 已在 `AE2PatternDisk#registerPartCapabilities` 里按面板类补登记（AE2CS 缺席时那段不执行）。
+  - 两形态 1:1 互换会把「推入方向」重置回贴附面：方块方向存在 AE2 的 `directionMap`（blockstate），面板方向存在自己的 NBT `pushDirection`，互换时两者不同步（行为可接受，仅记录）。
+- 待实机确认：① 处理样板（不可自完成）能否推给相邻机器；② 相邻机器回送到返回仓的产物能否自动清空；③「锁定到结果」能否解锁；④ 网络塞满时的滞留产物能否最终送回；⑤ 面板在样板访问终端里的收录与图标。
