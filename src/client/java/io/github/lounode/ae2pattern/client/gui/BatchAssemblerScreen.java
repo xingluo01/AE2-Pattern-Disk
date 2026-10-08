@@ -65,6 +65,11 @@ public class BatchAssemblerScreen extends UpgradeableScreen<BatchAssemblerMenu> 
         this.batchModeButton.setTooltipOff(List.of(
                 Component.translatable("gui.ae2_pattern_disk.batch_assembler.batch_mode.standard")));
         addToLeftToolbar(this.batchModeButton);
+
+        // 样板优先级（AE2 自带的那个界面）：本机是「供应器 + 装配室」的混合体，这枚按钮改的是它作为供
+        // 应器那一面的优先级——同一条产物的多条样板里优先用谁的。真正的生效点在
+        // BatchAssemblerBlockEntity.getPatternPriority()。
+        widgets.addOpenPriorityButton();
     }
 
     @Override

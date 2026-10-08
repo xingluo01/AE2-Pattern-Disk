@@ -176,31 +176,19 @@ dependencies {
     clientCompileOnly(libs.jei)
 
     // NEO ECO AE Extension: dev reference for the pattern-disk integration (upload-to-ECO button,
-    // disk-aware storage, autocrafting from disk-held patterns). Compile and runtime both resolve
-    // libs/neoecoae-21.2.0-beta7.jar, which is NOT tracked in git: build it from the fork
-    // https://github.com/xingluo01/NeoECOAEExtension at branch feature/pattern-disk-v21.1.2-merge (the
-    // branch carrying the parallel intake registry), then copy build/libs/neoecoae-<version>.jar into
-    // libs/ under that name. The branch reports its version as 21.2.0 and names its own artifact
-    // neoecoae-21.2.0.jar; the "-beta7" on our copy is a leftover the release workflow's fetch step
-    // shares - do not read it as a version. Last rebuilt 2026-10-02 from f447d0ae. Note it needs a JDK
-    // 21 build - the wrapper is Gradle 8.12.1, which cannot run under the JDK 25 this machine defaults
-    // to; pass -Dorg.gradle.java.home=C:/Java/jdk-21.
+    // disk-aware storage, autocrafting from disk-held patterns).
     //
-    // The jar must be a build carrying ECO's side of this integration: the binary is compiled against
-    // "ECOParallelCraftingProviders" (the registry this mod registers the batch assembler with) and against
-    // the reporting upload, and the disk side is served by ECO itself, which compiles against this mod's
-    // PatternDiskApi. No published build carries that registry, so there is no maven coordinate to point
-    // at: 21.2.0 - the newest 1.21.1 release, tagged 2026-09-26 - predates the commit that adds it
-    // (f5acccd9, 2026-09-27), and so does every older release. Swap all three references (this one, the
-    // clientCompileOnly below, and the localRuntime) to a published coordinate once a release newer than
-    // 21.2.0 exists and carries ECOParallelCraftingProviders; then this paragraph goes away.
+    // 2026-10-08：改用公开发布件。21.2.1（CF file 9095600，release）是 CF 渠道上第一个带本模组所需接口的
+    // 发布版——它的更新日志提到「样板磁盘最低版本为 AE2 Pattern Disk 0.7.1」，而运行期实测三项集成均已挂上
+    // （上传按钮、并行接收注册、磁盘侧存储）。此前三个引用都指向 libs/neoecoae-21.2.1.jar（从上游 main 自建
+    // 的同一版本号构建件），换成发布坐标后那份本地件不再需要。
     //
-    // At runtime an older NEO ECO is not an error: every feature this integration asks for is guarded on
-    // its own, so a build missing one simply does not get that feature. Keep it that way - naming a type
-    // from a newer ECO outside such a guard fails this mod's startup, and one absent feature would then
-    // take the others, and the game, with it.
-    compileOnly files('libs/neoecoae-21.2.0-beta7.jar')
-    clientCompileOnly files('libs/neoecoae-21.2.0-beta7.jar')
+    // 21.2.1 同时也是外部施加的下限：Neo ECO Prototype（下面的运行期依赖）声明 neoecoae [21.2.1-beta2,)。
+    // mods.toml 也把同一条写成依赖下限（`[21.2.1,)`），所以已无「旧版 ECO 降级」这条路径——集成里对应的
+    // 探测代码已删。注：Maven 排序里 release 高于 pre-release，因此 `21.2.1-beta3` 这类构建会被该下限拒；
+    // 临时拿 beta 联调要把 mods.toml 那行放宽。
+    compileOnly 'curse.maven:neo-eco-ae-extension-1460639:9095600'
+    clientCompileOnly 'curse.maven:neo-eco-ae-extension-1460639:9095600'
 
     // Client source set: explicit client-side API access.
     clientCompileOnly(libs.ae2)
@@ -210,7 +198,7 @@ dependencies {
     localRuntime 'curse.maven:applied-energistics-2-223794:7027323'
     localRuntime 'maven.modrinth:guideme:21.1.15'
 
-    // AECS development integration: the jar sits in libs/ next to NEO ECO's, so the dev runtime - and the
+    // AECS development integration: the jar sits in libs/, so the dev runtime - and the
     // dev client built from it - loads it the same way. Drop a fresh build of that mod's jar in as
     // libs/ae2cs-<version>.jar; libs/*.jar is not tracked in git.
     //
@@ -359,6 +347,9 @@ dependencies {
     // 环境，不参与发布依赖。下面这批的名单来自 ECO 源码树自己的 compat/ 与 integration/ 目录、以及
     // 它 21.2.0 的 changelog 依赖表；这里挑的是「会去抢同一批 AE2 派发/合成路径」的高优先几个，
     // 那是最该实测的共存组合。
+    // 2026-10-08：ECO 换到 21.2.1 的发布件（此前用的是上游 main 同版本号的自建件），按它的
+    // neoforge.mods.toml 重核过这批区间——只有 ldlib2 的硬地板从 2.2.39.a 升到 [2.2.40,)，因此下面那条
+    // ldlib 坐标同步升到 2.2.40；其余三方声明的区间未变。
     //   OmniSequence Transfinite（molecularmanipulator）：Omni Batch Provider API，已成 Mek
     //     Energistics 等附属的集成点；ECO 要求 2.0.5+。
     //   Applied Enhancements：long 大数量合成 + 可选 MAX_FAST 规划器 + 样板终端的重复输出查找，
@@ -372,13 +363,21 @@ dependencies {
     // 前两条是 2026-09-30 停用、2026-10-02 恢复的：当时它们缺前置 appliedenhancements [1.0.9,)，
     // 而 CF 构件不带依赖元数据、前置 jar 从未进入运行时，FML 在 pre-loading 直接中止启动。
     // 现在本体与前置都列在这里，且已按各自 jar 内的 neoforge.mods.toml 逐条核过区间：
-    //   omnisequence 需 extendedae [1.21-2.2.32-neoforge,) / ldlib2 [2.2.18,) / appliedenhancements [1.0.9,)；
+    //   omnisequence 2.0.6 需 extendedae [1.21-2.2.32-neoforge,) / ldlib2 [2.2.18,) / appliedenhancements [1.0.9,)；
+    //     **2.0.7 把 appliedenhancements 的地板抬到 [1.1.0,)**（本模组采纳 2.0.7 是为了批量契约的适配器
+    //     注册表，见上方那条），所以下面这一对必须同批升：只升 omnisequence 会在预加载阶段被 FML 拦住
+    //     （实测：`Mod molecularmanipulator requires appliedenhancements 1.1.0 or above`）。
     //   data-energistics 需 configuration [3.1.1,4) / ldlib2 [2.2.38.a,)；
     //   ae2utility 需 JEI（已在环境里）。
     // 未恢复的是「闪电科技重生」那一支（AE2 Lightning Tech Reborn 等）：它与上方已装的「闪电科技」
     // **同为 modId ae2lt / thunderbolt**，只能整线择一，不能并存。
-    localRuntime 'curse.maven:omnisequence-transfinite-1624558:8991983'    // 2.0.6-hotfix
-    localRuntime 'curse.maven:applied-enhancements-1665696:8990232'        // 1.0.9-config-fix
+    // OmniSequence: the batch contract's adapter registry (what our issue #4 asked for) arrived in 2.0.7, so
+    // this is the first version we can compile against - the machine itself stays free of its types and the
+    // integration class is only loaded when `molecularmanipulator` is present, but the adapter does implement
+    // its interface at compile time.
+    compileOnly 'curse.maven:omnisequence-transfinite-1624558:9043224'
+    localRuntime 'curse.maven:omnisequence-transfinite-1624558:9043224'    // 2.0.7
+    localRuntime 'curse.maven:applied-enhancements-1665696:9043227'        // 1.1.0（随 omnisequence 2.0.7 的地板一起升）
     // 试装后又摘掉的：**Mek Energistics（mekenergistics）**。它与 ECO 双向集成（ECO 侧有
     // compat/mekenergistics），但代价太大：每次启动会刷约 335 条 "Unknown registry key … item:
     // mekenergistics:me_*" 的 ERROR —— 它为 Mekanism 系可选集成镜像的 me_* 机器方块只在对应 mod
@@ -414,17 +413,32 @@ dependencies {
     // Pattern-Disk <-> FD Smart Pattern Bus integration.
     // Runtime uses the same dev jar as compile: runClient is how the integration is exercised, and a
     // published artifact may lag the version this mod was developed against.
-    localRuntime files('libs/neoecoae-21.2.0-beta7.jar')
+    localRuntime 'curse.maven:neo-eco-ae-extension-1460639:9095600'
+    // Neo ECO Prototype: the unofficial L1 add-on for NEO ECO (drives, energy cells, bulk matrices,
+    // interfaces and a pattern provider below ECO's L4 tier). Dev-only like every other optional
+    // compatibility target - it is not a published dependency of this mod, and nothing in src/ names
+    // its types: the cell management terminal reaches the storage side through ECO's own classes, and
+    // this add-on's L1 drive is an ECO storage host like any other. It is loaded so that enumeration
+    // can be exercised against it.
+    // Hard gate: its mods.toml declares neoecoae [21.2.1-beta2,), which is the same floor this mod now
+    // declares (and 21.2.1 is the CurseForge release the build above resolves to).
+    localRuntime 'curse.maven:neo-eco-prototype-1695260:9098136'   // 1.3.1（2026-10-08；旧件 9069127 是 1.3.0-beta1）
+    // MEGA Cells: ECO 的联动清单要求 4.11.0+（大宗盘与小型大宗矩阵），Neo ECO Prototype 也把它列为可选前置。
+    // 只进开发环境。Modrinth 把该项目放在 id jjuIRIVr 下（slug 也是 megacells），RPG4EriK = 4.11.0 for
+    // 1.21.1 neoforge；用 id + version id 而非版本号，免得跨 loader 解析到别的构建。
+    localRuntime 'maven.modrinth:jjuIRIVr:RPG4EriK'
+    // ECO More Cell: ECO 的附属（更多存储单元）。坐标由用户给出，只进开发环境；它是可选的，缺席时本模组不受影响。
+    localRuntime 'curse.maven:eco-more-cell-1720697:9026477'
     // LDLib: mandatory runtime dependency of Neo ECO AE Extension (its GUI library). Pin the exact
-    // version Neo ECO itself depends on (2.2.39.a) instead of the plain 2.2.39 release, so Gradle
-    // cannot downgrade the transitive requirement.
-    // Modrinth version id ZjqqrcWk = ldlib2 1.21.1-2.2.39.a neoforge.
-    localRuntime 'maven.modrinth:ldlib:ZjqqrcWk'
+    // version Neo ECO itself depends on (2.2.40) instead of a nearby release, so Gradle cannot
+    // downgrade the transitive requirement.
+    // Modrinth version id A8dTTrXo = ldlib2 1.21.1-2.2.40-neoforge.
+    localRuntime 'maven.modrinth:ldlib:A8dTTrXo'
     localRuntime 'dev.vfyjxf:moddevmcp:0.1.6'
     // 开发运行期配方查看器默认 JEI：玩家侧的 JEI 兼容就在 runClient 里手动验证。需要回到 EMI 口径
     // 核对时用 -Pemi 启动（EMI 仍保留编译期兼容，见上面的 clientCompileOnly(libs.emi)）。
     //
-    // JEI 走官方 maven，不进 libs/：libs/ 那份策略只给没有公共 maven 的本地 mod（AECS / NEO ECO /
+    // JEI 走官方 maven，不进 libs/：libs/ 那份策略只给没有公共 maven 的本地 mod（AECS /
     // ModDevMCP / EAE+）。版本以 libs.versions.toml 的 jei 钉位为准，且必须与 EAE+ 仓库引用的那个版本
     // （19.56.0.438，见其 build.gradle 的 compileOnly/runtimeOnly）一致——EAE+ 的终端兼容层就是对着这个
     // 版本编的，错开就会重现上次「进世界即崩」。

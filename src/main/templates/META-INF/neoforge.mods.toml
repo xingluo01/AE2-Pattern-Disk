@@ -58,17 +58,31 @@ versionRange="[1.1.22,)"
 ordering="AFTER"
 side="CLIENT"
 
-# NEO ECO AE Extension is optional but covers both sides: its smart pattern bus accepts our disks, and its
-# upload button is installed on our terminal. No version bound of our own: both halves of that API come from
-# https://github.com/xingluo01/NeoECOAEExtension (branch feature/pattern-disk-v21.1.2-merge, proposed upstream as
-# PRs #101 and #108) rather than from a release - a stock NEO ECO, including the tagged builds whose version string our
-# dev jar also carries, makes the reflection lookups fail and the integration stand down (with a log line)
-# rather than block the load. The upload button is only added when the whole chain is present - the bus, the
-# auxiliary store, the prepared pattern, the upload widget, and both upload entries (the reporting one and the
-# blank-replacement query) - because the plain insertPattern cannot tell a consumed pattern from a merely moved
-# one; a build that has the classes but not those entries keeps the bus integration and leaves the button off.
+# NEO ECO AE Extension is optional, and the relationship now runs both ways: it compiles against this mod's
+# PatternDiskApi and registers its own disk holders and terminal views, while this mod registers a parallel
+# intake with it and installs an upload action on this mod's terminal. That contract arrived in 21.2.1 - the
+# first release to name this mod at all (its changelog gives AE2 Pattern Disk 0.7.1 as a floor). An older
+# build does not merely lack a feature: it cannot see this mod, so the integration would have nothing to
+# stand down from. Hence a declared floor instead of per-feature probes - a build below it is refused at load
+# time with a plain message, rather than failing later inside the other mod's constructor.
+#
+# A beta of 21.2.1 or later is refused by this range: Maven ranks a release above its own pre-releases, so
+# `[21.2.1,)` excludes `21.2.1-beta3`. Widen it to `[21.2.1-beta2,)` while testing against a beta build.
 [[dependencies.${mod_id}]]
 modId="neoecoae"
+type="optional"
+versionRange="[21.2.1,)"
+ordering="AFTER"
+side="BOTH"
+
+# OmniSequence: Transfinite (molecularmanipulator) is optional and has real code on our side
+# (integration/omnisequence): the batch assembler registers a batch adapter and a post-accounting output
+# adapter with its two registries. No version bound of our own - versionRange="*" - for the same reason as
+# ae2jeiintegration below: both registrations are additive lookups that degrade to nothing on an older build,
+# and the compile-time surface we use (OmniBatchCraftingProvider and the two adapter registries) is what we
+# build against. Declared so a pack that ships it runs our adapters in the dev runtime too.
+[[dependencies.${mod_id}]]
+modId="molecularmanipulator"
 type="optional"
 versionRange="*"
 ordering="AFTER"

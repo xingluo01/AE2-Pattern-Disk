@@ -16,6 +16,8 @@ import net.minecraft.world.level.block.state.BlockState;
 
 import appeng.api.config.Actionable;
 import appeng.api.config.PowerMultiplier;
+import org.jetbrains.annotations.Nullable;
+
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.implementations.blockentities.ICraftingMachine;
 import appeng.api.implementations.blockentities.PatternContainerGroup;
@@ -23,6 +25,9 @@ import appeng.api.inventories.InternalInventory;
 import appeng.api.networking.GridFlags;
 import appeng.api.networking.IGrid;
 import appeng.api.networking.IGridNode;
+import appeng.menu.ISubMenu;
+import appeng.menu.MenuOpener;
+import appeng.menu.locator.MenuLocators;
 import appeng.api.networking.crafting.ICraftingProvider;
 import appeng.api.networking.security.IActionSource;
 import appeng.api.networking.ticking.IGridTickable;
@@ -39,6 +44,7 @@ import appeng.api.upgrades.UpgradeInventories;
 import appeng.blockentity.grid.AENetworkedBlockEntity;
 import appeng.blockentity.inventory.AppEngCellInventory;
 import appeng.core.definitions.AEItems;
+import appeng.helpers.IPriorityHost;
 import appeng.helpers.patternprovider.PatternContainer;
 import appeng.me.helpers.MachineSource;
 import appeng.util.inv.AppEngInternalInventory;
@@ -91,7 +97,7 @@ import io.github.lounode.ae2pattern.common.util.DropStacks;
  */
 public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         implements InternalInventoryHost, IUpgradeableObject, IGridTickable, ICraftingMachine, ICraftingProvider,
-        IPatternDiskHost, PatternContainer {
+        IPatternDiskHost, PatternContainer, IPriorityHost {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BatchAssemblerBlockEntity.class);
 
@@ -156,6 +162,16 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
 
     /** Set when a return attempt found the network unwilling to take what was waiting. */
     private boolean returnStalled;
+
+    /**
+     * 本机的样板优先级（AE2 供应器界面里那个）。
+     *
+     * <p>两处作用：一是 {@link #getPatternPriority()} 把它交给 AE2 的合成计算——同一产物的多条样板里优先
+     * 用优先级高的，这是真正生效的那一环；二是 AE2 自带的优先级界面（本机屏上那枚按钮）读写这个值。</p>
+     *
+     * <p>与「元件存储优先级」（驱动器决定谁先被写入）不是同一件事，两组数字互不影响。</p>
+     */
+    private int priority;
 
     /** @return how many assembly jobs are still queued. */
     public long getQueuedJobCount() {
@@ -561,6 +577,50 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         return exposedPatterns;
     }
 
+    /**
+     * 样板优先级：AE2 的合成计算按它给同一产物的多条样板排序（高的先用）。
+     *
+     * <p>{@code ICraftingProvider} 的默认实现返回 0，而供应的每一条样板都带着发起它的供应器的这个值（见
+     * {@code NetworkCraftingProviders} 的 {@code ProviderState}），所以本机只要覆写成自己的数就能参与排序。</p>
+     */
+    @Override
+    public int getPatternPriority() {
+        return priority;
+    }
+
+    @Override
+    public int getPriority() {
+        return priority;
+    }
+
+    @Override
+    public void setPriority(int newValue) {
+        if (priority == newValue) {
+            return;
+        }
+        priority = newValue;
+        saveChanges();
+        // 优先级变了，网络里的可合成清单得重算一次，否则改完要重载世界才见效（与 AE2 供应器同口径）。
+        ICraftingProvider.requestUpdate(getMainNode());
+    }
+
+    /**
+     * 优先级界面返回后回哪一屏：本机自己的界面。
+     *
+     * <p>AE2 那个界面是子菜单，它的返回键走宿主的这个方法——不重写就会跟着默认实现去别的屏。</p>
+     */
+    @Override
+    public void returnToMainMenu(net.minecraft.world.entity.player.Player player, ISubMenu subMenu) {
+        MenuOpener.returnTo(io.github.lounode.ae2pattern.common.menu.BatchAssemblerMenu.TYPE, player,
+                subMenu.getLocator());
+    }
+
+    /** 优先级界面那一角的图标：本机自己。 */
+    @Override
+    public ItemStack getMainMenuIcon() {
+        return new ItemStack(getBlockState().getBlock());
+    }
+
     @Override
     public boolean pushPattern(IPatternDetails patternDetails, KeyCounter[] inputHolder) {
         return acceptPush(patternDetails, inputHolder);
@@ -575,11 +635,12 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         return !acceptsPlans();
     }
 
-    // ---- parallel intake (NEO ECO) -------------------------------------------
-    // The ECO interface is not on this class: it is supplied by the registration NEO ECO's integration entry
-    // point makes ({@code io.github.lounode.ae2pattern.integration.neoecoae.BatchAssemblerParallelIntake}),
-    // which is what keeps this class free of ECO types - in a pack without ECO nothing is registered, and the
-    // two methods below are just the machine's own bookkeeping entry points.
+    // ---- batch intake (optional integrations) --------------------------------
+    // Neither contract interface is on this class. Both are supplied by registration entry points instead:
+    // NEO ECO's ({@code integration.neoecoae.BatchAssemblerParallelIntake}) and OmniSequence's
+    // ({@code integration.omnisequence.OmniBatchAdapter}). That is what keeps this class free of both mods'
+    // types - in a pack without either, nothing is registered and the methods below are just this machine's
+    // own bookkeeping entry points.
 
     // 类型条目的容量换算在 {@link CellBuffer#typeEntryUnits}，含「为什么按每个槽位各预留一份」的取舍。
 
@@ -591,9 +652,44 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
      * 份数。契约指名 int 的调用方走 {@link #availableParallelSlots()}，那里会夹住。</p>
      */
     public long availableParallelSlotsLong() {
-        var pattern = currentDispatchPattern();
-        // 没有在派发的配方时不碰时钟：空闲机器每 tick 都会被问到这里，没必要为了一个必然为 0 的答案读世界时间。
-        return pattern == null ? 0L : parallelSlots.estimate(pattern, currentGameTime());
+        return availableParallelSlotsFor(currentDispatchPattern());
+    }
+
+    /**
+     * {@link #availableParallelSlotsLong()} measured against a caller-supplied pattern instead of this
+     * machine's own guess at what is being dispatched.
+     *
+     * <p>For contracts that name the pattern before asking for capacity. OmniSequence's batch probe is one:
+     * it hands over a single pattern and asks how many complete crafts fit. Answering from the machine's own
+     * guess would be wrong there - a machine that has not been handed anything yet has an empty queue, so
+     * {@link #currentDispatchPattern()} is null and the probe would always see zero, meaning batch delivery
+     * could never start. The machine's own guess stays the default for callers that have no pattern to offer
+     * (NEO ECO's {@code eco$getAvailableParallelSlots()}, and AE2 asking whether the machine is idle).</p>
+     *
+     * <p>The estimate is the same code path either way, cache included, so a probe naming the pattern it is
+     * about to deliver measures capacity against that pattern's real inputs.</p>
+     */
+    public long availableParallelSlotsFor(@Nullable IPatternDetails patternDetails) {
+        // 没有配方时不碰时钟：空闲机器每 tick 都会被问到这里，没必要为了一个必然为 0 的答案读世界时间。
+        return patternDetails == null ? 0L : parallelSlots.estimate(patternDetails, currentGameTime());
+    }
+
+    /**
+     * Hands over whatever the return queue already owns, without waiting for the queue's own pacing.
+     *
+     * <p>For OmniSequence's post-accounting hook ({@code OmniPostAccountingOutputAdapterRegistry}): that CPU
+     * asks before it judges whether a crafting job's {@code waitingFor} has been satisfied, and output still
+     * sitting in this queue reads as "not delivered yet" - the job then stalls even though the machine has
+     * already produced it. So this moves output the machine already owns; it never assembles anything, which
+     * is exactly what the hook promises.</p>
+     *
+     * <p>It does not double-deliver: {@code SmoothReturnQueue.drain} hands over only its own allowance each
+     * call and removes what it delivered, so an extra call can at most spend that allowance early.</p>
+     */
+    public void flushReturnsAfterCpuAccounting() {
+        if (!returns.isEmpty()) {
+            drainOutputs();
+        }
     }
 
     /**
@@ -1234,6 +1330,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         diskInv.writeToNBT(tag, "disks", registries);
         upgrades.writeToNBT(tag, "upgrades", registries);
         tag.putBoolean("fastBatchMode", fastBatchMode);
+        tag.putInt("priority", priority);
         // Persist the smooth-return queue so a save/load cannot lose already-produced outputs.
         returns.writeToNbt(tag, registries, "pendingOutputs");
     }
@@ -1251,6 +1348,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         terminalView.invalidate(); // invalidate the pattern access terminal view
         upgrades.readFromNBT(tag, "upgrades", registries);
         fastBatchMode = tag.getBoolean("fastBatchMode");
+        priority = tag.getInt("priority");
         returns.readFromNbt(tag, registries, "pendingOutputs");
         cellBuffer.markDirty();
         refreshRecipePool();
