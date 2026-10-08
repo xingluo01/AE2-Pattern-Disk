@@ -9,6 +9,7 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.github.lounode.ae2pattern.common.menu.CellManagementTermMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
 
 /**
@@ -23,8 +24,9 @@ import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
  * <p>IPN 的公开登记口是 {@code ContainerTypes.addContainersSource}，登记后该菜单改按登记的类型集处理。
  * 这里登记的正是它自己 {@code playerSideOnly} 分支用的那个集合（{@code {PURE_BACKPACK, PLAYER,
  * CRAFTING}}，由 {@code ContainerTypesKt.getPlayerOnly()} 给出），即「只整理玩家背包」——与 AE2 自己的
- * 终端在它内置表里的待遇一致（那些屏幕标的是 {@code playerSideOnly: true}）。登记父菜单类即可：它按
- * {@code isInstance} 匹配，管理终端与两个无线版都是 {@link PatternDiskEncodingTermMenu} 的子类。</p>
+ * 终端在它内置表里的待遇一致（那些屏幕标的是 {@code playerSideOnly: true}）。登记基类即可：它按
+ * {@code isInstance} 匹配，管理终端与两个无线版都是 {@link PatternDiskEncodingTermMenu} 的子类；
+ * 元件管理终端则是另一支继承树的兄弟（详见下方登记处的注释）。</p>
  *
  * <p>全程反射，本模组不在编译期依赖 IPN：它只是可选前置，且只存在于客户端。任一环节缺失（类不在、方法
  * 签名变了）就安静退场，整理按钮照旧工作，只是本模组的槽仍会被整理——同「没装 IPN」时的表现。注册放在
@@ -33,7 +35,7 @@ import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
  * <p><b>为什么 {@code @IPNPlayerSideOnly} 不搬到本包：</b>那个注解是 IPN 在运行时从<b>屏幕类本身</b>读的
  * （{@code HintsManagerNG.isPlayerSideOnly(Class)} 直接扫目标类，不跟 meta-注解、也没有继承），注解只有
  * 物理贴在屏幕类上才算数。它是上游强加的物理约束，不是可以收敛进集成包的引用；本包只能把口径与复查
- * （{@link #reportAnnotatedScreens}）集中起来，注解本身留在四个终端屏上。</p>
+ * （{@link #reportAnnotatedScreens}）集中起来，注解本身留在这几个终端屏上。</p>
  */
 public final class InventoryProfilesIntegration {
 
@@ -61,10 +63,16 @@ public final class InventoryProfilesIntegration {
                     .getMethod("getPlayerOnly")
                     .invoke(null);
 
-            Object entry = pairClass.getConstructor(Object.class, Object.class)
-                    .newInstance(PatternDiskEncodingTermMenu.class, playerOnly);
-            Object entries = Array.newInstance(pairClass, 1);
-            Array.set(entries, 0, entry);
+            // 两个条目，因为本模组的终端菜单分成两支继承树：样板那一支（编码终端为基，管理终端继承它，
+            // 两个无线版又各自在其下）与元件管理终端那一支（与编码终端是兄弟，谁也盖不到谁）。
+            // 每条只登记那支的基类——前提是 IPN 按父类比对（本仓类注释引的是它的 isInstance；重登现有那条
+            // 已经实测有效，但“父类能覆盖子类”这一点未单独验证过，所以元件管理那条同时直接列了具体类）。
+            Class<?>[] terminalMenus = { PatternDiskEncodingTermMenu.class, CellManagementTermMenu.class };
+            Object entries = Array.newInstance(pairClass, terminalMenus.length);
+            var entryCtor = pairClass.getConstructor(Object.class, Object.class);
+            for (int i = 0; i < terminalMenus.length; i++) {
+                Array.set(entries, i, entryCtor.newInstance(terminalMenus[i], playerOnly));
+            }
 
             // Function0 在 Kotlin 侧是接口，用动态代理实现；只实现 invoke，其余三个方法按 Object 契约答。
             Object source = Proxy.newProxyInstance(function0.getClassLoader(), new Class<?>[] { function0 },
@@ -96,7 +104,7 @@ public final class InventoryProfilesIntegration {
     }
 
     /**
-     * 启动后回头问一句整理模组：这四个屏幕它认不认（认了才只整理玩家背包）。这是对类上
+     * 启动后回头问一句整理模组：这几个屏幕它认不认（认了才只整理玩家背包）。这是对类上
      * {@code @IPNPlayerSideOnly} 的复查——注解写错位置、或上游换了注解名，这里先说出来。
      *
      * <p>它的配置表在资源加载时才读，但注解路径不经过那张表，所以这里不会因「表还没读」而误报。
@@ -131,16 +139,26 @@ public final class InventoryProfilesIntegration {
      * 没有这一步，「已登记」只等于「源进了列表」——而列表要等它下次重置才会被消费，两者不是一回事。
      */
     private static void verifyRegistered(Class<?> containerTypes) {
+        Class<?>[] expected = { PatternDiskEncodingTermMenu.class, CellManagementTermMenu.class };
         try {
             var innerMap = containerTypes.getDeclaredField("innerMap");
             innerMap.setAccessible(true);
-            if (innerMap.get(null) instanceof java.util.Map<?, ?> table
-                    && table.containsKey(PatternDiskEncodingTermMenu.class)) {
+            java.util.List<Class<?>> missing = new ArrayList<>();
+            if (innerMap.get(null) instanceof java.util.Map<?, ?> table) {
+                for (Class<?> menu : expected) {
+                    if (!table.containsKey(menu)) {
+                        missing.add(menu);
+                    }
+                }
+            } else {
+                missing.addAll(java.util.List.of(expected));
+            }
+            if (missing.isEmpty()) {
                 LOGGER.info("[AE2-Pattern-Disk] Inventory Profiles Next present; terminal menus are registered "
                         + "as player-backpack-only, so sorting leaves their slots alone");
             } else {
                 LOGGER.warn("[AE2-Pattern-Disk] Inventory Profiles Next accepted the registration but its "
-                        + "container table does not list the terminal menus; sorting may still reach their slots");
+                        + "container table does not list {}; sorting may still reach their slots", missing);
             }
         } catch (Throwable unreadable) {
             LOGGER.debug("[AE2-Pattern-Disk] Container type table could not be read back", unreadable);
