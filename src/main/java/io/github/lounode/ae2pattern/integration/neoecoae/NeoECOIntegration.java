@@ -13,9 +13,9 @@ import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
  * Integration entry point for NEO ECO AE Extension ({@code neoecoae}).
  *
  * <p>NEO ECO's {@code IntegrationManager} discovers this class at startup through
- * {@code @Integration("ae2_pattern_disk")} and calls {@link #apply()}. Each feature below is asked for
- * separately, with its own guard: an older NEO ECO is missing some of what is wanted here, and is not
- * missing all of it, so one absent piece must not silently take the others down with it.</p>
+ * {@code @Integration("ae2_pattern_disk")} and calls {@link #apply()}. Each feature is wired in its own step
+ * and each step is wrapped on its own: this runs inside NEO ECO's constructor, so a throw from one step must
+ * not take the other - or the game - down with it.</p>
  *
  * <h2>The parallel intake contract</h2>
  *
@@ -53,16 +53,7 @@ public class NeoECOIntegration {
      */
     public void apply() {
         guarded("the encoding terminal upload", NeoECOIntegration::wireEncodingTerminalUpload);
-        // Asked for by name, never by type: this class is loaded by NEO ECO builds that predate the registry
-        // too, and naming the type would fail this class's own load - inside that mod's constructor, which
-        // takes the game down with it. The reference inside registerParallelIntake is only resolved when it
-        // is called, so not calling it is enough.
-        if (classPresent(NeoECOTypes.PARALLEL_REGISTRY)) {
-            guarded("the parallel intake registration", NeoECOIntegration::registerParallelIntake);
-        } else {
-            LOGGER.info("[AE2-Pattern-Disk] NEO ECO has no parallel intake registry, so the batch assembler "
-                    + "keeps AE2's one-craft push path");
-        }
+        guarded("the parallel intake registration", NeoECOIntegration::registerParallelIntake);
     }
 
     /** Runs one wiring step, keeping a failure inside it from reaching the mod loader. */
@@ -71,23 +62,6 @@ public class NeoECOIntegration {
             step.run();
         } catch (RuntimeException broken) {
             LOGGER.warn("[AE2-Pattern-Disk] {} could not be wired; that feature stays off", what, broken);
-        }
-    }
-
-    /**
-     * @return whether {@code name} is loadable; {@code initialize=false} so only its presence is asked, and
-     *         nothing of NEO ECO's is initialised early
-     */
-    private static boolean classPresent(String name) {
-        try {
-            Class.forName(name, false, NeoECOIntegration.class.getClassLoader());
-            return true;
-        } catch (ClassNotFoundException | NoClassDefFoundError absent) {
-            return false;
-        } catch (LinkageError broken) {
-            // Present but unlinkable is a broken build rather than an older one, so it is worth a reason.
-            LOGGER.warn("[AE2-Pattern-Disk] NEO ECO class {} could not be linked", name, broken);
-            return false;
         }
     }
 
@@ -104,14 +78,6 @@ public class NeoECOIntegration {
     }
 
     private static void wireEncodingTerminalUpload() {
-        if (!NeoECOUploadHandler.reportingApiPresent()) {
-            // Without the reporting entry an upload can only guess whether a container ate the pattern or a
-            // slot merely took it in, and the wrong guess hands a blank back for a pattern that was only
-            // moved - a dupe. Offer no button rather than one that can mint patterns.
-            LOGGER.warn("[AE2-Pattern-Disk] NEO ECO has no pattern-insertion reporting, so the encoding "
-                    + "terminal upload button stays off");
-            return;
-        }
         PatternDiskEncodingTermMenu.uploadHandler = NeoECOUploadHandler.create();
         LOGGER.info("[AE2-Pattern-Disk] Encoding terminal upload button wired");
     }

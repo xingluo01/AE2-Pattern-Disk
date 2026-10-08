@@ -240,7 +240,15 @@ public class PatternDiskRemoveInventory implements InternalInventory {
             onChange.run(); // rebuild the provider's pattern list and drop the cached view
             return ItemStack.EMPTY;
         }
-        return stack; // no disk takes it: hand the pattern back so the caller reports a failure
+        // No disk takes it: hand the pattern back so the caller reports a failure. Logged because a caller
+        // that ignores the return value looks exactly like a success - and the symptom would be a pattern the
+        // player cannot find anywhere: not on a disk, so not in the table, not in the drops either.
+        // Only real writes are worth a line: a simulated probe asks the same question and reports the same
+        // "nothing took it", and logging that would put an empty-disk machine on the log for every hover.
+        if (!simulate) {
+            LOGGER.warn("An uploaded pattern found no disk to land on and was handed back: {}", stack.getItem());
+        }
+        return stack;
     }
 
     /**

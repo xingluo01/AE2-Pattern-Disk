@@ -29,40 +29,23 @@ final class NeoECOUploadHandler {
     }
 
     /**
-     * @return whether this NEO ECO build has both upload entries - the reporting one
-     *         ({@code insertPreparedPatternReporting}), which is what tells a pattern a container consumed
-     *         apart from one a slot merely took in, and the replacement query the refund path needs - and the
-     *         result constant the bookkeeping branches on
-     */
-    static boolean reportingApiPresent() {
-        try {
-            IECOPatternStorageService.class.getMethod(NeoECOTypes.REPORTING_ENTRY, ECOPreparedPattern.class);
-            IECOPatternStorageService.class.getMethod(NeoECOTypes.BLANK_REPLACEMENT_ENTRY, ItemStack.class);
-        } catch (NoSuchMethodException absent) {
-            // 旧构建没有这套入口：正常退场，不是错误。
-            return false;
-        } catch (LinkageError broken) {
-            // 与「API 缺失」分开：链接不起来是这份构建本身的问题，退场之外还得留一个原因。
-            LOGGER.warn("[AE2-Pattern-Disk] NEO ECO upload API could not be linked; the upload button stays off",
-                    broken);
-            return false;
-        }
-        // 缺这个常量时上传记账的分支无从判起，当作这套接口不完整。按名字问，而不是直接引用：直接引用会在旧
-        // 构建上抛 NoSuchFieldError，而这里要的是一个可处理的「不完整」答案。
-        try {
-            Class.forName(NeoECOTypes.INSERTION_RESULT)
-                    .getField(NeoECOTypes.ALREADY_PRESENT_CONSTANT);
-            return true;
-        } catch (ClassNotFoundException | NoSuchFieldException absent) {
-            return false;
-        }
-    }
-
-    /**
      * @return a handler that uploads the menu's encoded pattern to the NEO ECO computation cluster
      */
     public static Consumer<PatternDiskEncodingTermMenu> create() {
         return menu -> {
+            try {
+                upload(menu);
+            } catch (LinkageError | RuntimeException broken) {
+                // 下限无上限：将来某个 ≥21.2.1 的版本改了这套接口就会出现这种。点击时退化为「什么都没发生」，
+                // 而不是把异常抛进服务端。不会丢东西——退款只在对方应答之后才发生。
+                LOGGER.warn("[AE2-Pattern-Disk] the NEO ECO upload call failed; the pattern stays in the slot",
+                        broken);
+            }
+        };
+    }
+
+    private static void upload(PatternDiskEncodingTermMenu menu) {
+        {
             var node = menu.getGridNode();
             if (node == null || !node.isActive()) return;
             IGrid grid = node.getGrid();
@@ -104,7 +87,7 @@ final class NeoECOUploadHandler {
                 return;
             }
             refundAndClear(menu, insertion.blankReplacement());
-        };
+        }
     }
 
     /**
