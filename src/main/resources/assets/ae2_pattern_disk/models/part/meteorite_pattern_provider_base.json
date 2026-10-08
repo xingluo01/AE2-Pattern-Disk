@@ -1,0 +1,8 @@
+{
+  "parent": "ae2:part/pattern_provider_base",
+  "textures": {
+    "front": "ae2_pattern_disk:block/meteorite_pattern_provider",
+    "particle": "ae2cs:block/meteorite_pattern_provider/back",
+    "back": "ae2cs:block/meteorite_pattern_provider/back"
+  }
+}
