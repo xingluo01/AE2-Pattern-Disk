@@ -10,9 +10,14 @@ import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import net.neoforged.neoforge.registries.RegisterEvent;
 
+import io.github.lounode.ae2pattern.common.AEPatternDiskCapabilities;
+import io.github.lounode.ae2pattern.integration.omnisequence.OmniSequenceIntegration;
+import io.github.lounode.ae2pattern.integration.omnisequence.OmniSequenceSoftDep;
 import io.github.lounode.ae2pattern.network.AssemblerAnimationPayload;
 import io.github.lounode.ae2pattern.network.DiskListPayload;
 import io.github.lounode.ae2pattern.network.DiskContentPayload;
+import io.github.lounode.ae2pattern.network.CellHostListPayload;
+import io.github.lounode.ae2pattern.network.CellNoticePayload;
 import io.github.lounode.ae2pattern.network.DiskHostListPayload;
 import io.github.lounode.ae2pattern.network.VisibleDisksPayload;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
@@ -49,6 +54,13 @@ public class AE2PatternDisk {
             MeteoritePatternProviderRegistrations.register(modBus);
         }
 
+        // 万象构序：只往它的两个适配器注册表里登记批处理装配室，不注册任何方块物品，所以不在场时整段都不
+        // 执行——集成类本身的加载也以在场为前提（它编译期引用上游类型，缺席时加载会 NoClassDefFoundError）。
+        // 同样只能在这里判定：ModList 要到 mod 构造期才可读。
+        if (OmniSequenceSoftDep.isLoaded()) {
+            OmniSequenceIntegration.register();
+        }
+
         modBus.addListener(this::associateBlockEntities);
         modBus.addListener(this::commonSetup);
         modBus.addListener(this::registerCapabilities);
@@ -71,6 +83,10 @@ public class AE2PatternDisk {
      * the molecular assembler cannot push crafts back into our return inventory.
      */
     private void registerCapabilities(RegisterCapabilitiesEvent event) {
+        // 无线终端的 FE 能力（单独成类，那段注释要讲清 AE2 自家的 FE 桥怎么复用）。
+        // 这里直接调而不用 @EventBusSubscriber：该注解的 bus 默认是 GAME，而本事件是模组总线事件，
+        // 不显式写 bus = MOD 就会挂错总线——不报错、不警告，只表现为终端充不上电（已踩过一次）。
+        AEPatternDiskCapabilities.registerItemEnergy(event);
         // Grid node host: lets AE2 cables / grid find our in-world nodes (fixes lost connection).
         event.registerBlockEntity(
                 appeng.api.AECapabilities.IN_WORLD_GRID_NODE_HOST,
@@ -146,6 +162,16 @@ public class AE2PatternDisk {
                 (part, context) -> ((io.github.lounode.ae2pattern.common.part.PatternDiskProviderPart) part)
                         .getLogic().getReturnInv(),
                 io.github.lounode.ae2pattern.common.part.PatternDiskProviderPart.class);
+
+        // 自装配供应器的面板形态同理。它只在 AE2CS 在场时存在，类型名也就只在这里碰——未装时这一段整个不执行，
+        // 那个类不会被加载。
+        if (MeteoritePatternProviderRegistrations.isRegistered()) {
+            event.register(
+                    appeng.api.AECapabilities.GENERIC_INTERNAL_INV,
+                    (part, context) -> ((io.github.lounode.ae2pattern.common.part.MeteoritePatternProviderPart) part)
+                            .getLogic().getReturnInv(),
+                    io.github.lounode.ae2pattern.common.part.MeteoritePatternProviderPart.class);
+        }
     }
 
     private void associateBlockEntities(RegisterEvent event) {
@@ -219,6 +245,16 @@ public class AE2PatternDisk {
                         payload.handleOnServer(menu);
                     }
                 }));
+        // 元件管理终端的驱动器清单：服务端扫网得出，整张表一次发（驱动器数量有限，不拆两条包）。
+        registrar.playToClient(
+                CellHostListPayload.TYPE,
+                CellHostListPayload.STREAM_CODEC,
+                (payload, context) -> payload.handleOnClient(context));
+        // 同终端的一句话反馈：元件格取放的拒绝原因与结果，玩家要看得见。
+        registrar.playToClient(
+                CellNoticePayload.TYPE,
+                CellNoticePayload.STREAM_CODEC,
+                (payload, context) -> payload.handleOnClient(context));
     }
 
     private void commonSetup(FMLCommonSetupEvent event) {
@@ -242,6 +278,16 @@ public class AE2PatternDisk {
             appeng.api.upgrades.Upgrades.add(speedCard, AEPatternRegistries.BLOCK_BATCH_ASSEMBLER.get(), 4);
         }
 
+        // 元件管理终端的 6 个升级槽：不登记的话卡片拖进去会被弹回（AE2 的 Upgrades.getMaxInstallable 对未登记
+        // 的组合返回 0，库存的准入过滤器据此拒收）——档位在那儿却收不下任何东西。当前只登记能源卡（终端的常
+        // 规项，减空闲耗电）；其余 5 格留给待定的设计，不要为了让槽位“有用”而乱挂不相关的卡。
+        var energyCard = net.minecraft.core.registries.BuiltInRegistries.ITEM
+                .get(net.minecraft.resources.ResourceLocation.parse("ae2:energy_card"));
+        if (energyCard != null) {
+            appeng.api.upgrades.Upgrades.add(energyCard,
+                    AEPatternRegistries.ITEM_CELL_MANAGEMENT_TERMINAL.get(), 1);
+        }
+
         // 自装配样板磁盘供应器：速度卡按 AE2 的规矩上；陨石超频卡是 AE2 Crystal Science 的升级件，得由本模组
         // 把它挂到自己的方块上（那张卡不知道这台设备），取卡细节在 AecsSoftDep 里。
         if (MeteoritePatternProviderRegistrations.isRegistered()) {
@@ -250,6 +296,8 @@ public class AE2PatternDisk {
                 appeng.api.upgrades.Upgrades.add(speedCard, meteoriteProvider, 4);
             }
             AecsSoftDep.registerOverloadCard(meteoriteProvider, 4);
+            // 面板形态不用另外登记：共享的那份逻辑建升级库存时传的是上面这个方块物品（
+            // SelfAssemblingPatternDiskProviderLogic 里的 forMachine），卡的上下限就按它算，两形态同为 4 张。
         }
 
         // Applied Flux 的感应卡：它自己只给 AE2 的供应器与接口登记过，所以本模组的供应器两种形态得各登记

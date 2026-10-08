@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    { "item": "ae2:pattern_access_terminal" },
+    { "item": "ae2:storage_bus" }
+  ],
+  "result": {
+    "count": 1,
+    "id": "ae2_pattern_disk:cell_management_terminal"
+  }
+}

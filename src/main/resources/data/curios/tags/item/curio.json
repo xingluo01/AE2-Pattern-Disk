@@ -2,6 +2,7 @@
   "replace": false,
   "values": [
     "ae2_pattern_disk:wireless_pattern_disk_encoding_terminal",
-    "ae2_pattern_disk:wireless_pattern_disk_management_terminal"
+    "ae2_pattern_disk:wireless_pattern_disk_management_terminal",
+    "ae2_pattern_disk:wireless_cell_management_terminal"
   ]
 }

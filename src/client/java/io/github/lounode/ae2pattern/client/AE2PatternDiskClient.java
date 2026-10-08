@@ -16,9 +16,12 @@ import appeng.api.util.AEColor;
 import appeng.client.gui.style.StyleManager;
 import appeng.client.render.StaticItemColor;
 import io.github.lounode.ae2pattern.client.render.PatternDiskAssemblerRenderer;
+import io.github.lounode.ae2pattern.client.render.DriveHighlight;
 
 import io.github.lounode.ae2pattern.AE2PatternDisk;
 import io.github.lounode.ae2pattern.client.gui.BatchAssemblerScreen;
+import io.github.lounode.ae2pattern.client.gui.CellManagementTermScreen;
+import io.github.lounode.ae2pattern.common.menu.CellManagementTermMenu;
 import io.github.lounode.ae2pattern.client.gui.PatternDiskEncodingTermScreen;
 import io.github.lounode.ae2pattern.client.gui.PatternDiskManagementTermScreen;
 import io.github.lounode.ae2pattern.client.gui.PatternDiskAssemblerScreen;
@@ -26,10 +29,12 @@ import io.github.lounode.ae2pattern.client.gui.PatternDiskProviderScreen;
 import io.github.lounode.ae2pattern.client.gui.PatternTransfererScreen;
 import io.github.lounode.ae2pattern.client.integration.ae2wtlib.PatternDiskWirelessEncodingTermScreen;
 import io.github.lounode.ae2pattern.client.integration.ae2wtlib.PatternDiskWirelessManagementTermScreen;
+import io.github.lounode.ae2pattern.client.integration.ae2wtlib.CellManagementWirelessTermScreen;
 import io.github.lounode.ae2pattern.client.integration.ipn.InventoryProfilesIntegration;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
 import io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessEncodingTermMenu;
 import io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessManagementTermMenu;
+import io.github.lounode.ae2pattern.integration.ae2wtlib.CellManagementWirelessTermMenu;
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 
 /**
@@ -47,6 +52,11 @@ public class AE2PatternDiskClient {
         modBus.addListener(this::registerBlockRenderers);
         modBus.addListener(this::registerAdditionalModels);
         modBus.addListener(this::registerItemColors);
+        // 元件管理终端选中驱动器时在世界里圈出那个方块（线框状态见 DriveHighlight）。
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(DriveHighlight::onRenderLevel);
+        // 退出世界时把「钉住」的高亮一并清掉：钉子只按维度 + 坐标记，换个存档就会指到别人身上。
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
+                (net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent.LoggingOut event) -> DriveHighlight.clearPinned());
     }
 
     /**
@@ -62,7 +72,8 @@ public class AE2PatternDiskClient {
         event.register(
                 (stack, tintIndex) -> FastColor.ARGB32.opaque(TERMINAL_COLOR.getColor(stack, tintIndex)),
                 AEPatternRegistries.ITEM_PATTERN_DISK_ENCODING_TERMINAL.get(),
-                AEPatternRegistries.ITEM_PATTERN_DISK_MANAGEMENT_TERMINAL.get());
+                AEPatternRegistries.ITEM_PATTERN_DISK_MANAGEMENT_TERMINAL.get(),
+                AEPatternRegistries.ITEM_CELL_MANAGEMENT_TERMINAL.get());
     }
 
     /** Fluix-coloured tint source, matching AE2's own terminals. */
@@ -72,12 +83,14 @@ public class AE2PatternDiskClient {
         event.enqueueWork(InitPatternDiskProperties::init);
         // 多态合成（可选前置）：把本模组的编码终端登记给 Polymorph，未装时此调用直接返回。
         event.enqueueWork(io.github.lounode.ae2pattern.client.integration.polymorph.PolymorphClientCompat::register);
-        // 整理模组（可选前置）：复查四个终端屏上的 @IPNPlayerSideOnly 有没有被认到；未装时这行只留一条 debug。
+        // 整理模组（可选前置）：复查六个终端屏上的 @IPNPlayerSideOnly 有没有被认到；未装时这行只留一条 debug。
         event.enqueueWork(() -> InventoryProfilesIntegration.reportAnnotatedScreens(
                 PatternDiskEncodingTermScreen.class,
                 PatternDiskManagementTermScreen.class,
+                CellManagementTermScreen.class,
                 PatternDiskWirelessEncodingTermScreen.class,
-                PatternDiskWirelessManagementTermScreen.class));
+                PatternDiskWirelessManagementTermScreen.class,
+                CellManagementWirelessTermScreen.class));
     }
 
     private void registerAdditionalModels(ModelEvent.RegisterAdditional event) {
@@ -107,6 +120,7 @@ public class AE2PatternDiskClient {
         event.register(AEPatternRegistries.MENU_BATCH_ASSEMBLER.get(), BatchAssemblerScreen::new);
         registerEncodingTerminalScreen(event);
         registerManagementTerminalScreen(event);
+        registerCellManagementTerminalScreen(event);
         registerWirelessTerminalScreens(event);
         registerMeteoriteProviderScreen(event);
     }
@@ -191,6 +205,38 @@ public class AE2PatternDiskClient {
                                 .loadStyleDoc("/screens/ae2_pattern_disk/pattern_disk_management_terminal.json");
                         return new io.github.lounode.ae2pattern.client.gui.PatternDiskManagementTermScreen(
                                 (io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu) menu,
+                                playerInventory, title, style);
+                    }
+                });
+    }
+
+    /**
+     * 元件管理终端的屏幕：屏幕类直接继承 {@code MEStorageScreen}，菜单类型与屏幕类型一一对应，
+     * 不需要样板终端那种「用父菜单类型登记再强转」的写法。
+     */
+    private void registerCellManagementTerminalScreen(RegisterMenuScreensEvent event) {
+        var type = AEPatternRegistries.MENU_CELL_MANAGEMENT_TERMINAL.get();
+        event.register(type,
+                new net.minecraft.client.gui.screens.MenuScreens.ScreenConstructor<CellManagementTermMenu, CellManagementTermScreen>() {
+                    @Override
+                    public CellManagementTermScreen create(CellManagementTermMenu menu,
+                            net.minecraft.world.entity.player.Inventory playerInventory,
+                            net.minecraft.network.chat.Component title) {
+                        appeng.client.gui.style.ScreenStyle style = appeng.client.gui.style.StyleManager
+                                .loadStyleDoc("/screens/ae2_pattern_disk/cell_management_terminal.json");
+                        return new CellManagementTermScreen(menu, playerInventory, title, style);
+                    }
+                });
+        // 无线版（AE2WTLib）：菜单类型不同，屏幕继承面板版那一张。
+        event.register(AEPatternRegistries.MENU_WIRELESS_CELL_MANAGEMENT_TERMINAL.get(),
+                new net.minecraft.client.gui.screens.MenuScreens.ScreenConstructor<CellManagementTermMenu, CellManagementTermScreen>() {
+                    @Override
+                    public CellManagementTermScreen create(CellManagementTermMenu menu,
+                            net.minecraft.world.entity.player.Inventory playerInventory,
+                            net.minecraft.network.chat.Component title) {
+                        appeng.client.gui.style.ScreenStyle style = appeng.client.gui.style.StyleManager
+                                .loadStyleDoc("/screens/ae2_pattern_disk/wireless_cell_management_terminal.json");
+                        return new CellManagementWirelessTermScreen((CellManagementWirelessTermMenu) menu,
                                 playerInventory, title, style);
                     }
                 });

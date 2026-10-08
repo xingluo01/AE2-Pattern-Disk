@@ -5,6 +5,64 @@
   "../common/terminal_toolbox.json"
  ],
  "helpTopic": "ae2_pattern_disk:ae2guide/items-blocks-machines/pattern_disk_management_terminal.md",
+ "images": {
+  "tableHeader": {
+   "$comment": "表格外壳的全部贴图切片都在这里，屏幕代码只按名字取（ScreenStyle.getImage）：带高决定一行占多少像素，这里的表头/尾饰高与上面 terminalStyle 的 header/bottom 必须同源——terminalStyle 那条链算出面板总高，代码再用这里的带高反推可见行数，两边不一致就会算错行。这张贴图是 512×512，所以每条都要写 textureWidth/Height，否则 Blitter 按 256 换算 UV、取样位置翻倍。",
+   "texture": "ae2_pattern_disk:textures/guis/pattern_disk_management_terminal.png",
+   "srcRect": [0, 0, 340, 17],
+   "textureWidth": 512,
+   "textureHeight": 512
+  },
+  "tableFooter": {
+   "texture": "ae2_pattern_disk:textures/guis/pattern_disk_management_terminal.png",
+   "srcRect": [0, 125, 340, 95],
+   "textureWidth": 512,
+   "textureHeight": 512
+  },
+  "blankCell": {
+   "$comment": "空槽格（18×18 槽框）：它的宽同时是表格的格距，代码的列命中测试用它算。",
+   "texture": "ae2_pattern_disk:textures/guis/pattern_disk_management_terminal.png",
+   "srcRect": [304, 144, 18, 18],
+   "textureWidth": 512,
+   "textureHeight": 512
+  },
+  "rowTextTop": {
+   "texture": "ae2_pattern_disk:textures/guis/pattern_disk_management_terminal.png",
+   "srcRect": [0, 17, 340, 18],
+   "textureWidth": 512,
+   "textureHeight": 512
+  },
+  "rowSlotsTop": {
+   "texture": "ae2_pattern_disk:textures/guis/pattern_disk_management_terminal.png",
+   "srcRect": [0, 35, 340, 18],
+   "textureWidth": 512,
+   "textureHeight": 512
+  },
+  "rowTextMiddle": {
+   "texture": "ae2_pattern_disk:textures/guis/pattern_disk_management_terminal.png",
+   "srcRect": [0, 53, 340, 18],
+   "textureWidth": 512,
+   "textureHeight": 512
+  },
+  "rowSlotsMiddle": {
+   "texture": "ae2_pattern_disk:textures/guis/pattern_disk_management_terminal.png",
+   "srcRect": [0, 71, 340, 18],
+   "textureWidth": 512,
+   "textureHeight": 512
+  },
+  "rowTextBottom": {
+   "texture": "ae2_pattern_disk:textures/guis/pattern_disk_management_terminal.png",
+   "srcRect": [0, 89, 340, 18],
+   "textureWidth": 512,
+   "textureHeight": 512
+  },
+  "rowSlotsBottom": {
+   "texture": "ae2_pattern_disk:textures/guis/pattern_disk_management_terminal.png",
+   "srcRect": [0, 107, 340, 18],
+   "textureWidth": 512,
+   "textureHeight": 512
+  }
+ },
  "terminalStyle": {
   "supportsAutoCrafting": false,
   "slotsPerRow": 9,

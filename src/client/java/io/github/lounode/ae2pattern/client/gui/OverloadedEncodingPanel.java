@@ -246,11 +246,6 @@ public class OverloadedEncodingPanel extends DiskEncodingModePanel {
     }
 
     @Override
-    public Rect2i getBounds() {
-        return new Rect2i(x, y, PANEL_W, 66);
-    }
-
-    @Override
     Icon getIcon() {
         return Icon.TAB_PROCESSING;
     }

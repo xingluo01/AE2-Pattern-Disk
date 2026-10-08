@@ -44,6 +44,7 @@ import appeng.client.gui.me.common.MEStorageScreen;
 import appeng.menu.SlotSemantics;
 import appeng.menu.slot.DisabledSlot;
 import appeng.client.gui.style.Blitter;
+import appeng.client.gui.style.PaletteColor;
 import appeng.client.gui.style.ScreenStyle;
 import appeng.client.gui.widgets.ActionButton;
 import appeng.client.gui.widgets.IconButton;
@@ -61,8 +62,9 @@ import io.github.lounode.ae2pattern.network.VisibleDisksPayload;
  * The pattern disk management terminal's screen: a table of every disk on the grid, grouped by the machine
  * holding it, with the encoding terminal's encoding area underneath.
  *
- * <p>Layout comes from {@code Sprite-0001} (the texture this screen slices): a title strip and 17 columns of
- * 18px cells on top, then the player inventory on the left and the encoding area - the very same widgets the
+ * <p>Layout comes from the style document: the texture slices for the table chrome live in its {@code images}
+ * block (this screen fetches them by name), a title strip and 17 columns of 18px cells on
+ * top, then the player inventory on the left and the encoding area - the very same widgets the
  * encoding terminal builds in its constructor - on the right. The footer entries in the style JSON are
  * {@code bottom}-anchored, so they follow the panel height that {@code terminalStyle} produces.</p>
  *
@@ -95,18 +97,6 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         return (PatternDiskManagementTermMenu) super.getMenu();
     }
 
-    private static final ResourceLocation TEXTURE = ResourceLocation
-            .parse("ae2_pattern_disk:textures/guis/pattern_disk_management_terminal.png");
-
-    /**
-     * 贴图的真实像素尺寸。
-     *
-     * <p>本模组其余 GUI 贴图都是 256×256，而这张是 512×512：AE2 的 {@code Blitter} 与
-     * {@code GuiGraphics.blit} 的简写重载都按 256 算 UV（`srcRect / 256`），不声明真实尺寸的话
-     * 同一块 srcRect 会到 2 倍坐标处取样，整块背景都是错的。</p>
-     */
-    private static final int TEXTURE_SIZE = 512;
-
     /** 「显示模式」按钮：与 AE2 样板访问终端共用同一个服务端设置。 */
     private final ServerSettingToggleButton<ShowPatternProviders> showProvidersButton;
 
@@ -138,29 +128,16 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
      */
     private long selectedSerial;
 
-    // 表格区几何：按贴图实测（描边带 x0..7，填充区从 x8 开始；表头 y0..16）。
-    // 行分配同 AE2 的样板访问终端（PatternAccessTermScreen.drawBG）：一行 18px，按「行类型」从贴图取行带——
-    // 文本带 y17/53/89（无格子框，给主机名这类纯文本行）与物品带 y35/71/107（有 17 格框，给磁盘/样板行），
+    // 表格区几何：外壳的贴图切片（表头带 / 六条行带 / 尾饰带 / 空槽格）全在样式文档的 images 里，
+    // 带高与格距都从那些切片反推——文档改一格，代码不用跟着改。
+    // 行分配同 AE2 的样板访问终端（PatternAccessTermScreen.drawBG）：按「行类型」从贴图取行带——
+    // 文本带（无格子框，给主机名这类纯文本行）与物品带（有 17 格框，给磁盘/样板行），
     // 三份分别对应可见窗口的首行/中间行/末行（该屏的 ROW_TEXT_/ROW_INVENTORY_TOP|MIDDLE|BOTTOM_BBOX 同值）。
     // 落点口径同 AE2 槽位：格子的 x/y 就是「物品左上角」，底图画在它 −1 处，所以绘制时统一 +1——
     // LIST_X 取 7 时物品落在贴图实测的 x=8。
-    private static final int PANEL_WIDTH = 340;
-    /**
-     * 面板高度不是常量：它由终端风格档位算出的行数决定（表头 + 行×18 + 尾饰）。这里的常量是它的三块组成，
-     * 以及“一行也不显示”时的高度（17 + 0 + 95 = 112）。
-     */
-    private static final int HEADER_HEIGHT = 17;
-    /** 尾饰带高：贴图 y125..219。编码区、背包都在这一段，它跟着面板底部走。 */
-    private static final int FOOTER_HEIGHT = 95;
     private static final int LIST_X = 7;
     private static final int LIST_Y = 0;
-
-    /** 填充区宽：17 格 × 18px。贴图填充区实测到 x=311，再右是滚动条区（本屏只用滚轮，不画它）。 */
-    private static final int LIST_WIDTH = 306;
-
-    /** 行高：与 AE2 一致的一行 18px（贴图里每种行带也都是 18px 高）。 */
-    private static final int ROW_HEIGHT = 18;
-
+    private static final int COLUMNS = 17;
     /**
      * 槽位内容的纵向起点：行带里格框的填充区从带上沿 +1 开始（横向同理，见各绘制处的 +1）。物品与槽底都从这里
      * 画，不然会比格框低 1px、底下露出一道缝。
@@ -170,9 +147,24 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
      * 纯文本行（组头）的纵向起点：那一行没有格框，图标/文字/开关按自己的观感取 +2，不跟着槽位一起上移。
      */
     private static final int ROW_TEXT_Y_INSET = 2;
-    private static final int COLUMNS = 17;
     /** 视口外多要一行内容：滚一格时不至于先闪一帧空行。 */
     private static final int CONTENT_MARGIN_ROWS = 1;
+
+    /**
+     * 表头带 / 尾饰带 / 行带的高与格距：全部取自样式文档 images 切片的 srcRect。
+     *
+     * <p>面板总高由 {@code terminalStyle} 那条链算出，可见行数是 {@code (总高 - 表头 - 尾饰) / 行高}；
+     * 这两组带高都在同一份文档里，代码不再抄写一遍数字。</p>
+     */
+    private final int headerHeight;
+    private final int footerHeight;
+    private final int rowHeight;
+    /** 格距（含框线）：空槽格切片的宽，列命中测试与格子落点都用它。 */
+    private final int cellSize;
+    /** 填充区宽：列数 × 行高。再右是滚动条区（本屏只用滚轮，不画它）。 */
+    private final int listWidth;
+    /** 组头文字色：样式文档调色板的 DEFAULT_TEXT_COLOR（与 AE2 其余界面同源）。 */
+    private final int textColor;
 
     /**
      * 当前可见行数：由终端风格档位与窗口高度共同决定，数值就是父类按 terminalStyle 算好的 imageHeight 反推来的，
@@ -192,31 +184,19 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
 
     private static final Logger LOGGER = LoggerFactory.getLogger("ae2_pattern_disk.management_terminal");
 
-    // 静态 Blitter：UV 按 512 算（见 TEXTURE_SIZE），每帧不新建对象。
-    // 注意它们是可变对象：每次使用必须紧接 dest(...) + blit(...)，不要缓存引用到别处再画。
-    private static final Blitter HEADER_BAND = band(0, HEADER_HEIGHT);
-    private static final Blitter FOOTER_BAND = band(125, FOOTER_HEIGHT);
-
-    /** 空槽格的底图：贴图里「空白样板」那一格，宽高正好是 18×18 的槽位框。 */
-    private static final Blitter BLANK_CELL = Blitter.texture(TEXTURE, TEXTURE_SIZE, TEXTURE_SIZE)
-            .src(304, 144, 18, 18);
-
+    // 表外壳的切片全部来自样式文档的 images（切片坐标与 512 参考尺寸都写在文档里），代码只按名字取。
+    // Blitter 是可变对象且与文档共享同一实例：每次使用必须紧接 dest(...) + blit(...)，不要另存引用或染色。
+    private final Blitter headerBand;
+    private final Blitter footerBand;
+    /** 空槽格的底图：贴图里「空白样板」那一格，宽高正好是一个槽位框。 */
+    private final Blitter blankCell;
     // 六条行带，与 AE2 的 ROW_TEXT_/ROW_INVENTORY_TOP|MIDDLE|BOTTOM_BBOX 同一分区（本屏贴图与它同源）。
-    private static final Blitter ROW_TEXT_TOP = rowBand(17);
-    private static final Blitter ROW_INVENTORY_TOP = rowBand(35);
-    private static final Blitter ROW_TEXT_MIDDLE = rowBand(53);
-    private static final Blitter ROW_INVENTORY_MIDDLE = rowBand(71);
-    private static final Blitter ROW_TEXT_BOTTOM = rowBand(89);
-    private static final Blitter ROW_INVENTORY_BOTTOM = rowBand(107);
-
-    /** 整条带（含面板左右边框）：行带要盖住 x0..6 的描边，否则多行铺出来会留下重影。 */
-    private static Blitter band(int srcY, int height) {
-        return Blitter.texture(TEXTURE, TEXTURE_SIZE, TEXTURE_SIZE).src(0, srcY, PANEL_WIDTH, height);
-    }
-
-    private static Blitter rowBand(int srcY) {
-        return band(srcY, ROW_HEIGHT);
-    }
+    private final Blitter rowTextTop;
+    private final Blitter rowSlotsTop;
+    private final Blitter rowTextMiddle;
+    private final Blitter rowSlotsMiddle;
+    private final Blitter rowTextBottom;
+    private final Blitter rowSlotsBottom;
 
     /**
      * 可见集合没变也重报一次的间隔（tick）。
@@ -254,6 +234,25 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     public PatternDiskManagementTermScreen(PatternDiskManagementTermMenu menu, Inventory playerInventory,
             Component title, ScreenStyle style) {
         super(menu, playerInventory, title, style);
+
+        // 表外壳的切片与从它们反推的几何：全部读自样式文档（images 与调色板）。文档缺键会直接抛
+        // IllegalStateException、界面开不出来——这是有意口径：静默降级只会画出一半底图。
+        this.headerBand = style.getImage("tableHeader");
+        this.footerBand = style.getImage("tableFooter");
+        this.blankCell = style.getImage("blankCell");
+        this.rowTextTop = style.getImage("rowTextTop");
+        this.rowSlotsTop = style.getImage("rowSlotsTop");
+        this.rowTextMiddle = style.getImage("rowTextMiddle");
+        this.rowSlotsMiddle = style.getImage("rowSlotsMiddle");
+        this.rowTextBottom = style.getImage("rowTextBottom");
+        this.rowSlotsBottom = style.getImage("rowSlotsBottom");
+        this.headerHeight = this.headerBand.getSrcHeight();
+        this.footerHeight = this.footerBand.getSrcHeight();
+        // 六条行带同高（文档里都是 18），取哪一条反推行高都一样。
+        this.rowHeight = this.rowTextTop.getSrcHeight();
+        this.cellSize = this.blankCell.getSrcWidth();
+        this.listWidth = COLUMNS * this.rowHeight;
+        this.textColor = style.getColor(PaletteColor.DEFAULT_TEXT_COLOR).toARGB();
 
         // 「显示模式」与 AE2 样板访问终端共用同一个服务端设置：同一套取值、同一份持久化。按钮的图标与提示由
         // AE2 的 SettingToggleButton 静态注册表提供，本模组不需要自带资源。
@@ -343,7 +342,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
 
         // 行数由父类按 style 的 terminalStyle 算好（imageHeight 就是它的产物：表头 + 行×18 + 尾饰），这里反推
         // 回来用，保证行带与父类摆好的槽位/控件用的是同一个值——自己再算一遍公式只会引入偏差。
-        this.visibleRows = Math.max(1, (imageHeight - HEADER_HEIGHT - FOOTER_HEIGHT) / ROW_HEIGHT);
+        this.visibleRows = Math.max(1, (imageHeight - this.headerHeight - this.footerHeight) / this.rowHeight);
 
         // MEStorageScreen.init() 给终端网格加了 RepoSlot；我们用自定义表格，不需要它们。
         this.menu.slots.removeIf(slot -> slot instanceof RepoSlot);
@@ -360,7 +359,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         ToolbarOrder.placeAtEnd(this, List.of(showProvidersButton, hideSlotsButton, modeButton));
 
         // 风格档位可能把面板改矮：清单没变时 rebuildRows 不会夹偏移，这里补一次，免得顶部留白。
-        // （前提：JSON 的 header=17、firstRow/lastRow=18、bottom=95，即 imageHeight = 18×行 + 112；改那几处要同步这里。）
+        // （带高与 terminalStyle 的 header/row/bottom 同源：两者都在本屏的样式文档里，不存在跨文件同步。）
         clampScroll();
     }
 
@@ -600,15 +599,15 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         // 不调 super.drawBG：那张底图是一整块固定高度的贴图，而本表的面板高随终端风格档位变化，所以这里自己拼
         // 面板：表头带 + 可见行带 + 尾饰带（行数见 visibleRows）。跳过它的代价是 AE2 物品网格的 pinned 行覆盖层
         // 与那次手写 searchField.render——本屏不显示那个网格，而搜索框仍由 widget 容器正常渲染。
-        blit(HEADER_BAND, guiGraphics, offsetX, offsetY);
+        blit(this.headerBand, guiGraphics, offsetX, offsetY);
 
-        int y = offsetY + HEADER_HEIGHT;
+        int y = offsetY + this.headerHeight;
 
         // 行分配同 AE2：每行先铺「文本带」作底，含物品格的行再叠「物品带」；带是整条的（含左右边框）。
         for (int i = 0; i < visibleRows; i++) {
             boolean firstLine = i == 0;
             boolean lastLine = i == visibleRows - 1;
-            int rowY = y + i * ROW_HEIGHT;
+            int rowY = y + i * this.rowHeight;
             boolean slotsRow = rowKindAt(scrollOffset + i) == RowKind.SLOTS;
 
             blit(selectRowBand(false, firstLine, lastLine), guiGraphics, offsetX, rowY);
@@ -628,7 +627,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
             }
         }
 
-        blit(FOOTER_BAND, guiGraphics, offsetX, offsetY + HEADER_HEIGHT + visibleRows * ROW_HEIGHT);
+        blit(this.footerBand, guiGraphics, offsetX, offsetY + this.headerHeight + visibleRows * this.rowHeight);
     }
 
     /** 一行在贴图上该用哪条带：纯文本行（主机名）用文本带，含物品格的行用物品带。 */
@@ -643,13 +642,13 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
 
     /**
      * 行带的选择与 AE2 的 {@code PatternAccessTermScreen#selectRowBackgroundBox} 同口径：可见窗口的首行取 TOP、
-     * 末行取 BOTTOM、其余取 MIDDLE。
+     * 末行取 BOTTOM、其余取 MIDDLE。那六条带本身来自样式文档的 images。
      */
-    private static Blitter selectRowBand(boolean inventoryLine, boolean firstLine, boolean lastLine) {
-        if (inventoryLine) {
-            return firstLine ? ROW_INVENTORY_TOP : lastLine ? ROW_INVENTORY_BOTTOM : ROW_INVENTORY_MIDDLE;
+    private Blitter selectRowBand(boolean slotsRow, boolean firstLine, boolean lastLine) {
+        if (slotsRow) {
+            return firstLine ? this.rowSlotsTop : lastLine ? this.rowSlotsBottom : this.rowSlotsMiddle;
         }
-        return firstLine ? ROW_TEXT_TOP : lastLine ? ROW_TEXT_BOTTOM : ROW_TEXT_MIDDLE;
+        return firstLine ? this.rowTextTop : lastLine ? this.rowTextBottom : this.rowTextMiddle;
     }
 
     private static void blit(Blitter blitter, GuiGraphics guiGraphics, int destX, int destY) {
@@ -665,8 +664,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         // drawFG 同样用裸坐标，如 VibrationChamberScreen 的 dest(80, 20 + ...)）。
         // 注意传入的 mouseX/mouseY 是绝对屏幕坐标（命中测试因此要减 leftPos/topPos，本类已如此）。
         int baseX = LIST_X;
-        int baseY = LIST_Y + HEADER_HEIGHT;
-        int textColor = 0xFF404040;
+        int baseY = LIST_Y + this.headerHeight;
 
         for (int i = 0; i < visibleRows; i++) {
             int rowIndex = scrollOffset + i;
@@ -674,7 +672,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
                 break;
             }
 
-            int rowY = baseY + i * ROW_HEIGHT;
+            int rowY = baseY + i * this.rowHeight;
             switch (rows.get(rowIndex)) {
                 case HostRow host -> {
                     if (!host.icon().isEmpty()) {
@@ -721,7 +719,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
                 continue;
             }
 
-            int cellX = baseX + column * 18 + 1;
+            int cellX = baseX + column * this.cellSize + 1;
             int cellY = rowY + CELL_Y_INSET;
 
             // 显示主产物，而不是样板本体：与 AE2 样板访问终端同口径（它的 PatternSlot.getDisplayStack 用
@@ -742,9 +740,9 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
      * 剩余槽位行：一行一格，把空槽画成空格；收起时那一行代表整台机器的全部空槽，数字写在格的右上角。
      */
     private void drawFreeSlotsRow(GuiGraphics guiGraphics, int baseX, int rowY, FreeSlotsRow row) {
-        // BLANK_CELL 是 18×18 的槽框（自带 1px 边框），落点与行带本身的格框同格位——框对框，它内部就自然落在
+        // blankCell 是一个完整的槽框（自带 1px 边框），落点与行带本身的格框同格位——框对框，它内部就自然落在
         // +1，与同排物品格的内容线一致（物品画在 +CELL_Y_INSET）。
-        blit(BLANK_CELL, guiGraphics, baseX, rowY);
+        blit(this.blankCell, guiGraphics, baseX, rowY);
 
         if (row.foldedCount() <= 0) {
             return;
@@ -874,7 +872,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
      */
     private void syncScrollbar() {
         int maxScroll = Math.max(0, rows.size() - visibleRows);
-        this.tableScrollbar.setHeight(Math.max(1, visibleRows * ROW_HEIGHT - 2));
+        this.tableScrollbar.setHeight(Math.max(1, visibleRows * this.rowHeight - 2));
         this.tableScrollbar.setRange(0, maxScroll, Math.max(1, visibleRows / 6));
         this.scrollOffset = this.tableScrollbar.getCurrentScroll();
         if (scrollOffset > maxScroll) {
@@ -963,11 +961,11 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
 
     private int rowIndexAt(double mouseX, double mouseY) {
         int relX = (int) mouseX - leftPos - LIST_X;
-        int relY = (int) mouseY - topPos - LIST_Y - HEADER_HEIGHT;
-        if (relX < 0 || relX >= LIST_WIDTH || relY < 0) {
+        int relY = (int) mouseY - topPos - LIST_Y - this.headerHeight;
+        if (relX < 0 || relX >= this.listWidth || relY < 0) {
             return -1;
         }
-        int slotRow = relY / ROW_HEIGHT;
+        int slotRow = relY / this.rowHeight;
         if (slotRow < 0 || slotRow >= visibleRows) {
             return -1;
         }
@@ -976,7 +974,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     }
 
     private int columnAt(double mouseX) {
-        return ((int) mouseX - leftPos - LIST_X) / 18;
+        return ((int) mouseX - leftPos - LIST_X) / this.cellSize;
     }
 
     @Nullable
@@ -1027,11 +1025,11 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
                 if (stack.amount() <= 0) {
                     stack = new GenericStack(stack.what(), 1);
                 }
-                // 坐标与 drawDiskRow 逐字一致（baseX = LIST_X、rowY = LIST_Y + HEADER_HEIGHT + 可见行号
-                // × ROW_HEIGHT、格内再各 +1），只是把局部坐标换成绝对屏幕坐标；矩形口径与 AE2 的
-                // StackWithBounds.fromSlot 相同（一格内容 16×16）。
-                int cellX = leftPos + LIST_X + column * 18 + 1;
-                int cellY = topPos + LIST_Y + HEADER_HEIGHT + (rowIndex - scrollOffset) * ROW_HEIGHT + CELL_Y_INSET;
+                // 坐标与 drawDiskRow 逐字一致（baseX = LIST_X、rowY = 表头下沿 + 可见行号 × 行高、格内再各 +1），
+                // 只是把局部坐标换成绝对屏幕坐标；矩形口径与 AE2 的 StackWithBounds.fromSlot 相同（一格内容 16×16）。
+                int cellX = leftPos + LIST_X + column * this.cellSize + 1;
+                int cellY = topPos + LIST_Y + this.headerHeight + (rowIndex - scrollOffset) * this.rowHeight
+                        + CELL_Y_INSET;
                 return new StackWithBounds(stack, new Rect2i(cellX, cellY, 16, 16));
             }
         }
@@ -1084,12 +1082,13 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
                 this.searchScope);
     }
 
-    /** 给某个格位（18×18 槽框）描一圈高亮：画在框线上，不盖住格内内容。 */
-    private static void outlineCell(GuiGraphics guiGraphics, int cellX, int rowY) {
-        guiGraphics.fill(cellX, rowY, cellX + ROW_HEIGHT, rowY + 1, DISK_SELECTED_TINT);
-        guiGraphics.fill(cellX, rowY + ROW_HEIGHT - 1, cellX + ROW_HEIGHT, rowY + ROW_HEIGHT, DISK_SELECTED_TINT);
-        guiGraphics.fill(cellX, rowY + 1, cellX + 1, rowY + ROW_HEIGHT - 1, DISK_SELECTED_TINT);
-        guiGraphics.fill(cellX + ROW_HEIGHT - 1, rowY + 1, cellX + ROW_HEIGHT, rowY + ROW_HEIGHT - 1,
+    /** 给某个格位（一个槽框）描一圈高亮：画在框线上，不盖住格内内容。 */
+    private void outlineCell(GuiGraphics guiGraphics, int cellX, int rowY) {
+        int size = this.cellSize;
+        guiGraphics.fill(cellX, rowY, cellX + size, rowY + 1, DISK_SELECTED_TINT);
+        guiGraphics.fill(cellX, rowY + size - 1, cellX + size, rowY + size, DISK_SELECTED_TINT);
+        guiGraphics.fill(cellX, rowY + 1, cellX + 1, rowY + size - 1, DISK_SELECTED_TINT);
+        guiGraphics.fill(cellX + size - 1, rowY + 1, cellX + size, rowY + size - 1,
                 DISK_SELECTED_TINT);
     }
 }

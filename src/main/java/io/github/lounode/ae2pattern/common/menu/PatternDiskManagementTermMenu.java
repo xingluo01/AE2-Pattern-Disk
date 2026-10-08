@@ -269,6 +269,12 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
         return 0;
     }
 
+    /** 管理终端没有网络出口：显式关掉（父类把编码终端那个开关打开了，不覆盖的话屏幕侧会当成「总能收」）。 */
+    @Override
+    protected boolean hasNetworkQuickMoveTarget() {
+        return false;
+    }
+
     /**
      * 把父类的扁平清单按「显示名」分组推给客户端。
      *

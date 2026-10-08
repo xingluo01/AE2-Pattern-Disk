@@ -1,0 +1,8 @@
+{
+  "parent": "ae2:part/display_off",
+  "textures": {
+    "lightsBright": "ae2_pattern_disk:part/cell_management_terminal_bright",
+    "lightsMedium": "ae2_pattern_disk:part/cell_management_terminal_medium",
+    "lightsDark": "ae2_pattern_disk:part/cell_management_terminal_dark"
+  }
+}

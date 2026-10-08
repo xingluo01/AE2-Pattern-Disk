@@ -13,8 +13,10 @@ AE2 Pattern Disks is an add-on for Applied Energistics 2 that provides pattern s
 
 * [Pattern Disks](items-blocks-machines/pattern_disks.md): stores encoded patterns in a single item, in five tiers.
 * [ME Pattern Disk Provider](items-blocks-machines/pattern_disk_provider.md): offers patterns from disks, in block and panel forms.
+* [Self-Assembling Pattern Disk Provider](items-blocks-machines/meteorite_pattern_provider.md): the same, and it runs the patterns a molecular assembler could run by itself.
 * [ME Pattern Transferer](items-blocks-machines/pattern_transferer.md): moves patterns between blank patterns and pattern disks.
 * [ME Pattern Disk Encoding Terminal](items-blocks-machines/pattern_disk_encoding_terminal.md): encodes patterns and writes them to disks.
 * [ME Pattern Disk Management Terminal](items-blocks-machines/pattern_disk_management_terminal.md): reviews and tidies the network's pattern disks in one table.
+* [ME Cell Management Terminal](items-blocks-machines/cell_management_terminal.md): puts every storage cell in the network on one table, wireless included.
 * [Efficient Molecular Assembler](items-blocks-machines/pattern_disk_assembler.md): a parallel molecular assembler with eight lanes.
 * [Batch Assembler](items-blocks-machines/batch_molecular_assembler.md): buffers a whole batch of crafting jobs before running it.

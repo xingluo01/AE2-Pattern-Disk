@@ -1,0 +1,209 @@
+{
+ "$schema": "../schema.json",
+ "includes": [
+  "../common/common.json",
+  "../common/terminal_toolbox.json"
+ ],
+ "helpTopic": "ae2_pattern_disk:ae2guide/items-blocks-machines/cell_management_terminal.md",
+ "images": {
+  "tableHeader": {
+   "$comment": "表格外壳的全部贴图切片都在这里，屏幕代码只按名字取（ScreenStyle.getImage）：带高决定一行占多少像素，这里的表头/尾饰高与下面 terminalStyle 的 header/bottom 必须同源——terminalStyle 那条链算出面板总高，代码再用这里的带高反推可见行数，两边不一致就会算错行。这张贴图是 512×512，所以每条都要写 textureWidth/Height，否则 Blitter 按 256 换算 UV、取样位置翻倍。",
+   "texture": "ae2_pattern_disk:textures/guis/cell_management_terminal.png",
+   "srcRect": [0, 0, 340, 17],
+   "textureWidth": 512,
+   "textureHeight": 512
+  },
+  "tableFooter": {
+   "texture": "ae2_pattern_disk:textures/guis/cell_management_terminal.png",
+   "srcRect": [0, 125, 340, 95],
+   "textureWidth": 512,
+   "textureHeight": 512
+  },
+  "blankCell": {
+   "$comment": "空槽格（18×18 槽框）：它的宽同时是表格的格距，代码的列命中测试用它算。",
+   "texture": "ae2_pattern_disk:textures/guis/cell_management_terminal.png",
+   "srcRect": [304, 144, 18, 18],
+   "textureWidth": 512,
+   "textureHeight": 512
+  },
+  "rowTextTop": {
+   "texture": "ae2_pattern_disk:textures/guis/cell_management_terminal.png",
+   "srcRect": [0, 17, 340, 18],
+   "textureWidth": 512,
+   "textureHeight": 512
+  },
+  "rowSlotsTop": {
+   "texture": "ae2_pattern_disk:textures/guis/cell_management_terminal.png",
+   "srcRect": [0, 35, 340, 18],
+   "textureWidth": 512,
+   "textureHeight": 512
+  },
+  "rowTextMiddle": {
+   "texture": "ae2_pattern_disk:textures/guis/cell_management_terminal.png",
+   "srcRect": [0, 53, 340, 18],
+   "textureWidth": 512,
+   "textureHeight": 512
+  },
+  "rowSlotsMiddle": {
+   "texture": "ae2_pattern_disk:textures/guis/cell_management_terminal.png",
+   "srcRect": [0, 71, 340, 18],
+   "textureWidth": 512,
+   "textureHeight": 512
+  },
+  "rowTextBottom": {
+   "texture": "ae2_pattern_disk:textures/guis/cell_management_terminal.png",
+   "srcRect": [0, 89, 340, 18],
+   "textureWidth": 512,
+   "textureHeight": 512
+  },
+  "rowSlotsBottom": {
+   "texture": "ae2_pattern_disk:textures/guis/cell_management_terminal.png",
+   "srcRect": [0, 107, 340, 18],
+   "textureWidth": 512,
+   "textureHeight": 512
+  }
+ },
+ "terminalStyle": {
+  "supportsAutoCrafting": false,
+  "slotsPerRow": 9,
+  "header": {
+   "texture": "ae2_pattern_disk:textures/guis/cell_management_terminal.png",
+   "srcRect": [0, 0, 340, 17],
+   "textureWidth": 512,
+   "textureHeight": 512
+  },
+  "firstRow": {
+   "texture": "ae2_pattern_disk:textures/guis/cell_management_terminal.png",
+   "srcRect": [0, 17, 340, 18],
+   "textureWidth": 512,
+   "textureHeight": 512
+  },
+  "row": {
+   "$comment": "srcRect 高 18（一行高）：终端样式链用 getSrcHeight() 算窗口能放几行，进而决定面板高 = 表头 + 行×18 + 尾饰。本屏不走 super.drawBG，行带由屏幕自己按类型贴。",
+   "texture": "ae2_pattern_disk:textures/guis/cell_management_terminal.png",
+   "srcRect": [0, 17, 340, 18],
+   "textureWidth": 512,
+   "textureHeight": 512
+  },
+  "lastRow": {
+   "texture": "ae2_pattern_disk:textures/guis/cell_management_terminal.png",
+   "srcRect": [0, 17, 340, 18],
+   "textureWidth": 512,
+   "textureHeight": 512
+  },
+  "bottom": {
+   "texture": "ae2_pattern_disk:textures/guis/cell_management_terminal.png",
+   "srcRect": [0, 125, 340, 95],
+   "textureWidth": 512,
+   "textureHeight": 512
+  }
+ },
+ "background": {
+  "texture": "ae2_pattern_disk:textures/guis/cell_management_terminal.png",
+  "srcRect": [0, 0, 340, 220],
+  "textureWidth": 512,
+  "textureHeight": 512
+ },
+ "slots": {
+  "ae2_pattern_disk:cell_encode": {
+   "$comment": "元件编码槽：右键盘里的存储元件移进来，它就是标记区正在编辑的那个元件。贴图坐标 181,194 的槽框内侧内容区。",
+   "left": 182,
+   "bottom": 25
+  },
+  "ae2_pattern_disk:cell_upgrade": {
+   "$comment": "元件升级槽：一行 6 格（贴图 219,194 宽 108）。槽位由菜单按「编码槽里那张元件」的 getUpgrades 自建，语义是本模组自己的 cell_upgrade。坐标按实机反馈在贴图基准上又向左、向下各挪了 1px（left 218 / bottom 25）。",
+   "left": 218,
+   "bottom": 25,
+   "grid": "HORIZONTAL"
+  },
+  "ae2_pattern_disk:cell_marker_c0": {
+   "$comment": "标记区（可见 7×3，实际 7×9=63 格靠窗口滚动）：一格一列语义，每列 VERTICAL 三格，这样才摆得下 7 列——AE2 的 SlotGridLayout 没有 7 列档。列宽 18，第一列贴图 x=181，最后一行底对齐 y=190。",
+   "left": 181,
+   "bottom": 84,
+   "grid": "VERTICAL"
+  },
+  "ae2_pattern_disk:cell_marker_c1": {
+   "left": 199,
+   "bottom": 84,
+   "grid": "VERTICAL"
+  },
+  "ae2_pattern_disk:cell_marker_c2": {
+   "left": 217,
+   "bottom": 84,
+   "grid": "VERTICAL"
+  },
+  "ae2_pattern_disk:cell_marker_c3": {
+   "left": 235,
+   "bottom": 84,
+   "grid": "VERTICAL"
+  },
+  "ae2_pattern_disk:cell_marker_c4": {
+   "left": 253,
+   "bottom": 84,
+   "grid": "VERTICAL"
+  },
+  "ae2_pattern_disk:cell_marker_c5": {
+   "left": 271,
+   "bottom": 84,
+   "grid": "VERTICAL"
+  },
+  "ae2_pattern_disk:cell_marker_c6": {
+   "left": 289,
+   "bottom": 84,
+   "grid": "VERTICAL"
+  },
+  "PLAYER_INVENTORY": {
+   "left": 8,
+   "bottom": 83,
+   "grid": "BREAK_AFTER_9COLS"
+  },
+  "PLAYER_HOTBAR": {
+   "left": 8,
+   "bottom": 25,
+   "grid": "HORIZONTAL"
+  }
+ },
+ "text": {
+  "dialog_title": {
+   "text": {
+    "translate": "gui.ae2_pattern_disk.cell_management_terminal.title"
+   },
+   "position": {
+    "left": 8,
+    "top": 6
+   }
+  },
+  "player_inventory_title": {
+   "text": {
+    "translate": "container.inventory"
+   },
+   "position": {
+    "left": 8,
+    "bottom": 93
+   }
+  }
+ },
+ "widgets": {
+  "search": {
+   "$comment": "AE2 给物品网格留的搜索框：本屏不显示物品网格，park 在屏外。",
+   "left": 1000,
+   "top": -1000
+  },
+  "scrollbar": {
+   "$comment": "同上：AE2 物品网格的滚动条，本屏不显示物品网格。",
+   "left": 1000,
+   "top": -1000
+  },
+  "tableScrollbar": {
+   "$comment": "表格滚动条：贴图轨道实测 x=322..327（中心 324.5），AE2 的 BIG 滑块 12 宽 -> 左缘 319；轨道纵向 y=17..124，故 top=17，高度由屏幕每帧设为「可见行数 x 行高」（6 行 = 108）恰好铺满该轨道。",
+   "left": 319,
+   "top": 17
+  },
+  "cellMarkerScrollbar": {
+   "$comment": "标记区滚动条：贴图轨道实测 x=315..320（中心 317.5），滑块宽 12 -> 左缘 312（与表格那条不是同一个 x，两者贴在各自轨道上）；用 bottom 锚定而不是 top：AE2 对 top 取绝对值，而终端风格换档时面板会变高、标记区跟着底边走，只有等式的另一头也在底边（与标记格列的 bottom: 84 同源）才不会错位。屏幕每帧按该锚点重算落点。",
+   "left": 312,
+   "bottom": 84,
+   "height": 54
+  }
+ }
+}

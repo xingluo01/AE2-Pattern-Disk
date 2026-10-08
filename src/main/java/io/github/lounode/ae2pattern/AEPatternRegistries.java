@@ -48,8 +48,11 @@ import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
 import io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessEncodingTermMenu;
 import io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessManagementTermMenu;
+import io.github.lounode.ae2pattern.integration.ae2wtlib.CellManagementWirelessTermMenu;
 import io.github.lounode.ae2pattern.common.part.PatternDiskEncodingTerminalPart;
 import io.github.lounode.ae2pattern.common.part.PatternDiskManagementTerminalPart;
+import io.github.lounode.ae2pattern.common.menu.CellManagementTermMenu;
+import io.github.lounode.ae2pattern.common.part.CellManagementTerminalPart;
 import io.github.lounode.ae2pattern.common.part.PatternDiskProviderPart;
 import io.github.lounode.ae2pattern.api.PatternDiskApi;
 import io.github.lounode.ae2pattern.api.PatternDiskContents;
@@ -87,6 +90,21 @@ public final class AEPatternRegistries {
      * 空间下单独存了一份（当前是编码终端那三张的副本，等专用美术出来再换，两边不再互相影响）。
      */
     public static final DeferredItem<PartItem<PatternDiskManagementTerminalPart>> ITEM_PATTERN_DISK_MANAGEMENT_TERMINAL = createManagementTerminal();
+
+    /**
+     * 元件管理终端：列网络里各驱动器与它们的存储元件，右上区是标记区（编辑编码槽里那个元件的分区）。
+     * 与两个样板终端不共用基座：升级槽数量、编码槽含义与标记区库存都不一样。
+     */
+    public static final DeferredItem<PartItem<CellManagementTerminalPart>> ITEM_CELL_MANAGEMENT_TERMINAL = createCellManagementTerminal();
+
+    private static DeferredItem<PartItem<CellManagementTerminalPart>> createCellManagementTerminal() {
+        PartModels.registerModels(
+                CellManagementTerminalPart.MODEL_OFF,
+                CellManagementTerminalPart.MODEL_ON);
+        return ITEMS.registerItem("cell_management_terminal",
+                props -> new PartItem<>(props, CellManagementTerminalPart.class,
+                        CellManagementTerminalPart::new));
+    }
 
     private static DeferredItem<PartItem<PatternDiskManagementTerminalPart>> createManagementTerminal() {
         PartModels.registerModels(
@@ -139,6 +157,7 @@ public final class AEPatternRegistries {
      */
     private static WirelessPatternDiskTerminalItem wirelessEncodingItem;
     private static WirelessPatternDiskTerminalItem wirelessManagementItem;
+    private static WirelessPatternDiskTerminalItem wirelessCellManagementItem;
 
     public static WirelessPatternDiskTerminalItem wirelessEncodingItem() {
         if (wirelessEncodingItem == null) {
@@ -156,11 +175,23 @@ public final class AEPatternRegistries {
         return wirelessManagementItem;
     }
 
+    /** 无线版元件管理终端与上面两个共用同一个物品类，只有菜单类型不同。 */
+    public static WirelessPatternDiskTerminalItem wirelessCellManagementItem() {
+        if (wirelessCellManagementItem == null) {
+            wirelessCellManagementItem = new WirelessPatternDiskTerminalItem(CellManagementWirelessTermMenu.TYPE,
+                    "item.ae2_pattern_disk.wireless_cell_management_terminal");
+        }
+        return wirelessCellManagementItem;
+    }
+
     public static final DeferredItem<WirelessPatternDiskTerminalItem> ITEM_WIRELESS_PATTERN_DISK_ENCODING_TERMINAL = ITEMS
             .registerItem("wireless_pattern_disk_encoding_terminal", props -> wirelessEncodingItem());
 
     public static final DeferredItem<WirelessPatternDiskTerminalItem> ITEM_WIRELESS_PATTERN_DISK_MANAGEMENT_TERMINAL = ITEMS
             .registerItem("wireless_pattern_disk_management_terminal", props -> wirelessManagementItem());
+
+    public static final DeferredItem<WirelessPatternDiskTerminalItem> ITEM_WIRELESS_CELL_MANAGEMENT_TERMINAL = ITEMS
+            .registerItem("wireless_cell_management_terminal", props -> wirelessCellManagementItem());
 
     /** Reference to AE2's blank pattern, exposed for the transferer's network return. */
     public static ItemStack blankPattern() {
@@ -269,6 +300,12 @@ public final class AEPatternRegistries {
     public static final DeferredHolder<MenuType<?>, MenuType<PatternDiskWirelessManagementTermMenu>> MENU_WIRELESS_PATTERN_DISK_MANAGEMENT_TERMINAL = MENUS
             .register("wireless_pattern_disk_management_terminal", () -> PatternDiskWirelessManagementTermMenu.TYPE);
 
+    public static final DeferredHolder<MenuType<?>, MenuType<CellManagementTermMenu>> MENU_CELL_MANAGEMENT_TERMINAL = MENUS
+            .register("cell_management_terminal", () -> CellManagementTermMenu.TYPE);
+
+    public static final DeferredHolder<MenuType<?>, MenuType<CellManagementWirelessTermMenu>> MENU_WIRELESS_CELL_MANAGEMENT_TERMINAL = MENUS
+            .register("wireless_cell_management_terminal", () -> CellManagementWirelessTermMenu.TYPE);
+
     // ---- Data components -----------------------------------------------------
 
     public static final DeferredRegister.DataComponents COMPONENTS = DeferredRegister.createDataComponents(
@@ -308,6 +345,15 @@ public final class AEPatternRegistries {
                     builder -> builder.persistent(CompoundTag.CODEC)
                             .networkSynchronized(ByteBufCodecs.COMPOUND_TAG));
 
+    /**
+     * 无线元件管理终端的状态：编码槽里那张元件（一格）。与 {@link #WIRELESS_TERMINAL_LOGIC} 同构，只是装的
+     * 不是样板编码状态。面板形态用不上它（那一支写部件的 NBT）。
+     */
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<CompoundTag>> WIRELESS_CELL_TERMINAL = COMPONENTS
+            .registerComponentType("wireless_cell_terminal",
+                    builder -> builder.persistent(CompoundTag.CODEC)
+                            .networkSynchronized(ByteBufCodecs.COMPOUND_TAG));
+
     // ---- Creative tab --------------------------------------------------------
 
     /** 配方序列化器：目前只有洗标记这一个（见 ClearDiskMarkRecipe）。 */
@@ -334,17 +380,21 @@ public final class AEPatternRegistries {
                         output.accept(ITEM_DISK_256K.get());
                         output.accept(ITEM_TRANSFERER.get());
                         output.accept(ITEM_PROVIDER.get());
+                        // 面板（贴电缆）形态紧跟它的方块形态；自装配那两件再跟在同族的两形态之后。
+                        // 自装配只在 AE2 Crystal Science 在场时注册，创造页也跟着它出现。
+                        output.accept(ITEM_CABLE_PATTERN_DISK_PROVIDER.get());
+                        if (MeteoritePatternProviderRegistrations.isRegistered()) {
+                            output.accept(MeteoritePatternProviderRegistrations.ITEM.get());
+                            output.accept(MeteoritePatternProviderRegistrations.ITEM_PART.get());
+                        }
                         output.accept(ITEM_ASSEMBLER.get());
                         output.accept(ITEM_BATCH_ASSEMBLER.get());
                         output.accept(ITEM_PATTERN_DISK_ENCODING_TERMINAL.get());
-        output.accept(ITEM_PATTERN_DISK_MANAGEMENT_TERMINAL.get());
-                        output.accept(ITEM_CABLE_PATTERN_DISK_PROVIDER.get());
+                        output.accept(ITEM_PATTERN_DISK_MANAGEMENT_TERMINAL.get());
+                        output.accept(ITEM_CELL_MANAGEMENT_TERMINAL.get());
                         output.accept(ITEM_WIRELESS_PATTERN_DISK_ENCODING_TERMINAL.get());
                         output.accept(ITEM_WIRELESS_PATTERN_DISK_MANAGEMENT_TERMINAL.get());
-                        // 自装配样板磁盘供应器只在 AE2 Crystal Science 在场时注册，创造页跟着它出现。
-                        if (MeteoritePatternProviderRegistrations.isRegistered()) {
-                            output.accept(MeteoritePatternProviderRegistrations.ITEM.get());
-                        }
+                        output.accept(ITEM_WIRELESS_CELL_MANAGEMENT_TERMINAL.get());
                     })
                     .build());
 
@@ -393,10 +443,29 @@ public final class AEPatternRegistries {
 
     public static final SlotSemantic BATCH_DISK = SlotSemantics.register("ae2_pattern_disk:batch_disk", false);
 
+    /** 元件管理终端的元件编码槽（一格：正在编辑的那个元件，标记区改的就是它）。 */
+    public static final SlotSemantic CELL_ENCODE = SlotSemantics.register("ae2_pattern_disk:cell_encode", false);
+
+    /** 元件升级槽的 6 个格位由本类自己建（语义是 {@link AEPatternRegistries#CELL_UPGRADE}，不是 AE2 的 UPGRADE）。 */
+    public static final SlotSemantic CELL_UPGRADE = SlotSemantics.register(
+            "ae2_pattern_disk:cell_upgrade", false);
+
+    /**
+     * 元件标记区的 7 个列语义（每列 VERTICAL 三格）。
+     *
+     * <p>为什么一列一个语义：{@code SlotGridLayout} 只有 3/2/9 列与横竖四种排法，没有 7 列档；要用一条语义
+     * 摆出 7&times;3 的窗口，就得在屏幕里每帧手改 {@code Slot.x/y}。列语义让坐标留在样式文档里，滚动只挪窗口
+     * 起点（见 {@code SlidingInventoryWindow}）。</p>
+     */
+    public static final SlotSemantic[] CELL_MARKER_COLUMN = new SlotSemantic[7];
+
     static {
         for (int i = 0; i < 8; i++) {
             ASSEMBLER_GRID[i] = SlotSemantics.register("ae2_pattern_disk:assembler_grid_" + i, false);
             ASSEMBLER_PATTERN[i] = SlotSemantics.register("ae2_pattern_disk:assembler_pattern_" + i, false);
+        }
+        for (int i = 0; i < CELL_MARKER_COLUMN.length; i++) {
+            CELL_MARKER_COLUMN[i] = SlotSemantics.register("ae2_pattern_disk:cell_marker_c" + i, false);
         }
     }
 
@@ -414,7 +483,8 @@ public final class AEPatternRegistries {
         // holder，那只允许在注册表「正在注册」时进行，而这里的调用点在模组构造期（注册表已冻结，
         // 立刻 new 会抛 IllegalStateException: Registry is already frozen）。
         io.github.lounode.ae2pattern.integration.ae2wtlib.WirelessTerminalRegistrations.register(
-                AEPatternRegistries::wirelessEncodingItem, AEPatternRegistries::wirelessManagementItem);
+                AEPatternRegistries::wirelessEncodingItem, AEPatternRegistries::wirelessManagementItem,
+                AEPatternRegistries::wirelessCellManagementItem);
 
         // The api resolves the component through the holder, so it is handed the holder itself - a
         // DeferredHolder is not populated until the registry events run, and reads happen after that.

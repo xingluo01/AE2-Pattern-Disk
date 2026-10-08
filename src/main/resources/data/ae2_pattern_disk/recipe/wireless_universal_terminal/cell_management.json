@@ -1,0 +1,7 @@
+{
+  "type": "ae2wtlib:upgrade",
+  "terminal": {
+    "item": "ae2_pattern_disk:wireless_cell_management_terminal"
+  },
+  "terminalName": "cell_management"
+}

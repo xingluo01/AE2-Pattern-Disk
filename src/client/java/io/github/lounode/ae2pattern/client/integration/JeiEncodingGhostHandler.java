@@ -13,7 +13,7 @@ import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.GenericStack;
 import appeng.menu.slot.FakeSlot;
 
-import io.github.lounode.ae2pattern.client.gui.PatternDiskEncodingTermScreen;
+import io.github.lounode.ae2pattern.client.gui.AbstractPatternDiskTermScreen;
 
 /**
  * JEI 的幽灵物品处理器：把 JEI 里的物品拖进样板编辑区。
@@ -28,10 +28,10 @@ import io.github.lounode.ae2pattern.client.gui.PatternDiskEncodingTermScreen;
  * 没能稳定触发（JEI 只在鼠标下有可拖拽物品时才走这条路），已整体移除：连同那条配方查找链与 {@code runtime}
  * 注入一起删掉了，只保留拖拽。要复活它得先有实机证据说明 JEI 确实会调进来。</p>
  */
-public class JeiEncodingGhostHandler implements IGhostIngredientHandler<PatternDiskEncodingTermScreen> {
+public class JeiEncodingGhostHandler implements IGhostIngredientHandler<AbstractPatternDiskTermScreen<?>> {
 
     @Override
-    public <I> List<Target<I>> getTargetsTyped(PatternDiskEncodingTermScreen screen,
+    public <I> List<Target<I>> getTargetsTyped(AbstractPatternDiskTermScreen<?> screen,
             ITypedIngredient<I> ingredient, boolean doStart) {
         // 只认得出来的类型：转换不了的东西（能量之类）不给目标，免得拖上去没反应还高亮一片。化学品等
         // 自定义 AEKeyType 由 AE2 的 JEI 桥提供，见 JeiIngredientConverters。
@@ -58,7 +58,7 @@ public class JeiEncodingGhostHandler implements IGhostIngredientHandler<PatternD
      * 一个格子的拖放目标。落在格子矩形里就调 {@link FakeSlot#setFilterTo}——它自己会把动作包发给服务端，
      * 所以这里不用再拼包（AE2 给 EMI 用的那条拖放路径也是这么写的）。
      */
-    private record SlotTarget<I>(PatternDiskEncodingTermScreen screen, FakeSlot slot,
+    private record SlotTarget<I>(AbstractPatternDiskTermScreen<?> screen, FakeSlot slot,
             ITypedIngredient<I> typed) implements Target<I> {
 
         @Override

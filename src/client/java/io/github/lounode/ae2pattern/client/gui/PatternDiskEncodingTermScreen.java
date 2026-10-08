@@ -74,7 +74,7 @@ import io.github.lounode.ae2pattern.client.gui.DiskListPanel.DiskEntry;
  * 会报出屏名。</p>
  */
 @IPNPlayerSideOnly
-public class PatternDiskEncodingTermScreen extends MEStorageScreen<PatternDiskEncodingTermMenu>
+public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen<PatternDiskEncodingTermMenu>
         implements NaturalSort.Provider {
 
     // states.png (0,16,64,16) 四模式图标：合成/处理/锻造/切石

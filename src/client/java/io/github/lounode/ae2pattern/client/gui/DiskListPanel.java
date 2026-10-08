@@ -46,6 +46,13 @@ public class DiskListPanel implements ICompositeWidget {
     /** 磁盘覆盖层起点（GUI 画布坐标）。 */
     private int x, y;
 
+    /**
+     * 面板尺寸：默认与样式文档 {@code diskList} 的 width/height 一致（24×66），文档给了非零值就以文档为准。
+     * 底图覆盖层本身是固定切片（DISK_OVERLAY），这两个数只决定命中/滚轮边界。
+     */
+    private int width = 24;
+    private int height = 66;
+
     /** 可见性。 */
     private boolean visible = true;
 
@@ -126,11 +133,18 @@ public class DiskListPanel implements ICompositeWidget {
 
     @Override
     public void setSize(int width, int height) {
+        // 文档没写 width/height 时 Gson 留 0，那会把边界缩没（滚轮与点击全部失效），所以只对正值生效。
+        if (width > 0) {
+            this.width = width;
+        }
+        if (height > 0) {
+            this.height = height;
+        }
     }
 
     @Override
     public Rect2i getBounds() {
-        return new Rect2i(x, y, 24, 66);
+        return new Rect2i(x, y, this.width, this.height);
     }
 
     @Override
