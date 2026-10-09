@@ -18,6 +18,7 @@ import appeng.menu.SlotSemantic;
 import appeng.menu.guisync.GuiSync;
 import appeng.menu.implementations.MenuTypeBuilder;
 import appeng.menu.implementations.PriorityMenu;
+import appeng.menu.locator.MenuHostLocator;
 import appeng.menu.locator.MenuLocators;
 import appeng.menu.me.common.MEStorageMenu;
 import net.minecraft.world.entity.player.Player;
@@ -379,9 +380,10 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         if (owner == null) {
             return;
         }
-        ItemStack taken = CellDriveScanner.extractCell(owner, driveSlot);
+        var reason = new java.util.concurrent.atomic.AtomicReference<CellDriveScanner.ExtractResult>();
+        ItemStack taken = CellDriveScanner.extractCell(owner, driveSlot, reason);
         if (taken.isEmpty()) {
-            notice(NOTICE + "slot_empty");
+            notice(NOTICE + takeFailureKey(reason.get()));
             return;
         }
         encodeInv.setItemDirect(0, taken);
@@ -432,9 +434,10 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         if (owner == null) {
             return;
         }
-        ItemStack taken = CellDriveScanner.extractCell(owner, driveSlot);
+        var reason = new java.util.concurrent.atomic.AtomicReference<CellDriveScanner.ExtractResult>();
+        ItemStack taken = CellDriveScanner.extractCell(owner, driveSlot, reason);
         if (taken.isEmpty()) {
-            notice(NOTICE + "slot_empty");
+            notice(NOTICE + takeFailureKey(reason.get()));
             return;
         }
         setCarried(taken);
@@ -499,9 +502,10 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         if (owner == null) {
             return;
         }
-        ItemStack taken = CellDriveScanner.extractCell(owner, driveSlot);
+        var reason = new java.util.concurrent.atomic.AtomicReference<CellDriveScanner.ExtractResult>();
+        ItemStack taken = CellDriveScanner.extractCell(owner, driveSlot, reason);
         if (taken.isEmpty()) {
-            notice(NOTICE + "slot_empty");
+            notice(NOTICE + takeFailureKey(reason.get()));
             return;
         }
         if (!getPlayer().getInventory().add(taken)) {
@@ -599,9 +603,10 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
             notice(NOTICE + "drive_full");
             return;
         }
-        ItemStack taken = CellDriveScanner.extractCell(source, hostSlot);
+        var reason = new java.util.concurrent.atomic.AtomicReference<CellDriveScanner.ExtractResult>();
+        ItemStack taken = CellDriveScanner.extractCell(source, hostSlot, reason);
         if (taken.isEmpty()) {
-            notice(NOTICE + "slot_empty");
+            notice(NOTICE + takeFailureKey(reason.get()));
             return;
         }
         for (CellHostListPayload.CellSlot slot : slots) {
@@ -681,8 +686,9 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
      * 的驱动器都算）才有这个界面。ECO 家族的优先级记在存储控制器上、不在单格元件座上，这里交不出
      * 界面，只说一句不支持。</p>
      *
-     * <p>界面宿主用的是本终端的部件而不是那台驱动器（见 {@code CellManagementTerminalPart} 的 IPriorityHost
-     * 那一段）：读写经部件转手落到那一台上，而 AE2 那面的返回键会把玩家送回本终端，而不是驱动器自己的界面。</p>
+     * <p>两个形态的界面宿主不同：面板形态指本部件（AE2 那面的返回键会把玩家送回本终端），无线形态用本菜单
+     * 自己的 locator——宿主是物品，AE2WTLib 自家的无线终端开子菜单也是这条。locator 解析出来的是宿主类的
+     * <b>另一个实例</b>，所以目标键得先写进物品组件（见 {@code WirelessCellManagementTerminalHost}）。</p>
      */
     public void openPriorityGui(String leaderKey) {
         if (!onServerSide()) {
@@ -702,12 +708,18 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         // 只要能**写**优先级就放行：AE2/EAE 驱动器走 IPriorityHost，NEO ECO 各级存储与青春版的 L1 驱动器
         // 走它们存储控制器上的 setStoragePriority(int)。只有读、没有写的不放行（ECO 本体就是）：AE2 那个
         // 优先级界面不读回也不报错，放进去只会让玩家以为改成了。
-        if (!CellDriveScanner.canSetStoragePriority(owner) || !(host instanceof CellManagementTerminalPart part)) {
+        if (!CellDriveScanner.canSetStoragePriority(owner)) {
             notice(NOTICE + "priority_unsupported");
             return;
         }
         host.setPriorityTarget(leaderKey);
-        MenuOpener.open(PriorityMenu.TYPE, getPlayer(), MenuLocators.forPart(part));
+        MenuHostLocator locator = host instanceof CellManagementTerminalPart part
+                ? MenuLocators.forPart(part)
+                : getLocator();
+        if (!MenuOpener.open(PriorityMenu.TYPE, getPlayer(), locator)) {
+            // 宿主解析不出来时 AE2 那边只是静默返回 false（不报错也不开屏），这里补一句，免得玩家以为点坏了。
+            notice(NOTICE + "priority_unsupported");
+        }
     }
 
     /** 「宿主键 | 宿主内格位 | 目标首格键」编成一个串（三个值都不含分隔符）。 */
@@ -761,14 +773,28 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
     /** 反馈文案的语言键前缀（这些串只在服务端拼键，未尾化由客户端做）。 */
     private static final String NOTICE = "gui.ae2_pattern_disk.cell_management_terminal.notice.";
 
-    /** 给玩家一句动作栏反馈（无参数）。只在服务端调。 */
+    /** 给玩家一句聊天栏反馈（无参数）。只在服务端调。 */
     private void notice(String key) {
         noticeWith(key, "");
     }
 
-    /** 给玩家一句带参数的动作栏反馈。只在服务端调：客户端手上的菜单没有收发这包的那一线。 */
+    /** 给玩家一句带参数的聊天栏反馈。只在服务端调：客户端手上的菜单没有收发这包的那一线。 */
     private void noticeWith(String key, String arg) {
         sendPacketToClient(new CellNoticePayload(key, arg));
+    }
+
+    /**
+     * 取不到元件时该报哪一句。
+     *
+     * <p>三态分明：格里有东西但被锁住时说锁，格里有东西却不知为何没取走时照实说「取不出来」，只有真的空着
+     * 才说「没有元件」——最后这条区分是必要的，否则玩家会以为东西被吞了。</p>
+     */
+    private static String takeFailureKey(CellDriveScanner.ExtractResult result) {
+        return switch (result) {
+            case LOCKED -> "cell_locked";
+            case REFUSED -> "cell_refused";
+            default -> "slot_empty";
+        };
     }
 
     private void takeCellEncoded(String encoded) {

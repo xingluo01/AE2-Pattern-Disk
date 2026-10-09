@@ -15,7 +15,9 @@ import appeng.api.config.ViewItems;
 import appeng.api.inventories.InternalInventory;
 import appeng.api.upgrades.IUpgradeInventory;
 import appeng.api.util.IConfigManager;
+import appeng.helpers.IPriorityHost;
 import appeng.menu.ISubMenu;
+import appeng.menu.MenuOpener;
 import appeng.menu.locator.ItemMenuHostLocator;
 import appeng.util.inv.AppEngInternalInventory;
 import appeng.util.inv.InternalInventoryHost;
@@ -25,6 +27,7 @@ import de.mari_023.ae2wtlib.api.terminal.ItemWT;
 import de.mari_023.ae2wtlib.api.terminal.WTMenuHost;
 
 import io.github.lounode.ae2pattern.AEPatternRegistries;
+import io.github.lounode.ae2pattern.common.menu.CellDriveScanner;
 import io.github.lounode.ae2pattern.common.menu.ICellManagementHost;
 
 /**
@@ -37,7 +40,11 @@ import io.github.lounode.ae2pattern.common.menu.ICellManagementHost;
  * {@code EncodeCellUpgrades}），所以这里只提供编码槽本身。</p>
  */
 public class WirelessCellManagementTerminalHost extends WTMenuHost
-        implements ICellManagementHost, InternalInventoryHost {
+        implements ICellManagementHost, InternalInventoryHost, IPriorityHost {
+
+    /** 组件里两个键：编码槽内容与「正在配优先级的那一台」。 */
+    private static final String ENCODE_CELL_KEY = "encodeCell";
+    private static final String PRIORITY_TARGET_KEY = "priorityTarget";
 
     /** 编码槽内容一变就要落盘（库存在变时会叫 {@link #saveChangedInventory}）：它跟着物品走，掉线或换维度都得还在。 */
     private final AppEngInternalInventory encodeCell = new AppEngInternalInventory(this, 1);
@@ -45,12 +52,11 @@ public class WirelessCellManagementTerminalHost extends WTMenuHost
     /**
      * 中键要配优先级的那一台（首格键）。
      *
-     * <p>不写进组件：它是「当前开着的那一屏」选中的目标，屏幕一关就没有意义；面板版把它写进部件 NBT 只是
-     * 顺手（那边本来就有个部件可以挂），不是它需要被记住。</p>
+     * <p><b>必须写进物品组件</b>：AE2 的优先级界面是用本菜单的 locator 开的，服务端把 locator 解析回
+     * 「本类的一个新实例」——面板形态那边 locator 解析回的是同一个部件实例，所以它存在字段上就够，无线形态
+     * 不行：不写组件的话，新实例读到的目标永远是空的，界面就成了摆设（读 0、写无声）。</p>
      *
-     * <p><b>无线版目前还走不到这条</b>：菜单里那个中键入口只在宿主是面板部件时放行（那边的
-     * {@code IPriorityHost} 与返回键都指得着一台部件）。面板版的中键配优先级在无线版暂时没有对应入口——
-     * 这个字段先留着，接上时它就是那个目标。</p>
+     * <p>次生好处：屏幕一关就丢的选中态因此跟着物品走，从优先级界面返回后再中键同一台仍然对得上。</p>
      */
     @Nullable
     private String priorityTarget;
@@ -71,8 +77,9 @@ public class WirelessCellManagementTerminalHost extends WTMenuHost
                 .registerSetting(Settings.SORT_DIRECTION, SortDir.ASCENDING)
                 .build();
         // 开屏即恢复：组件里那份 NBT 就是上次关屏时写下的（没有则是全新终端，得到一格空的编码槽）。
-        this.encodeCell.readFromNBT(this.getItemStack().getOrDefault(componentType(), new CompoundTag()),
-                "encodeCell", player.registryAccess());
+        var tag = this.getItemStack().getOrDefault(componentType(), new CompoundTag());
+        this.encodeCell.readFromNBT(tag, ENCODE_CELL_KEY, player.registryAccess());
+        this.priorityTarget = tag.getString(PRIORITY_TARGET_KEY);
     }
 
     @Override
@@ -103,13 +110,80 @@ public class WirelessCellManagementTerminalHost extends WTMenuHost
     @Override
     public void markForSave() {
         var tag = new CompoundTag();
-        this.encodeCell.writeToNBT(tag, "encodeCell", getPlayer().registryAccess());
+        this.encodeCell.writeToNBT(tag, ENCODE_CELL_KEY, getPlayer().registryAccess());
+        // 两个键一起写：markForSave 每次新建 tag，漏一个就把另一个从组件里抹掉了。
+        if (this.priorityTarget != null) {
+            tag.putString(PRIORITY_TARGET_KEY, this.priorityTarget);
+        }
         this.getItemStack().set(componentType(), tag);
     }
 
     @Override
     public void setPriorityTarget(@Nullable String leaderKey) {
         this.priorityTarget = leaderKey;
+        // 立刻落盘：优先级界面是被 locator 重新解析出来的新实例，它只读得到组件里的值。
+        markForSave();
+    }
+
+    //
+    // AE2 优先级界面（PriorityMenu）对这个宿主的全部要求：数值转给那一台，返回键与图标走 AE2WTLib 的现成实现
+    // （WirelessTerminalMenuHost 已经提供了 returnToMainMenu 与 getMainMenuIcon，这里只补读写）。
+    //
+
+    /**
+     * 中键选中的那一台；不在网里、或没选中时为 null。
+     *
+     * <p>取网的方式与面板形态那边不同：那里是部件自己的节点，这里是<b>当前接入点</b>的节点
+     * （{@link #getActionableNode()} 就是 AE2 无线宿主的那个实现）。超距或断电时它为空，与面板形态节点
+     * 未加载时同口径——都只是拿不到目标，不假装成功。</p>
+     */
+    @Nullable
+    private Object priorityTargetOwner() {
+        if (this.priorityTarget == null || this.priorityTarget.isEmpty()) {
+            return null;
+        }
+        var node = getActionableNode();
+        if (node == null || node.getGrid() == null) {
+            return null;
+        }
+        return CellDriveScanner.findOwner(node.getGrid(), this.priorityTarget);
+    }
+
+    @Override
+    public int getPriority() {
+        Object owner = priorityTargetOwner();
+        if (owner instanceof IPriorityHost priorityHost) {
+            return priorityHost.getPriority();
+        }
+        Integer stored = owner == null ? null : CellDriveScanner.readStoragePriority(owner);
+        return stored != null ? stored : 0;
+    }
+
+    @Override
+    public void setPriority(int newValue) {
+        Object owner = priorityTargetOwner();
+        if (owner instanceof IPriorityHost priorityHost) {
+            priorityHost.setPriority(newValue);
+            return;
+        }
+        // ECO 本体只给了 getter，这一句会返回 false：写不进去时保持原值，不假装成功。
+        if (owner != null) {
+            CellDriveScanner.setStoragePriority(owner, newValue);
+        }
+    }
+
+    /**
+     * 从优先级界面按返回时重开本终端，而不是回通用终端主界面。
+     *
+     * <p>面板形态那边自己实现了这一条（{@code CellManagementTerminalPart.returnToMainMenu} 重开元件管理终端）；
+     * 无线形态如果沿用上游回调（AE2WTLib 给的是「回通用终端主界面」），同一个功能就会在两个形态上落回不同的
+     * 地方——优先级界面是从本终端里开出去的，返回键应该把玩家放回原处。</p>
+     */
+    @Override
+    public void returnToMainMenu(Player player, ISubMenu subMenu) {
+        // 用 returnTo 而不是 open：这次确实是「从子菜单返回」，本仓另外几处返回同类也都走 returnTo，
+        // locator 则取子菜单自己的那个（它就是当初开这个子菜单用的那个）。
+        MenuOpener.returnTo(CellManagementWirelessTermMenu.TYPE, player, subMenu.getLocator());
     }
 
     private static DataComponentType<CompoundTag> componentType() {

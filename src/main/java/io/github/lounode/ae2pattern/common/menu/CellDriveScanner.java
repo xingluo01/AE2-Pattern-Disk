@@ -2,6 +2,7 @@ package io.github.lounode.ae2pattern.common.menu;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.LinkedHashMap;
 
 import org.jetbrains.annotations.Nullable;
@@ -406,11 +407,32 @@ public final class CellDriveScanner {
     }
 
     /**
+     * 把指定格位的元件从驱动器里取出来。
+     *
+     * <p>返回值区分四种结果：「引擎明确锁住」与「这一格本来就是空的」在玩家看来是两件事（前者要说清被谁锁住，
+     * 后者只是点到了空格），而「格里有东西却取不出来」又比锁住更不可知（探不到原因的引擎、写入口未生效等），
+     * 所以这三者各自成态，不能都归到「没取到」。</p>
+     */
+    public enum ExtractResult {
+        /** 取到了。 */
+        OK,
+        /** 这一格本来就没有元件。 */
+        EMPTY,
+        /** 格里有东西，驱动器明确说了不让取（ECO 的无限存储迁移/成型期会锁住成员矩阵）。 */
+        LOCKED,
+        /** 格里有东西，但没取走，而驱动器没说是锁住——写入口没生效或这家引擎的拒收探不到原因。 */
+        REFUSED,
+    }
+
+    /**
      * 把指定格位的元件从驱动器里取出来；取不到（格变了、驱动器没了）返回空栈。
      *
      * <p>AE2 与 EAE 走驱动器库存；ECO 家族是单格元件座，只有第 0 格，且只能整格取走。</p>
      */
-    public static ItemStack extractCell(Object owner, int slot) {
+    public static ItemStack extractCell(Object owner, int slot, AtomicReference<ExtractResult> reason) {
+        if (reason != null) {
+            reason.set(ExtractResult.EMPTY);
+        }
         if (owner instanceof DriveBlockEntity drive) {
             if (slot < 0 || slot >= drive.getCellCount()) {
                 return ItemStack.EMPTY;
@@ -420,7 +442,12 @@ public final class CellDriveScanner {
                 return ItemStack.EMPTY;
             }
             drive.getInternalInventory().setItemDirect(slot, ItemStack.EMPTY);
-            return drive.getInternalInventory().getStackInSlot(slot).isEmpty() ? current : ItemStack.EMPTY;
+            boolean taken = drive.getInternalInventory().getStackInSlot(slot).isEmpty();
+            if (reason != null) {
+                // 格里有东西却没变空同样是「取不出来」，不能报成「这一格没有元件」。
+                reason.set(taken ? ExtractResult.OK : ExtractResult.REFUSED);
+            }
+            return taken ? current : ItemStack.EMPTY;
         }
         if (slot != 0) {
             return ItemStack.EMPTY;
@@ -430,10 +457,34 @@ public final class CellDriveScanner {
             return ItemStack.EMPTY;
         }
         // 单格座：清格用 null——ECO 的 setCellStack 对空栈会静默拒收（它的 isCellHandled(EMPTY) 是 false），
-        // 它自己清格用的就是 null。清完必须回读：没真变空就当作取不了，否则就是「取了但原件还在」的复制。
+        // 它自己清格用的就是 null。清完必须回读：没真变空就是没取到（不能算「取了但原件还在」的复制）。
         clearCellStack(owner);
         Object after = invoke(owner, "getCellStack");
-        return after instanceof ItemStack left && !left.isEmpty() ? ItemStack.EMPTY : stack;
+        if (after instanceof ItemStack left && !left.isEmpty()) {
+            // 回读发现格子里还是原来那张：格里有东西却没取走。能问到锁的（ECO 无限存储迁移/成型）报 LOCKED，
+            // 问不到的报 REFUSED——两者都比默认的 EMPTY 诚实：默认值会让玩家听到「这一格没有元件」，而格
+            // 子里明明有。
+            if (reason != null) {
+                reason.set(canExtract(owner) ? ExtractResult.REFUSED : ExtractResult.LOCKED);
+            }
+            return ItemStack.EMPTY;
+        }
+        if (reason != null) {
+            reason.set(ExtractResult.OK);
+        }
+        return stack;
+    }
+
+    /**
+     * 这台宿主现在允不允许取出元件；探不到这个方法就算允许。
+     *
+     * <p>只对报了 {@code canExtractCell()} 的宿主有意义：ECO 的驱动器在无限存储迁移中、或主机开启无限模式
+     * 而该矩阵尚未成型时返回 false，它的 {@code setCellStack} 第一句就是 {@code if (!canExtractCell()) return;}
+     * ——静默拒收，回读只能看出「没取到」，看不出「为什么」。纯探测，不做任何写入。</p>
+     */
+    public static boolean canExtract(Object owner) {
+        Object value = invoke(owner, "canExtractCell");
+        return !(value instanceof Boolean allowed) || allowed;
     }
 
     /**
