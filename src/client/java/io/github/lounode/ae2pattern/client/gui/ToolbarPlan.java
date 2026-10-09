@@ -84,6 +84,11 @@ public final class ToolbarPlan {
             toolbar.clear();
             // 只留清单里认出来的：被摘掉的那些不会再被 populateScreen 装回屏上。
             toolbar.addAll(wanted);
+            // 留在栏里的也记一笔：「某枚按钮不见了」是这套白名单唯一的失败形态（就在被隐藏那一侧静默发生），
+            // 把成品清单也留在日志里，查起来就能直接看出是“没认出来”还是“没挂上来”。
+            for (var button : toolbar) {
+                LOGGER.debug("[toolbar] {} keeps {} as {}", label, button.getClass().getSimpleName(), slotOf.apply(button));
+            }
         });
     }
 

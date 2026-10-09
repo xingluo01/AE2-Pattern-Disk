@@ -419,24 +419,22 @@ public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen
                 Component.translatable("gui.ae2_pattern_disk.encoding_terminal.show_unmarked.off")));
         addRenderableWidget(showUnmarked);
         this.showUnmarkedButton = showUnmarked;
-
-        orderToolbar();
     }
 
     /**
      * 工具栏顺序：附加排序贴着 AE2 那枚「排序按」，本模组自己的模式轮换按钮排到 AE2 自带的之后。
      * 子屏（管理终端）会再把自家那两枚排到模式轮换之前。
      */
-    private void orderToolbar() {
-        ToolbarPlan.apply(this, "encoding terminal", TOOLBAR, this::toolbarSlot);
-    }
-
     /**
      * 左侧工具栏的清单：顺序即清单顺序，不在清单里的一律隐藏。
      *
      * <p>闪电科技那两枚（频率卡配置、自动连接开关）由上游自己造、自己挂：按 tooltip 定身份
      * （见基类的 {@code isFrequencyCardButton} / {@code isFrequencyAutoConnectButton}）。</p>
      */
+    protected List<String> toolbarPlan() {
+        return TOOLBAR;
+    }
+
     private static final List<String> TOOLBAR = List.of(
             "guide", "sortBy", "naturalSort", "viewMode", "typeFilter",
             "sortOrder", "terminalSettings", "terminalStyle", "mode",

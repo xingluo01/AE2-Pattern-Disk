@@ -48,10 +48,9 @@ public class PatternDiskWirelessManagementTermScreen extends PatternDiskManageme
         }
         super.init();
         this.upgradesPanel.setMaxRows(Math.max(2, getVisibleRows()));
-        // 切换按钮不再排到「切换模式」之后：保持构造器里的位置（上游 AE2WTLib 自家的终端也是这么摆的
-        // ——它就在指南按钮之后）。挪到末尾会把按钮推到面板下沿之外（工具栏每枚 22px，末位 y≈245 而
-        // 面板高 220），AE2LT 在场时还会再追加两枚按钮；那时切换按钮与它弹出的选择面板一起落到可视区
-        // 之外，点上去没反应。详细推理见 CellManagementWirelessTermScreen 同名段落。
+        // 切换按钮的位置由父屏那份工具栏清单定（本屏排在第 8 位）。它不能排到末尾：本屏面板只有 220 高，
+        // 而按钮步进 22px、起点 y≈3——末位 y≈245 已经在面板下沿之外，AE2LT 在场时还会再追加两枚，
+        // 那时切换按钮与它弹出的选择面板一起落到可视区之外，点上去没反应。
     }
 
 

@@ -352,8 +352,6 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         // 直接 NPE，而且抛在 init() 里会连带把整个开屏打断（NeoForge 报 "Failed to handle advanced open
         // screen from server"，客户端被断开）。setFocused 才是 null 安全的那个。
         setFocused(null);
-        // 工具栏按清单排：顺序与显隐都由那一份清单说了算（父类那几枚 + 本屏的显示模式 / 隐藏槽位）。
-        ToolbarPlan.apply(this, "management terminal", TOOLBAR, this::toolbarSlot);
 
         // 风格档位可能把面板改矮：清单没变时 rebuildRows 不会夹偏移，这里补一次，免得顶部留白。
         // （带高与 terminalStyle 的 header/row/bottom 同源：两者都在本屏的样式文档里，不存在跨文件同步。）
@@ -363,7 +361,15 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     /**
      * 左侧工具栏的清单：顺序即清单顺序，不在清单里的一律隐藏（包括 AE2 那枚「终端设置」——它的设置页
      * 全是物品网格的项，而本屏把网格整个藏了）。
+     *
+     * <p>基类在它自己的 {@code init()} 里读这份清单，本屏不自己应用：父屏（编解码屏）也定义了清单，
+     * 两边各应用一次的话本屏这两枚会被父屏那份摘掉。</p>
      */
+    @Override
+    protected List<String> toolbarPlan() {
+        return TOOLBAR;
+    }
+
     private static final List<String> TOOLBAR = List.of(
             "guide", "sortBy", "naturalSort", "sortOrder", "showProviders", "hideSlots",
             "mode", "terminalSwitch", "frequencyCard", "frequencyAutoConnect");

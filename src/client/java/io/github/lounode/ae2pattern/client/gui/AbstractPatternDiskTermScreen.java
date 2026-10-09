@@ -16,6 +16,7 @@ import appeng.core.localization.ButtonToolTips;
 import appeng.menu.slot.DisabledSlot;
 
 import io.github.lounode.ae2pattern.common.menu.AbstractPatternDiskTermMenu;
+import java.util.List;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -85,6 +86,30 @@ public abstract class AbstractPatternDiskTermScreen<T extends AbstractPatternDis
      *
      * <p>子类接着往下认自家那几枚（模式轮换、分区/清除/复制、显示模式…）：先调 {@code super} 再过自家的字段。</p>
      */
+    /**
+     * 本屏左侧工具栏的清单：顺序即清单顺序，不在清单里的一律隐藏；返回空清单表示不管（照 AE2 的默认）。
+     *
+     * <p>各屏覆写它。**只在 {@link #init()} 里读一次**，不要各屏自己调 {@code ToolbarPlan.apply}：编解码屏与
+     * 管理屏是继承关系，两边各应用一次的话，父屏那份清单会先把子屏多出来的按钮（显示模式 / 隐藏槽位）从栏里
+     * 摘掉，子屏的清单就再也认不回来——它们会被永久隐藏。</p>
+     */
+    protected List<String> toolbarPlan() {
+        return List.of();
+    }
+
+    @Override
+    public void init() {
+        super.init();
+        // 取最派生那份清单（本类被各屏继承，virtual 调用自然就取到子屏的）。
+        var plan = toolbarPlan();
+        if (!plan.isEmpty()) {
+            ToolbarPlan.apply(this, getClass().getSimpleName(), plan, this::toolbarSlot);
+        }
+    }
+
+    /**
+     * 按钮 → 槽位名；不在清单里、或认不出的一律返回 null（按不在清单里处理）。
+     */
     @Nullable
     protected String toolbarSlot(Button button) {
         if (button instanceof OpenGuideButton) {
@@ -118,22 +143,40 @@ public abstract class AbstractPatternDiskTermScreen<T extends AbstractPatternDis
         if (isFrequencyAutoConnectButton(button)) {
             return "frequencyAutoConnect";
         }
-        var terminalSwitch = terminalSwitchButton();
-        if (terminalSwitch != null && button == terminalSwitch) {
+        if (isTerminalSwitchButton(button)) {
             return "terminalSwitch";
         }
         return null;
     }
 
+    /** AE2WTLib 那枚「切换终端」的类名与其父类名（它自己造的是前者，包私有，所以只比名字）。 */
+    private static final String AE2WTLIB_TERMINAL_SELECTION = "de.mari_023.ae2wtlib.api.terminal.TerminalSelectionButton";
+    private static final String AE2WTLIB_ICON_BUTTON = "de.mari_023.ae2wtlib.api.gui.IconButton";
+
     /**
-     * 通用终端的「切换终端」按钮；不是无线形态、或者不在通用终端里打开时为空。
+     * 无线通用终端里 AE2WTLib 那枚「切换终端」（{@link #AE2WTLIB_TERMINAL_SELECTION}）。
      *
-     * <p>由三个无线屏覆写：那枚按钮是 AE2WTLib 造的，只有在构造器里才拿得到句柄——它在白名单里算一个槽位，
-     * 就得认得出它。</p>
+     * <p>按类名认，而不是靠各无线屏存一个句柄：靠句柄就得每个屏都记得把实例存好，漏一个就表现为「那枚按钮
+     * 不见了」——白名单会把认不出身份的按钮隐藏。按类名认则一次覆盖三个无线屏。</p>
+     *
+     * <p>先比具体类名，再退一步比父类（{@code api.gui.IconButton}）——那个父类是 public 的，附属模组可以
+     * 自己拿它造按钮；先比具体类名就不会把别人家的按钮误认成「切换终端」。父类名作后备是为了 AE2WTLib
+     * 哪天换了实现类时还能认得出来。两个都只做字符串比对，不加载类。</p>
+     *
+     * <p>也不写成 {@code instanceof}：AE2WTLib 在本模组只是可选依赖（{@code compileOnly} + {@code localRuntime}），
+     * 它缺席时那个类不在场，而这里会对每个按钮都调一次——用类名避开解析它的类。</p>
      */
-    @Nullable
-    protected Button terminalSwitchButton() {
-        return null;
+    private static boolean isTerminalSwitchButton(Button button) {
+        for (Class<?> type = button.getClass(); type != null; type = type.getSuperclass()) {
+            var name = type.getName();
+            if (AE2WTLIB_TERMINAL_SELECTION.equals(name)) {
+                return true;
+            }
+            if (AE2WTLIB_ICON_BUTTON.equals(name)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

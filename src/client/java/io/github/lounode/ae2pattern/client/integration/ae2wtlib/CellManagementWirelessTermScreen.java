@@ -19,9 +19,9 @@ import io.github.lounode.ae2pattern.integration.ae2wtlib.CellManagementWirelessT
  * 无线版元件管理终端的屏幕：表格、标记区、工具栏全部继承面板版，无线那一套（升级卡面板、终端切换按钮、热键）
  * 与{@link PatternDiskWirelessManagementTermScreen 无线样板磁盘管理终端}同一口径。
  *
- * <p>工具栏那一段有个差别：本终端没有「编码模式」那枚下拉按钮（那是样板编码屏的），所以切换按钮
- * 保持构造器里的位置（栏首第二枚）、不参与重排：AE2LT 那种往同一条栏里追加按钮的模组，一追加就会把
- * 排在末尾的按钮推出面板下沿（见 {@code CellManagementTermScreen} 与同包的无线屏）。</p>
+ * <p>工具栏与另两个终端同一口径：清单在 {@code CellManagementTermScreen#toolbarPlan()} 里，「切换终端」
+ * 就排在其中（第 7 位）。清单定顺序是有原因的：本屏面板只有 220 高（按钮步进 22px、起点 y≈3），
+ * 排在末尾的按钮会被 AE2LT 那类“往同一条栏追加按钮”的模组一起顶出可视区。</p>
  *
  * <p>{@code @IPNPlayerSideOnly}：整理模组的标注，与父屏同源（它没有 {@code @Inherited}，故在此重标一份）。</p>
  */
@@ -52,12 +52,10 @@ public class CellManagementWirelessTermScreen extends CellManagementTermScreen
         }
         super.init();
         this.upgradesPanel.setMaxRows(Math.max(2, getVisibleRows()));
-        // 切换按钮不再重排：AE2WTLib 自家的终端都是在构造器里挂它（字节码里就是 <init> 调
-        // cycleTerminalButton），于是它排在指南按钮之后、AE2 自己那些按钮之前——面板右上角那一段。
-        // 以前本屏把它挪到末尾（“通用终端的切换钮本该在最外侧”），结果是它跟着整条栏一起掉到面板下沿
-        // 之外：工具栏每个按钮占 22px，末位就在 y≈245，而面板只有 220 高；AE2LT 往同一条栏里再追加两枚
-        // （过载频率卡在场时）就把它连弹出的终端选择面板一起顶出可视区，表现为“点了没反应”。回到上游
-        // 位置后，后面再来多少枚按钮都挤不掉它。
+        // 切换按钮不再重排：现在「排到哪」已由父屏那份工具栏清单统一决定，而它会把「切换终端」排在中部
+        // （第 7 位，落点 y≈135），不再有旧口径那个麻烦——以前没有清单、靠自己在 init() 里挪，本屏面板
+        // 只有 220 高（按钮步进 22px、起点 y≈3），挪到末尾就会被 AE2LT 追加的按钮一起顶出可视区，
+        // 表现为“点了没反应”。
     }
 
     @Override

@@ -39,8 +39,8 @@ public class PatternDiskWirelessEncodingTermScreen extends PatternDiskEncodingTe
         // 终端切换按钮：挂在构造器里，与 AE2WTLib 自己的无线终端同一时机（addToLeftToolbar 依赖的
         // widgets 这时已就绪）；挂在这里而不是 init()：init() 会随每次 resize 重复调用，而那是纯追加的表。
         // 只在通用终端里打开时才有得切，判据照 wtlib：宿主物品是不是通用终端。
-        // 挂上之后不再重排：它在栏里的位置就决定它能不能用——本屏面板高 251，末位按钮落点 y≈245，
-        // 只差几像素就出面板；AE2LT 往同一条栏追加按钮时就会越过（见 CellManagementWirelessTermScreen）。
+        // 它在栏里的位置由父屏那份工具栏清单定：「切换终端」排在第 10 位，落点 y≈200，离面板下沿还远。
+        // （工具栏按钮宽高 16、竖向间距 6，步进 22px，起点 y≈3；本屏面板高 251，排到末尾那几枚才会掉出去。）
         if (menu.getTerminalHost().getItemStack().getItem() instanceof ItemWUT) {
             addToLeftToolbar(cycleTerminalButton());
         }
@@ -56,7 +56,7 @@ public class PatternDiskWirelessEncodingTermScreen extends PatternDiskEncodingTe
         super.init();
         // 行数按屏幕实际能放下多少收：不写这一句就恒为默认的 2 行，高屏会白白空着。
         this.upgradesPanel.setMaxRows(Math.max(2, getVisibleRows()));
-        // 切换按钮不重排，理由同另两个无线屏（见 CellManagementWirelessTermScreen 里那段）。
+        // 切换按钮的位置也不用在这里管：首屏那份工具栏清单已经把它排进安全区了。
     }
 
     @Override

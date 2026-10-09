@@ -233,8 +233,6 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
         if (gridScrollbar != null) {
             gridScrollbar.setCaptureMouseWheel(false);
         }
-
-        reorderToolbar();
     }
 
     /**
@@ -258,8 +256,9 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
             "guide", "sortOrder", "terminalStyle", "partition", "clear", "copyMode",
             "terminalSwitch", "frequencyCard", "frequencyAutoConnect", "megaCutoff");
 
-    private void reorderToolbar() {
-        ToolbarPlan.apply(this, "cell management terminal", TOOLBAR, this::toolbarSlot);
+    @Override
+    protected List<String> toolbarPlan() {
+        return TOOLBAR;
     }
 
     /**
@@ -287,9 +286,7 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
         if (button == this.megaCutoffButton) {
             return "megaCutoff";
         }
-        if (button == terminalSwitchButton()) {
-            return "terminalSwitch";
-        }
+        // 「切换终端」那枚由基类按类名认（无线屏挂上来的 AE2WTLib 按钮），这里不必再重复。
         return null;
     }
 
