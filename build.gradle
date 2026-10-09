@@ -367,6 +367,12 @@ dependencies {
     //     **2.0.7 把 appliedenhancements 的地板抬到 [1.1.0,)**（本模组采纳 2.0.7 是为了批量契约的适配器
     //     注册表，见上方那条），所以下面这一对必须同批升：只升 omnisequence 会在预加载阶段被 FML 拦住
     //     （实测：`Mod molecularmanipulator requires appliedenhancements 1.1.0 or above`）。
+    //     **2.0.8（2026-10-09）的前置地板与 2.0.7 逐条一致**（已按 jar 内 neoforge.mods.toml 核过），
+    //     所以前置不必跟着动。API 面也核过了：整个 `api/crafting` 包的类清单两个构件**完全一致**，
+    //     我们绑定或由上游回调的每一个（OmniBatchCraftingProvider / OmniBatchProviderAdapterRegistry /
+    //     OmniBatchAdmission / OmniBatchProbe / OmniPostAccountingOutputAdapterRegistry）签名也一致
+    //     （javap 对比 9043224 与 9107363）。这一条很重要：`mods.toml` 里我们不设版本地板，靠的就是
+    //     「旧版本上调不通就退场」——注册期有 catch 兜，回调期（maxCrafts/commit）则只能靠签名不变。
     //   data-energistics 需 configuration [3.1.1,4) / ldlib2 [2.2.38.a,)；
     //   ae2utility 需 JEI（已在环境里）。
     // 未恢复的是「闪电科技重生」那一支（AE2 Lightning Tech Reborn 等）：它与上方已装的「闪电科技」
@@ -375,9 +381,9 @@ dependencies {
     // this is the first version we can compile against - the machine itself stays free of its types and the
     // integration class is only loaded when `molecularmanipulator` is present, but the adapter does implement
     // its interface at compile time.
-    compileOnly 'curse.maven:omnisequence-transfinite-1624558:9043224'
-    localRuntime 'curse.maven:omnisequence-transfinite-1624558:9043224'    // 2.0.7
-    localRuntime 'curse.maven:applied-enhancements-1665696:9043227'        // 1.1.0（随 omnisequence 2.0.7 的地板一起升）
+    compileOnly 'curse.maven:omnisequence-transfinite-1624558:9107363'
+    localRuntime 'curse.maven:omnisequence-transfinite-1624558:9107363'    // 2.0.8（构件 9107363；原 2.0.7 = 9043224）
+    localRuntime 'curse.maven:applied-enhancements-1665696:9043227'        // 1.1.0（随 omnisequence 的地板一起升）
     // 试装后又摘掉的：**Mek Energistics（mekenergistics）**。它与 ECO 双向集成（ECO 侧有
     // compat/mekenergistics），但代价太大：每次启动会刷约 335 条 "Unknown registry key … item:
     // mekenergistics:me_*" 的 ERROR —— 它为 Mekanism 系可选集成镜像的 me_* 机器方块只在对应 mod
