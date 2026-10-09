@@ -143,7 +143,7 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
 
         var hosts = hostsByName.get(request.groupName);
         if (hosts == null || hosts.isEmpty()) {
-            notifyPlayer(false, "gui.ae2_pattern_disk.management_terminal.disk_store.no_host");
+            notifyPlayer("gui.ae2_pattern_disk.management_terminal.disk_store.no_host");
             return;
         }
         var host = hostWithFreeSlot(hosts);
@@ -151,12 +151,12 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
         // 只认光标上那张盘：这一条手势就是「把手上这张放进去」。
         var carried = getCarried();
         if (!(carried.getItem() instanceof PatternDiskItem)) {
-            notifyPlayer(false, "gui.ae2_pattern_disk.management_terminal.disk_store.no_disk");
+            notifyPlayer("gui.ae2_pattern_disk.management_terminal.disk_store.no_disk");
             return;
         }
 
         if (!tryInsertIntoHost(host, carried)) {
-            notifyPlayer(false, "gui.ae2_pattern_disk.management_terminal.disk_store.no_room", describeHost(host));
+            notifyPlayer("gui.ae2_pattern_disk.management_terminal.disk_store.no_room", describeHost(host));
             return;
         }
         setCarried(carried.isEmpty() ? ItemStack.EMPTY : carried);
@@ -185,25 +185,25 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
         // 这里的宿主是“由盘推出来”的，盘没了自然也没容器可存。
         var host = diskHostOf(request.targetDiskSerial);
         if (host == null) {
-            notifyPlayer(false, "gui.ae2_pattern_disk.management_terminal.disk_store.disk_gone");
+            notifyPlayer("gui.ae2_pattern_disk.management_terminal.disk_store.disk_gone");
             return;
         }
 
         var player = getPlayer();
         var inventory = player.getInventory();
         if (request.containerSlot < 0 || request.containerSlot >= inventory.getContainerSize()) {
-            notifyPlayer(false, "gui.ae2_pattern_disk.management_terminal.disk_store.slot_changed");
+            notifyPlayer("gui.ae2_pattern_disk.management_terminal.disk_store.slot_changed");
             return;
         }
         var source = inventory.getItem(request.containerSlot);
         if (!(source.getItem() instanceof PatternDiskItem)) {
-            notifyPlayer(false, "gui.ae2_pattern_disk.management_terminal.disk_store.slot_changed");
+            notifyPlayer("gui.ae2_pattern_disk.management_terminal.disk_store.slot_changed");
             return;
         }
 
         // 减源只由 tryInsertIntoHost 做一次（它按实际插入量减）；这里再减会多扣一张。
         if (!tryInsertIntoHost(host, source)) {
-            notifyPlayer(false, "gui.ae2_pattern_disk.management_terminal.disk_store.no_room", describeHost(host));
+            notifyPlayer("gui.ae2_pattern_disk.management_terminal.disk_store.no_room", describeHost(host));
             return;
         }
         // 背包那份是活的 Inventory 对象（不在槽位包自动同步的范围里），得主动推一次。
@@ -233,16 +233,17 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
     /** 存入成功后的收尾：重推清单（表、空槽数与盘内容同一拍更新）并报一声。 */
     private void afterDiskStored(IPatternDiskHost host) {
         refreshDiskList(); // 不等下一次扫描
-        notifyPlayer(true, "gui.ae2_pattern_disk.management_terminal.disk_store.ok", describeHost(host));
+        notifyPlayer("gui.ae2_pattern_disk.management_terminal.disk_store.ok", describeHost(host));
     }
 
     /**
-     * 回执。失败走聊天栏（要说清原因），成功走动作栏：Shift+左键是可连点的手势，每条都往聊天栏写会刷屏。
+     * 回执。全部走聊天栏：失败要说清原因，而成功那几条（Shift+左键连点、存盘）玩家也需要事后对得上账，
+     * 动作栏三秒就没、连点还会互相盖掉。
      */
-    private void notifyPlayer(boolean actionBar, String key, Object... args) {
+    private void notifyPlayer(String key, Object... args) {
         var player = getPlayer();
         if (player != null) {
-            player.displayClientMessage(Component.translatable(key, args), actionBar);
+            player.displayClientMessage(Component.translatable(key, args), false);
         }
     }
 

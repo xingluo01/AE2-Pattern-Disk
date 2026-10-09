@@ -51,7 +51,7 @@ A pattern cell shows a disk pattern's primary output, so R/U queries the primary
 Notes:
 
 - Patterns are materialised: taking one out of a disk spends a blank pattern from the ME network, the same accounting the pattern access terminal uses; with none in the network it cannot be taken out. Writing it back returns that blank pattern to the network. A disk itself is an ordinary item and costs nothing to take out.
-- When storing a disk, the container's first free slot is used automatically, and an occupied disk cell is never swapped. A successful store announces on the action bar; nothing to store, a full container, a container no longer on the grid, or no disk selected each report the reason in chat.
+- When storing a disk, the container's first free slot is used automatically, and an occupied disk cell is never swapped. A successful store is announced in chat too; nothing to store, a full container, a container no longer on the grid, or no disk selected each report the reason in chat.
 - Unmarked disks take part in name searches only and never appear in a `#` search; the toggle beside the search box keeps them listed regardless.
 
 ## Encoding area

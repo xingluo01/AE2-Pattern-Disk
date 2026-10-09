@@ -58,11 +58,15 @@ public abstract class AbstractPatternDiskTermScreen<T extends AbstractPatternDis
         return false;
     }
 
-    /** 一句只给自己看的动作栏提示（这类拒绝在客户端就能答，不必等服务端）。 */
+    /**
+     * 一句只给自己看的提示。
+     *
+     * <p>落聊天栏（{@code false}）而不是动作栏：这类拒绝要能回头看见，动作栏三秒就没了。
+     */
     protected static void showLocalNotice(String key) {
         var player = Minecraft.getInstance().player;
         if (player != null) {
-            player.displayClientMessage(Component.translatable(key), true);
+            player.displayClientMessage(Component.translatable(key), false);
         }
     }
 }
