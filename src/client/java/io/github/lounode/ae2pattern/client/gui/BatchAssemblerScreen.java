@@ -69,6 +69,9 @@ public class BatchAssemblerScreen extends UpgradeableScreen<BatchAssemblerMenu> 
         // 样板优先级（AE2 自带的那个界面）：本机是「供应器 + 装配室」的混合体，这枚按钮改的是它作为供
         // 应器那一面的优先级——同一条产物的多条样板里优先用谁的。真正的生效点在
         // BatchAssemblerBlockEntity.getPatternPriority()。
+        // 注意：这枚按钮是照 id 从屏幕样式文档里取控件的（WidgetContainer.add("openPriority") →
+        // ScreenStyle.getWidget），样式里少了 widgets.openPriority 就会在构造期抛 IllegalStateException，
+        // 表现为打开 GUI 时客户端直接断连。动这行就同步动 batch_molecular_assembler.json。
         widgets.addOpenPriorityButton();
     }
 

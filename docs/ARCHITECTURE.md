@@ -300,4 +300,12 @@ NEO ECO 的类型名与方法名集中在 `NeoECOTypes.java`，改版本时先�
 
 **改终端布局**：`assets/ae2/screens/ae2_pattern_disk/*.json` 是唯一布局源，屏幕代码只按它给的位置摆放。能进文档的不止坐标：控件尺寸（`widgets.*` 的 width/height，面板的 `getBounds` 读它）、贴图切片（`images`，管理终端的表头带/六条行带/尾饰带/空槽格都在那里）、文字颜色（`palette`，`style.getColor(PaletteColor.X)`）都归文档。管理终端的行高、表头高、尾饰高与格距是从 `images` 切片的 srcRect 反推的，不再抄写常量——但同一份文档里 `terminalStyle` 的 header/row/bottom 与 `images` 的对应带高必须一致（前者算面板总高，后者反推行数）。控件在代码里必须按 id 注册（`widgets.add`）：文档有键而代码没注册，那块永远不出现；代码注册而文档没键，开屏即抛 `IllegalStateException`。
 
+后一种已惹过一次祸：批装屏加 `addOpenPriorityButton()` 时没同步 `batch_molecular_assembler.json`，玩家点开 GUI 就被踢（`Screen is missing required widget: openPriority`，抛在屏幕构造期，NeoForge 拿不到屏幕实例）。改布局或加控件后跑一遍：
+
+```bash
+node tools/check-screen-widgets.cjs .
+```
+
+它核**本仓这 14 个屏幕/面板类里按 id 取控件与贴图的调用**（`widgets.add*("id")`、`style.getWidget` / `style.getImage`、`addOpenPriorityButton()`）是否已在对应文档里声明；`widgets.*` 与 `images.*` 两个键空间都查，动态拼接的 id（`modePanel0..3`）按「从 0 起连续编号」判定。退出码 0 = 全部已声明，1 = 有未声明，**2 = AE2 公共段落未取到、部分项无法判定——2 不算通过**。没登记映射的屏幕类会被指出来，不静默放过。
+
 **动 API**：`api/package-info.java` 写明这个包是稳定面。改签名等于破坏第三方兼容，改之前先在 `../CHANGELOG.md` 记一笔。
