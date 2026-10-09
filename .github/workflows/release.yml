@@ -113,7 +113,8 @@ jobs:
           set -euo pipefail
           # 优先用仓库里的 CHANGELOG.md：那是按玩家视角整理过的说明，比拼接 commit 主题可读。
           # 取 "## [<版本>]" 到下一个 "## [" 之间的内容（三级标题 ### 不会误终止）。取不到就
-          # 退回到按提交主题拼接，保证任何情况下都有内容可用。
+          # 退回到按提交主题拼接，保证任何情况下都有内容可用。体例与发版前自检见
+          # docs/CHANGELOG_STYLE.md。
           BODY=""
           SOURCE="none"
           if [ -f CHANGELOG.md ]; then
@@ -138,8 +139,11 @@ jobs:
           fi
           # 回退是静默的，打一行出来，事后能从 CI 日志看出发布说明是哪来的。
           echo "changelog source: $SOURCE (${#BODY} chars)"
+          # 正文首行由这里注入版本标题：CHANGELOG 里那行版本标题是取段锚点、不进正文，标题只能拼在这一步。
           {
             echo "body<<CHANGELOG_EOF"
+            echo "# AE2 Pattern Disk $VERSION 更新日志"
+            echo
             echo "$BODY"
             echo
             echo "CHANGELOG_EOF"
