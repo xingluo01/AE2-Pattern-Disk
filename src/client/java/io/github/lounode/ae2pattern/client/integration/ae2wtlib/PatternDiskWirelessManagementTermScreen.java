@@ -13,7 +13,6 @@ import de.mari_023.ae2wtlib.api.terminal.IUniversalTerminalCapable;
 import de.mari_023.ae2wtlib.api.terminal.WTMenuHost;
 
 import io.github.lounode.ae2pattern.client.gui.PatternDiskManagementTermScreen;
-import io.github.lounode.ae2pattern.client.gui.ToolbarOrder;
 import io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessManagementTermMenu;
 
 /**
@@ -30,16 +29,12 @@ public class PatternDiskWirelessManagementTermScreen extends PatternDiskManageme
     /** 升级卡面板：留给 {@code init()} 之后按可见行数回写行数（同无线编码终端）。 */
     private ScrollingUpgradesPanel upgradesPanel;
 
-    /** 通用终端里的切换按钮：构造器里挂上，{@code init()} 里再排到「切换模式」之后。 */
-    private de.mari_023.ae2wtlib.api.gui.IconButton terminalSwitchButton;
-
     public PatternDiskWirelessManagementTermScreen(PatternDiskWirelessManagementTermMenu menu,
             Inventory playerInventory, Component title, ScreenStyle style) {
         super(menu, playerInventory, title, style);
         // 同无线编码终端：切换按钮在构造器里挂（与 AE2WTLib 自己的无线终端同一时机）。
         if (menu.getTerminalHost().getItemStack().getItem() instanceof ItemWUT) {
-            this.terminalSwitchButton = cycleTerminalButton();
-            addToLeftToolbar(this.terminalSwitchButton);
+            addToLeftToolbar(cycleTerminalButton());
         }
     }
 
@@ -53,11 +48,10 @@ public class PatternDiskWirelessManagementTermScreen extends PatternDiskManageme
         }
         super.init();
         this.upgradesPanel.setMaxRows(Math.max(2, getVisibleRows()));
-        // 切换按钮排在「切换模式」（本屏的 modeButton 继承自编码屏）之后：工具栏按挂载顺序摆，
-        // 而本按钮是构造器里挂的，不重排就会跑到模式按钮前面。
-        if (this.terminalSwitchButton != null) {
-            ToolbarOrder.placeAfter(this, this.terminalSwitchButton, this.modeButton);
-        }
+        // 切换按钮不再排到「切换模式」之后：保持构造器里的位置（上游 AE2WTLib 自家的终端也是这么摆的
+        // ——它就在指南按钮之后）。挪到末尾会把按钮推到面板下沿之外（工具栏每枚 22px，末位 y≈245 而
+        // 面板高 220），AE2LT 在场时还会再追加两枚按钮；那时切换按钮与它弹出的选择面板一起落到可视区
+        // 之外，点上去没反应。详细推理见 CellManagementWirelessTermScreen 同名段落。
     }
 
 

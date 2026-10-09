@@ -13,7 +13,6 @@ import de.mari_023.ae2wtlib.api.terminal.IUniversalTerminalCapable;
 import de.mari_023.ae2wtlib.api.terminal.WTMenuHost;
 
 import io.github.lounode.ae2pattern.client.gui.PatternDiskEncodingTermScreen;
-import io.github.lounode.ae2pattern.client.gui.ToolbarOrder;
 import io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessEncodingTermMenu;
 
 /**
@@ -34,18 +33,16 @@ public class PatternDiskWirelessEncodingTermScreen extends PatternDiskEncodingTe
     /** 升级卡面板：留给 {@code init()} 之后按可见行数回写行数（与 AE2WTLib 自己的无线终端同口径）。 */
     private ScrollingUpgradesPanel upgradesPanel;
 
-    /** 通用终端里的切换按钮：构造器里挂上，{@code init()} 里再排到模式按钮之后。 */
-    private de.mari_023.ae2wtlib.api.gui.IconButton terminalSwitchButton;
-
     public PatternDiskWirelessEncodingTermScreen(PatternDiskWirelessEncodingTermMenu menu,
             Inventory playerInventory, Component title, ScreenStyle style) {
         super(menu, playerInventory, title, style);
         // 终端切换按钮：挂在构造器里，与 AE2WTLib 自己的无线终端同一时机（addToLeftToolbar 依赖的
-        // widgets 这时已就绪）；放进 init() 不生效，还会随每次 resize 反复追加。
+        // widgets 这时已就绪）；挂在这里而不是 init()：init() 会随每次 resize 重复调用，而那是纯追加的表。
         // 只在通用终端里打开时才有得切，判据照 wtlib：宿主物品是不是通用终端。
+        // 挂上之后不再重排：它在栏里的位置就决定它能不能用——本屏面板高 251，末位按钮落点 y≈245，
+        // 只差几像素就出面板；AE2LT 往同一条栏追加按钮时就会越过（见 CellManagementWirelessTermScreen）。
         if (menu.getTerminalHost().getItemStack().getItem() instanceof ItemWUT) {
-            this.terminalSwitchButton = cycleTerminalButton();
-            addToLeftToolbar(this.terminalSwitchButton);
+            addToLeftToolbar(cycleTerminalButton());
         }
     }
 
@@ -59,10 +56,7 @@ public class PatternDiskWirelessEncodingTermScreen extends PatternDiskEncodingTe
         super.init();
         // 行数按屏幕实际能放下多少收：不写这一句就恒为默认的 2 行，高屏会白白空着。
         this.upgradesPanel.setMaxRows(Math.max(2, getVisibleRows()));
-        // 切换按钮排在「编码类型」之后：工具栏默认按挂载顺序摆，而本按钮是构造器里挂的，会跑到模式按钮前面。
-        if (this.terminalSwitchButton != null) {
-            ToolbarOrder.placeAfter(this, this.terminalSwitchButton, this.modeButton);
-        }
+        // 切换按钮不重排，理由同另两个无线屏（见 CellManagementWirelessTermScreen 里那段）。
     }
 
     @Override
