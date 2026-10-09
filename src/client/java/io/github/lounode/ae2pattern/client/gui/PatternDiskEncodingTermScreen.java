@@ -19,6 +19,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -40,6 +41,7 @@ import appeng.client.gui.style.Blitter;
 import appeng.client.gui.style.ScreenStyle;
 import appeng.client.gui.widgets.AETextField;
 import appeng.client.gui.widgets.ActionButton;
+import appeng.client.gui.widgets.KeyTypeSelectionButton;
 import appeng.core.AELog;
 import appeng.core.localization.ButtonToolTips;
 import appeng.core.network.serverbound.InventoryActionPacket;
@@ -426,11 +428,36 @@ public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen
      * 子屏（管理终端）会再把自家那两枚排到模式轮换之前。
      */
     private void orderToolbar() {
-        var sortBy = NaturalSortButton.findSortByButton(this);
-        if (sortBy != null) {
-            ToolbarOrder.placeAfter(this, naturalSortButton.widget(), sortBy);
+        ToolbarPlan.apply(this, "encoding terminal", TOOLBAR, this::toolbarSlot);
+    }
+
+    /**
+     * 左侧工具栏的清单：顺序即清单顺序，不在清单里的一律隐藏。
+     *
+     * <p>闪电科技那两枚（频率卡配置、自动连接开关）由上游自己造、自己挂：按 tooltip 定身份
+     * （见基类的 {@code isFrequencyCardButton} / {@code isFrequencyAutoConnectButton}）。</p>
+     */
+    private static final List<String> TOOLBAR = List.of(
+            "guide", "sortBy", "naturalSort", "viewMode", "typeFilter",
+            "sortOrder", "terminalSettings", "terminalStyle", "mode",
+            "terminalSwitch", "frequencyCard", "frequencyAutoConnect");
+
+    @Override
+    protected String toolbarSlot(Button button) {
+        var slot = super.toolbarSlot(button);
+        if (slot != null) {
+            return slot;
         }
-        ToolbarOrder.placeAtEnd(this, modeButton);
+        if (button == this.modeButton) {
+            return "mode";
+        }
+        if (this.naturalSortButton != null && button == this.naturalSortButton.widget()) {
+            return "naturalSort";
+        }
+        if (button instanceof KeyTypeSelectionButton) {
+            return "typeFilter";
+        }
+        return null;
     }
 
     /**

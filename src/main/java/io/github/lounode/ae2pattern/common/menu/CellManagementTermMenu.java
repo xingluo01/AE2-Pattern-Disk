@@ -30,6 +30,7 @@ import appeng.menu.slot.FakeSlot;
 
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 import io.github.lounode.ae2pattern.common.part.CellManagementTerminalPart;
+import io.github.lounode.ae2pattern.integration.megacells.MegaCellsCompat;
 import io.github.lounode.ae2pattern.network.CellHostListPayload;
 import io.github.lounode.ae2pattern.network.CellNoticePayload;
 
@@ -100,6 +101,7 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         registerClientAction(ACTION_PARTITION, this::partition);
         registerClientAction(ACTION_CLEAR, this::clearMarkerArea);
         registerClientAction(ACTION_CYCLE_COPY_MODE, this::cycleCopyMode);
+        registerClientAction(ACTION_CYCLE_COMPRESSION_CUTOFF, Boolean.class, this::cycleCompressionCutoff);
         this.encodeCellUpgrades = new EncodeCellUpgrades(host);
 
         // 元件编码槽：一格，正在被编辑的那个元件。标记区改的就是它的分区。
@@ -176,6 +178,8 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
 
     /** Shift+右键驱动器首格：打开那一台自己的存储优先级界面。 */
     private static final String ACTION_OPEN_PRIORITY = "openPriority";
+    /** 切编码槽那张元件的压缩截断物（MEGA 大宗元件专有）；参数是「是否反向」。 */
+    private static final String ACTION_CYCLE_COMPRESSION_CUTOFF = "cycleCompressionCutoff";
 
     /** 标记窗当前挂在哪一段后备库存上，供屏幕画滚动条与内容。 */
     public int getMarkerRowOffset() {
@@ -677,6 +681,29 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
     private appeng.api.networking.IGrid gridOrNull() {
         var gridNode = getGridNode();
         return gridNode != null ? gridNode.getGrid() : null;
+    }
+
+    /**
+     * 切编码槽里那张元件的压缩截断物（MEGA 的大宗元件专有）。
+     *
+     * <p>只对「接在压缩链上且已启用压缩」的元件有意义，而那个判据由客户端每帧现算（它决定按钮显不显示），
+     * 所以这里再来一次兜底：不是那种元件就什么都不做，不报错。
+     *
+     * <p>元件是原地改的（截断物存在元件自己的组件里），改完得让宿主把这一格重新落盘——面板写部件 NBT、
+     * 无线写物品组件，两个形态共用这一条。</p>
+     */
+    public void cycleCompressionCutoff(boolean reverse) {
+        if (!onServerSide()) {
+            sendClientAction(ACTION_CYCLE_COMPRESSION_CUTOFF, reverse);
+            return;
+        }
+        ItemStack cell = host.getEncodeCellInventory().getStackInSlot(0);
+        Object bulk = MegaCellsCompat.bulkInventoryOf(cell);
+        if (bulk == null || !MegaCellsCompat.switchCutoff(bulk, reverse)) {
+            return;
+        }
+        host.markForSave();
+        broadcastChanges();
     }
 
     /**

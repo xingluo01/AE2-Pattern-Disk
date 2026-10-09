@@ -21,10 +21,7 @@ import appeng.client.gui.style.Blitter;
 import appeng.client.gui.style.PaletteColor;
 import appeng.client.gui.style.ScreenStyle;
 import appeng.client.gui.widgets.ActionButton;
-import appeng.client.gui.widgets.IconButton;
-import appeng.client.gui.widgets.OpenGuideButton;
 import appeng.client.gui.widgets.Scrollbar;
-import appeng.client.gui.widgets.SettingToggleButton;
 import appeng.client.gui.widgets.ToggleButton;
 import appeng.client.gui.Icon;
 import appeng.client.Point;
@@ -36,7 +33,6 @@ import org.slf4j.LoggerFactory;
 
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 import appeng.core.localization.GuiText;
-import appeng.core.localization.ButtonToolTips;
 import appeng.api.config.ActionItems;
 import appeng.api.config.CopyMode;
 import appeng.api.config.Settings;
@@ -44,6 +40,8 @@ import appeng.api.config.SortDir;
 
 import io.github.lounode.ae2pattern.common.menu.CellDriveScanner;
 import io.github.lounode.ae2pattern.common.menu.CellManagementTermMenu;
+import io.github.lounode.ae2pattern.client.integration.megacells.MegaCutoffButtonFactory;
+import io.github.lounode.ae2pattern.integration.megacells.MegaCellsCompat;
 import io.github.lounode.ae2pattern.client.render.DriveHighlight;
 import io.github.lounode.ae2pattern.network.CellHostListPayload;
 
@@ -154,6 +152,9 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
     private ActionButton partitionButton;
     private ActionButton clearButton;
     private ToggleButton copyModeButton;
+    /** MEGA Cells 的大宗压缩截断钮；那个模组不在场时为 null（工厂返回 null）。 */
+    @Nullable
+    private Button megaCutoffButton;
 
     private int visibleRows = 6;
     private int scrollOffset;
@@ -197,6 +198,13 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
         addToLeftToolbar(this.partitionButton);
         addToLeftToolbar(this.clearButton);
         addToLeftToolbar(this.copyModeButton);
+
+        // MEGA Cells 的大宗压缩截断钮：那个模组不在场时工厂返回 null，这一枚就不存在。
+        // 与上面三枚同一时机建（工具栏只在开屏时按已注册的按钮排一次位，补在 init() 里不会有按钮底与图标）。
+        this.megaCutoffButton = MegaCutoffButtonFactory.create(this::onMegaCutoffPressed);
+        if (this.megaCutoffButton != null) {
+            addToLeftToolbar(this.megaCutoffButton);
+        }
     }
 
     @Override
@@ -241,56 +249,82 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
     }
 
     /**
-     * 把左侧工具栏排成本终端固定的六枚，并关掉 AE2 塞进来、对本屏没有意义的那些。
+     * 左侧工具栏的清单：顺序即清单顺序，不在清单里的一律隐藏（含 AE2 那枚「终端设置」）。
      *
-     * <p>AE2 给每个 ME 终端无条件挂七枚：指南 / 排序按 / 视图模式 / 过滤类型 / 排序顺序 / 终端设置 /
-     * 终端风格。其中排序按、视图模式、过滤类型、终端设置作用的全是那张物品网格——本屏把网格整个藏了
-     * （槽位在 {@link #init()} 里摘掉、画面画的是表格），留着它们只会点出一片没反应的空档。</p>
-     *
-     * <p>留下的三枚各有各的用处：指南按本屏 style 里的 {@code helpTopic} 打开这一页；排序顺序决定表格按
-     * 优先级从大到小还是从小到大；终端风格改的是面板高，可见行数跟着它变。</p>
-     *
-     * <p>只认得出保留项时也不报错：AE2 哪天增减了按钮，这里最多是漏掉或漏掉一枚，剩下的照样能用。</p>
+     * <p>闪电科技那两枚（频率卡配置、自动连接开关）由上游自己对每个通用终端能力屏追加（频率卡在场时才真出现）：
+     * 按 tooltip 定身份（见基类的 {@code isFrequencyCardButton} / {@code isFrequencyAutoConnectButton}）。</p>
      */
+    private static final List<String> TOOLBAR = List.of(
+            "guide", "sortOrder", "terminalStyle", "partition", "clear", "copyMode",
+            "terminalSwitch", "frequencyCard", "frequencyAutoConnect", "megaCutoff");
+
     private void reorderToolbar() {
-        var wanted = new ArrayList<Button>();
-        for (var listener : this.children()) {
-            if (listener instanceof OpenGuideButton guide) {
-                wanted.add(guide);
-                continue;
-            }
-            if (!(listener instanceof IconButton button)) {
-                continue;
-            }
-            if (button instanceof SettingToggleButton<?> toggle) {
-                var setting = toggle.getSetting();
-                if (setting == Settings.SORT_DIRECTION || setting == Settings.TERMINAL_STYLE) {
-                    wanted.add(button);
-                } else {
-                    button.setVisibility(false);
-                }
-            } else if (isTerminalSettings(button)) {
-                button.setVisibility(false);
-            }
-        }
-        wanted.add(this.partitionButton);
-        wanted.add(this.clearButton);
-        wanted.add(this.copyModeButton);
-        // 本模组这三枚固定收尾，AE2 那三枚保持它们自己的先后（指南 → 排序顺序 → 终端风格）。
-        ToolbarOrder.placeAtEnd(this, wanted);
+        ToolbarPlan.apply(this, "cell management terminal", TOOLBAR, this::toolbarSlot);
     }
 
     /**
-     * 「终端设置」那枚：AE2 的 {@code ActionButton(ActionItems.TERMINAL_SETTINGS)}，它的设置页全是物品网格
-     * 的选项，而本屏没有网格。
+     * 本屏的按钮身份：清单里的名字只在这里给出。
      *
-     * <p>按 tooltip 文本认而不是按类：那一枚与「分区存储」「清除」等同为 {@link ActionButton}，类上分不出来；
-     * tooltip 走的是 AE2 自带的语言键，中英两种语言下都比得中。</p>
+     * <p>AE2 那几枚按身份认：指南走类，排序顺序与终端风格走它们自己带的设置档（{@code Settings}）。
+     * 「终端设置」不在这里——它和本模组自己的按钮同是 {@code ActionButton}，只能按 tooltip 认，用基类那个助手。</p>
      */
-    private static boolean isTerminalSettings(IconButton button) {
-        var terminalSettings = ButtonToolTips.TerminalSettings.text().getString();
-        return button.getTooltipMessage().stream()
-                .anyMatch(line -> line.getString().contains(terminalSettings));
+    @Override
+    protected String toolbarSlot(Button button) {
+        // 基类先认 AE2 那几枚（指南 / 排序按 / 排序顺序 / 模式轮换 / 终端设置…）。
+        var fromBase = super.toolbarSlot(button);
+        if (fromBase != null) {
+            return fromBase;
+        }
+        if (button == this.partitionButton) {
+            return "partition";
+        }
+        if (button == this.clearButton) {
+            return "clear";
+        }
+        if (button == this.copyModeButton) {
+            return "copyMode";
+        }
+        if (button == this.megaCutoffButton) {
+            return "megaCutoff";
+        }
+        if (button == terminalSwitchButton()) {
+            return "terminalSwitch";
+        }
+        return null;
+    }
+
+    /**
+     * MEGA 那枚按钮按下：把它看到的元件与「是否反向」报给服务端。
+     *
+     * <p>反向就是右键（AE2 那套：右键当左键转发）。按钮自己的 {@code isHandlingRightClick()} 是受保护的、
+     * 拿不到，所以退一步用 Shift／右键的常规语义取。</p>
+     */
+    private void onMegaCutoffPressed(Button button) {
+        var stack = getMenu().getCellHost().getEncodeCellInventory().getStackInSlot(0);
+        if (stack.isEmpty()) {
+            return;
+        }
+        boolean reverse = net.minecraft.client.gui.screens.Screen.hasShiftDown();
+        getMenu().cycleCompressionCutoff(reverse);
+    }
+
+    /**
+     * 每帧把 MEGA 那枚按钮对到编码槽里那张元件上：不是大宗元件、或它没接压缩链时藏起来。
+     *
+     * <p>与 MEGA 自己在元件工作台上做的一样（它也是每帧读元件再决定显隐与图标），只是那一边读的是元件工作台
+     * 的元件槽，这边读的是本终端的元件编码槽。</p>
+     */
+    private void syncMegaCutoffButton() {
+        if (this.megaCutoffButton == null) {
+            return;
+        }
+        var stack = getMenu().getCellHost().getEncodeCellInventory().getStackInSlot(0);
+        var bulk = MegaCellsCompat.bulkInventoryOf(stack);
+        boolean usable = bulk != null && MegaCellsCompat.hasCompressionChain(bulk);
+        MegaCutoffButtonFactory.setVisible(this.megaCutoffButton, usable);
+        if (usable) {
+            MegaCutoffButtonFactory.setItem(this.megaCutoffButton, MegaCellsCompat.cutoffItem(bulk));
+        }
     }
 
     @Override
@@ -298,6 +332,8 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
         super.updateBeforeRender();
         // 复制模式回显：与元件工作台同一个图标、同一个极性（亮 = 取出元件时清空配置格，即 CLEAR_ON_REMOVE）。
         this.copyModeButton.setState(getMenu().copyMode == CopyMode.CLEAR_ON_REMOVE);
+        // MEGA 那枚（装了才有）每帧对一次：显隐与图标跟着编码槽那张元件走。
+        syncMegaCutoffButton();
         syncScrollbar();
         rebuildRows();
         // 行模型重建后行数可能变了，滚动条的范围得跟着重喂一次（两次调用是有意的，不是冗余）。

@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
@@ -47,10 +48,8 @@ import appeng.client.gui.style.Blitter;
 import appeng.client.gui.style.PaletteColor;
 import appeng.client.gui.style.ScreenStyle;
 import appeng.client.gui.widgets.ActionButton;
-import appeng.client.gui.widgets.IconButton;
 import appeng.client.gui.widgets.Scrollbar;
 import appeng.client.gui.widgets.ServerSettingToggleButton;
-import appeng.core.localization.ButtonToolTips;
 
 import io.github.lounode.ae2pattern.api.PatternDiskApi;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
@@ -353,10 +352,8 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         // 直接 NPE，而且抛在 init() 里会连带把整个开屏打断（NeoForge 报 "Failed to handle advanced open
         // screen from server"，客户端被断开）。setFocused 才是 null 安全的那个。
         setFocused(null);
-        hideIrrelevantToolbarButtons();
-        // 本模组自己的按钮排到 AE2 自带的之后，次序：显示模式 → 显示槽位 → 模式轮换
-        //（附加排序已在父类里贴到了「排序按」后面）。
-        ToolbarOrder.placeAtEnd(this, List.of(showProvidersButton, hideSlotsButton, modeButton));
+        // 工具栏按清单排：顺序与显隐都由那一份清单说了算（父类那几枚 + 本屏的显示模式 / 隐藏槽位）。
+        ToolbarPlan.apply(this, "management terminal", TOOLBAR, this::toolbarSlot);
 
         // 风格档位可能把面板改矮：清单没变时 rebuildRows 不会夹偏移，这里补一次，免得顶部留白。
         // （带高与 terminalStyle 的 header/row/bottom 同源：两者都在本屏的样式文档里，不存在跨文件同步。）
@@ -364,32 +361,24 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     }
 
     /**
-     * 隐藏 AE2 标准终端工具栏里对本屏无意义的按钮：「终端设置」（它的设置页全是物品网格的项）。排序按钮
-     * 现在留着了——本表的行内样板顺序就按它的档位排（见 {@link #displayOrder(long)}）。
-     *
-     * <p>AE2 对这两枚都是无条件添加：字段 private、按钮条（{@code VerticalButtonBar}）只有 add 没有移除接口、
-     * 也没有可覆写的开关，所以在 super.init() 之后按控件身份精确匹配再关掉——排序顺序读
-     * {@link SettingToggleButton#getSetting()}，终端设置比对它自己的 tooltip 常量
-     * （{@link ButtonToolTips#TerminalSettings}，AE2 自带的语言键）。本屏自己的「编码」「清空」按钮虽然也是
-     * {@link ActionButton}，但 tooltip 是 Encode / ClearSettings，不会被误伤。</p>
-     *
-     * <p>{@code setVisibility(false)} 同时关掉 visible 与 active，TAB 焦点路径也取不到它；按钮条只排布可见
-     * 按钮，隐藏后不留空位。</p>
+     * 左侧工具栏的清单：顺序即清单顺序，不在清单里的一律隐藏（包括 AE2 那枚「终端设置」——它的设置页
+     * 全是物品网格的项，而本屏把网格整个藏了）。
      */
-    private void hideIrrelevantToolbarButtons() {
-        // 比字符串而非 Component：按钮的消息是已解析的字面文本，语言键形式的 Component 永远不等于它。
-        // 两边都走同一份语言文件，中英任何一种语言下都成立。
-        var terminalSettings = ButtonToolTips.TerminalSettings.text().getString();
-        for (var listener : this.children()) {
-            if (!(listener instanceof IconButton button)) {
-                continue;
-            }
-            boolean isTerminalSettings = button.getTooltipMessage().stream()
-                    .anyMatch(line -> line.getString().contains(terminalSettings));
-            if (isTerminalSettings) {
-                button.setVisibility(false);
-            }
+    private static final List<String> TOOLBAR = List.of(
+            "guide", "sortBy", "naturalSort", "sortOrder", "showProviders", "hideSlots",
+            "mode", "terminalSwitch", "frequencyCard", "frequencyAutoConnect");
+
+    /** 本屏多出来的两枚：显示模式（AE2 的样板访问终端开关）与隐藏槽位（本屏自己的行模型开关）。 */
+    @Override
+    protected String toolbarSlot(Button button) {
+        var slot = super.toolbarSlot(button);
+        if (slot != null) {
+            return slot;
         }
+        if (button == this.hideSlotsButton) {
+            return "hideSlots";
+        }
+        return null;
     }
 
     // ---- 行模型 ----
