@@ -1,5 +1,6 @@
 package io.github.lounode.ae2pattern.common.menu;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 
@@ -28,6 +29,7 @@ import appeng.menu.implementations.PriorityMenu;
 import appeng.menu.locator.MenuHostLocator;
 import appeng.menu.locator.MenuLocators;
 import appeng.menu.me.common.MEStorageMenu;
+import appeng.util.ConfigInventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
@@ -220,12 +222,29 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
             sendClientAction(ACTION_SET_MARKER_ROW, row);
             return;
         }
-        int clamped = Math.max(0, Math.min(row, TOTAL_MARKER_ROWS - VISIBLE_MARKER_ROWS));
+        int clamped = Math.max(0, Math.min(row, maxMarkerRowOffset()));
         if (clamped == markerRowOffset) {
             return;
         }
         markerRowOffset = clamped;
         markerWindow.setOffset(clamped * AEPatternRegistries.CELL_MARKER_COLUMN.length);
+    }
+
+    /**
+     * 编码槽那张元件实际能标记多少格；没元件时 0。
+     *
+     * <p>不能假定 63：分区库存是元件自己建的，部分元件给的上限比 63 小——屏那边按这个数决定画几格与
+     * 能滚多远。两侧都能算（元件栈是同步的），所以不必另开一条同步字段。</p>
+     */
+    public int markerSlotCount() {
+        return markerPartitions.slotCount();
+    }
+
+    /** 标记窗能滚到的最靠下那一行：按元件实际格数收，格数不够时不让窗口滚到空格上。 */
+    public int maxMarkerRowOffset() {
+        int columns = AEPatternRegistries.CELL_MARKER_COLUMN.length;
+        int rows = (markerSlotCount() + columns - 1) / columns;
+        return Math.max(0, Math.min(TOTAL_MARKER_ROWS, rows) - VISIBLE_MARKER_ROWS);
     }
 
     /** 按语义取槽位：屏幕要用它们的实际位置画覆盖层（位置是 AE2 按样式文档摆的）。 */
@@ -732,21 +751,52 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
     /**
      * 「标记收藏」：把 JEI / EMI 收藏夹里的物品追加到编码槽那张元件的标记里。
      *
-     * <p>客户端只负责把收藏集集出来、编好发过去（收藏夹是客户端的事）；写入在服务端做。追加口径：
-     * 从第一个空格起写、已在标记里的跳过、标记位用完就丢，三种情况的数量都报给玩家——
-     * 收藏夹里本来就可能有一部分进不了，不说玩家就不知道为什么少了。</p>
+     * <p>发之前先<b>探一遍</b>再截：逐条问这张元件的标记容器「有没有哪一格收得下它」——AE2 的
+     * {@code isAllowedIn} 是纯查询（自己只说「支持这种键类型 + 槽过滤器放行」），问一遍不会动元件。
+     * 探有两层用处：一是元件不支持的条目根本不用发；二是**部分元件自己给标记数量设了上限**，格数不是
+     * 真上限，探得到的可落格数才是——不限制的话载荷会白白大一大截（而且客户端动作的字符串上限只有
+     * 32767 字符，超了直接抛异常）。</p>
+     *
+     * <p>写入与最终的「能不能写进去」判定仍在服务端（见 {@link #applyBookmarks}）。</p>
      */
     public void markBookmarks(List<ItemStack> items, int skippedNonItems) {
-        sendClientAction(ACTION_MARK_BOOKMARKS, encodeBookmarks(items, skippedNonItems, markerCapacity()));
+        var config = markerConfig();
+        var allowed = new ArrayList<ItemStack>();
+        int rejected = 0;
+        for (ItemStack stack : items) {
+            if (config != null && accepts(config, stack)) {
+                allowed.add(stack);
+            } else {
+                rejected++;
+            }
+        }
+        int capacity = config == null ? 0 : config.size();
+        sendClientAction(ACTION_MARK_BOOKMARKS,
+                encodeBookmarks(allowed, skippedNonItems, rejected, capacity));
     }
 
-    /** 编码槽那张元件能放多少格标记；没有可标记元件时 0。只用来给「标记收藏」算载荷上限。 */
-    public int markerCapacity() {
+    /** 编码槽那张元件的标记容器；没有可标记元件时 null。 */
+    @Nullable
+    private ConfigInventory markerConfig() {
         ItemStack cell = host.getEncodeCellInventory().getStackInSlot(0);
         if (cell.isEmpty() || !(cell.getItem() instanceof ICellWorkbenchItem workbenchItem)) {
-            return 0;
+            return null;
         }
-        return workbenchItem.getConfigInventory(cell).size();
+        return workbenchItem.getConfigInventory(cell);
+    }
+
+    /** 这张元件的标记容器里有没有哪一格收得下这个键；纯查询，不改元件。 */
+    private static boolean accepts(ConfigInventory config, ItemStack stack) {
+        AEKey key = AEItemKey.of(stack);
+        if (key == null) {
+            return false;
+        }
+        for (int i = 0; i < config.size(); i++) {
+            if (config.isAllowedIn(i, key)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -782,6 +832,8 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         int written = 0;
         int duplicate = 0;
         int cursor = 0;
+        // 元件自己给标记数量设了上限时（部分元件如此），写到量之后每次都会失败——那时不再逐条试。
+        boolean exhausted = false;
         for (int line = 1; line < lines.length; line++) {
             ItemStack stack = parseStack(lines[line]);
             if (stack == null || stack.isEmpty()) {
@@ -797,11 +849,14 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
                 duplicate++;
                 continue;
             }
+            // 找一格「空着且收这个键」的：收不收由元件说了算（与客户端那遍探测同一判据）。
             int slot = -1;
-            for (int i = cursor; i < config.size(); i++) {
-                if (config.getKey(i) == null) {
-                    slot = i;
-                    break;
+            if (!exhausted) {
+                for (int i = cursor; i < config.size(); i++) {
+                    if (config.getKey(i) == null && config.isAllowedIn(i, key)) {
+                        slot = i;
+                        break;
+                    }
                 }
             }
             if (slot < 0) {
@@ -810,7 +865,9 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
             }
             config.setStack(slot, new GenericStack(key, 1));
             if (config.getKey(slot) == null) {
-                // 这张元件不收这种键（例如只认流体的元件）：setStack 会静默什么都不做，不能当写进去了。
+                // 过滤器放行却写不进去：这张元件自己的上限到了（或者不肯收这个键）——不再逐条白试，
+                // 剩下的全计「未写入」。
+                exhausted = true;
                 noRoom++;
                 continue;
             }
@@ -847,10 +904,9 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
     }
 
     /** 载荷编码：条数与字节双重截断，超出的都算进「未写入」，读回去由首行报出。 */
-    private static String encodeBookmarks(List<ItemStack> items, int skippedNonItems, int capacity) {
+    private static String encodeBookmarks(List<ItemStack> items, int skippedNonItems, int overflow, int capacity) {
         var body = new StringBuilder();
         int written = 0;
-        int overflow = 0;
         for (ItemStack stack : items) {
             if (stack == null || stack.isEmpty()) {
                 continue;
@@ -1060,7 +1116,8 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
     public void broadcastChanges() {
         super.broadcastChanges();
         // 偏移量由 @GuiSync 同步，两侧都在这里落到窗口上——槽位是共享对象，只有两侧口径一致，
-        // 客户端画的与交互的才是同一段。
+        // 客户端画的与交互的才是同一段。这里再夹一次：元件换成格数更少的那个时，原来的偏移可能超了。
+        markerRowOffset = Math.max(0, Math.min(markerRowOffset, maxMarkerRowOffset()));
         markerWindow.setOffset(markerRowOffset * AEPatternRegistries.CELL_MARKER_COLUMN.length);
         if (isServerSide()) {
             syncDriveList();

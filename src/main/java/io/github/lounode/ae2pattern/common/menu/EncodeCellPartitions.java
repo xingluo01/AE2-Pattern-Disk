@@ -14,9 +14,9 @@ import appeng.util.ConfigMenuInventory;
  * {@code getConfigInventory}，再包成 AE2 给菜单用的 {@link ConfigMenuInventory}（ItemStack 视角）——
  * 这正是 AE2 元件工作台的面板与自己那张元件的连线方式。</p>
  *
- * <p>格数固定为 {@link #SIZE}（63 = 7 列 &times; 9 行，元件分区上限），与贴图上的标记区容量一致；元件自己
- * 支持多少种由它自己的 config inventory 判定，超出的格读回空栈、写入被拒。编码槽为空或元件不支持分区时
- * 整片槽位不可用（槽底由图层的显隐逻辑画成暗色）。</p>
+ * <p>格数上限为 {@link #SIZE}（63 = 7 列 &times; 9 行）；元件实际能标记多少格由它自己的分区库存说了算
+ * （见 {@link #slotCount()}）——部分元件给的上限比 63 小，超出的格读回空栈、写入被拒，屏那边也不画。
+ * 编码槽为空或元件不支持分区时整片格位不可用（槽底由图层的显隐逻辑画成暗色）。</p>
  *
  * <p><b>缓存只按引用比较</b>：分区必须写在编码槽里那张真实的元件栈上，所以缓存的判据是「还是不是同一个栈
  * 对象」（{@code !=}），不是内容相等；元件被换掉时引用变，缓存跟着重建。分区内容变化不会换对象，
@@ -55,6 +55,17 @@ public class EncodeCellPartitions implements InternalInventory {
     @Override
     public int size() {
         return SIZE;
+    }
+
+    /**
+     * 这张元件<b>实际</b>能标记多少格：它自己的分区库存格数，上限 {@link #SIZE}；没有元件时 0。
+     *
+     * <p>不能假定 63：分区库存是元件自己建的，元件可以选择比 63 少——超出的格写不进去、读回也是空，
+     * 所以屏那边要按这个数决定画几格、能滚多远。</p>
+     */
+    public int slotCount() {
+        ConfigMenuInventory partitions = current();
+        return partitions == null ? 0 : Math.min(partitions.size(), SIZE);
     }
 
     @Override

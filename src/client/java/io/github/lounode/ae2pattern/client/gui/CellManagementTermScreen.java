@@ -478,10 +478,9 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
         }
     }
 
-    /** 标记区三行窗口在九行里滚动：滚动条动的只是窗口起点。 */
+    /** 标记区三行窗口在九行里滚动：滚动条动的只是窗口起点。能滚到多远由元件的实际格数决定。 */
     private void syncMarkerScrollbar() {
-        int maxScroll = CellManagementTermMenu.TOTAL_MARKER_ROWS
-                - CellManagementTermMenu.VISIBLE_MARKER_ROWS;
+        int maxScroll = getMenu().maxMarkerRowOffset();
         // 纵向每帧按面板底边重算：终端高度（风格档位）一变，标记区整体上下移，写死的 top 会错位。
         this.markerScrollbar.setPosition(new Point(this.markerBarX, this.imageHeight - this.markerBarFromBottom));
         this.markerScrollbar.setHeight(Math.max(1,
@@ -716,12 +715,23 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
         }
         // 标记槽：有元件且可编辑时实画，没元件（或在 CLEAR_ON_REMOVE 下元件装不下）时淡到 0.2——
         // 与 AE2 元件工作台同一套显隐口径，槽底不消失，只变淡。
+        // 元件自己给上限的那些（格数比 63 小）多出来的格连槽底都不画：那些格永远收不下东西。
         float markerAlpha = getMenu().isMarkerAreaEditable() ? 1f : DISABLED_SLOT_ALPHA;
+        int markerSlots = getMenu().markerSlotCount();
         for (int column = 0; column < io.github.lounode.ae2pattern.AEPatternRegistries.CELL_MARKER_COLUMN.length; column++) {
             for (var slot : getMenu().slotsOf(io.github.lounode.ae2pattern.AEPatternRegistries.CELL_MARKER_COLUMN[column])) {
+                if (markerIndex(slot) >= markerSlots) {
+                    continue;
+                }
                 blitSlotOverlay(guiGraphics, slot.x, slot.y, MARKER_SLOT_OVERLAY, markerAlpha);
             }
         }
+    }
+
+    /** 这一格标记槽在整片 63 格里的序号：窗口内序号 + 已滚过的格数。 */
+    private int markerIndex(Slot slot) {
+        return slot.getContainerSlot()
+                + getMenu().getMarkerRowOffset() * io.github.lounode.ae2pattern.AEPatternRegistries.CELL_MARKER_COLUMN.length;
     }
 
     /** 标题栏：驱动器物品图标 + 优先级文本 + 这一组有几个元件。 */
@@ -1091,11 +1101,15 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
     /**
      * 这一格当前是不是「看得见但碰不得」：编码槽里没有元件工作台元件时的标记格与升级格。
      *
-     * <p>标记格还多一条：元件本身装不下分区（CLEAR_ON_REMOVE）时同样按不可操作算。</p>
+     * <p>标记格还多两条：元件本身装不下分区（CLEAR_ON_REMOVE）时同样按不可操作算；元件自己给的上限以外的
+     * 格（格数比 63 小）也不可操作——那些格根本不会被画，但交互判定与绘制用同一个序号，免得出现
+     * 「画不出来却能点」。 </p>
      */
     private boolean isSlotInactive(Slot slot) {
-        return getMenu().isMarkerSlot(slot) ? !getMenu().isMarkerAreaEditable()
-                : getMenu().isCellUpgradeSlot(slot) && !getMenu().hasWorkbenchCell();
+        if (getMenu().isMarkerSlot(slot)) {
+            return !getMenu().isMarkerAreaEditable() || markerIndex(slot) >= getMenu().markerSlotCount();
+        }
+        return getMenu().isCellUpgradeSlot(slot) && !getMenu().hasWorkbenchCell();
     }
 
     /**
