@@ -1,6 +1,7 @@
 {
   "parent": "ae2:item/cable_interface",
   "textures": {
+    "sides": "ae2_pattern_disk:part/pattern_disk_provider_sides",
     "back": "ae2cs:block/meteorite_pattern_provider/back",
     "front": "ae2cs:block/meteorite_pattern_provider/base"
   }

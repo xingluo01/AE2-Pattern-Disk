@@ -3,6 +3,8 @@
   "textures": {
     "front": "ae2_pattern_disk:block/meteorite_pattern_provider",
     "particle": "ae2cs:block/meteorite_pattern_provider/back",
+    "sides": "ae2_pattern_disk:part/pattern_disk_provider_sides",
+    "sidesStatus": "ae2_pattern_disk:part/pattern_disk_provider_sides_status",
     "back": "ae2cs:block/meteorite_pattern_provider/back"
   }
 }
