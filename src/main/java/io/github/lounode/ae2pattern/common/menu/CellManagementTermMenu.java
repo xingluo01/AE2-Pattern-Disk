@@ -1,13 +1,20 @@
 package io.github.lounode.ae2pattern.common.menu;
 
+import java.util.HashSet;
 import java.util.List;
 
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.nbt.TagParser;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.ItemStack;
 
 import appeng.api.config.CopyMode;
+import appeng.api.stacks.AEItemKey;
+import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import appeng.api.storage.ITerminalHost;
 import appeng.api.storage.StorageCells;
@@ -28,8 +35,11 @@ import net.minecraft.world.inventory.Slot;
 import appeng.menu.slot.AppEngSlot;
 import appeng.menu.slot.FakeSlot;
 
+import org.jetbrains.annotations.Nullable;
+
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 import io.github.lounode.ae2pattern.common.part.CellManagementTerminalPart;
+import io.github.lounode.ae2pattern.integration.extendedae.VoidCellCompat;
 import io.github.lounode.ae2pattern.integration.megacells.MegaCellsCompat;
 import io.github.lounode.ae2pattern.network.CellHostListPayload;
 import io.github.lounode.ae2pattern.network.CellNoticePayload;
@@ -102,6 +112,8 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         registerClientAction(ACTION_CLEAR, this::clearMarkerArea);
         registerClientAction(ACTION_CYCLE_COPY_MODE, this::cycleCopyMode);
         registerClientAction(ACTION_CYCLE_COMPRESSION_CUTOFF, Boolean.class, this::cycleCompressionCutoff);
+        registerClientAction(ACTION_MARK_BOOKMARKS, String.class, this::applyBookmarks);
+        registerClientAction(ACTION_CYCLE_VOID_MODE, Boolean.class, this::cycleVoidMode);
         this.encodeCellUpgrades = new EncodeCellUpgrades(host);
 
         // 元件编码槽：一格，正在被编辑的那个元件。标记区改的就是它的分区。
@@ -180,6 +192,17 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
     private static final String ACTION_OPEN_PRIORITY = "openPriority";
     /** 切编码槽那张元件的压缩截断物（MEGA 大宗元件专有）；参数是「是否反向」。 */
     private static final String ACTION_CYCLE_COMPRESSION_CUTOFF = "cycleCompressionCutoff";
+    private static final String ACTION_MARK_BOOKMARKS = "markBookmarks";
+    private static final String ACTION_CYCLE_VOID_MODE = "cycleVoidMode";
+
+    /**
+     * 「标记收藏」载荷的字符预算（留出余量）：AE2 客户端动作的字符串上限是 32767，而 {@code writeUtf}
+     * 超限就直接抛，所以这里先自己截。
+     */
+    private static final int MAX_PAYLOAD_CHARS = 16000;
+
+    /** 聊天栏上报的计数上限（载荷来自客户端，夹一下免得出现负数或离谱的数）。 */
+    private static final int MAX_REPORTED_COUNT = 1_000_000;
 
     /** 标记窗当前挂在哪一段后备库存上，供屏幕画滚动条与内容。 */
     public int getMarkerRowOffset() {
@@ -704,6 +727,157 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         }
         host.markForSave();
         broadcastChanges();
+    }
+
+    /**
+     * 「标记收藏」：把 JEI / EMI 收藏夹里的物品追加到编码槽那张元件的标记里。
+     *
+     * <p>客户端只负责把收藏集集出来、编好发过去（收藏夹是客户端的事）；写入在服务端做。追加口径：
+     * 从第一个空格起写、已在标记里的跳过、标记位用完就丢，三种情况的数量都报给玩家——
+     * 收藏夹里本来就可能有一部分进不了，不说玩家就不知道为什么少了。</p>
+     */
+    public void markBookmarks(List<ItemStack> items, int skippedNonItems) {
+        sendClientAction(ACTION_MARK_BOOKMARKS, encodeBookmarks(items, skippedNonItems, markerCapacity()));
+    }
+
+    /** 编码槽那张元件能放多少格标记；没有可标记元件时 0。只用来给「标记收藏」算载荷上限。 */
+    public int markerCapacity() {
+        ItemStack cell = host.getEncodeCellInventory().getStackInSlot(0);
+        if (cell.isEmpty() || !(cell.getItem() instanceof ICellWorkbenchItem workbenchItem)) {
+            return 0;
+        }
+        return workbenchItem.getConfigInventory(cell).size();
+    }
+
+    /**
+     * 载荷首行是「收藏夹里跳过的非物品项数 | 发之前就注定写不下的项数」，其余每行一个物品栈的 SNBT；
+     * 解不开的行直接丢。
+     *
+     * <p>发之前就得截断：客户端动作的字符串上限是 32767 字符（AE2 的 {@code sendClientAction} 超了就抛
+     * 异常），而收藏夹可以大得多——不截断的话点一下就是一个客户端异常。条数按标记格数收，另给一个字节
+     * 预算兜底（单件带大组件时一行就能很长）。</p>
+     */
+    private void applyBookmarks(String encoded) {
+        if (encoded == null || encoded.isEmpty()) {
+            return;
+        }
+        var lines = encoded.split("\n", -1);
+        int skippedNonItems;
+        int noRoom;
+        try {
+            var header = lines[0].split("\\|", -1);
+            // 夹一下：这两个数只是给玩家看的，但载荷完全来自客户端——不夹就能把计数推成负数。
+            skippedNonItems = Math.clamp(Integer.parseInt(header[0]), 0, MAX_REPORTED_COUNT);
+            noRoom = header.length > 1 ? Math.clamp(Integer.parseInt(header[1]), 0, MAX_REPORTED_COUNT) : 0;
+        } catch (RuntimeException malformed) {
+            // 协议错配不该把服务端带进越界取值：宁可什么都不做。
+            return;
+        }
+        ItemStack cell = host.getEncodeCellInventory().getStackInSlot(0);
+        if (cell.isEmpty() || !(cell.getItem() instanceof ICellWorkbenchItem workbenchItem)) {
+            return;
+        }
+        var config = workbenchItem.getConfigInventory(cell);
+        var marked = new HashSet<AEKey>(config.keySet());
+        int written = 0;
+        int duplicate = 0;
+        int cursor = 0;
+        for (int line = 1; line < lines.length; line++) {
+            ItemStack stack = parseStack(lines[line]);
+            if (stack == null || stack.isEmpty()) {
+                continue;
+            }
+            AEKey key = AEItemKey.of(stack);
+            // 未注册的物品（或者空栈）给 null：标记只能装键，直接塞进去会在下游炸。
+            if (key == null) {
+                noRoom++;
+                continue;
+            }
+            if (marked.contains(key)) {
+                duplicate++;
+                continue;
+            }
+            int slot = -1;
+            for (int i = cursor; i < config.size(); i++) {
+                if (config.getKey(i) == null) {
+                    slot = i;
+                    break;
+                }
+            }
+            if (slot < 0) {
+                noRoom++;
+                continue;
+            }
+            config.setStack(slot, new GenericStack(key, 1));
+            if (config.getKey(slot) == null) {
+                // 这张元件不收这种键（例如只认流体的元件）：setStack 会静默什么都不做，不能当写进去了。
+                noRoom++;
+                continue;
+            }
+            marked.add(key);
+            cursor = slot + 1;
+            written++;
+        }
+        if (written > 0) {
+            // ConfigInventory 的改动写在元件栈的组件里，元件栈本身得被标记变了才会落盘。
+            host.getEncodeCellInventory().sendChangeNotification(0);
+            host.markForSave();
+        }
+        broadcastChanges();
+        if (getPlayer() instanceof ServerPlayer serverPlayer) {
+            serverPlayer.sendSystemMessage(Component.translatable(
+                    "gui.ae2_pattern_disk.cell_management_terminal.notice.mark_bookmarks",
+                    written, duplicate, noRoom, skippedNonItems));
+        }
+    }
+
+    /** 「物质聚合模式」：循环切编码槽那张 EAE 虚空元件的输出（销毁 / 物质球 / 奇点）。 */
+    public void cycleVoidMode(boolean reverse) {
+        if (!onServerSide()) {
+            sendClientAction(ACTION_CYCLE_VOID_MODE, reverse);
+            return;
+        }
+        ItemStack cell = host.getEncodeCellInventory().getStackInSlot(0);
+        if (!VoidCellCompat.cycleMode(cell, reverse)) {
+            return;
+        }
+        host.getEncodeCellInventory().sendChangeNotification(0);
+        host.markForSave();
+        broadcastChanges();
+    }
+
+    /** 载荷编码：条数与字节双重截断，超出的都算进「未写入」，读回去由首行报出。 */
+    private static String encodeBookmarks(List<ItemStack> items, int skippedNonItems, int capacity) {
+        var body = new StringBuilder();
+        int written = 0;
+        int overflow = 0;
+        for (ItemStack stack : items) {
+            if (stack == null || stack.isEmpty()) {
+                continue;
+            }
+            var encoded = ItemStack.CODEC.encodeStart(NbtOps.INSTANCE, stack).result().orElse(null);
+            if (encoded == null) {
+                overflow++;
+                continue;
+            }
+            var snbt = encoded.toString();
+            if (written >= capacity || body.length() + snbt.length() + 1 > MAX_PAYLOAD_CHARS) {
+                overflow++;
+                continue;
+            }
+            body.append('\n').append(snbt);
+            written++;
+        }
+        return Math.max(0, skippedNonItems) + "|" + overflow + body;
+    }
+
+    @Nullable
+    private static ItemStack parseStack(String line) {
+        try {
+            return ItemStack.CODEC.parse(NbtOps.INSTANCE, TagParser.parseTag(line)).result().orElse(null);
+        } catch (Exception malformed) {
+            return null;
+        }
     }
 
     /**

@@ -40,7 +40,9 @@ import appeng.api.config.SortDir;
 
 import io.github.lounode.ae2pattern.common.menu.CellDriveScanner;
 import io.github.lounode.ae2pattern.common.menu.CellManagementTermMenu;
+import io.github.lounode.ae2pattern.client.integration.bookmarks.BookmarkReader;
 import io.github.lounode.ae2pattern.client.integration.megacells.MegaCutoffButtonFactory;
+import io.github.lounode.ae2pattern.integration.extendedae.VoidCellCompat;
 import io.github.lounode.ae2pattern.integration.megacells.MegaCellsCompat;
 import io.github.lounode.ae2pattern.client.render.DriveHighlight;
 import io.github.lounode.ae2pattern.network.CellHostListPayload;
@@ -115,6 +117,19 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
     /** 空白槽位覆盖层：盖在段尾那些放不进去的列上（这台/这个主机没有这么多格）。 */
     private static final Blitter EMPTY_SLOT_OVERLAY = states(240, 128);
 
+    /** 「标记收藏」的图标（states.png 16,48）。 */
+    private static final Blitter ICON_MARK_BOOKMARKS = states(16, 48);
+
+    /** 「物质聚合模式」三档的图标，从左到右：虚空 / 物质球 / 奇点（states.png 一条 48x16）。序号就是模式的枚举序号。
+     * 固定三格：EAE 将来加第四档时图标会重复最后一格（提示语仍按枚举名取键，不会指错人）——那时补一格贴图即可。 */
+    private static final Blitter[] ICON_VOID_MODES = { states(0, 80), states(16, 80), states(32, 80) };
+
+    /** 工具栏按钮底（18x20，与 AE2 自家那几枚同款），常态 / 光标选中。 */
+    private static final ResourceLocation STATES = ResourceLocation
+            .parse("ae2_pattern_disk:textures/guis/states.png");
+    private static final Blitter BUTTON_BG_NORMAL = Blitter.texture(STATES).src(208, 224, 18, 20);
+    private static final Blitter BUTTON_BG_HOVER = Blitter.texture(STATES).src(226, 224, 18, 20);
+
     /** 标记区不可编辑时槽底的淡化比例（AE2 元件工作台里元件没插时也是这个值）。 */
     private static final float DISABLED_SLOT_ALPHA = 0.2f;
 
@@ -155,6 +170,11 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
     /** MEGA Cells 的大宗压缩截断钮；那个模组不在场时为 null（工厂返回 null）。 */
     @Nullable
     private Button megaCutoffButton;
+    /** 「标记收藏」与「物质聚合模式」；后者只在编码槽里是 EAE 虚空元件时出现。 */
+    private StatesIconButton markBookmarksButton;
+    private StatesIconButton voidModeButton;
+    /** 上一次给模式按钮设的提示对应哪一档（-1 = 还没设过）；只在它变了时重设，省得每帧造 Component。 */
+    private int lastVoidMode = -1;
 
     private int visibleRows = 6;
     private int scrollOffset;
@@ -205,6 +225,17 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
         if (this.megaCutoffButton != null) {
             addToLeftToolbar(this.megaCutoffButton);
         }
+
+        // 两枚项目自己的图标按钮（states.png）。都做成“图标每帧现取”的那种：模式那枚的图标要跟着当前模式走。
+        this.markBookmarksButton = new StatesIconButton(() -> ICON_MARK_BOOKMARKS, this::onMarkBookmarksPressed);
+        this.markBookmarksButton.setBackground(BUTTON_BG_NORMAL, BUTTON_BG_HOVER);
+        this.markBookmarksButton.setTooltip(List.of(
+                Component.translatable("gui.ae2_pattern_disk.cell_management_terminal.mark_bookmarks")));
+        addToLeftToolbar(this.markBookmarksButton);
+
+        this.voidModeButton = new StatesIconButton(this::voidModeIcon, this::onVoidModePressed);
+        this.voidModeButton.setBackground(BUTTON_BG_NORMAL, BUTTON_BG_HOVER);
+        addToLeftToolbar(this.voidModeButton);
     }
 
     @Override
@@ -254,7 +285,7 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
      */
     private static final List<String> TOOLBAR = List.of(
             "guide", "sortOrder", "terminalStyle", "partition", "clear", "copyMode",
-            "terminalSwitch", "frequencyCard", "frequencyAutoConnect", "megaCutoff");
+            "markBookmarks", "voidMode", "terminalSwitch", "frequencyCard", "frequencyAutoConnect", "megaCutoff");
 
     @Override
     protected List<String> toolbarPlan() {
@@ -283,6 +314,12 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
         if (button == this.copyModeButton) {
             return "copyMode";
         }
+        if (button == this.markBookmarksButton) {
+            return "markBookmarks";
+        }
+        if (button == this.voidModeButton) {
+            return "voidMode";
+        }
         if (button == this.megaCutoffButton) {
             return "megaCutoff";
         }
@@ -303,6 +340,59 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
         }
         boolean reverse = net.minecraft.client.gui.screens.Screen.hasShiftDown();
         getMenu().cycleCompressionCutoff(reverse);
+    }
+
+    /**
+     * 「标记收藏」：把 JEI / EMI 收藏夹里的物品追加到编码槽那张元件的标记里。
+     *
+     * <p>收藏夹只在客户端有，所以读在这儿、写在那边的服务端（见菜单的 {@code markBookmarks}）。</p>
+     */
+    private void onMarkBookmarksPressed(Button button) {
+        var bookmarks = BookmarkReader.read();
+        getMenu().markBookmarks(bookmarks.items(), bookmarks.nonItems());
+    }
+
+    /** 「物质聚合模式」：往前循环，Shift 往回（与 MEGA 那枚同一手势）。 */
+    private void onVoidModePressed(Button button) {
+        getMenu().cycleVoidMode(Screen.hasShiftDown());
+    }
+
+    /** 模式按钮当前该画哪一档；EAE 不在场或取不到时回到第一档，至少不会画空。 */
+    private Blitter voidModeIcon() {
+        var stack = getMenu().getCellHost().getEncodeCellInventory().getStackInSlot(0);
+        int mode = VoidCellCompat.modeOrdinal(stack);
+        return ICON_VOID_MODES[Math.clamp(mode, 0, ICON_VOID_MODES.length - 1)];
+    }
+
+    /**
+     * 「标记收藏」的显隐：编码槽里得是张带标记区的元件（与「分区存储」「清除」同一个前提），而且真有个
+     * 收藏夹模组在读——两个都没有时按下什么都不会发生，不如不显示。
+     */
+    private void syncMarkBookmarksButton() {
+        this.markBookmarksButton.setVisibility(getMenu().isMarkerAreaEditable() && BookmarkReader.available());
+    }
+
+    /**
+     * 「物质聚合模式」的显隐与提示：只在编码槽里是 EAE 的 ME 虚空元件时出现（模式本身在元件栈的组件上，
+     * 不在按钮上，所以这里只负责显隐与把当前档写进提示）。
+     */
+    private void syncVoidModeButton() {
+        var stack = getMenu().getCellHost().getEncodeCellInventory().getStackInSlot(0);
+        boolean usable = VoidCellCompat.isVoidCell(stack);
+        this.voidModeButton.setVisibility(usable);
+        if (!usable) {
+            this.lastVoidMode = -1;
+            return;
+        }
+        int mode = VoidCellCompat.modeOrdinal(stack);
+        if (mode == this.lastVoidMode) {
+            return;
+        }
+        this.lastVoidMode = mode;
+        this.voidModeButton.setTooltip(List.of(
+                Component.translatable("gui.ae2_pattern_disk.cell_management_terminal.void_mode"),
+                Component.translatable("gui.ae2_pattern_disk.cell_management_terminal.void_mode."
+                        + VoidCellCompat.modeKey(mode))));
     }
 
     /**
@@ -331,6 +421,8 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
         this.copyModeButton.setState(getMenu().copyMode == CopyMode.CLEAR_ON_REMOVE);
         // MEGA 那枚（装了才有）每帧对一次：显隐与图标跟着编码槽那张元件走。
         syncMegaCutoffButton();
+        syncMarkBookmarksButton();
+        syncVoidModeButton();
         syncScrollbar();
         rebuildRows();
         // 行模型重建后行数可能变了，滚动条的范围得跟着重喂一次（两次调用是有意的，不是冗余）。

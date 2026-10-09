@@ -37,6 +37,12 @@ public final class JeiMarkNames {
         runtime = jeiRuntime;
     }
 
+    /** 当前 JEI 运行时；JEI 不在场或还没起来时为空（收藏夹那些读法都以它为前提）。 */
+    @Nullable
+    public static IJeiRuntime runtime() {
+        return runtime;
+    }
+
     /** 类别 {@code id} 的可读名（JEI 的类别标题），没有这个类别时为 {@code null}。 */
     @Nullable
     public static Component find(String id) {
