@@ -268,7 +268,7 @@ P0 不应新造范式，同文件里已有两处“每 tick 限量”的先例�
      **怎么做到「不加载」**（这是本条的关键，不能只写一句“适配器不能硬依赖”）：`CellDriveScanner` 是无条件加载的 common 代码，只要它出现 `instanceof NeoECOCellHosts`，解析该类时就会连带解析其父接口 `ICellHost` → 缺 ECO 时 `NoClassDefFoundError`（`Class.forName(...).cast()` 同理会抛，且必须包 try）。做法照本仓既有分层：①在本项目定义中立 SPI（如 `common/menu/CellHostAccess`，方法签全用 `Object`/自有类型：`handles(owner)` / `extract(owner)` / `insert(owner, stack)` / `readPriority(owner)` / `writePriority(owner, v)`），`CellDriveScanner` 只持一个 SPI 字段且**优先**走它；②在 `NeoECOIntegration.apply()`（只在 ECO 在场时被它实例化）里注册实现；③`NeoECOCellHosts` 内部才 `instanceof ICellHost`。这样对 `ICellHost` 的引用被封在“ECO 在场”这一条件下。
      顺带：若 `CellDriveScanner` 直接引用 `ICellHost`，`compileOnly` 面就不再只是 `api`（等于承认 `util` 也是依赖面），与本 issue 的立论矛盾。
   2. **`setCellStack` 返 `boolean`**：取放的成功判定可以直接用返回值；回读那一层仍保留（防第三方），但不再是唯一判据；`CellDriveScanner` 里「null vs EMPTY」那段踩坑注释可删。
-  3. **提取原因提到接口**：`CellManagementTermMenu` 取不出来时按原因给回执（新增 lang 键：被锁定 / 被无限盘占用 / 不允许取出…），替代现在统一的「该槽位为空」。**前置**：这条比看起来重——`CellExtractionBlockReason` 是实现类的**嵌套枚举**，要上接口得先把枚举提到 `api`（或改用中性返回，如 `@Nullable Component`）。上游若不提供，就维持统一回执。
+  3. **提取原因提到接口**：`CellManagementTermMenu` 取不出来时按原因给回执（新增 lang 键：被锁定 / 被无限盘占用 / 不允许取出…），替代现在统一的「该槽位为空」。**前置**：这条比看起来重——`CellExtractionBlockReason` 是实现类的**嵌套枚举**，要上接口得先把枚举提到 `api`（或改用中性返回，如 `@Nullable Component`）。上游若不提供，就维持统一回执。**（2026-10 现状：本模组侧已按自己的 `ExtractResult` 落地 `cell_locked` / `cell_refused` / `slot_empty` 三态回执；本条剩下的是「改用上游枚举给出更细的原因」这一件事。）**
   4. **优先级写入口公开（或实现 `IPriorityHost`）**：**两条上游选项都是零代码改动**——按名字探的 `getMethod("setStoragePriority", int.class)` 只看可见性是否 public，不看它原来是不是 private，所以上游把它改成 public 会自动命中（同理，实现 `IPriorityHost` 会命中 `canSetStoragePriority` 的 `owner instanceof IPriorityHost` 分支）。要改的只有**文案**：`notice.priority_unsupported`、`CellDriveScanner` / `CellManagementTermMenu` 的注释、本文件里「本体只读」的说法。**真正需要动探针的只有一种情形**：上游给的是别的名字/别的签名（例如 `setPriority(int)`，或走接口式入口）。
      另一件值得知道的事：`IPriorityHost` 对上游而言不只是两个方法——它 `extends ISubMenuHost`，还要 `returnToMainMenu` + `getMainMenuIcon`，而 ECO 的存储界面是 LDLib、没有 AE2 菜单可回。所以**更容易被接受的是「公开 `setStoragePriority(int)`」**；`IPriorityHost` 只是为了让生态里其它终端也能直接复用（我们自己的优先级屏宿主是面板部件，不需要上游提供屏）。
   5. **青春版实现 `ICellHost`**：与第 1 条同一条路，但**约束更紧**——青春版连 compileOnly 都没有（纯运行时可选），因此**只能走第 1 条那个 SPI 注册路线**（在 `NeoECOIntegration` 里注册，因该类的加载本就以 ECO 在场为前提），否则就永远保持名字探。删掉 `insertCell`/`removeCell` 两条名字探针与 `invokeItem` 助手后，`storageController` 的 `getCluster().getController()` 链在拿到直接访问器后可简化。
@@ -282,6 +282,31 @@ P0 不应新造范式，同文件里已有两处“每 tick 限量”的先例�
 - **已检索并确认上游无等价 API**（免后来者重查）：ECO 全仓 `IPriorityHost` **0 命中**、`command/` 无 priority、`api/`（含 `api/storage/`、`api/integration/`）无 `Priority`/`CellHost` 类型；唯一能写优先级的就是 `private void setStoragePriority(Player,int)`，且只被自家 LDLib 的 `StorageHostActionUI.Config` lambda 驱动。青春版无 `setCellStack`（只差这一个方法就能 `implements ICellHost`；其 `ICellHost.canExtractCell()` 是 `default → true`）。
 - **顺带核实（2026-10-09，结论：原怀疑已证伪，勿再按 bug 处理）**：曾怀疑 `NeoECOIntegration` 的类 javadoc（「NEO ECO 编译期就依赖本模组的 `PatternDiskApi`」）与上游不符——**javadoc 属实**。上游 `neoecoae` 21.2.1 的 jar 里含 `cn/dancingsnow/neoecoae/integration/ae2pattern/`（`AepdPatternDiskBackend`、`PatternDiskIntegration`、`MachineDiskHostAdapter`、`PatternDiskSupport` 等），release tag `21.2.1` 源码侧同样有 `AepdPatternDiskBackend.java`（`import io.github.lounode.ae2pattern.api.PatternDiskApi`），且其 `mods.toml` 把 `ae2_pattern_disk` 声明为可选依赖。**磁盘侧不是回归。**
   当时为什么会误判（教训，值得记）：①`unzip` 抽取**静默失败**（目标目录里 0 个文件）而没查产物，于是随后的 `grep -r` 扫的是空目录 → 假阴性；②第二发又改成直接 `grep` jar 字节，而 zip 条目是压缩的，class 常量池里的字符串不以明文存在 → 必然搜不到。**结论：搜 jar 内容必须先解包并核对产物存在，不要用 `grep` 直接扫 `.jar`。**
+
+### O. 元件管理终端（按钮 / 标记 / 纹理）与聊天栏消息配置 — ✅（2026-10 记录，同月实机确认）
+
+**元件管理终端**
+- ✅ 新增两枚按钮：**标记收藏**（把 JEI/EMI 收藏夹里的东西按当前元件分区上限写进元件标记）与 **物质聚合模式**（只在 EAE 虚空元件位于元件编码槽时出现，三态轮换：**虚空**（`VoidCellCompat` 的类注释里写作「销毁」，玩家可见文案是「虚空」）/ 物质球 / 奇点；tooltip 首行固定「物质聚合」、第二行随档位）。两枚按钮的身份都收进 `ToolbarPlan` 的清单（不靠追加顺序认按钮）。
+- ✅ 标记区按**元件自己的上限**绘制与启用：上限主动探测，超出的格子不画也不接受操作。
+- ✅ 修「标记收藏之后标记去不掉」（`16653df`）：根因是分区库的**两个实例各持一份内存、改动时整份写回**——窗口那份是长命缓存，按钮却另开一份去写；组件变了而窗口那份仍旧，玩家想删掉刚加的标记时 AE2 的 `GenericStackInv.setStack` 又因「值没变」连一次写回都不发。修法：标记区所有写入统一走同一个分区实例（`EncodeCellPartitions.config()`）。
+- ✅ 同轮做了同类「不同步」排查（专项勘探 + 审查）：分区库的**陈旧复核在写入点各加一道**——槽位写入 `EncodeCellPartitions.setItemDirect`、批量写入口 `CellManagementTermMenu.markerConfigForWrite`（每拍 `broadcastChanges` 那一次**保留**，两侧都要跟着别的菜单实例的改动刷新缓存；原先的缺口是「另一份菜单实例在同一拍内改过、窗口这份仍拿旧内容整份盖回」）；两个无线宿主的 `markForSave` 从 `new CompoundTag()` 整份 `set` 改成读-改-写（其中元件管理宿主还补了「值为空就 remove 该键」，无线样板磁盘宿主那个组件没有可空键）；清掉 `PatternDiskManagementTermMenu` 里残留的 `[probe]` 调试输出（全仓 `System.out`/`System.err`/`println(` 归零，193 个 java 文件）。
+- ❌ **有意不做**（用户指示忽略，勿当新 bug 再报）：① PAT 会话内刚上传的样板在本会话看不到（占位行没指向新样板，但「会话内行数冻结」是有意语义）；② `CellManagementTermScreen.updateBeforeRender` 里 `rebuildRows()` 每帧全量重建行模型 + `List.equals` 比较（含元件的格因 `ItemStack` 不覆写 `equals` 而退化为引用比较，多数帧仍会替换列表；省它的判据不好定，可能冻结陈旧行）。
+
+**其它已修**
+- ✅ 三个无线终端在通用终端里丢失「切换终端」按钮（`cd9334a`）：AE2WTLib 那枚「切换终端」改按**类名**定身份（`de.mari_023.ae2wtlib.api.terminal.TerminalSelectionButton`，后备父类 `…api.gui.IconButton`），不再只认追加顺序；同轮把 AE2 的「终端设置」与闪电科技那两枚改成按 tooltip 定身份，三个终端的工具栏按钮统一为**清单制**（精确白名单 + 固定顺序，`ToolbarPlan`）。
+- ✅ 元件管理终端与状态图标纹理迭代（`6dc5aed`）。
+- ✅ MEGA 大宗元件那枚截断按钮不再每帧新建 `StorageCell`（`e6e588f`）：改按编码槽那张元件的**内容快照**失效，元件没变就直接返回。
+
+**聊天栏消息逐条开关（新功能，`3f64e40`）**
+- ✅ 全仓盘点：玩家可见消息 **51 条语言键 / 67 个发出点**（发出点口径 = 一次可产生一条消息的调用点；分解：客户端 6 / 元件终端菜单 39 / 管理终端 8 / 编码终端 12 / 两个供应器部件 2 = 67），无广播、无 Toast/overlay；两类发法——客户端自己显示（预检提示，以及服务端发「键 + 参数」包、由客户端显示的回执）、服务端直接写进聊天栏。
+- ✅ 按发法定两份配置：`ae2_pattern_disk-client.toml` 管客户端显示的 26 条（玩家在任何服务器上都能自己关），新增 `ae2_pattern_disk-common.toml`（COMMON）管服务端直发的 26 条；`encoding_terminal.no_blank_pattern` 两边各一个开关（客户端预检与服务端拒绝是两个发生时机），两份文件的注释都写明。开关表的键就是语言键（省掉 `gui.ae2_pattern_disk.`）；**没登记的键一律照常显示**，漏配开关只会照旧可见、不会静默消失；关掉只让这句话不说，动作照做。
+- ✅ 落地：客户端三个出口（`CellNoticePayload.handleOnClient` / `AbstractPatternDiskTermScreen.showLocalNotice` / `CellManagementTermScreen.reportDrive`）各一道闸；服务端把编码终端的 10 个 `notify*` 与 `setAdvancedMode` 的内联发送**收敛成唯一出口 `tell(key, args...)`**，管理终端 `notifyPlayer` 顶部加闸，元件终端那条直发与两个供应器部件的动作栏提示各加闸。全仓 8 处发消息点逐点核过无漏网。
+
+**配置本地化（`1de89a1`，含补上一直缺失的配置界面入口）**
+- ✅ **先补一个一直存在的问题**：此前模组没有任何配置界面入口（`registerConfig` 与注册配置**界面**是两件事）⇒ 在没有这行注册的构建里，模组列表里本模组的 **Config 按钮都是灰的**，两份配置在游戏里根本打不开。已在 `AE2PatternDiskClient`（`dist = CLIENT`）构造器加 `registerExtensionPoint(IConfigScreenFactory.class, ConfigurationScreen::new)`（构造器签名补 `ModContainer`）。
+- ✅ 两份 lang 各加 **132 条**：64 个逻辑键（53 个配置值 + 11 个节）× 标签 + tooltip，另 4 条文件级键（`…configuration.section.<文件名归一化>(.title)`）。开关的 tooltip 统一两行——「什么时候打印：<场景，带参数含义>」/「打印内容：<该语言的消息原文>」（原文由脚本按 `gui.ae2_pattern_disk.<同名>` 从 lang 读出，不是手抄）；两条排序项用说明而非「打印内容」。
+- ⚠ **键形态的坑（记住）**：NeoForge 配置屏的兜底键是「模组 id + `.configuration.` + **本节内的局部名**」，不是全路径 ⇒ 值键必须在 `define` 前用 `builder.translation(...)` 显式登记；节键要 `builder.translation(全路径)` **后紧跟** `builder.push(同路径)`（**顺序不能反**：先 `push` 的话，后设的键会被下一个 `define` 当成值键吃掉，节上反而没有键）。本仓收在 `ChatMessageSwitches.define` / `.section`；且 `section()` 必须排在所有 `comment()` **之前**——`push` 会把当时悬着的注释当成该节的注释收走。
+- ✅ **已实机确认**（2026-10）：Config 按钮可用；各节标签与两行 tooltip 显示正常；`run/config/ae2_pattern_disk-client.toml` 补齐 `[chat_messages…]` 各表。留档可选项（未做）：11 条节 `.button` 键（不补则回退平台自带的「编辑/Edit」）与 `ae2_pattern_disk.configuration.title`。
 
 ## 四、执行约束
 - 目标：NeoForge 21.1.241 / MC 1.21.1 / JDK 21 / AE2 19.2.18（编译口径取 `gradle/libs.versions.toml` 的 `ae2 = "19.2.18"`，`build.gradle` 走 `libs.ae2`；`gradle.properties` 中的 `ae2_version` 仍是未使用的历史键，现值恰好也是 19.2.18）
