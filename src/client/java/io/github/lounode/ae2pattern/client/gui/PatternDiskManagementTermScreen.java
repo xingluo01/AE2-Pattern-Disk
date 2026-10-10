@@ -839,11 +839,8 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         if (clickType == ClickType.QUICK_MOVE && slot != null && !(slot instanceof DisabledSlot)
                 && slot.getItem().getItem() instanceof PatternDiskItem && isPlayerSideSlot(slot)) {
             if (this.selectedSerial == 0) {
-                var player = Minecraft.getInstance().player;
-                if (player != null) {
-                    player.displayClientMessage(Component.translatable(
-                            "gui.ae2_pattern_disk.management_terminal.disk_store.select_first"), false);
-                }
+                // 本地预检（开关走客户端的消息总闸）。
+                showLocalNotice("gui.ae2_pattern_disk.management_terminal.disk_store.select_first");
                 return;
             }
             getMenu().storeInventoryDisk(new PatternDiskManagementTermMenu.StoreInventoryDiskRequest(

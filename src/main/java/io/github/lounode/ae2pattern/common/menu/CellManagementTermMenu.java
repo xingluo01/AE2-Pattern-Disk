@@ -40,6 +40,7 @@ import appeng.menu.slot.FakeSlot;
 import org.jetbrains.annotations.Nullable;
 
 import io.github.lounode.ae2pattern.AEPatternRegistries;
+import io.github.lounode.ae2pattern.config.AEPDCommonConfig;
 import io.github.lounode.ae2pattern.common.part.CellManagementTerminalPart;
 import io.github.lounode.ae2pattern.integration.extendedae.VoidCellCompat;
 import io.github.lounode.ae2pattern.integration.megacells.MegaCellsCompat;
@@ -909,9 +910,11 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
             host.markForSave();
         }
         broadcastChanges();
-        if (getPlayer() instanceof ServerPlayer serverPlayer) {
-            serverPlayer.sendSystemMessage(Component.translatable(
-                    "gui.ae2_pattern_disk.cell_management_terminal.notice.mark_bookmarks",
+        // 这一条是元管终端唯一走服务端直发的回执（其余都是发「键 + 参数」的包、由客户端显示），
+        // 所以它的开关在同终端的其他消息隔壁的 common 配置里。
+        var noticeKey = NOTICE + "mark_bookmarks";
+        if (getPlayer() instanceof ServerPlayer serverPlayer && AEPDCommonConfig.isMessageShown(noticeKey)) {
+            serverPlayer.sendSystemMessage(Component.translatable(noticeKey,
                     written, duplicate, noRoom, skippedNonItems));
         }
     }

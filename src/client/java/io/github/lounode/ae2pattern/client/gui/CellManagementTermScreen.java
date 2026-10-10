@@ -32,6 +32,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.github.lounode.ae2pattern.AEPatternRegistries;
+import io.github.lounode.ae2pattern.config.AEPDConfig;
 import appeng.core.localization.GuiText;
 import appeng.api.config.ActionItems;
 import appeng.api.config.CopyMode;
@@ -649,12 +650,12 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
         reportDrive(location, pinned ? "drive_pinned" : "drive_unpinned");
     }
 
-    /** 在聊天栏报一次「哪一台、在哪、什么状态」。 */
+    /** 在聊天栏报一次「哪一台、在哪、什么状态」。开关在客户端配置里（本地显示的一句话）。 */
     private void reportDrive(HostLocation location, String messageKey) {
         var player = Minecraft.getInstance().player;
-        if (player != null) {
-            player.displayClientMessage(Component.translatable(
-                    "gui.ae2_pattern_disk.cell_management_terminal." + messageKey,
+        var key = "gui.ae2_pattern_disk.cell_management_terminal." + messageKey;
+        if (player != null && AEPDConfig.isMessageShown(key)) {
+            player.displayClientMessage(Component.translatable(key,
                     location.dimension().toString(), location.pos().toShortString()), false);
         }
     }

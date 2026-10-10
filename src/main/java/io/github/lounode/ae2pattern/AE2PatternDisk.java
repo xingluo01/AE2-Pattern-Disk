@@ -21,6 +21,7 @@ import io.github.lounode.ae2pattern.network.CellNoticePayload;
 import io.github.lounode.ae2pattern.network.DiskHostListPayload;
 import io.github.lounode.ae2pattern.network.VisibleDisksPayload;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
+import io.github.lounode.ae2pattern.config.AEPDCommonConfig;
 import io.github.lounode.ae2pattern.config.AEPDConfig;
 
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskAssemblerBlockEntity;
@@ -43,7 +44,11 @@ public class AE2PatternDisk {
 
     public AE2PatternDisk(IEventBus modBus, ModContainer modContainer) {
         // 附加排序的层级表是纯客户端的视图设置：注册成 CLIENT，服务端不加载这份文件，也不随网络同步。
+        // 同一份文件里还有聊天栏消息开关（客户端显示的那半）。
         modContainer.registerConfig(ModConfig.Type.CLIENT, AEPDConfig.CLIENT_SPEC);
+        // 服务端直发的聊天栏消息开关：那些消息由服务端当场写进聊天栏，客户端配置拦不住它们，开关只能在这一侧。
+        // 用 COMMON 而不是 SERVER：这是一份跟着模组走的全局偏好，不该每开一个存档各配一遍。
+        modContainer.registerConfig(ModConfig.Type.COMMON, AEPDCommonConfig.COMMON_SPEC);
 
         // Registration entry points
         AEPatternRegistries.register(modBus);

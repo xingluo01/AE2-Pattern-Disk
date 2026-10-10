@@ -10,6 +10,8 @@ import net.minecraft.world.entity.player.Player;
 
 import appeng.core.network.ClientboundPacket;
 
+import io.github.lounode.ae2pattern.config.AEPDConfig;
+
 /**
  * 服务端给元件管理终端玩家的一句话反馈，显示在聊天栏上。
  *
@@ -49,6 +51,10 @@ public record CellNoticePayload(String key, String arg) implements ClientboundPa
     /** 客户端：聊天栏一行（不再走动作栏，理由见类注释）。 */
     @Override
     public void handleOnClient(Player player) {
+        // 显不显示定在客户端的配置里：服务端只发「键 + 参数」，本地那句话归玩家自己管。
+        if (!AEPDConfig.isMessageShown(key)) {
+            return;
+        }
         Component message = arg.isEmpty() ? Component.translatable(key) : Component.translatable(key, arg);
         player.displayClientMessage(message, false);
     }

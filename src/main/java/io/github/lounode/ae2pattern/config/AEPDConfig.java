@@ -7,9 +7,13 @@ import net.neoforged.neoforge.common.ModConfigSpec;
 /**
  * 模组配置。
  *
- * <p>两项都是纯客户端视图设置：附加排序的层级词表，以及附加排序最后那层数值序的名字门槛。它们只影响
+ * <p>三项里前两项是纯客户端视图设置：附加排序的层级词表，以及附加排序最后那层数值序的名字门槛。它们只影响
  * 客户端怎么给自己的物品网格排序，不改变任何服务端行为，所以按 {@code CLIENT} 类型注册——服务端不加载
  * 这份文件，也不会随网络同步（每个玩家的排序偏好本来就该各管各的）。</p>
+ *
+ * <p>第三项是聊天栏消息开关：客户端自己显示的那些（预检提示，以及服务端发「键 + 参数」的包、由客户端决定
+ * 显不显示的回执）。这些开关归客户端，玩家在任何服务器上都能自己关；服务端直接往聊天栏发的那些在
+ * {@link AEPDCommonConfig} 里，两边的消息键一一对得上。</p>
  *
  * <p>文件落在 {@code config/ae2_pattern_disk-client.toml}。改完存档不需要重开，客户端重载配置即生效。</p>
  */
@@ -18,6 +22,9 @@ public final class AEPDConfig {
     public static final ModConfigSpec CLIENT_SPEC;
     public static final ModConfigSpec.ConfigValue<List<? extends String>> ADDITIONAL_SORT_TIERS;
     public static final ModConfigSpec.ConfigValue<List<? extends String>> ADDITIONAL_SORT_NUMERIC_REGEX;
+
+    /** 聊天栏消息开关（客户端显示的那一半），一条一个。 */
+    private static final ChatMessageSwitches MESSAGES = new ChatMessageSwitches();
 
     /**
      * 默认层级表：一组一个元素，组内按「从低到高」列层级词。
@@ -114,7 +121,101 @@ public final class AEPDConfig {
         ADDITIONAL_SORT_NUMERIC_REGEX = builder.defineList(
                 "additional_sort.numeric_regex", DEFAULT_NUMERIC_REGEX, () -> "",
                 element -> element instanceof String);
+
+        builder.comment(
+                "Chat messages this mod shows on the client.",
+                "",
+                "Each entry is one message and they are all independent: turning one off only silences",
+                "that one line. Messages are grouped by the screen that shows them, and every key in here",
+                "is the message's translation key with the leading 'gui.ae2_pattern_disk.' dropped - so it",
+                "can be looked up in the language file directly.",
+                "",
+                "This file covers the messages the CLIENT displays: the pre-checks the screens run before",
+                "asking the server, and the notices the server sends as 'key + argument' for the client to",
+                "show. Suppressing one never changes what the action does - they are receipts and refusal",
+                "reasons, not part of the flow.",
+                "",
+                "Messages the SERVER sends into the chat itself are in ae2_pattern_disk-common.toml",
+                "(that side cannot be silenced from here). A couple of conditions report themselves on",
+                "both sides - 'no_blank_pattern' is one - and each side has its own switch.",
+                "",
+                "Changes take effect on the next message; no restart needed, just reload the config.");
+
+        // ---- 元件管理终端：表格手势的回执与拒绝原因 ----
+        // 服务端只发「键 + 参数」，显示与否在这里定（CellNoticePayload.handleOnClient）。
+        builder.comment("Cell management terminal - feedback for the table gestures, shown in the chat.");
+        MESSAGES.define(builder, "cell_management_terminal.notice.encode_busy",
+                "Shown when you move a cell into the encoding slot while another cell is already there.");
+        MESSAGES.define(builder, "cell_management_terminal.notice.cell_locked",
+                "Shown when taking a cell out fails because the storage host locks it (an ECO infinite drive, for example).");
+        MESSAGES.define(builder, "cell_management_terminal.notice.cell_refused",
+                "Shown when the slot holds something but the storage host refuses to hand it over.");
+        MESSAGES.define(builder, "cell_management_terminal.notice.slot_empty",
+                "Shown when taking a cell out of a slot that really is empty.");
+        MESSAGES.define(builder, "cell_management_terminal.notice.moved_to_encode",
+                "Shown after a cell was moved into the encoding slot.");
+        MESSAGES.define(builder, "cell_management_terminal.notice.carried_not_empty",
+                "Shown when taking a cell while your cursor already holds something.");
+        MESSAGES.define(builder, "cell_management_terminal.notice.took",
+                "Shown after a cell was taken out into your cursor.");
+        MESSAGES.define(builder, "cell_management_terminal.notice.nothing_carried",
+                "Shown when putting a cell while your cursor is empty.");
+        MESSAGES.define(builder, "cell_management_terminal.notice.cell_rejected",
+                "Shown when the storage host you picked does not accept that cell.");
+        MESSAGES.define(builder, "cell_management_terminal.notice.put",
+                "Shown after a cell was stored into a drive or into the encoding slot.");
+        MESSAGES.define(builder, "cell_management_terminal.notice.inventory_full",
+                "Shown when a quick move of a cell fails because your inventory is full.");
+        MESSAGES.define(builder, "cell_management_terminal.notice.slot_changed",
+                "Shown when the target slot moved before the action ran.");
+        MESSAGES.define(builder, "cell_management_terminal.notice.not_a_cell",
+                "Shown when the item on your cursor is not a storage cell.");
+        MESSAGES.define(builder, "cell_management_terminal.notice.grid_offline",
+                "Shown when the terminal's grid is offline (or the drive's owner could not be resolved).");
+        MESSAGES.define(builder, "cell_management_terminal.notice.drive_gone",
+                "Shown when the selected drive is gone or was broken.");
+        MESSAGES.define(builder, "cell_management_terminal.notice.drive_full",
+                "Shown when the selected drive has no free cell slot.");
+        MESSAGES.define(builder, "cell_management_terminal.notice.moved",
+                "Shown after a cell was moved into the selected drive.");
+        MESSAGES.define(builder, "cell_management_terminal.notice.move_failed",
+                "Shown when putting the cell back after a failed move did not work either.");
+        MESSAGES.define(builder, "cell_management_terminal.notice.encode_empty",
+                "Shown when storing the encoding slot's cell while that slot is empty.");
+        MESSAGES.define(builder, "cell_management_terminal.notice.priority_unsupported",
+                "Shown when opening AE2's priority GUI is not supported for the current selection.");
+        MESSAGES.define(builder, "cell_management_terminal.notice.select_first",
+                "Shown when Shift+clicking a cell from your inventory without a drive selected.");
+        MESSAGES.define(builder, "cell_management_terminal.drive_pinned",
+                "Shown when you pin a drive (it is then drawn in the world).");
+        MESSAGES.define(builder, "cell_management_terminal.drive_unpinned",
+                "Shown when you unpin a drive.");
+
+        // ---- 样板磁盘管理终端：客户端预检 ----
+        builder.comment("Pattern disk management terminal - the client-side pre-check.");
+        MESSAGES.define(builder, "management_terminal.disk_store.select_first",
+                "Shown when Shift+clicking a disk from your inventory without a container selected.");
+
+        // ---- 编码终端：客户端预检 ----
+        builder.comment("Pattern encoding terminal - the client-side pre-check.");
+        MESSAGES.define(builder, "encoding_terminal.no_blank_pattern",
+                "Shown when you press encode while the ME network has no blank patterns (the client-side pre-check; the server's own refusal has its own switch in the common config).");
+
+        // ---- 三个终端共用 ----
+        builder.comment("Shared by all three terminals.");
+        MESSAGES.define(builder, "notice.no_network_quick_move",
+                "Shown when Shift+clicking an item from your inventory that this terminal cannot send to the ME network and has no other slot for.");
+
         CLIENT_SPEC = builder.build();
+    }
+
+    /**
+     * 这条聊天栏消息现在该不该显示（客户端显示的那些）。
+     *
+     * <p>没登记过的语言键照常显示，所以新消息漏了开关也只是照旧可见，不会静默消失。</p>
+     */
+    public static boolean isMessageShown(String messageKey) {
+        return MESSAGES.isShown(messageKey);
     }
 
     private AEPDConfig() {

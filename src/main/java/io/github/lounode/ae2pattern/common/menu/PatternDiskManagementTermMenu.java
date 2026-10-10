@@ -27,6 +27,7 @@ import appeng.helpers.patternprovider.PatternContainer;
 import appeng.menu.implementations.MenuTypeBuilder;
 
 import io.github.lounode.ae2pattern.api.IPatternDiskHost;
+import io.github.lounode.ae2pattern.config.AEPDCommonConfig;
 import io.github.lounode.ae2pattern.api.PatternDiskApi;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
 import io.github.lounode.ae2pattern.common.part.PatternDiskManagementTerminalPart;
@@ -241,6 +242,11 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
      * 动作栏三秒就没、连点还会互相盖掉。
      */
     private void notifyPlayer(String key, Object... args) {
+        // 一句话一个开关，在 common 配置里：这些消息由服务端当场发出去，客户端配置拦不住，
+        // 只能在这一侧定。关掉只让这句话不说，存入动作本身照做。
+        if (!AEPDCommonConfig.isMessageShown(key)) {
+            return;
+        }
         var player = getPlayer();
         if (player != null) {
             player.displayClientMessage(Component.translatable(key, args), false);

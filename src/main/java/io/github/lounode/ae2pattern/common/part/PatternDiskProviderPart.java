@@ -40,6 +40,7 @@ import appeng.util.inv.AppEngInternalInventory;
 import appeng.util.inv.InternalInventoryHost;
 
 import io.github.lounode.ae2pattern.api.PatternDiskApi;
+import io.github.lounode.ae2pattern.config.AEPDCommonConfig;
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskProviderBlockEntity;
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskProviderHost;
 import io.github.lounode.ae2pattern.common.logic.PatternDiskProviderLogic;
@@ -363,10 +364,13 @@ public class PatternDiskProviderPart extends AEBasePart
                 var next = nextPushDirection();
                 this.pushDirection = next;
                 saveChanges();
-                player.displayClientMessage(
-                        Component.translatable("gui.ae2_pattern_disk.pattern_disk_provider.push_direction",
-                                directionLabel(next)),
-                        true);
+                // 动作栏那一条的开关在 common 配置里：这句由服务端发，客户端配置拦不住它。
+                var noticeKey = "gui.ae2_pattern_disk.pattern_disk_provider.push_direction";
+                if (AEPDCommonConfig.isMessageShown(noticeKey)) {
+                    player.displayClientMessage(
+                            Component.translatable(noticeKey, directionLabel(next)),
+                            true);
+                }
             }
             return true;
         }

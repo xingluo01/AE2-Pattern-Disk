@@ -16,6 +16,7 @@ import appeng.core.localization.ButtonToolTips;
 import appeng.menu.slot.DisabledSlot;
 
 import io.github.lounode.ae2pattern.common.menu.AbstractPatternDiskTermMenu;
+import io.github.lounode.ae2pattern.config.AEPDConfig;
 import java.util.List;
 import org.jetbrains.annotations.Nullable;
 
@@ -68,8 +69,13 @@ public abstract class AbstractPatternDiskTermScreen<T extends AbstractPatternDis
      * 一句只给自己看的提示。
      *
      * <p>落聊天栏（{@code false}）而不是动作栏：这类拒绝要能回头看见，动作栏三秒就没了。
+     *
+     * <p>开关在客户端配置里：这句话是本地显示的，服务端根本不知道它，只能归这一侧。
      */
     protected static void showLocalNotice(String key) {
+        if (!AEPDConfig.isMessageShown(key)) {
+            return;
+        }
         var player = Minecraft.getInstance().player;
         if (player != null) {
             player.displayClientMessage(Component.translatable(key), false);

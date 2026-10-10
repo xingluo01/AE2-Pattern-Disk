@@ -27,6 +27,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.PacketDistributor;
 
+import io.github.lounode.ae2pattern.config.AEPDCommonConfig;
 import io.github.lounode.ae2pattern.integration.ae2lt.OverloadPatterns;
 import io.github.lounode.ae2pattern.integration.rechiseledae.ChiselingRecipes;
 
@@ -637,15 +638,29 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
      */
     private void notifyExtraTierNeedsInput() {
         if (this.chiselingMode) {
-            if (getPlayer() instanceof ServerPlayer serverPlayer) {
-                serverPlayer.sendSystemMessage(Component.translatable(
-                        "gui.ae2_pattern_disk.encoding_terminal.chiseling_needs_target"));
-            }
+            tell("gui.ae2_pattern_disk.encoding_terminal.chiseling_needs_target");
             return;
         }
-        if (this.overloadedMode && getPlayer() instanceof ServerPlayer serverPlayer) {
-            serverPlayer.sendSystemMessage(Component.translatable(
-                    "gui.ae2_pattern_disk.encoding_terminal.overloaded_needs_input"));
+        if (this.overloadedMode) {
+            tell("gui.ae2_pattern_disk.encoding_terminal.overloaded_needs_input");
+        }
+    }
+
+    /**
+     * 服务端给玩家一句聊天栏反馈——本终端所有回执的唯一出口。
+     *
+     * <p>开关就在这里落地：一条消息一个，在 {@code ae2_pattern_disk-common.toml} 里（服务端当场写进聊天栏
+     * 的那句话，客户端配置拦不住）。关掉只让这句话不说，动作本身照做——这些全是回执与拒绝原因，不是流程的
+     * 一部分。</p>
+     *
+     * <p>非服务端（客户端手上的菜单没有收发这包的那一线）自然不发，与各调用点原来的写法一致。</p>
+     */
+    private void tell(String key, Object... args) {
+        if (!AEPDCommonConfig.isMessageShown(key)) {
+            return;
+        }
+        if (getPlayer() instanceof ServerPlayer player) {
+            player.sendSystemMessage(Component.translatable(key, args));
         }
     }
 
@@ -700,10 +715,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
 
     /** 网络里拿不到空白样板时告诉玩家一声；静默失败会让人以为是界面卡了。 */
     private void notifyNoBlankPattern() {
-        if (getPlayer() instanceof ServerPlayer player) {
-            player.sendSystemMessage(Component.translatable(
-                    "gui.ae2_pattern_disk.encoding_terminal.no_blank_pattern"));
-        }
+        tell("gui.ae2_pattern_disk.encoding_terminal.no_blank_pattern");
     }
 
     /**
@@ -884,25 +896,18 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
 
     /** 样板写不进磁盘时说明理由。原因与写入路径共用同一套判据（见 whyCannotInsert）。 */
     private void notifyDiskRefused(Component diskName, @Nullable PatternDiskItem.InsertFailure reason) {
-        if (!(getPlayer() instanceof ServerPlayer player)) {
-            return;
-        }
         var key = reason == null ? "unknown" : switch (reason) {
             case FULL -> "full";
             case TYPE_LOCKED -> "type_locked";
             case DUPLICATE_OUTPUT -> "duplicate_output";
             case UNRESOLVABLE -> "unresolvable";
         };
-        player.sendSystemMessage(Component.translatable(
-                "gui.ae2_pattern_disk.encoding_terminal.disk_refused." + key, diskName));
+        tell("gui.ae2_pattern_disk.encoding_terminal.disk_refused." + key, diskName);
     }
 
     /** 目标磁盘已不在列表里（客户端列表比服务端旧）时说明一句，否则又是点了没反应。 */
     private void notifyStaleTarget() {
-        if (getPlayer() instanceof ServerPlayer player) {
-            player.sendSystemMessage(Component.translatable(
-                    "gui.ae2_pattern_disk.encoding_terminal.disk_refused.stale_target"));
-        }
+        tell("gui.ae2_pattern_disk.encoding_terminal.disk_refused.stale_target");
     }
 
     // ---- 从磁盘取东西（管理终端的左键/Shift+左键/右键）--------------------------------------
@@ -1013,27 +1018,18 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
 
     /** 落点满/被占时说明一句，否则玩家只看到点了没反应。 */
     private void notifyNoRoom(ExtractTarget target) {
-        if (getPlayer() instanceof ServerPlayer player) {
-            player.sendSystemMessage(Component.translatable(
-                    "gui.ae2_pattern_disk.encoding_terminal.no_room."
-                            + target.name().toLowerCase(java.util.Locale.ROOT)));
-        }
+        tell("gui.ae2_pattern_disk.encoding_terminal.no_room."
+                + target.name().toLowerCase(java.util.Locale.ROOT));
     }
 
     /** 盘里那张样板的序号已经无效（内容刚变过）时说明一句：不是落点问题，也不是网络缺料。 */
     private void notifyContentChanged() {
-        if (getPlayer() instanceof ServerPlayer player) {
-            player.sendSystemMessage(Component.translatable(
-                    "gui.ae2_pattern_disk.encoding_terminal.content_changed"));
-        }
+        tell("gui.ae2_pattern_disk.encoding_terminal.content_changed");
     }
 
     /** 样板写进磁盘后给个回执，免得玩家不确定刚才那一下到底落没落盘。 */
     private void notifyPatternWritten(Component diskName) {
-        if (getPlayer() instanceof ServerPlayer player) {
-            player.sendSystemMessage(
-                    Component.translatable("gui.ae2_pattern_disk.encoding_terminal.written_to_disk", diskName));
-        }
+        tell("gui.ae2_pattern_disk.encoding_terminal.written_to_disk", diskName);
     }
 
     /**
@@ -1041,13 +1037,9 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
      * 玩家看到的是「这一次右键到底写没写成」，而不用去磁盘提示里猜。
      */
     private void notifyMarkWritten(Component diskName) {
-        if (getPlayer() instanceof ServerPlayer player) {
-            player.sendSystemMessage(
-                    Component.translatable("gui.ae2_pattern_disk.encoding_terminal.mark_written", diskName));
-        }
+        tell("gui.ae2_pattern_disk.encoding_terminal.mark_written", diskName);
     }
 
-    /** 没写成的回执：光标上有东西就说清是哪件认不出来，光标为空则只说没有可用的类别。 */
     /**
      * 菜单要不要给宿主摆升级槽。
      *
@@ -1109,19 +1101,20 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         }
     }
 
+    /** 没写成的回执：光标上有东西就说清是哪件认不出来，光标为空则只说没有可用的类别。 */
     private void notifyMarkNotWritten() {
-        if (!(getPlayer() instanceof ServerPlayer player)) {
+        // 这一层早退不是多余的：光标只在服务端读（客户端手里的菜单没有收发那一线），
+        // 先退就不用在客户端白读一次光标（tell 里那层 instanceof 是给其它调用点用的）。
+        if (!(getPlayer() instanceof ServerPlayer)) {
             return;
         }
         // 光标上拿的是哪件，服务端自己有（菜单的光标槽是同步的），不必让客户端报一遍。口径必须与客户端一致：
         // 两边都只看光标，主手/副手不算。
         var held = getCarried();
         if (held.isEmpty()) {
-            player.sendSystemMessage(Component.translatable(
-                    "gui.ae2_pattern_disk.encoding_terminal.mark_skipped"));
+            tell("gui.ae2_pattern_disk.encoding_terminal.mark_skipped");
         } else {
-            player.sendSystemMessage(Component.translatable(
-                    "gui.ae2_pattern_disk.encoding_terminal.mark_unidentified", held.getHoverName()));
+            tell("gui.ae2_pattern_disk.encoding_terminal.mark_unidentified", held.getHoverName());
         }
     }
 
@@ -2334,10 +2327,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         if (!isPlainProcessing && !isAdvanced) {
             // 输出栏里没有可编辑的处理样板：停在空面板上，并说清楚为什么。
             // 不回滚模式：玩家常常是先切进来、再往输出栏放样板；但一个空档配一句沉默很容易被当成坏了。
-            if (getPlayer() instanceof ServerPlayer serverPlayer) {
-                serverPlayer.sendSystemMessage(Component.translatable(
-                        "gui.ae2_pattern_disk.encoding_terminal.advanced_needs_pattern"));
-            }
+            tell("gui.ae2_pattern_disk.encoding_terminal.advanced_needs_pattern");
             return;
         }
         // 输入从样板的「实际材料表」读，而不是从 getInputs()：后者给的是每格的候选模板，倍数与替代品都在
