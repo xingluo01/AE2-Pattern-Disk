@@ -175,6 +175,14 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
     private StatesIconButton voidModeButton;
     /** 上一次给模式按钮设的提示对应哪一档（-1 = 还没设过）；只在它变了时重设，省得每帧造 Component。 */
     private int lastVoidMode = -1;
+    /**
+     * 上一次算过「截断状态」的编码槽内容快照；null = 还没算过。
+     *
+     * <p>截断状态只随这张元件变，而元件的任何变化（换元件、我们自己按了按钮被服务端写回、别处改了这个元件）
+     * 都会让客户端拿到一份内容不同的栈，所以按**内容**做失效判据就够。不按引用判是因为两者都不可靠：
+     * 引用可能被就地改写（那样快照内容会变、引用不会），而快照比较本身很便宜（元件就那几个组件）。</p>
+     */
+    private ItemStack lastMegaCell;
 
     private int visibleRows = 6;
     private int scrollOffset;
@@ -406,6 +414,12 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
             return;
         }
         var stack = getMenu().getCellHost().getEncodeCellInventory().getStackInSlot(0);
+        // 快照没变 = 状态没变。省下每帧那一次 bulkInventoryOf：它会 new 一个 BulkCellInventory
+        // （构造里就要读元件组件）再走几次反射。本屏另有每帧工作（行模型重建等），这里只动这一处。
+        if (this.lastMegaCell != null && ItemStack.matches(this.lastMegaCell, stack)) {
+            return;
+        }
+        this.lastMegaCell = stack.copy();
         var bulk = MegaCellsCompat.bulkInventoryOf(stack);
         boolean usable = bulk != null && MegaCellsCompat.hasCompressionChain(bulk);
         MegaCutoffButtonFactory.setVisible(this.megaCutoffButton, usable);
