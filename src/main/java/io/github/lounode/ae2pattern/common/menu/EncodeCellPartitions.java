@@ -1,9 +1,13 @@
 package io.github.lounode.ae2pattern.common.menu;
 
+
+import org.jetbrains.annotations.Nullable;
+
 import net.minecraft.world.item.ItemStack;
 
 import appeng.api.inventories.InternalInventory;
 import appeng.api.storage.cells.ICellWorkbenchItem;
+import appeng.util.ConfigInventory;
 import appeng.util.ConfigMenuInventory;
 
 /**
@@ -29,27 +33,66 @@ public class EncodeCellPartitions implements InternalInventory {
 
     private final ICellManagementHost host;
 
-    /** 上次解析时那张元件栈（只比引用，不拷内容）与它对应的分区视图。 */
+    /** 上次解析时那张元件栈（只比引用，不拷内容）、它对应的分区库存，以及分区在菜单侧的样子。 */
     private ItemStack cachedCell;
+    private ConfigInventory cachedConfig;
     private ConfigMenuInventory cached;
 
     public EncodeCellPartitions(ICellManagementHost host) {
         this.host = host;
     }
 
-    /** 编码槽里当前那张元件的分区视图；没有元件（或元件不支持分区）时返回 null。 */
+    /**
+     * 缓存的内容还跟元件组件一致吗；不一致就丢掉重建。
+     *
+     * <p>缓存是「每个菜单实例一份」：同一台终端被两个玩家同时打开时，两份缓存彼此看不见，一方改完元件后，
+     * 另一方手上那份就是旧的——它一旦通过窗口写下任何一格，就会把整份旧内容盖回去（把对方刚做的标记静默
+     * 回退）。所以每拍比一次内容：分区最多 63 项，一次读组件的代价可以忽略。</p>
+     */
+    public void refreshIfStale() {
+        ItemStack cell = host.getEncodeCellInventory().getStackInSlot(0);
+        if (this.cachedConfig == null || this.cachedCell != cell
+                || !(cell.getItem() instanceof ICellWorkbenchItem workbenchItem)) {
+            return;
+        }
+        if (!workbenchItem.getConfigInventory(cell).toList().equals(this.cachedConfig.toList())) {
+            this.cachedConfig = null;
+            this.cached = null;
+            this.cachedCell = null;
+        }
+    }
+
     private ConfigMenuInventory current() {
+        return currentConfig() == null ? null : this.cached;
+    }
+
+    private ConfigInventory currentConfig() {
         ItemStack cell = host.getEncodeCellInventory().getStackInSlot(0);
         if (cell.isEmpty() || !(cell.getItem() instanceof ICellWorkbenchItem workbenchItem)) {
             this.cachedCell = null;
+            this.cachedConfig = null;
             this.cached = null;
             return null;
         }
         if (this.cached == null || this.cachedCell != cell) {
             this.cachedCell = cell;
-            this.cached = new ConfigMenuInventory(workbenchItem.getConfigInventory(cell));
+            this.cachedConfig = workbenchItem.getConfigInventory(cell);
+            this.cached = new ConfigMenuInventory(this.cachedConfig);
         }
-        return this.cached;
+        return this.cachedConfig;
+    }
+
+    /**
+     * 这个标记窗口当前用的那个分区库存——就是 {@link #currentConfig()} 缓存的那一个。
+     *
+     * <p>菜单侧的批量写入（分区存储 / 清除 / 标记收藏）<b>必须</b>走这里：分区库存是「创建时从元件读进
+     * 内存、改动时整份写回」的，另开一个 {@code getConfigInventory} 去写，窗口手上那份就停在旧内容上，
+     * 之后通过窗口做任何改动都会把旧内容整份盖回去——表现为「刚加上的标记去不掉」，直到元件被取出来再放
+     * 回去（栈对象变了，缓存重建）才恢复。</p>
+     */
+    @Nullable
+    public ConfigInventory config() {
+        return currentConfig();
     }
 
     @Override

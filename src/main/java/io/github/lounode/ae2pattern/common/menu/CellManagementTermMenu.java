@@ -311,14 +311,15 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
      */
     public boolean isMarkerAreaEditable() {
         ItemStack cell = host.getEncodeCellInventory().getStackInSlot(0);
-        if (cell.isEmpty() || !(cell.getItem() instanceof ICellWorkbenchItem workbenchItem)) {
+        if (cell.isEmpty() || !(cell.getItem() instanceof ICellWorkbenchItem)) {
             return false;
         }
         if (copyMode == CopyMode.KEEP_ON_REMOVE) {
             return true;
         }
         // CLEAR_ON_REMOVE：元件能装多少种就开多少格，多余的格淡化——与 AE2 元件工作台同一判据。
-        return workbenchItem.getConfigInventory(cell).size() > 0;
+        var config = markerPartitions.config();
+        return config != null && config.size() > 0;
     }
 
     /**
@@ -356,10 +357,13 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
             return;
         }
         ItemStack cell = host.getEncodeCellInventory().getStackInSlot(0);
-        if (cell.isEmpty() || !(cell.getItem() instanceof ICellWorkbenchItem workbenchItem)) {
+        if (cell.isEmpty() || !(cell.getItem() instanceof ICellWorkbenchItem)) {
             return;
         }
-        var config = workbenchItem.getConfigInventory(cell);
+        var config = markerPartitions.config();
+        if (config == null) {
+            return;
+        }
         var storage = StorageCells.getCellInventory(cell, null);
         if (storage == null) {
             return;
@@ -385,10 +389,16 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
             return;
         }
         ItemStack cell = host.getEncodeCellInventory().getStackInSlot(0);
-        if (cell.isEmpty() || !(cell.getItem() instanceof ICellWorkbenchItem workbenchItem)) {
+        if (cell.isEmpty() || !(cell.getItem() instanceof ICellWorkbenchItem)) {
             return;
         }
-        workbenchItem.getConfigInventory(cell).clear();
+        var config = markerPartitions.config();
+        if (config == null) {
+            return;
+        }
+        config.clear();
+        // 与分区存储 / 标记收藏同一口径：分区的改动写在元件栈的组件里，元件栈本身得被通知变了才会落盘。
+        host.getEncodeCellInventory().sendChangeNotification(0);
         host.markForSave();
         broadcastChanges();
     }
@@ -775,14 +785,15 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
                 encodeBookmarks(allowed, skippedNonItems, rejected, capacity));
     }
 
-    /** 编码槽那张元件的标记容器；没有可标记元件时 null。 */
+    /**
+     * 编码槽那张元件的标记容器；没有可标记元件时 null。
+     *
+     * <p>拿的是标记窗口自己那份缓存实例（见 {@link EncodeCellPartitions#config()}）：分区库是「建时读进
+     * 内存、改动时整份写回」的，另开一个实例去写会把窗口那份留在旧内容上。</p>
+     */
     @Nullable
     private ConfigInventory markerConfig() {
-        ItemStack cell = host.getEncodeCellInventory().getStackInSlot(0);
-        if (cell.isEmpty() || !(cell.getItem() instanceof ICellWorkbenchItem workbenchItem)) {
-            return null;
-        }
-        return workbenchItem.getConfigInventory(cell);
+        return markerPartitions.config();
     }
 
     /** 这张元件的标记容器里有没有哪一格收得下这个键；纯查询，不改元件。 */
@@ -824,10 +835,14 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
             return;
         }
         ItemStack cell = host.getEncodeCellInventory().getStackInSlot(0);
-        if (cell.isEmpty() || !(cell.getItem() instanceof ICellWorkbenchItem workbenchItem)) {
+        if (cell.isEmpty() || !(cell.getItem() instanceof ICellWorkbenchItem)) {
             return;
         }
-        var config = workbenchItem.getConfigInventory(cell);
+        // 与窗口、与「分区存储/清除」用同一个实例（理由见 EncodeCellPartitions.config()）。
+        var config = markerConfig();
+        if (config == null) {
+            return;
+        }
         var marked = new HashSet<AEKey>(config.keySet());
         int written = 0;
         int duplicate = 0;
@@ -1117,6 +1132,8 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         super.broadcastChanges();
         // 偏移量由 @GuiSync 同步，两侧都在这里落到窗口上——槽位是共享对象，只有两侧口径一致，
         // 客户端画的与交互的才是同一段。这里再夹一次：元件换成格数更少的那个时，原来的偏移可能超了。
+        // 比一次分区内容：别的菜单实例（同一台终端被另一个玩家开着）改过这张元件时，手上这份缓存就旧了。
+        markerPartitions.refreshIfStale();
         markerRowOffset = Math.max(0, Math.min(markerRowOffset, maxMarkerRowOffset()));
         markerWindow.setOffset(markerRowOffset * AEPatternRegistries.CELL_MARKER_COLUMN.length);
         if (isServerSide()) {
