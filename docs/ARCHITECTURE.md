@@ -4,7 +4,7 @@
 
 玩法说明在 `../README.md`（英文，商店页与 GitHub 首页用），平台差异在 `PLATFORM.md`（MCMOD 版在 `PLATFORM_MCMOD.md`），未完成与已知欠账在 `TODO.md`，历次改动在 `../CHANGELOG.md`，本地依赖怎么凑齐在 `LOCAL_DEPS.md`。本手册不重复它们。
 
-（本目录 `docs/` 只放文档：本手册、平台说明两份、待办、本机路径索引，以及《编码模式注册规范》`ENCODING_MODES.md`。仓库根只留 `README.md` 与 `CHANGELOG.md` 这两个按惯例必须在根的文件。）
+（本目录 `docs/` 只放文档：本手册、平台说明两份、待办、上游 API 请求、编码模式注册规范 `ENCODING_MODES.md`，以及两份**本机本地**信息——`LOCAL_DEPS.md`（路径索引）与 `LOCAL_CLONES.md`（上游镜像基线），后两份已列入 `.gitignore`，不随仓库分发。仓库根只留 `README.md`、`CHANGELOG.md` 这两个按惯例必须在根的文件，外加给 AI 代理的入口 `AGENTS.md`。）
 
 版本基线：NeoForge 21.1.241 / MC 1.21.1 / AE2 19.2.18 / Java 21。
 

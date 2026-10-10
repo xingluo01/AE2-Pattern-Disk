@@ -34,6 +34,9 @@ src/main/resources/assets/ae2_pattern_disk.zip
 # 本机路径声明：兄弟仓库与 libs jar 的绝对路径索引，换机器要改，不进版本库。
 docs/LOCAL_DEPS.md
 
+# 上游源码镜像的分支基线（D:\Temp 下的浅克隆），换机器要改，不进版本库。
+docs/LOCAL_CLONES.md
+
 # Pi workflow metadata
 plans/
 .pi/
