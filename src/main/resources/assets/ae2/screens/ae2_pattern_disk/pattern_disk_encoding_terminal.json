@@ -5,7 +5,7 @@
   "../common/player_inventory.json",
   "../common/terminal_toolbox.json"
  ],
- "helpTopic": "ae2_pattern_disk:ae2guide/items-blocks-machines/pattern_disk_encoding_terminal.md",
+ "helpTopic": "ae2_pattern_disk:items-blocks-machines/pattern_disk_encoding_terminal.md",
  "background": {
   "texture": "ae2_pattern_disk:textures/guis/pattern.png",
   "srcRect": [

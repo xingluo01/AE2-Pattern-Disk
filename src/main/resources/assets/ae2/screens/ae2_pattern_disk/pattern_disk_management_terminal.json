@@ -4,7 +4,7 @@
   "../common/common.json",
   "../common/terminal_toolbox.json"
  ],
- "helpTopic": "ae2_pattern_disk:ae2guide/items-blocks-machines/pattern_disk_management_terminal.md",
+ "helpTopic": "ae2_pattern_disk:items-blocks-machines/pattern_disk_management_terminal.md",
  "images": {
   "tableHeader": {
    "$comment": "表格外壳的全部贴图切片都在这里，屏幕代码只按名字取（ScreenStyle.getImage）：带高决定一行占多少像素，这里的表头/尾饰高与上面 terminalStyle 的 header/bottom 必须同源——terminalStyle 那条链算出面板总高，代码再用这里的带高反推可见行数，两边不一致就会算错行。这张贴图是 512×512，所以每条都要写 textureWidth/Height，否则 Blitter 按 256 换算 UV、取样位置翻倍。",

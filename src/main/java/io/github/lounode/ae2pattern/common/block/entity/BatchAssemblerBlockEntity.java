@@ -128,7 +128,8 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     private static final long PRIORITY_RETURN_BURST = 512;
     /**
      * Smooth-return horizon: accumulated outputs are returned to the network over this many ticks
-     * (a twentieth of the accumulated total per tick), so a huge batch never produces one giant IO burst.
+     * (one tick's share — 1/N of the accumulated total — per tick), so a huge batch never produces one giant
+     * IO burst.
      *
      * <p>{@code 1} means everything is handed over at once, i.e. no smoothing. That is the default because the
      * trickle cannot bound anything once a queue grows large: the priority branch below raises the hand-over to

@@ -1,7 +1,7 @@
 ---
 navigation:
   parent: index.md
-  title: Self-Assembling Pattern Disk Provider
+  title: Meteorite Pattern Disk Provider
   icon: meteorite_pattern_provider
   position: 1025
 item_ids:
@@ -11,7 +11,7 @@ categories:
 - devices
 ---
 
-# Self-Assembling Pattern Disk Provider
+# Meteorite Pattern Disk Provider
 
 <Row gap="20">
   <BlockImage id="meteorite_pattern_provider" scale="8" />

@@ -51,6 +51,8 @@ import appeng.client.gui.widgets.ActionButton;
 import appeng.client.gui.widgets.Scrollbar;
 import appeng.client.gui.widgets.ServerSettingToggleButton;
 
+import guideme.PageAnchor;
+
 import io.github.lounode.ae2pattern.api.PatternDiskApi;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
@@ -94,6 +96,17 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     @Override
     public PatternDiskManagementTermMenu getMenu() {
         return (PatternDiskManagementTermMenu) super.getMenu();
+    }
+
+    /**
+     * 打开管理终端自己的指南页：父屏把 getHelpTopic 写死成编码终端那一页，本类不覆写就会被它遮蔽。
+     * 无线版的样式虽然 includes 了面板样式，同样以这里为准，所以两个管理终端都落到这一页。
+     */
+    @Override
+    protected PageAnchor getHelpTopic() {
+        return new PageAnchor(
+                ResourceLocation.parse("ae2_pattern_disk:items-blocks-machines/pattern_disk_management_terminal.md"),
+                null);
     }
 
     /** 「显示模式」按钮：与 AE2 样板访问终端共用同一个服务端设置。 */
