@@ -18,11 +18,19 @@ import net.neoforged.neoforge.common.ModConfigSpec;
  * 客户端预检、也被服务端拒绝），两边各有一个开关，是这套分法的必然结果，配置文件里都有说明。</p>
  *
  * <p><b>没登记的键一律照常显示</b>：新加一条消息而忘了配开关时，结果是「和以前一样看得见」，而不是静默消失。</p>
+ *
+ * <p><b>翻译键必须显式写</b>：NeoForge 配置屏的兜底键是「模组 id + .configuration. + 本节内的<b>局部名</b>」
+ * （不是全路径），所以指望自动推导会得到 `…configuration.put` 这种不可能唯一的键。值的键在
+ * {@link #define} 里登记，表的键在 {@link #section} 里登记，两者拼出的都是
+ * `ae2_pattern_disk.configuration.<全路径>` 的形态。</p>
  */
 public final class ChatMessageSwitches {
 
     /** 本模组所有消息语言键的公共前缀；配置文件里写的是去掉它之后的短名。 */
     public static final String MESSAGE_KEY_PREFIX = "gui.ae2_pattern_disk.";
+
+    /** 本模组配置翻译键的公共前缀。 */
+    public static final String CONFIG_KEY_PREFIX = "ae2_pattern_disk.configuration.";
 
     /** 配置文件里这些开关所在的表名。 */
     private static final String TABLE = "chat_messages.";
@@ -37,10 +45,27 @@ public final class ChatMessageSwitches {
      * @param when     这条消息什么时候出现（写进 TOML 的注释）
      */
     public ModConfigSpec.BooleanValue define(ModConfigSpec.Builder builder, String shortKey, String when) {
+        // 这一行不能省：配置屏优先读 ValueSpec 上显式登记的翻译键，没登记就落到「局部名」的兜底键上。
+        builder.translation(CONFIG_KEY_PREFIX + TABLE + shortKey);
         builder.comment(when);
         var value = builder.define(TABLE + shortKey, true);
         this.byMessageKey.put(MESSAGE_KEY_PREFIX + shortKey, value);
         return value;
+    }
+
+    /**
+     * 给一个表（节）登记翻译键与说明键：`ae2_pattern_disk.configuration.<路径>` / 同键 + `.tooltip`。
+     *
+     * <p>进-出一次，只为这个路径登记键，不改变后续定义落在哪张表里。必须在任何 `comment` / `define`
+     * **之前**调：`push` 会把当时悬着的注释当成这个节的注释收走（那会把本该属于某个值的注释提前拿去用）。</p>
+     *
+     * <p>为什么不能指望自动推导：配置屏给节取键时同样落到「父路径 + 局部名」的兜底上，而兜底键是字符串拼接，
+     * 拼出来的只是局部名（例如 `…configuration.notice`），我们两处都有叫 `notice` 的表，会互相盖。</p>
+     */
+    public static void section(ModConfigSpec.Builder builder, String path) {
+        builder.translation(CONFIG_KEY_PREFIX + path);
+        builder.push(path);
+        builder.pop(path.split("\\.").length);
     }
 
     /** 这条消息现在该不该显示。 */

@@ -5,12 +5,15 @@ import net.minecraft.util.FastColor;
 
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
+import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.ModelEvent;
 import net.neoforged.neoforge.client.event.RegisterColorHandlersEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
+import net.neoforged.neoforge.client.gui.ConfigurationScreen;
+import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 
 import appeng.api.util.AEColor;
 import appeng.client.gui.style.StyleManager;
@@ -43,7 +46,11 @@ import io.github.lounode.ae2pattern.AEPatternRegistries;
 @Mod(value = AE2PatternDisk.MOD_ID, dist = Dist.CLIENT)
 public class AE2PatternDiskClient {
 
-    public AE2PatternDiskClient(IEventBus modBus) {
+    public AE2PatternDiskClient(IEventBus modBus, ModContainer container) {
+        // 配置界面入口：注册配置（registerConfig）与注册配置**界面**是两件事——没有这一行，模组列表里
+        // 本模组的 Config 按钮是灰的，两份配置在游戏里根本打不开（只能手改 TOML）。NeoForge 自带
+        // ConfigurationScreen，它按翻译键取标签与说明（键的形态见 config 包里的注释），挂上它就有中英界面。
+        container.registerExtensionPoint(IConfigScreenFactory.class, ConfigurationScreen::new);
         // 整理模组（IPN）的登记口：它按菜单类登记容器类型，登记得越早越好，趁它还没消费这张表。
         // IPN 不在时这行什么都不做（类名靠反射找，够不到就安静退场）。
         InventoryProfilesIntegration.registerTerminalMenus();

@@ -21,6 +21,17 @@ public final class AEPDCommonConfig {
 
     static {
         var builder = new ModConfigSpec.Builder();
+        // 本份配置用到的表：逐表显式登记翻译键，理由见 ChatMessageSwitches.section。
+        ChatMessageSwitches.section(builder, "chat_messages");
+        ChatMessageSwitches.section(builder, "chat_messages.cell_management_terminal");
+        ChatMessageSwitches.section(builder, "chat_messages.cell_management_terminal.notice");
+        ChatMessageSwitches.section(builder, "chat_messages.encoding_terminal");
+        ChatMessageSwitches.section(builder, "chat_messages.encoding_terminal.disk_refused");
+        ChatMessageSwitches.section(builder, "chat_messages.encoding_terminal.no_room");
+        ChatMessageSwitches.section(builder, "chat_messages.management_terminal");
+        ChatMessageSwitches.section(builder, "chat_messages.management_terminal.disk_store");
+        ChatMessageSwitches.section(builder, "chat_messages.pattern_disk_provider");
+
         builder.comment(
                 "Chat messages this mod sends to the player from the server side.",
                 "",

@@ -57,6 +57,17 @@ public final class AEPDConfig {
 
     static {
         var builder = new ModConfigSpec.Builder();
+        // 配置屏上每个表（节）的标题与说明按翻译键取，而自动推导只给得出「局部名」，所以逐表显式登记一次。
+        // 必须在第一句 comment 之前：push 会把当时悬着的注释当成该表的注释收走。
+        ChatMessageSwitches.section(builder, "additional_sort");
+        ChatMessageSwitches.section(builder, "chat_messages");
+        ChatMessageSwitches.section(builder, "chat_messages.cell_management_terminal");
+        ChatMessageSwitches.section(builder, "chat_messages.cell_management_terminal.notice");
+        ChatMessageSwitches.section(builder, "chat_messages.management_terminal");
+        ChatMessageSwitches.section(builder, "chat_messages.management_terminal.disk_store");
+        ChatMessageSwitches.section(builder, "chat_messages.encoding_terminal");
+        ChatMessageSwitches.section(builder, "chat_messages.notice");
+
         builder.comment(
                 "Tier groups for the additional sort; only used when the additional sort is on and the",
                 "sort order is 'by mod'.",
@@ -83,6 +94,7 @@ public final class AEPDConfig {
                 "     (初级、基础、硬化、烈焰、钻石、富生、下界、创造)",
                 "",
                 "Sodium's Config API cannot present a list like this one, so it is not used here.");
+        builder.translation("ae2_pattern_disk.configuration.additional_sort.tiers");
         ADDITIONAL_SORT_TIERS = builder.defineList(
                 "additional_sort.tiers", DEFAULT_TIERS, () -> "", element -> element instanceof String);
         builder.comment(
@@ -118,6 +130,7 @@ public final class AEPDConfig {
                 "A malformed expression is skipped on its own - the other elements still apply and the",
                 "sort keeps working. If nothing in the list can be compiled at all, the level is left",
                 "wide open (no filtering) rather than silently turned off.");
+        builder.translation("ae2_pattern_disk.configuration.additional_sort.numeric_regex");
         ADDITIONAL_SORT_NUMERIC_REGEX = builder.defineList(
                 "additional_sort.numeric_regex", DEFAULT_NUMERIC_REGEX, () -> "",
                 element -> element instanceof String);
