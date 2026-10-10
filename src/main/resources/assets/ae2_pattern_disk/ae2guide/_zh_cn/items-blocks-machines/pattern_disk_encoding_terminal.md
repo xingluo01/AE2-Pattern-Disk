@@ -6,6 +6,7 @@ navigation:
   position: 1035
 item_ids:
 - ae2_pattern_disk:pattern_disk_encoding_terminal
+- ae2_pattern_disk:wireless_pattern_disk_encoding_terminal
 categories:
 - devices
 ---
