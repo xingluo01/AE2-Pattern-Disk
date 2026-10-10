@@ -122,6 +122,9 @@ public class EncodeCellPartitions implements InternalInventory {
 
     @Override
     public void setItemDirect(int slot, ItemStack stack) {
+        // 写之前先复核一次：分区库是「建时读进内存、改动时整份写回」的，而这份缓存是每个菜单实例一份——
+        // 同一台终端被两个玩家开着时，另一份刚改过而我们没看见，这一写就会把对方的改动整份盖回去。
+        refreshIfStale();
         ConfigMenuInventory partitions = current();
         if (partitions == null || slot < 0 || slot >= partitions.size()) {
             return;

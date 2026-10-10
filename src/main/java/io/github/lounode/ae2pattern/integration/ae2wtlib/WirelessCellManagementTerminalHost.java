@@ -109,11 +109,15 @@ public class WirelessCellManagementTerminalHost extends WTMenuHost
 
     @Override
     public void markForSave() {
-        var tag = new CompoundTag();
+        // 读-改-写，而不是新建一整份：这个组件里还躺着别的键（优先级目标），而 set 是整个写进去的——
+        // new CompoundTag() 就等于把没写回去的那个键抹掉。现在只有一个写入者，这么写是为了下一个。
+        var tag = this.getItemStack().getOrDefault(componentType(), new CompoundTag()).copy();
         this.encodeCell.writeToNBT(tag, ENCODE_CELL_KEY, getPlayer().registryAccess());
-        // 两个键一起写：markForSave 每次新建 tag，漏一个就把另一个从组件里抹掉了。
         if (this.priorityTarget != null) {
             tag.putString(PRIORITY_TARGET_KEY, this.priorityTarget);
+        } else {
+            // 空值要主动抹掉：读-改-写会把这行旧字符串原样带过来，不抹的话将来加「清除目标」时会清不掉。
+            tag.remove(PRIORITY_TARGET_KEY);
         }
         this.getItemStack().set(componentType(), tag);
     }

@@ -486,9 +486,6 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
         logic.setSearchScope(searchScope);
         logic.setNaturalSort(naturalSort);
         host.markForSave();
-        // 临时探针（定位“按钮状态不持久化”后删）：看服务端到底收没收到客户端的回传。
-        System.out.println("[probe] applyViewState hide=" + hideEmptySlots + " serial=" + selectedSerial
-                + " scope=" + searchScope + " natural=" + naturalSort + " menu=" + getClass().getSimpleName());
         // 关键：syncDiskList 是按“磁盘/宿主指纹”决定要不要重发的，指纹没变就直接 return、不会走到
         // onDiskListRebuilt——于是刚改的显示状态永远发不出去，客户端看到的还是旧值（症状就是“改了没生效”）。
         // 同 shownProviders 变化时的做法：主动把当前视图数据重推一次。

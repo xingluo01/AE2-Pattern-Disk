@@ -72,7 +72,9 @@ public class WirelessPatternDiskTerminalHost extends WTMenuHost implements IPatt
 
     @Override
     public void markForSave() {
-        var tag = new CompoundTag();
+        // 读-改-写：这个组件里只有 logic 那几把键，现在只有一个写入者；照读-改-写的口径写，
+        // 将来多一个写入者时不会把对方的键整份抹掉（与无线元件管理终端同一做法）。
+        var tag = this.getItemStack().getOrDefault(componentType(), new CompoundTag()).copy();
         this.logic.writeToNBT(tag, getPlayer().registryAccess());
         this.getItemStack().set(componentType(), tag);
     }

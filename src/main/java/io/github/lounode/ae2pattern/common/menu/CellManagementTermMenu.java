@@ -360,7 +360,7 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         if (cell.isEmpty() || !(cell.getItem() instanceof ICellWorkbenchItem)) {
             return;
         }
-        var config = markerPartitions.config();
+        var config = markerConfigForWrite();
         if (config == null) {
             return;
         }
@@ -392,7 +392,7 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         if (cell.isEmpty() || !(cell.getItem() instanceof ICellWorkbenchItem)) {
             return;
         }
-        var config = markerPartitions.config();
+        var config = markerConfigForWrite();
         if (config == null) {
             return;
         }
@@ -796,6 +796,19 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         return markerPartitions.config();
     }
 
+    /**
+     * 批量写入前拿分区库：先按元件组件复核一次缓存，再交给调用方写。
+     *
+     * <p>与 {@link #markerConfig()} 分开是有意的：这两个都是服务端的批量写入口，而分区库是「整份写回」的，
+     * 拿旧内容去写会把别的菜单实例刚做的改动盖掉。槽位那条写入路径在
+     * {@link EncodeCellPartitions#setItemDirect(int, ItemStack)} 里已经自行复核了。</p>
+     */
+    @Nullable
+    private ConfigInventory markerConfigForWrite() {
+        markerPartitions.refreshIfStale();
+        return markerPartitions.config();
+    }
+
     /** 这张元件的标记容器里有没有哪一格收得下这个键；纯查询，不改元件。 */
     private static boolean accepts(ConfigInventory config, ItemStack stack) {
         AEKey key = AEItemKey.of(stack);
@@ -839,7 +852,7 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
             return;
         }
         // 与窗口、与「分区存储/清除」用同一个实例（理由见 EncodeCellPartitions.config()）。
-        var config = markerConfig();
+        var config = markerConfigForWrite();
         if (config == null) {
             return;
         }
