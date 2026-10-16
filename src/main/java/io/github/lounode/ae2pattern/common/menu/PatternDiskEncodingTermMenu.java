@@ -2053,28 +2053,45 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         var row = 0;
         // 输入优先取「实际材料表」（getSparseInputs 给的是每格真正用到的那个，而不是候选模板），
         // 只有 AE2 自己的处理样板公开了这个视图；其余样板退回候选表的第一项。
-        var sparseInputs = details instanceof AEProcessingPattern processing
-                ? processing.getSparseInputs()
-                : null;
-        var inputs = details.getInputs();
-        for (int i = 0; i < inputs.length && row < encodedInputsInv.size(); i++) {
-            GenericStack stack = sparseInputs != null && i < sparseInputs.size()
-                    ? sparseInputs.get(i)
-                    : firstCandidate(inputs[i]);
-            if (stack == null || stack.what() == null) {
-                continue;
+        //
+        // 两张表各自逐项摊，不按下标互相索引：同一物品占两格时 getSparseInputs 比 getInputs 长
+        // （后者已按 key 合并成一条），拿后者的下标去查前者会错位，顺带把每行的数量也带偏。
+        var inputs = new ArrayList<GenericStack>();
+        if (details instanceof AEProcessingPattern processing) {
+            for (var stack : processing.getSparseInputs()) {
+                if (stack != null && stack.what() != null) {
+                    inputs.add(stack);
+                }
             }
+        } else {
+            for (var input : details.getInputs()) {
+                var stack = firstCandidate(input);
+                if (stack != null && stack.what() != null) {
+                    inputs.add(stack);
+                }
+            }
+        }
+        var outputs = new ArrayList<GenericStack>();
+        for (var output : details.getOutputs()) {
+            if (output != null && output.what() != null) {
+                outputs.add(output);
+            }
+        }
+        // 输入在前、输出在后，两段合计超过编辑区容量时整表放弃：过载档的编码要的是一份完整行表，按行截断
+        // 会把排在最后的输出（含主产物）悄悄丢掉，那比不摊更糟。行表清空后编码路径会按「没东西可编」提示。
+        if (inputs.size() + outputs.size() > encodedInputsInv.size()) {
+            this.overloadedSides = "";
+            this.overloadedMatchModes = "";
+            this.encodingLogic.setOverloadedSides(this.overloadedSides);
+            this.encodingLogic.setOverloadedMatchModes(this.overloadedMatchModes);
+            return;
+        }
+        for (var stack : inputs) {
             encodedInputsInv.setStack(row, stack);
             row = appendOverloadedRow(sides, modes, row, false);
         }
-        for (var output : details.getOutputs()) {
-            if (row >= encodedInputsInv.size()) {
-                break;
-            }
-            if (output == null || output.what() == null) {
-                continue;
-            }
-            encodedInputsInv.setStack(row, output);
+        for (var stack : outputs) {
+            encodedInputsInv.setStack(row, stack);
             // 标成输出：主产物就在这一批里，不标的话编码时会把它当成又一个输入项。
             row = appendOverloadedRow(sides, modes, row, true);
         }
@@ -2465,16 +2482,38 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
 
     public boolean isSubstitute() { return this.substitute; }
     public void setSubstitute(boolean v) {
-        if (isClientSide()) sendClientAction("setSubstitution", v); else this.encodingLogic.setSubstitution(v);
+        // 与同物品合并同款：本字段是编码路径直接读的那份（见 PatternEncodingLogic 经宿主接口取），
+        // 先写本地再派发，同一 tick 内先改开关再编码就不会用旧值。
+        this.substitute = v;
+        if (isClientSide()) {
+            sendClientAction("setSubstitution", v);
+        } else {
+            this.encodingLogic.setSubstitution(v);
+        }
     }
     public boolean isSubstituteFluids() { return this.substituteFluids; }
     public void setSubstituteFluids(boolean v) {
-        if (isClientSide()) sendClientAction("setFluidSubstitution", v); else this.encodingLogic.setFluidSubstitution(v);
+        this.substituteFluids = v;
+        if (isClientSide()) {
+            sendClientAction("setFluidSubstitution", v);
+        } else {
+            this.encodingLogic.setFluidSubstitution(v);
+        }
     }
     public boolean isMergeSameItems() { return this.mergeSameItems; }
     public void setMergeSameItems(boolean v) {
-        // 与替换同款：值落在宿主 logic 上并即时存盘，菜单字段只是镜像（服务端每 tick 回读）。
-        if (isClientSide()) sendClientAction("setMergeSameItems", v); else this.encodingLogic.setMergeSameItems(v);
+        // 与替换同款：权威值落在宿主 logic 上并即时存盘，服务端每 tick 把它回读进这个镜像字段。
+        // 但两个分支都顺手写一次本字段，理由有两条：
+        //   服务端——编码路径读的是这个镜像（PatternEncodingLogic 经宿主接口取），只写 logic 的话，
+        //   同一 tick 内先改开关再点编码就会用旧值；
+        //   客户端——先写本地，按钮与面板立刻响应，不必等下一帧的服务端广播，也避免这一帧里
+        //   「按钮说开着、编码按关着算」的错位。
+        this.mergeSameItems = v;
+        if (isClientSide()) {
+            sendClientAction("setMergeSameItems", v);
+        } else {
+            this.encodingLogic.setMergeSameItems(v);
+        }
     }
     public boolean isShowUnmarkedDisks() { return this.showUnmarkedDisks; }
     public void setShowUnmarkedDisks(boolean v) {

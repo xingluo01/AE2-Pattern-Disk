@@ -88,9 +88,10 @@ public final class PatternEncodingLogic {
         }
         if (!valid) return null;
 
-        // 同物品合并：启用时相同 AEKey 的输入合并为单槽
+        // 同物品合并：启用时相同 AEKey 的输入合并为单槽。
+        final boolean mergeSameItems = this.host.isEncodingMergeSameItems();
         List<GenericStack> mergedInputs;
-        if (this.host.isEncodingMergeSameItems()) {
+        if (mergeSameItems) {
             var byKey = new LinkedHashMap<AEKey, Long>();
             for (var in : rawInputs) {
                 if (in != null) {
@@ -106,24 +107,44 @@ public final class PatternEncodingLogic {
             mergedInputs.removeIf(Objects::isNull);
         }
 
-        var outputs = new GenericStack[outputsInv.size()];
+        var rawOutputs = new GenericStack[outputsInv.size()];
         for (int slot = 0; slot < outputsInv.size(); slot++) {
-            outputs[slot] = outputsInv.getStack(slot);
+            rawOutputs[slot] = outputsInv.getStack(slot);
         }
-        if (outputs[0] == null) return null;
+        if (rawOutputs[0] == null) return null;
+
+        // 输出与输入同一个开关、同一个口径：开着时相同产物的多个槽也折成一格。首现位置保留，所以主产物
+        // （第一槽）仍在第一位，上面那条校验不受影响。导入路径也照这个开关摆槽（见 DiskEncodingHelper）。
+        // AE2 自己读回样板时也会 condense 输出，所以合成行为不受这里影响，差别只在样板写下来的结构。
+        List<GenericStack> mergedOutputs;
+        if (mergeSameItems) {
+            var byKey = new LinkedHashMap<AEKey, Long>();
+            for (var out : rawOutputs) {
+                if (out != null) {
+                    byKey.merge(out.what(), out.amount(), Long::sum);
+                }
+            }
+            mergedOutputs = new ArrayList<>();
+            for (var e : byKey.entrySet()) {
+                mergedOutputs.add(new GenericStack(e.getKey(), e.getValue()));
+            }
+        } else {
+            mergedOutputs = new ArrayList<>(Arrays.asList(rawOutputs));
+            mergedOutputs.removeIf(Objects::isNull);
+        }
         // 高级编码模式：把玩家分配的面并进方向表，换成 AdvancedAE 的高级处理样板。编不出来就退回普通
         // 处理样板——「高级」是加料，不是替掉这条路径。
         //
         // 方向表按 AEKey 查而不是按槽下标：上面那一步「同物品合并」会把同 key 的多个槽折成一格，
         // 下标对不上，按下标查会把某一格的面静默贴到另一个输入上。
         if (this.host.isAdvancedMode()) {
-            var advanced = AdvPatternSupport.encodeProcessing(mergedInputs, Arrays.asList(outputs),
+            var advanced = AdvPatternSupport.encodeProcessing(mergedInputs, mergedOutputs,
                     this.host.advancedSidesByKey());
             if (advanced != null) {
                 return advanced;
             }
         }
-        return PatternDetailsHelper.encodeProcessingPattern(mergedInputs, Arrays.asList(outputs));
+        return PatternDetailsHelper.encodeProcessingPattern(mergedInputs, mergedOutputs);
     }
 
     @Nullable

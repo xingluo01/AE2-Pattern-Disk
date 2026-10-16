@@ -12,6 +12,8 @@ import com.google.common.math.LongMath;
 
 import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import net.minecraft.core.NonNullList;
 import net.minecraft.world.item.Item;
@@ -41,6 +43,10 @@ import io.github.lounode.ae2pattern.integration.rechiseledae.ChiselingRecipes;
  * 移植自 AE2 {@code EncodingHelper}，将菜单类型替换为 {@link PatternDiskEncodingTermMenu}。
  */
 public final class DiskEncodingHelper {
+
+    /** 临时探针：用来分清「同物品合并按钮关不掉」是开关没传到，还是配方页递过来已经是折好的。定位完就删。 */
+    private static final Logger LOGGER = LoggerFactory.getLogger("ae2_pattern_disk.encoding_import");
+
     private DiskEncodingHelper() {
     }
 
@@ -62,15 +68,42 @@ public final class DiskEncodingHelper {
         // 仅在客户端运行，getClientRepo() 保证可用。
         var ingredientPriorities = getIngredientPriorities(menu, ENTRY_COMPARATOR);
 
+        // 输入与输出用同一个填槽口径：终端的「同物品合并」开着就把相同物品折成一格，关掉就照配方一格一格摆。
+        // 不跟这个开关走的话，关掉合并后导入一份配方，编辑区仍是一格一格折好的，与随后编码写出的样板对
+        // 不上（编码侧照同一个开关走，见 PatternEncodingLogic#encodeProcessingPattern）。
+        boolean merge = menu.isMergeSameItems();
+
+        LOGGER.info("[import probe] merge={} 配方递来的分格数={} 每格=[{}]",
+                merge, genericIngredients.size(), describeSlots(genericIngredients));
+
         encodeBestMatchingStacksIntoSlots(
                 genericIngredients,
                 ingredientPriorities,
-                menu.getProcessingInputSlots());
+                menu.getProcessingInputSlots(),
+                merge);
         encodeBestMatchingStacksIntoSlots(
                 // 输出每槽只有一个候选
                 genericResults.stream().map(List::of).toList(),
                 ingredientPriorities,
-                menu.getProcessingOutputSlots());
+                menu.getProcessingOutputSlots(),
+                merge);
+    }
+
+    /** 临时探针的文本化：每格只报首个候选的 key、数量与候选个数。 */
+    private static String describeSlots(List<List<GenericStack>> slots) {
+        var sb = new StringBuilder();
+        for (var variants : slots) {
+            if (variants.isEmpty()) {
+                continue;
+            }
+            if (!sb.isEmpty()) {
+                sb.append(", ");
+            }
+            var first = variants.get(0);
+            sb.append(first.what()).append('x').append(first.amount())
+                    .append("(").append(variants.size()).append("候选)");
+        }
+        return sb.toString();
     }
 
     /**
@@ -184,11 +217,18 @@ public final class DiskEncodingHelper {
 
     private static void encodeBestMatchingStacksIntoSlots(List<List<GenericStack>> possibleInputsBySlot,
             Map<AEKey, Integer> ingredientPriorities,
-            FakeSlot[] slots) {
+            FakeSlot[] slots,
+            boolean merge) {
         var encodedInputs = new ArrayList<GenericStack>();
         for (var genericIngredient : possibleInputsBySlot) {
             if (!genericIngredient.isEmpty()) {
-                addOrMerge(encodedInputs, findBestIngredient(ingredientPriorities, genericIngredient));
+                var best = findBestIngredient(ingredientPriorities, genericIngredient);
+                if (merge) {
+                    addOrMerge(encodedInputs, best);
+                } else {
+                    // 关掉合并：配方里几格就摆几格，顺序与配方页一致。
+                    encodedInputs.add(best);
+                }
             }
         }
 

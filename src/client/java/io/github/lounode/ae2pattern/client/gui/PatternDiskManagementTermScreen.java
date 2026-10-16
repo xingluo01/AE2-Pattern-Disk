@@ -779,6 +779,16 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
             return true;
         }
 
+        // 内容搜索栏的右键清空（与 AE2 顶部搜索框、父屏磁盘搜索栏同款手势）。清空后不 return：
+        // 这一下照旧往下走，让搜索框拿到焦点。
+        // 过滤读的是本屏自己的 contentSearchText（不是 AE2 的 searchText），所以除了改控件值再显式
+        // 清一遍那个字段：AE2 的右键清空也是「控件值 + 过滤文本」成对写的，这里跟同一口径，
+        // 不依赖 responder 是否被回调。
+        if (btn == InputConstants.MOUSE_BUTTON_RIGHT && this.contentSearchField.isMouseOver(xCoord, yCoord)) {
+            this.contentSearchField.setValue("");
+            this.contentSearchText = "";
+        }
+
         int rowIndex = rowIndexAt(xCoord, yCoord);
         if (rowIndex < 0) {
             return super.mouseClicked(xCoord, yCoord, btn);
