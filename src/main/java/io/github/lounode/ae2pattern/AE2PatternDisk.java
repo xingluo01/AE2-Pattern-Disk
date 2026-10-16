@@ -17,6 +17,7 @@ import io.github.lounode.ae2pattern.network.AssemblerAnimationPayload;
 import io.github.lounode.ae2pattern.network.DiskListPayload;
 import io.github.lounode.ae2pattern.network.DiskContentPayload;
 import io.github.lounode.ae2pattern.network.CellHostListPayload;
+import io.github.lounode.ae2pattern.network.CellHostUpdatePayload;
 import io.github.lounode.ae2pattern.network.CellNoticePayload;
 import io.github.lounode.ae2pattern.network.DiskHostListPayload;
 import io.github.lounode.ae2pattern.network.VisibleDisksPayload;
@@ -250,10 +251,14 @@ public class AE2PatternDisk {
                         payload.handleOnServer(menu);
                     }
                 }));
-        // 元件管理终端的驱动器清单：服务端扫网得出，整张表一次发（驱动器数量有限，不拆两条包）。
+        // 元件管理终端：首次与拓扑变化发全表，其余只发发生变化的格位。
         registrar.playToClient(
                 CellHostListPayload.TYPE,
                 CellHostListPayload.STREAM_CODEC,
+                (payload, context) -> payload.handleOnClient(context));
+        registrar.playToClient(
+                CellHostUpdatePayload.TYPE,
+                CellHostUpdatePayload.STREAM_CODEC,
                 (payload, context) -> payload.handleOnClient(context));
         // 同终端的一句话反馈：元件格取放的拒绝原因与结果，玩家要看得见。
         registrar.playToClient(

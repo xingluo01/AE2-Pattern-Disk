@@ -290,7 +290,8 @@ P0 不应新造范式，同文件里已有两处“每 tick 限量”的先例�
 - ✅ 标记区按**元件自己的上限**绘制与启用：上限主动探测，超出的格子不画也不接受操作。
 - ✅ 修「标记收藏之后标记去不掉」（`16653df`）：根因是分区库的**两个实例各持一份内存、改动时整份写回**——窗口那份是长命缓存，按钮却另开一份去写；组件变了而窗口那份仍旧，玩家想删掉刚加的标记时 AE2 的 `GenericStackInv.setStack` 又因「值没变」连一次写回都不发。修法：标记区所有写入统一走同一个分区实例（`EncodeCellPartitions.config()`）。
 - ✅ 同轮做了同类「不同步」排查（专项勘探 + 审查）：分区库的**陈旧复核在写入点各加一道**——槽位写入 `EncodeCellPartitions.setItemDirect`、批量写入口 `CellManagementTermMenu.markerConfigForWrite`（每拍 `broadcastChanges` 那一次**保留**，两侧都要跟着别的菜单实例的改动刷新缓存；原先的缺口是「另一份菜单实例在同一拍内改过、窗口这份仍拿旧内容整份盖回」）；两个无线宿主的 `markForSave` 从 `new CompoundTag()` 整份 `set` 改成读-改-写（其中元件管理宿主还补了「值为空就 remove 该键」，无线样板磁盘宿主那个组件没有可空键）；清掉 `PatternDiskManagementTermMenu` 里残留的 `[probe]` 调试输出（全仓 `System.out`/`System.err`/`println(` 归零，193 个 java 文件）。
-- ❌ **有意不做**（用户指示忽略，勿当新 bug 再报）：① PAT 会话内刚上传的样板在本会话看不到（占位行没指向新样板，但「会话内行数冻结」是有意语义）；② `CellManagementTermScreen.updateBeforeRender` 里 `rebuildRows()` 每帧全量重建行模型 + `List.equals` 比较（含元件的格因 `ItemStack` 不覆写 `equals` 而退化为引用比较，多数帧仍会替换列表；省它的判据不好定，可能冻结陈旧行）。
+- ✅ 元件管理终端的行模型按服务端不可变清单引用与排序方向失效；数据未变时不再每帧重建。菜单首次打开及取放立即更新，布局不变时同步变化格位；占用统计优先读取元件汇总值，未知实现限量采样。
+- ❌ **有意不做**（用户指示忽略，勿当新 bug 再报）：PAT 会话内刚上传的样板在本会话看不到（占位行没指向新样板，但「会话内行数冻结」是有意语义）。
 
 **其它已修**
 - ✅ 三个无线终端在通用终端里丢失「切换终端」按钮（`cd9334a`）：AE2WTLib 那枚「切换终端」改按**类名**定身份（`de.mari_023.ae2wtlib.api.terminal.TerminalSelectionButton`，后备父类 `…api.gui.IconButton`），不再只认追加顺序；同轮把 AE2 的「终端设置」与闪电科技那两枚改成按 tooltip 定身份，三个终端的工具栏按钮统一为**清单制**（精确白名单 + 固定顺序，`ToolbarPlan`）。

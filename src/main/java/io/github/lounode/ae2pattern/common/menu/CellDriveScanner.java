@@ -7,6 +7,9 @@ import java.util.LinkedHashMap;
 
 import org.jetbrains.annotations.Nullable;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
@@ -14,7 +17,6 @@ import net.minecraft.world.item.ItemStack;
 
 import appeng.api.networking.IGrid;
 import appeng.api.networking.IGridNode;
-import appeng.api.stacks.KeyCounter;
 import appeng.api.storage.MEStorage;
 import appeng.api.storage.StorageCells;
 import appeng.api.storage.cells.IBasicCellItem;
@@ -52,6 +54,13 @@ import io.github.lounode.ae2pattern.network.CellHostListPayload;
  */
 public final class CellDriveScanner {
 
+    /** 节点扫描也会遇到大量非存储机器，按类缓存缺失方法，避免每轮为它们重复创建异常。 */
+    private static final ClassValue<ConcurrentMap<String, Optional<Method>>> METHODS = new ClassValue<>() {
+        @Override protected ConcurrentMap<String, Optional<Method>> computeValue(Class<?> type) {
+            return new ConcurrentHashMap<>();
+        }
+    };
+
     /** 探不到优先级时列上显示的字样。 */
     public static final String PRIORITY_UNKNOWN = "—";
 
@@ -76,11 +85,15 @@ public final class CellDriveScanner {
     /**
      * 扫一遍网络里的存储驱动器。
      *
-     * <p><b>{@code withUsage=false} 时不数占用度</b>：那两个条要遍历元件里已存的每一种键
-     * （{@code getAvailableStacks()} 建一次 KeyCounter），是这条路上最贵的一步；只要格位与宿主的手势
-     * （存入、移动元件）用不着它，开关一关就只剩读栈与客户端发包前的组装。</p>
+     * <p>{@code withUsage=false} 只读结构，供取放操作定位。菜单使用带会话缓存的重载读取占用度。</p>
      */
     public static List<DriveEntry> scan(IGrid grid, boolean withUsage) {
+        var usage = withUsage ? new CellUsageCache() : null;
+        if (usage != null) usage.beginScan(0, true);
+        return scan(grid, usage);
+    }
+
+    public static List<DriveEntry> scan(IGrid grid, @Nullable CellUsageCache usage) {
         // 同一种驱动器（方块物品相同）且优先级相同的合成一组：表格的身份是「一种驱动器 + 一个优先级」，
         // 不是某一个方块。组里每格自带宿主键，取放照样精确落到具体那一台。
         var byType = new LinkedHashMap<String, TypeGroup>();
@@ -93,14 +106,14 @@ public final class CellDriveScanner {
             }
             try {
                 if (owner instanceof DriveBlockEntity drive) {
-                    DriveEntry single = ae2Drive(drive, withUsage);
+                    DriveEntry single = ae2Drive(drive, usage);
                     byType.computeIfAbsent(typeKeyOf(single), key -> new TypeGroup(single)).merge(single);
                     continue;
                 }
                 Object subsystem = storageSubsystemOf(owner);
                 if (subsystem != null) {
                     bySubsystem.computeIfAbsent(subsystem,
-                            key -> new SubsystemAccumulator(key, withUsage)).merge(owner);
+                            key -> new SubsystemAccumulator(key, usage)).merge(owner);
                 }
             } catch (RuntimeException broken) {
                 // 一台读不动就跳过这一台：不认识的第三方存储方块不该让整张表空掉。
@@ -119,6 +132,7 @@ public final class CellDriveScanner {
         // 按身份键排序：节点迭代序来自哈希表，不排的话同一张网每次扫出来的顺序可能不同，表格会自发重排、
         // 指纹也跟着变（无谓重推）。
         out.sort(java.util.Comparator.comparing(DriveEntry::key));
+        if (usage != null) usage.endScan();
         return out;
     }
 
@@ -178,25 +192,25 @@ public final class CellDriveScanner {
     }
 
     /** AE2 本体与 ExtendedAE 的驱动器（后者是前者的子类，格数用 getCellCount 现读，不写死 10/20）。 */
-    private static DriveEntry ae2Drive(DriveBlockEntity drive, boolean withUsage) {
+    private static DriveEntry ae2Drive(DriveBlockEntity drive, @Nullable CellUsageCache usage) {
         String hostKey = keyOf(drive);
         return new DriveEntry(hostKey, nameOf(drive), iconOf(drive),
-                Integer.toString(drive.getPriority()), driveCells(drive, hostKey, withUsage));
+                Integer.toString(drive.getPriority()), driveCells(drive, hostKey, usage));
     }
 
     /**
      * 一台 AE2 系驱动器的格表。那一台驱动器自己就是一个首格单，所以首格键就是它的宿主键。
      */
     private static List<CellHostListPayload.CellSlot> driveCells(DriveBlockEntity drive, String hostKey,
-            boolean withUsage) {
+            @Nullable CellUsageCache usage) {
         var cells = new ArrayList<CellHostListPayload.CellSlot>(drive.getCellCount());
         for (int slot = 0; slot < drive.getCellCount(); slot++) {
             ItemStack stack = drive.getInternalInventory().getStackInSlot(slot);
             // 空格也占一条：稠密表下「列表下标 == 物理格位」，显示列号才能直接当格位用；
             // 只装有元件的格会在有间隔时错位，取放会落到另一格上。
             cells.add(isStorageCell(stack)
-                    ? describeCell(stack, withUsage ? drive.getCellInventory(slot) : null, hostKey, slot, hostKey,
-                            withUsage)
+                    ? describeCell(stack, usage != null ? drive.getCellInventory(slot) : null, hostKey, slot, hostKey,
+                            usage)
                     : emptySlot(hostKey, slot, hostKey));
         }
         return cells;
@@ -238,12 +252,12 @@ public final class CellDriveScanner {
         private final Object subsystem;
         private final List<CellHostListPayload.CellSlot> cells = new ArrayList<>();
 
-        SubsystemAccumulator(Object subsystem, boolean withUsage) {
+        SubsystemAccumulator(Object subsystem, @Nullable CellUsageCache usage) {
             this.subsystem = subsystem;
             // 一个主机就是一个首格单：它旗下那些单格元件座只当格，不再各占一个首格。
             String leaderKey = keyOf(subsystem);
             for (Object drive : drivesOfSubsystem(subsystem)) {
-                appendCellOf(cells, drive, leaderKey, withUsage);
+                appendCellOf(cells, drive, leaderKey, usage);
             }
         }
 
@@ -272,15 +286,15 @@ public final class CellDriveScanner {
      * 不然它后面所有格位都会前移，点第几列就不是第几格了。</p>
      */
     private static void appendCellOf(List<CellHostListPayload.CellSlot> out, Object drive, String leaderKey,
-            boolean withUsage) {
+            @Nullable CellUsageCache usage) {
         String hostKey = keyOf(drive);
         Object cell = invoke(drive, "getCellStack");
         if (!(cell instanceof ItemStack stack) || !isStorageCell(stack)) {
             out.add(emptySlot(hostKey, 0, leaderKey));
             return;
         }
-        Object storage = withUsage ? asStorage(invoke(drive, "getCellInventory")) : null;
-        out.add(describeCell(stack, (MEStorage) storage, hostKey, 0, leaderKey, withUsage));
+        Object storage = usage != null ? asStorage(invoke(drive, "getCellInventory")) : null;
+        out.add(describeCell(stack, (MEStorage) storage, hostKey, 0, leaderKey, usage));
     }
 
     /**
@@ -350,24 +364,14 @@ public final class CellDriveScanner {
      * @param leaderKey 这一格归属的首格键（一台驱动器或一个主机）
      */
     private static CellHostListPayload.CellSlot describeCell(ItemStack stack, MEStorage storage, String hostKey,
-            int hostSlot, String leaderKey, boolean withUsage) {
-        if (!withUsage || storage == null) {
+            int hostSlot, String leaderKey, @Nullable CellUsageCache usage) {
+        if (usage == null || storage == null) {
             return new CellHostListPayload.CellSlot(stack, 0f, 0f, hostKey, hostSlot, leaderKey);
         }
         long totalTypes = readTotalTypes(stack);
         long totalBytes = readTotalBytes(stack);
-        if (totalTypes <= 0 && totalBytes <= 0) {
-            return new CellHostListPayload.CellSlot(stack, 0f, 0f, hostKey, hostSlot, leaderKey);
-        }
-        KeyCounter used = storage.getAvailableStacks();
-        float typeFill = totalTypes <= 0 ? 0f : Math.min(1f, (float) used.size() / totalTypes);
-        long usedBytes = 0;
-        for (var entry : used) {
-            int perByte = Math.max(1, entry.getKey().getType().getAmountPerByte());
-            usedBytes += Math.max(1, (entry.getLongValue() + perByte - 1) / perByte);
-        }
-        float byteFill = totalBytes <= 0 ? 0f : Math.min(1f, (float) usedBytes / totalBytes);
-        return new CellHostListPayload.CellSlot(stack, typeFill, byteFill, hostKey, hostSlot, leaderKey);
+        var fill = usage.read(storage, totalTypes, totalBytes);
+        return new CellHostListPayload.CellSlot(stack, fill.types(), fill.bytes(), hostKey, hostSlot, leaderKey);
     }
 
     /** 元件支持的类型总数：AE2 系问接口，ECO 系按方法名探；都读不到算 0。 */
@@ -672,8 +676,14 @@ public final class CellDriveScanner {
     /** 无参方法按名字调；没有这个方法或调用失败都返回 null（可选依赖的常态）。 */
     private static Object invoke(Object target, String name) {
         try {
-            Method method = target.getClass().getMethod(name);
-            return method.invoke(target);
+            var method = METHODS.get(target.getClass()).computeIfAbsent(name, key -> {
+                try {
+                    return Optional.of(target.getClass().getMethod(key));
+                } catch (ReflectiveOperationException | RuntimeException absent) {
+                    return Optional.empty();
+                }
+            });
+            return method.isPresent() ? method.get().invoke(target) : null;
         } catch (ReflectiveOperationException | RuntimeException absent) {
             return null;
         }

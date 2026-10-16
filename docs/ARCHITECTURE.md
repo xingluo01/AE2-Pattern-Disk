@@ -20,7 +20,7 @@
 | `client` | `src/client/java` | 只在客户端加载。`build.gradle` 刻意把它与 main 分开，让公共代码无法误引客户端类——这不是洁癖，是编译期防线 |
 | `main/templates` | `src/main/templates` | `neoforge.mods.toml` 模板，构建期展开 |
 | `generated` | `src/generated/resources` | 数据生成的输出目录（`build.gradle` 已把 `--output` 指向它并接进 main 资源）。当前为空——没跑过 datagen |
-| `test` | `src/test/java` | 已在 `build.gradle` 里配置，但目录尚未创建：目前没有任何测试源文件，验证靠编译与实机 |
+| `test` | `src/test/java` | 元件表快照、差量包与占用统计缓存的 JUnit 回归测试；界面交互另需实机验证 |
 
 模块信息写在 `src/main/templates/META-INF/neoforge.mods.toml`，不要直接改构建产物。
 
@@ -56,7 +56,7 @@
 ### 分层规矩
 
 - `api` 只放第三方会写的类型（接口、数据对象、门面）。它不反向依赖 `common/menu` 或屏幕。
-- `common/logic` 里放"能单独读懂、能单独讲清"的东西：`CellBuffer`、`SmoothReturnQueue`、`PatternPlanCache`、`BatchSynthesisEngine`、`ProductDelivery`、`TransfererOperations`、`AssemblerOutputResolver`、`DiskSlotVersions`。回调优先——构造参数接 `Supplier` / `Runnable`，不主动抓菜单服务。确实需要宿主时可以直接收 BE 类型（`TransfererOperations` 收 `PatternTransfererBlockEntity`，`PatternDiskProviderLogic` 收 MC `BlockEntity`），该不该留在 logic 按 §9 那三个"不"判，不按"认不认识 BE"判。**"能单独测"目前只是设计意图**：`src/test` 不存在，这一包一行测试都没有（见 §1 源集表）。
+- `common/logic` 里放"能单独读懂、能单独讲清"的东西：`CellBuffer`、`SmoothReturnQueue`、`PatternPlanCache`、`BatchSynthesisEngine`、`ProductDelivery`、`TransfererOperations`、`AssemblerOutputResolver`、`DiskSlotVersions`。回调优先——构造参数接 `Supplier` / `Runnable`，不主动抓菜单服务。确实需要宿主时可以直接收 BE 类型（`TransfererOperations` 收 `PatternTransfererBlockEntity`，`PatternDiskProviderLogic` 收 MC `BlockEntity`），该不该留在 logic 按 §9 那三个"不"判，不按"认不认识 BE"判。当前回归测试覆盖 `common/menu` 的元件表与统计缓存；本包尚无测试。
 - `common/menu` 里放"必须知道菜单服务"的东西。判据很简单：一段代码要不要用 `getPlayer()`、`sendClientAction`、`notify*`、`sendPacketToClient`？要，就留在菜单。
 - `integration/<邻居>` 只写那个邻居的适配，**邻居的类型不得漏进总是加载的类**（这才是红线，见 §6）。核心代码引用 `integration` 包自己写的门禁与契约类是允许的，现在是 7 个文件共 19 处 import：入口 `AE2PatternDisk`（5，五个软依赖门禁）、`AEPatternRegistries`（4，NeoForge 延迟注册必须在物品注册处拿到无线终端的类型 + EAE+ 契约）、`PatternDiskEncodingTermMenu`（6，高级/雕凿/过载/polymorph）、`PatternEncodingLogic`、`PatternDiskProviderLogic`、`PatternDiskProviderMenu`、`SelfAssemblingPatternDiskProviderLogic` 各 1。客户端侧 `client` 核心包对 `client/integration` 是 **0 处 import**，比主源集更严。
 - `common/menu` 与 `common/logic` 的归属按内容判、不按"能不能单独测"判：`DiskEncodingLogic`、`PatternEncodingLogic`、`DiskIndex`、`DiskMarkRules`、`ProcessingOutputMath` 都不碰菜单服务，看着像 logic，但它们读写的是菜单的 `@GuiSync` 项与宿主接口，留在 `common/menu` 是和协议同位置，不要搬。

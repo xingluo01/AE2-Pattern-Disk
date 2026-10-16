@@ -188,6 +188,9 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
     private int visibleRows = 6;
     private int scrollOffset;
     private final List<CellTableRows.Row> rows = new ArrayList<>();
+    private List<CellHostListPayload.HostGroup> renderedDriveList;
+    private boolean renderedDescending;
+    private java.util.Map<String, CellHostListPayload.HostGroup> renderedDriveLookup = java.util.Map.of();
 
     /** 选中的那一个首格单（一台 AE2 / EAE 驱动器，或一个 ECO 主机）的键；空串表示没选。 */
     private String selectedLeaderKey = "";
@@ -452,11 +455,17 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
 
     /** 表格行来自服务端推的驱动器清单；清单没变时不重建，免得每帧丢 List。 */
     private void rebuildRows() {
-        var rebuilt = CellTableRows.build(getMenu().getDriveList(), priorityDescending());
-        if (!rows.equals(rebuilt)) {
-            rows.clear();
-            rows.addAll(rebuilt);
-        }
+        var drives = getMenu().getDriveList();
+        boolean descending = priorityDescending();
+        // 菜单只在全表/差量包到达时更换不可变列表；排序按钮变化也必须让缓存失效。
+        if (renderedDriveList == drives && renderedDescending == descending) return;
+        renderedDriveList = drives;
+        renderedDescending = descending;
+        rows.clear();
+        rows.addAll(CellTableRows.build(drives, descending));
+        var lookup = new java.util.HashMap<String, CellHostListPayload.HostGroup>();
+        for (var group : drives) lookup.put(group.key(), group);
+        renderedDriveLookup = java.util.Map.copyOf(lookup);
         if (!selectedLeaderKey.isEmpty() && !blockPresent(selectedLeaderKey)) {
             selectedLeaderKey = "";
         }
@@ -839,11 +848,7 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
     }
 
     private java.util.Map<String, CellHostListPayload.HostGroup> driveLookup() {
-        var map = new java.util.HashMap<String, CellHostListPayload.HostGroup>();
-        for (var group : getMenu().getDriveList()) {
-            map.put(group.key(), group);
-        }
-        return map;
+        return renderedDriveLookup;
     }
 
     // ---- 交互 ----

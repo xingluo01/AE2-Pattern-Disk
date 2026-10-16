@@ -13,6 +13,7 @@ import net.minecraft.world.item.ItemStack;
 
 import appeng.api.parts.IPartItem;
 import appeng.api.parts.IPartModel;
+import appeng.api.storage.MEStorage;
 import appeng.api.upgrades.IUpgradeInventory;
 import appeng.api.upgrades.UpgradeInventories;
 import appeng.helpers.IPriorityHost;
@@ -20,6 +21,7 @@ import appeng.items.parts.PartModels;
 import appeng.menu.ISubMenu;
 import appeng.menu.MenuOpener;
 import appeng.menu.locator.MenuLocators;
+import appeng.me.storage.NullInventory;
 import appeng.parts.PartModel;
 import appeng.parts.reporting.AbstractTerminalPart;
 import appeng.util.inv.AppEngInternalInventory;
@@ -96,6 +98,12 @@ public class CellManagementTerminalPart extends AbstractTerminalPart implements 
     @Override
     public IUpgradeInventory getUpgrades() {
         return UpgradeInventories.empty();
+    }
+
+    /** 元件表不展示网络物品，避免 MEStorageMenu 同步一份隐藏的全网库存。 */
+    @Override
+    public MEStorage getInventory() {
+        return NullInventory.of();
     }
 
     @Override

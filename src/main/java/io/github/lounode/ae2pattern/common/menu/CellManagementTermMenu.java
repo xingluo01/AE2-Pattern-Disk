@@ -45,6 +45,7 @@ import io.github.lounode.ae2pattern.common.part.CellManagementTerminalPart;
 import io.github.lounode.ae2pattern.integration.extendedae.VoidCellCompat;
 import io.github.lounode.ae2pattern.integration.megacells.MegaCellsCompat;
 import io.github.lounode.ae2pattern.network.CellHostListPayload;
+import io.github.lounode.ae2pattern.network.CellHostUpdatePayload;
 import io.github.lounode.ae2pattern.network.CellNoticePayload;
 
 /**
@@ -445,6 +446,7 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         }
         encodeInv.setItemDirect(0, taken);
         host.markForSave();
+        driveListDirty = true;
         broadcastChanges();
         noticeWith(NOTICE + "moved_to_encode", taken.getHoverName().getString());
     }
@@ -674,8 +676,7 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
             if (owner == null || !CellDriveScanner.insertCell(owner, slot.hostSlot(), taken)) {
                 continue;
             }
-            afterCellMoved(source);
-            afterCellMoved(owner);
+            afterCellMoved(source, owner);
             noticeWith(NOTICE + "moved", taken.getHoverName().getString());
             return;
         }
@@ -1035,11 +1036,14 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
     }
 
     /** 格子变动后的收口：落盘 + 立刻重算一次要推给客户端的表与光标。 */
-    private void afterCellMoved(Object owner) {
-        if (owner instanceof net.minecraft.world.level.block.entity.BlockEntity blockEntity) {
-            blockEntity.setChanged();
+    private void afterCellMoved(Object... owners) {
+        for (Object owner : owners) {
+            if (owner instanceof net.minecraft.world.level.block.entity.BlockEntity blockEntity) {
+                blockEntity.setChanged();
+            }
         }
         host.markForSave();
+        driveListDirty = true;
         broadcastChanges();
     }
 
@@ -1117,160 +1121,54 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
     /** 客户端侧：服务端推送的驱动器清单（屏幕每帧读）。 */
     private List<CellHostListPayload.HostGroup> hostList = List.of();
 
-    /** 结构指纹：只含「有什么、在哪」，不含占用度——占用度一直在动，混进指纹等于每拍都重推。 */
-    private int sentStructureFingerprint;
-
-    /** 上一次推出去的那张表：结构变化时用它把没变的格的占用度沿用过来（免得占用条空一拍）。 */
     private List<CellHostListPayload.HostGroup> lastPushedGroups = List.of();
-
-    /** 已推过一次没有（首次先推廉价的结构版，占用条下一拍补）。 */
+    private final CellUsageCache usageCache = new CellUsageCache();
     private boolean sentDriveListOnce;
-
-    /** 距上次算占用度过了多少拍；初始就定在刷新点：首推之后应立即补一次带占用度的。 */
-    private int ticksSinceUsageScan = USAGE_REFRESH_TICKS;
-
-    /** 扫描节拍（tick）：表是给人看的，没必要每 tick 重扫一遍元件内容。 */
+    private boolean driveListDirty = true;
     private static final int DRIVE_SCAN_INTERVAL_TICKS = 10;
-
-    /** 占用度的兜底刷新间隔（拍）：结构没变也要把两根占用条刷到这个节奏。 */
-    private static final int USAGE_REFRESH_TICKS = 60;
-
     private int driveScanCooldown;
 
-    /**
-     * 每 tick 比对一次网络里的驱动器清单，变了就推。
-     *
-     * <p>驱动器数量有限（一网几十台也算多），指纹只算「哪几台 + 每台里装了什么 + 优先级」，
-     * 比每次重扫重发便宜得多。</p>
-     */
+    /** 元件终端没有可合成物品网格，不让父类每拍收集全网配方。 */
+    @Override
+    protected boolean showsCraftables() {
+        return false;
+    }
+
     @Override
     public void broadcastChanges() {
+        // 父类继续负责链接状态、配置与真实槽位；宿主的展示库存为空，不再同步网络物品。
         super.broadcastChanges();
-        // 偏移量由 @GuiSync 同步，两侧都在这里落到窗口上——槽位是共享对象，只有两侧口径一致，
-        // 客户端画的与交互的才是同一段。这里再夹一次：元件换成格数更少的那个时，原来的偏移可能超了。
-        // 比一次分区内容：别的菜单实例（同一台终端被另一个玩家开着）改过这张元件时，手上这份缓存就旧了。
         markerPartitions.refreshIfStale();
         markerRowOffset = Math.max(0, Math.min(markerRowOffset, maxMarkerRowOffset()));
         markerWindow.setOffset(markerRowOffset * AEPatternRegistries.CELL_MARKER_COLUMN.length);
-        if (isServerSide()) {
-            syncDriveList();
-        }
+        if (isServerSide()) syncDriveList();
     }
 
-    /**
-     * 按节拍同步表格。
-     *
-     * <p>分两段扫：<b>结构扫描</b>每拍都做（只读栈，便宜），用它判断表要不要重推；<b>占用度</b>要遍历每个
-     * 元件里已存的每一种键，是这条路上最贵的一步，只在结构变了或兜底刷新到点时才算。开屏的首推只带结构，
-     * 占用条下一拍补上——这样进终端不会因为一次全量数键而卡一下。</p>
-     */
     private void syncDriveList() {
-        if (++driveScanCooldown < DRIVE_SCAN_INTERVAL_TICKS) {
-            return;
-        }
-        driveScanCooldown = 0;
-
-        var gridNode = getGridNode();
-        var grid = gridNode != null ? gridNode.getGrid() : null;
-        if (grid == null) {
-            // 终端不在已连通的网上：不推空表，保留客户端手上那份，免得断开一瞬间整张表闪空。
-            return;
-        }
-        var structure = CellDriveScanner.scan(grid, false);
-        int structureFingerprint = fingerprint(structure);
-        boolean first = !sentDriveListOnce;
-        boolean structureChanged = structureFingerprint != sentStructureFingerprint;
-        // 计数器按 tick 记：能走到这里就已经过了 DRIVE_SCAN_INTERVAL_TICKS 拍，所以阈值 60 就是 3 秒。
-        boolean refreshUsage = !first
-                && (ticksSinceUsageScan += DRIVE_SCAN_INTERVAL_TICKS) >= USAGE_REFRESH_TICKS;
-        if (!first && !structureChanged && !refreshUsage) {
-            return;
+        // 打开界面与本菜单取放绕过轮询间隔，其他玩家/自动化的变化仍定期检查。
+        if (sentDriveListOnce && !driveListDirty && --driveScanCooldown > 0) return;
+        var grid = gridOrNull();
+        if (grid == null) return;
+        usageCache.beginScan(getPlayer().level().getGameTime(), sentDriveListOnce && !driveListDirty);
+        var groups = toGroups(CellDriveScanner.scan(grid, usageCache));
+        if (!sentDriveListOnce || !CellHostList.sameLayout(lastPushedGroups, groups)) {
+            sendPacketToClient(new CellHostListPayload(groups));
+            lastPushedGroups = CellHostList.snapshot(groups);
+        } else {
+            var changes = CellHostList.changes(lastPushedGroups, groups);
+            if (!changes.isEmpty()) {
+                sendPacketToClient(new CellHostUpdatePayload(containerId, changes));
+                lastPushedGroups = CellHostList.snapshot(groups);
+            }
         }
         sentDriveListOnce = true;
-        sentStructureFingerprint = structureFingerprint;
-
-        // 首推与结构变化都只带结构（立即、便宜）；占用度留给下一拍或兜底点——不在玩家点击的那一拍
-        // 去数全网的键，那正是「放进去 / 拿出来会卡一下」的来源。
-        boolean withUsage = !first && refreshUsage;
-        if (withUsage) {
-            ticksSinceUsageScan = 0;
-        } else if (structureChanged) {
-            ticksSinceUsageScan = USAGE_REFRESH_TICKS;
-        }
-        if (withUsage) {
-            pushDriveList(CellDriveScanner.scan(grid, true));
-        } else {
-            pushGroups(carryOverUsage(structure));
-        }
+        driveListDirty = false;
+        driveScanCooldown = DRIVE_SCAN_INTERVAL_TICKS;
     }
 
-    private void pushDriveList(List<CellDriveScanner.DriveEntry> entries) {
-        pushGroups(toGroups(entries));
-    }
-
-    /** 把扫描结果打包成一张表：结构版（占用度全 0）与完整版都走这里。 */
     private static List<CellHostListPayload.HostGroup> toGroups(List<CellDriveScanner.DriveEntry> entries) {
-        var groups = new java.util.ArrayList<CellHostListPayload.HostGroup>(entries.size());
-        for (var entry : entries) {
-            groups.add(new CellHostListPayload.HostGroup(entry.key(), entry.name(), entry.icon(),
-                    entry.priority(), List.copyOf(entry.cells())));
-        }
-        return List.copyOf(groups);
-    }
-
-    private void pushGroups(List<CellHostListPayload.HostGroup> groups) {
-        lastPushedGroups = groups;
-        sendPacketToClient(new CellHostListPayload(groups));
-    }
-
-    /**
-     * 把上一次推送里同一格的占用度搬到新的结构版上。
-     *
-     * <p>结构变化那一拍我们只扫结构（不数键，才不会在玩家点击那一下卡住），但两根画着占用度的条会因此空
-     * 一拍。同一台驱动器的同一个格位、插的还是同一张元件，占用度就照抄上一次的值；只有真的换了元件的那格
-     * 从空开始，等下一拍的完整扫描补上。</p>
-     */
-    private List<CellHostListPayload.HostGroup> carryOverUsage(List<CellDriveScanner.DriveEntry> entries) {
-        var previous = new java.util.HashMap<String, CellHostListPayload.CellSlot>();
-        for (CellHostListPayload.HostGroup group : lastPushedGroups) {
-            for (CellHostListPayload.CellSlot cell : group.cells()) {
-                previous.put(cell.hostKey() + "@" + cell.hostSlot(), cell);
-            }
-        }
-        var groups = new java.util.ArrayList<CellHostListPayload.HostGroup>(entries.size());
-        for (var entry : entries) {
-            var cells = new java.util.ArrayList<CellHostListPayload.CellSlot>(entry.cells().size());
-            for (CellHostListPayload.CellSlot cell : entry.cells()) {
-                CellHostListPayload.CellSlot old = previous.get(cell.hostKey() + "@" + cell.hostSlot());
-                boolean sameCell = old != null && !cell.stack().isEmpty()
-                        && ItemStack.isSameItemSameComponents(old.stack(), cell.stack());
-                cells.add(sameCell
-                        ? new CellHostListPayload.CellSlot(cell.stack(), old.typeFill(), old.byteFill(),
-                                cell.hostKey(), cell.hostSlot(), cell.leaderKey())
-                        : cell);
-            }
-            groups.add(new CellHostListPayload.HostGroup(entry.key(), entry.name(), entry.icon(),
-                    entry.priority(), List.copyOf(cells)));
-        }
-        return List.copyOf(groups);
-    }
-
-    /** 表的结构指纹：驱动器身份、名字、优先级、每格的宿主与栈——不含占用度（那两根本来就一直在动）。 */
-    private static int fingerprint(List<CellDriveScanner.DriveEntry> entries) {
-        int hash = 1;
-        for (var entry : entries) {
-            hash = 31 * hash + entry.key().hashCode();
-            hash = 31 * hash + entry.name().hashCode();
-            hash = 31 * hash + entry.priority().hashCode();
-            for (CellHostListPayload.CellSlot cell : entry.cells()) {
-                ItemStack stack = cell.stack();
-                hash = 31 * hash + cell.hostKey().hashCode();
-                hash = 31 * hash + cell.hostSlot();
-                hash = 31 * hash + ItemStack.hashItemAndComponents(stack);
-                hash = 31 * hash + stack.getCount();
-            }
-        }
-        return hash;
+        return entries.stream().map(entry -> new CellHostListPayload.HostGroup(entry.key(), entry.name(),
+                entry.icon(), entry.priority(), List.copyOf(entry.cells()))).toList();
     }
 
     /** 客户端侧：服务端最近一次推的驱动器清单。 */
@@ -1280,7 +1178,11 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
 
     /** 客户端侧：接收推送（由 payload 调）。 */
     public void setDriveList(List<CellHostListPayload.HostGroup> groups) {
-        this.hostList = groups;
+        this.hostList = List.copyOf(groups);
+    }
+
+    public void updateDriveList(List<CellHostListPayload.CellSlot> changes) {
+        this.hostList = CellHostList.apply(this.hostList, changes);
     }
 
     /** 供屏幕读取宿主（编码槽、元件分区/升级库存等）。 */

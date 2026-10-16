@@ -13,12 +13,14 @@ import appeng.api.config.SortDir;
 import appeng.api.config.SortOrder;
 import appeng.api.config.ViewItems;
 import appeng.api.inventories.InternalInventory;
+import appeng.api.storage.MEStorage;
 import appeng.api.upgrades.IUpgradeInventory;
 import appeng.api.util.IConfigManager;
 import appeng.helpers.IPriorityHost;
 import appeng.menu.ISubMenu;
 import appeng.menu.MenuOpener;
 import appeng.menu.locator.ItemMenuHostLocator;
+import appeng.me.storage.NullInventory;
 import appeng.util.inv.AppEngInternalInventory;
 import appeng.util.inv.InternalInventoryHost;
 
@@ -85,6 +87,12 @@ public class WirelessCellManagementTerminalHost extends WTMenuHost
     @Override
     public IConfigManager getConfigManager() {
         return this.configManager;
+    }
+
+    /** 与面板版一致：链接与供能仍由无线宿主管理，不同步隐藏的网络物品列表。 */
+    @Override
+    public MEStorage getInventory() {
+        return NullInventory.of();
     }
 
     @Override

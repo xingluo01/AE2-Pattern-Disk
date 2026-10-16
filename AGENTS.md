@@ -43,7 +43,7 @@ AE2（应用能源 2）的附属模组 `ae2_pattern_disk`：样板磁盘、磁�
 - **「名字即协议」**：`registerClientAction("...")` 的动作名与 `@GuiSync(n)` 的注解值靠客户端/服务端配对，
   不能改、也不能被第二个字段复用。
 - **`libs/*.jar` 是本地件**（被 gitignore）：缺了构建会失败或回退到不兼容发布版，怎么凑齐见 `docs/LOCAL_DEPS.md`。
-- **没有测试代码**：只有 `main` 与 `client` 两个源集有内容，验证靠构建 + 实机（`runClient`）。
+- **验证**：`test` 源集覆盖元件表差量与统计缓存；运行 `test`、构建后，界面交互仍需实机（`runClient`）验证。
 
 ## 四、常用命令
 
