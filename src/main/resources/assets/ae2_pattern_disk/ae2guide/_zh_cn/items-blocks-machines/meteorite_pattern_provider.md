@@ -2,11 +2,7 @@
 navigation:
   parent: index.md
   title: 自装配样板磁盘供应器
-  icon: meteorite_pattern_provider
   position: 1025
-item_ids:
-- ae2_pattern_disk:meteorite_pattern_provider
-- ae2_pattern_disk:cable_meteorite_pattern_provider
 categories:
 - devices
 ---

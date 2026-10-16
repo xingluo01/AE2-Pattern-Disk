@@ -17,5 +17,11 @@
       "rolls": 1.0
     }
   ],
-  "random_sequence": "ae2_pattern_disk:blocks/meteorite_pattern_provider"
+  "random_sequence": "ae2_pattern_disk:blocks/meteorite_pattern_provider",
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "ae2cs"
+    }
+  ]
 }

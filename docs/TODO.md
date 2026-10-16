@@ -414,3 +414,11 @@ P0 不应新造范式，同文件里已有两处“每 tick 限量”的先例�
   - `GENERIC_INTERNAL_INV` 已在 `AE2PatternDisk#registerPartCapabilities` 里按面板类补登记（AE2CS 缺席时那段不执行）。
   - 两形态 1:1 互换会把「推入方向」重置回贴附面：方块方向存在 AE2 的 `directionMap`（blockstate），面板方向存在自己的 NBT `pushDirection`，互换时两者不同步（行为可接受，仅记录）。
 - 待实机确认：① 处理样板（不可自完成）能否推给相邻机器；② 相邻机器回送到返回仓的产物能否自动清空；③「锁定到结果」能否解锁；④ 网络塞满时的滞留产物能否最终送回；⑤ 面板在样板访问终端里的收录与图标。
+
+### P. 自装配供应器的资源在缺 AE2CS 时也照发 — ✅（2026-10 记录）
+- 设备本体（方块/面板/物品/注册）在 `MeteoritePatternProviderRegistrations` / `AE2PatternDisk` 的 AE2CS 门禁内，但**资源文件无条件发布**：玩法相关的靠 `neoforge:conditions` + `neoforge:mod_loaded: ae2cs` 自己退出（三个配方一直是这么写的；**战利品表 2026-10 才补上**，此前在任何没装 AE2CS 的包里每次启动都刷一条 `LootDataType` ERROR）。
+  - 条件不成立时，该表在注册表里落到 `LootTable.EMPTY` 占位（`LootDataType` 取默认值、不解析它），既不会报错、也不是「缺一项」；方块本体同样不注册，因此不存在掉落查询。依据：NeoForge 的 `patches/net/minecraft/world/level/storage/loot/LootDataType.java.patch` 用 `ConditionalOps.createConditionalCodec` 包住了表。
+- 指南页 `ae2guide/**/items-blocks-machines/meteorite_pattern_provider.md` 的 frontmatter **有意不写 `icon` 与 `item_ids`**：Guideme 页 frontmatter 只有 `navigation{title,icon,parent,position}` / `item_ids` / `categories`（`icon` 标着 OPTIONAL），**没有条件机制**；而这两个键指向的物品只在装了 AE2CS 时注册，写了会让缺它的玩家每次启动刷 `ItemIndex` WARN ×2 + `NavigationUtil` ERROR ×2。
+  - 代价只落在**装了 AE2CS** 的人身上：该页在导航栏没有图标；这两个物品的 `<ItemLink>`、配方槽跳转与 G 键提示不再落到此页（仓内没有别处拿它当 ItemLink 目标）。装了 AE2CS 时掉落与配方行为与改动前一致。
+  - 缺 AE2CS 的人打开该页时，页内 `<BlockImage>` / `<ItemImage>` 会显示 `Missing block/item` 错误块、两处 `<RecipesFor>` 走默认的「无配方」文案——**不进启动日志**，本次有意不动（要收干净就把那两行换成一句纯文本；页内正文已写明「装了 AE2 Crystal Science 才有这台设备」）。
+- 顺带记一处文档与实现不符（**非本次改动引入**）：上面 M 条目写「五个贴图变量**全部**改指本项目自己的文件…不再引用 `ae2:`/`ae2cs:` 贴图」，但 `models/part/meteorite_pattern_provider_base.json`（`particle`、`back`）与 `models/item/cable_meteorite_pattern_provider.json`（`back`、`front`）**仍指向 `ae2cs:block/meteorite_pattern_provider/{back,base}`**。缺 AE2CS 时这些模型从不渲染、不产生日志；若上游哪天给缺失贴图加告警，这里会开始刷行。
