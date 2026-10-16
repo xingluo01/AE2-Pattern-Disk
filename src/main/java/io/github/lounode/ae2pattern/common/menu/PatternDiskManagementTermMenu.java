@@ -374,18 +374,13 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
     }
 
     /**
-     * 显示模式的当前档位；设置由本终端的部件注册（{@code PatternDiskManagementTerminalPart#registerSettings}），
-     * 与 AE2 样板访问终端同一个键，读的也是同一份实例。
+     * 显示模式的当前档位。权威值在 {@link DiskEncodingLogic}（面板存部件 NBT、无线存物品组件），
+     * **不读宿主的配置管理器**：AE2 的 {@code MEStorageMenu.broadcastChanges} 会遍历宿主那份里的每个设置、
+     * 再去它自己的客户端那份取同名项，而客户端那份只认排序/视图三项——多注册一项，开屏必抛
+     * {@code UnsupportedSettingException}（见 {@code PatternDiskManagementTerminalPart#registerSettings} 的说明）。
      */
     public ShowPatternProviders getShownProviders() {
-        // 无线宿主的配置管理器由物品提供（ItemWT 只注册了排序/视图三项），读这项设置会抛
-        // UnsupportedSettingException——pushHostList 一旦抛出去，整个分组清单就发不到客户端，
-        // 表现为表格空白、按钮状态也不回显。所以捕获后回退到本模组自己的逻辑值。
-        try {
-            return getHost().getConfigManager().getSetting(Settings.TERMINAL_SHOW_PATTERN_PROVIDERS);
-        } catch (appeng.api.util.UnsupportedSettingException e) {
-            return ((IPatternDiskTerminalHost) getHost()).getLogic().getShownProviders();
-        }
+        return ((IPatternDiskTerminalHost) getHost()).getLogic().getShownProviders();
     }
 
     @Override
@@ -456,15 +451,17 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
      * 包注册面少一层，也不会因菜单类型判断失配而静默丢包。
      */
     public void sendViewStateToServer(boolean hideEmptySlots, long selectedSerial,
-            DiskEncodingLogic.SearchScope searchScope, boolean naturalSort) {
+            DiskEncodingLogic.SearchScope searchScope, boolean naturalSort,
+            ShowPatternProviders shownProviders) {
         sendClientAction(ACTION_VIEW_STATE,
-                hideEmptySlots + ";" + selectedSerial + ";" + searchScope.name() + ";" + naturalSort);
+                hideEmptySlots + ";" + selectedSerial + ";" + searchScope.name() + ";" + naturalSort
+                        + ";" + shownProviders.name());
     }
 
-    /** 服务端侧：解析 {@link #sendViewStateToServer} 发来的四元组。 */
+    /** 服务端侧：解析 {@link #sendViewStateToServer} 发来的五元组；旧口径的四元组（无显示模式）照样收。 */
     private void applyViewStateEncoded(String encoded) {
         var parts = encoded.split(";", -1);
-        if (parts.length != 4) {
+        if (parts.length < 4) {
             return;
         }
         var scope = DiskEncodingLogic.SearchScope.BOTH;
@@ -479,11 +476,29 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
         } catch (NumberFormatException ignored) {
             // 同上。
         }
-        applyViewState(Boolean.parseBoolean(parts[0]), serial, scope, Boolean.parseBoolean(parts[3]));
+        // 旧口径的四元组（或第 5 段是坏值）一律**沿用当前档**，不要退回写死的默认档——
+        // 否则混版时每一条视图动作都会把玩家已选的 ALL / NOT_FULL 静默重置成 VISIBLE。
+        var shownProviders = getShownProviders();
+        if (parts.length > 4) {
+            try {
+                shownProviders = ShowPatternProviders.valueOf(parts[4]);
+            } catch (IllegalArgumentException ignored) {
+                // 读不回来就继续沿用当前档。
+            }
+        }
+        applyViewState(Boolean.parseBoolean(parts[0]), serial, scope, Boolean.parseBoolean(parts[3]),
+                shownProviders);
+    }
+
+    /** 旧口径的入口（不发显示模式）：档位沿用服务端当前值。 */
+    public void applyViewState(boolean hideEmptySlots, long selectedSerial,
+            DiskEncodingLogic.SearchScope searchScope, boolean naturalSort) {
+        applyViewState(hideEmptySlots, selectedSerial, searchScope, naturalSort, getShownProviders());
     }
 
     public void applyViewState(boolean hideEmptySlots, long selectedSerial,
-            DiskEncodingLogic.SearchScope searchScope, boolean naturalSort) {
+            DiskEncodingLogic.SearchScope searchScope, boolean naturalSort,
+            ShowPatternProviders shownProviders) {
         // AEBaseMenu.getHost() 的静态类型是 ITerminalHost，取逻辑得落到本模组的宿主契约上。
         var host = (IPatternDiskTerminalHost) getHost();
         var logic = host.getLogic();
@@ -491,6 +506,7 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
         logic.setSelectedSerial(selectedSerial);
         logic.setSearchScope(searchScope);
         logic.setNaturalSort(naturalSort);
+        logic.setShownProviders(shownProviders);
         host.markForSave();
         // 关键：syncDiskList 是按“磁盘/宿主指纹”决定要不要重发的，指纹没变就直接 return、不会走到
         // onDiskListRebuilt——于是刚改的显示状态永远发不出去，客户端看到的还是旧值（症状就是“改了没生效”）。

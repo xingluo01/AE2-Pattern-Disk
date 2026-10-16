@@ -49,7 +49,7 @@ import appeng.client.gui.style.PaletteColor;
 import appeng.client.gui.style.ScreenStyle;
 import appeng.client.gui.widgets.ActionButton;
 import appeng.client.gui.widgets.Scrollbar;
-import appeng.client.gui.widgets.ServerSettingToggleButton;
+import appeng.client.gui.widgets.SettingToggleButton;
 
 import guideme.PageAnchor;
 
@@ -110,7 +110,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     }
 
     /** 「显示模式」按钮：与 AE2 样板访问终端共用同一个服务端设置。 */
-    private final ServerSettingToggleButton<ShowPatternProviders> showProvidersButton;
+    private final SettingToggleButton<ShowPatternProviders> showProvidersButton;
 
     /** 「隐藏槽位/显示槽位」按钮：只影响本屏的行模型，不涉服务端。按下时要回写状态，所以不是 final。 */
     private StatesToggleButton hideSlotsButton;
@@ -127,6 +127,8 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
             .ae2pattern.common.menu.DiskEncodingLogic.SearchScope.BOTH;
     /** 服务端上次给的「附加排序」开关值；它一变就说明该跟随服务端。 */
     private boolean lastServerNaturalSort = true;
+    /** 服务端镜像的显示模式档位；只在它真的变了时跟随，免得本地点完那两帧被旧值拉回去。 */
+    private ShowPatternProviders lastServerShownProviders = ShowPatternProviders.VISIBLE;
     /** 样板内容搜索栏与它的搜索范围轮换按钮（第 4 项）。 */
     private appeng.client.gui.widgets.AETextField contentSearchField;
     private ContentSearchScopeButton contentSearchScopeButton;
@@ -266,10 +268,19 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         this.listWidth = COLUMNS * this.rowHeight;
         this.textColor = style.getColor(PaletteColor.DEFAULT_TEXT_COLOR).toARGB();
 
-        // 「显示模式」与 AE2 样板访问终端共用同一个服务端设置：同一套取值、同一份持久化。按钮的图标与提示由
-        // AE2 的 SettingToggleButton 静态注册表提供，本模组不需要自带资源。
-        this.showProvidersButton = new ServerSettingToggleButton<>(
-                Settings.TERMINAL_SHOW_PATTERN_PROVIDERS, ShowPatternProviders.VISIBLE);
+        // 「显示模式」的取值与 AE2 样板访问终端同名同义（Settings.TERMINAL_SHOW_PATTERN_PROVIDERS），但**不走
+        // AE2 的服务端设置**：那项一旦注册进宿主配置管理器，AE2 的 MEStorageMenu 开屏时就会遍历到它、再去它自己
+        // 那份客户端设置（只认排序/视图三项）取同名项而抛 UnsupportedSettingException，首帧同步发不出去，
+        // 终端打开后空无一物。档位由本模组的编码逻辑持有（面板存部件 NBT、无线存物品组件），
+        // 按钮只负责把「翻了一档」报给服务端（随 patternDiskViewState 一起回传）。
+        // 图标与提示仍由 AE2 的 SettingToggleButton 静态注册表按「设置 + 档位」提供，本模组不需自带资源。
+        this.showProvidersButton = new SettingToggleButton<>(Settings.TERMINAL_SHOW_PATTERN_PROVIDERS,
+                ShowPatternProviders.VISIBLE, (button, backwards) -> {
+                    var next = button.getNextValue(backwards);
+                    button.set(next);
+                    getMenu().sendViewStateToServer(this.hideEmptySlots, this.selectedSerial, this.searchScope,
+                            naturalSortEnabled(), next);
+                });
         addToLeftToolbar(this.showProvidersButton);
 
         // 「隐藏槽位」只改客户端的行模型（空槽数由服务端在分组里带出），所以是本屏自己的开关。状态由本屏维护
@@ -280,7 +291,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
             this.hideSlotsButton.setState(this.hideEmptySlots);
             // 回传：状态本体在服务端的编码逻辑里（面板写部件 NBT、无线写物品组件），不回传就不会被记住。
             getMenu().sendViewStateToServer(this.hideEmptySlots, this.selectedSerial, this.searchScope,
-                    naturalSortEnabled());
+                    naturalSortEnabled(), getMenu().shownProviders());
         });
         this.hideSlotsButton.setBackground(BUTTON_BG_NORMAL, BUTTON_BG_HOVER);
         this.hideSlotsButton.setTooltipOn(List.of(
@@ -304,7 +315,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
             this.searchScope = scope;
             // 范围是终端自己的状态（面板写部件 NBT、无线写物品组件），改完得回传才会被记住。
             getMenu().sendViewStateToServer(this.hideEmptySlots, this.selectedSerial, this.searchScope,
-                    naturalSortEnabled());
+                    naturalSortEnabled(), getMenu().shownProviders());
         });
         widgets.add("contentSearchScope", this.contentSearchScopeButton.widget());
 
@@ -554,8 +565,12 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     @Override
     protected void updateBeforeRender() {
         super.updateBeforeRender();
-        // 显示模式按钮的档位回显：换档后服务端会重推分组清单，档位跟着清单回来。
-        this.showProvidersButton.set(getMenu().shownProviders());
+        // 显示模式按钮的档位回显：换档后服务端会重推分组清单，档位跟着清单回来。与下面几枚同一口径——
+        // 只在服务端镜像真的变了时跟随；否则本地点完刚翻过去的图标会被这一帧的旧镜像拉回来。
+        if (this.lastServerShownProviders != getMenu().shownProviders()) {
+            this.lastServerShownProviders = getMenu().shownProviders();
+            this.showProvidersButton.set(this.lastServerShownProviders);
+        }
         // 服务端那份才是权威（面板存部件 NBT、无线存物品组件）。只在它真的变了时跟随，开屏与刷新都能恢复上次的值。
         if (this.lastServerHideEmptySlots != getMenu().viewHideEmptySlots()) {
             this.lastServerHideEmptySlots = getMenu().viewHideEmptySlots();
@@ -582,7 +597,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         } else if (this.naturalSortButton != null
                 && this.naturalSortButton.isEnabled() != this.lastServerNaturalSort) {
             getMenu().sendViewStateToServer(this.hideEmptySlots, this.selectedSerial, this.searchScope,
-                    this.naturalSortButton.isEnabled());
+                    this.naturalSortButton.isEnabled(), getMenu().shownProviders());
         }
         syncScrollbar();
         rebuildRows();
@@ -828,7 +843,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
             } else if (btn == 1) {
                 this.selectedSerial = this.selectedSerial == disk.serial() ? 0 : disk.serial();
         getMenu().sendViewStateToServer(this.hideEmptySlots, this.selectedSerial, this.searchScope,
-                naturalSortEnabled());
+                naturalSortEnabled(), getMenu().shownProviders());
             } else if (btn == 2) {
                 onDiskMiddleClick(index);
             }

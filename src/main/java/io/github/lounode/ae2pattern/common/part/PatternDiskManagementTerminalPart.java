@@ -4,8 +4,6 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.MenuType;
 
-import appeng.api.config.Settings;
-import appeng.api.config.ShowPatternProviders;
 import appeng.api.parts.IPartItem;
 import appeng.api.parts.IPartModel;
 import appeng.api.util.IConfigManagerBuilder;
@@ -44,9 +42,14 @@ public class PatternDiskManagementTerminalPart extends PatternDiskEncodingTermin
 
     @Override
     protected void registerSettings(IConfigManagerBuilder builder) {
+        // 有意只调 super：**不要**把「显示模式」（AE2 的 Settings.TERMINAL_SHOW_PATTERN_PROVIDERS）
+        // 注册进来。AE2 的 MEStorageMenu.broadcastChanges 会遍历宿主配置管理器里的每个设置、再去它自己那份
+        // 客户端设置（clientCM，只认 SORT_BY / VIEW_MODE / SORT_DIRECTION）取同名项——多一项，开屏时
+        // initMenu → broadcastChanges 必抛 UnsupportedSettingException，而该异常被服务端「suppressing error」
+        // 吞掉，首帧同步发不出去，表现就是终端打开后看不到网络物品。
+        // 档位改由本模组自己的 DiskEncodingLogic#shownProviders 持有（面板存部件 NBT），
+        // 随 DiskHostListPayload 下发、随 patternDiskViewState 回传。
         super.registerSettings(builder);
-        // 「显示模式」直接复用 AE2 样板访问终端的同一个设置：同一套取值、同一份语义，默认也与它一致。
-        builder.registerSetting(Settings.TERMINAL_SHOW_PATTERN_PROVIDERS, ShowPatternProviders.VISIBLE);
     }
 
     @Override
