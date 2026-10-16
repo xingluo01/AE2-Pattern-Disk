@@ -32,7 +32,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.github.lounode.ae2pattern.AEPatternRegistries;
-import io.github.lounode.ae2pattern.config.AEPDConfig;
 import appeng.core.localization.GuiText;
 import appeng.api.config.ActionItems;
 import appeng.api.config.CopyMode;
@@ -655,18 +654,7 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
         if (location == null) {
             return;
         }
-        boolean pinned = DriveHighlight.togglePinned(location.dimension(), location.pos());
-        reportDrive(location, pinned ? "drive_pinned" : "drive_unpinned");
-    }
-
-    /** 在聊天栏报一次「哪一台、在哪、什么状态」。开关在客户端配置里（本地显示的一句话）。 */
-    private void reportDrive(HostLocation location, String messageKey) {
-        var player = Minecraft.getInstance().player;
-        var key = "gui.ae2_pattern_disk.cell_management_terminal." + messageKey;
-        if (player != null && AEPDConfig.isMessageShown(key)) {
-            player.displayClientMessage(Component.translatable(key,
-                    location.dimension().toString(), location.pos().toShortString()), false);
-        }
+        DriveHighlight.togglePinned(location.dimension(), location.pos());
     }
 
     /** 宿主键解成「维度 + 坐标」；解不开返回 null。 */
@@ -1102,7 +1090,6 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
             return false; // 不是存储元件：本屏没它的去处，交给基类提示
         }
         if (selectedLeaderKey.isEmpty()) {
-            showLocalNotice("gui.ae2_pattern_disk.cell_management_terminal.notice.select_first");
             return true;
         }
         getMenu().storeCellIntoDrive(selectedLeaderKey, slot.getContainerSlot());
@@ -1117,9 +1104,7 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
         }
         // 编码槽里的元件：右键上传到选中的那台驱动器（左键的放入/取出仍照常走槽位那套）。
         if (clickType == ClickType.PICKUP && mouseButton == 1 && slot != null && getMenu().isEncodingSlot(slot)) {
-            if (selectedLeaderKey.isEmpty()) {
-                showLocalNotice("gui.ae2_pattern_disk.cell_management_terminal.notice.select_first");
-            } else {
+            if (!selectedLeaderKey.isEmpty()) {
                 getMenu().storeEncodeCellIntoDrive(selectedLeaderKey);
             }
             return;

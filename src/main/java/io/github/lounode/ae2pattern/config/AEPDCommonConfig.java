@@ -52,10 +52,6 @@ public final class AEPDCommonConfig {
 
         // ---- 编码终端：编码/写盘/取样板/打标记时的回执与拒绝原因（PatternDiskEncodingTermMenu 的 tell） ----
         builder.comment("Pattern encoding terminal - why an encode / write / extract did not happen, and receipts.");
-        MESSAGES.define(builder, "encoding_terminal.chiseling_needs_target",
-                "Shown when encoding in the chiseling tier and no target (or no candidate) was picked.");
-        MESSAGES.define(builder, "encoding_terminal.overloaded_needs_input",
-                "Shown when encoding in the overloaded tier while the editing area has no input.");
         MESSAGES.define(builder, "encoding_terminal.no_blank_pattern",
                 "Shown when the ME network has no blank patterns to encode into (the server-side refusal; the client also pre-checks this condition with its own switch in the client config).");
         MESSAGES.define(builder, "encoding_terminal.disk_refused.full",
@@ -70,39 +66,13 @@ public final class AEPDCommonConfig {
                 "Shown when a disk refused the pattern for a reason without its own message.");
         MESSAGES.define(builder, "encoding_terminal.disk_refused.stale_target",
                 "Shown when the disk list on your client was older than the server's, so the click had no target (the list refreshes itself).");
-        MESSAGES.define(builder, "encoding_terminal.no_room.cursor",
-                "Shown when extracting a pattern while your cursor is already holding something.");
-        MESSAGES.define(builder, "encoding_terminal.no_room.inventory",
-                "Shown when extracting a pattern while your inventory is full.");
-        MESSAGES.define(builder, "encoding_terminal.no_room.encoded_slot",
-                "Shown when extracting a pattern while the encoding slot already holds one.");
-        MESSAGES.define(builder, "encoding_terminal.content_changed",
-                "Shown when the disk's contents changed since the list you clicked, so the pattern index you picked is no longer valid.");
-        MESSAGES.define(builder, "encoding_terminal.written_to_disk",
-                "Shown after a pattern was written into a disk (receipt).");
-        MESSAGES.define(builder, "encoding_terminal.mark_written",
-                "Shown after a recipe-type mark was written onto a disk (receipt).");
-        MESSAGES.define(builder, "encoding_terminal.mark_skipped",
-                "Shown when marking was skipped because your cursor is empty (no recipe type to read).");
-        MESSAGES.define(builder, "encoding_terminal.mark_unidentified",
-                "Shown when marking was skipped because the held item's recipe type could not be identified.");
-        MESSAGES.define(builder, "encoding_terminal.advanced_needs_pattern",
-                "Shown when switching to the advanced tier while the output slot holds no processing pattern.");
 
         // ---- 管理终端：把磁盘放进容器时的回执与拒绝原因（PatternDiskManagementTermMenu.notifyPlayer） ----
         builder.comment("Pattern disk management terminal - storing a disk into a container.");
         MESSAGES.define(builder, "management_terminal.disk_store.no_host",
                 "Shown when the container you picked is no longer on the grid.");
-        MESSAGES.define(builder, "management_terminal.disk_store.no_disk",
-                "Shown when your cursor is not holding a pattern disk.");
-        MESSAGES.define(builder, "management_terminal.disk_store.no_room",
-                "Shown when the container has no free disk slot.");
         MESSAGES.define(builder, "management_terminal.disk_store.disk_gone",
                 "Shown when the disk you picked is no longer there.");
-        MESSAGES.define(builder, "management_terminal.disk_store.slot_changed",
-                "Shown when the disk is no longer in the slot the list showed.");
-        MESSAGES.define(builder, "management_terminal.disk_store.ok",
-                "Shown after a disk was stored into a container (receipt).");
 
         // ---- 元件管理终端：唯一一条服务端直发的回执（标记收藏的四项计数） ----
         // 同终端的其余反馈走 CellNoticePayload 由客户端显示，那些开关在客户端配置里。

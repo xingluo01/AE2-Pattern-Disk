@@ -41,7 +41,7 @@ public final class ChatMessageSwitches {
      * 登记一条消息的开关。
      *
      * @param shortKey 去掉 {@link #MESSAGE_KEY_PREFIX} 之后的语言键，例如
-     *                 {@code cell_management_terminal.notice.put}
+     *                 {@code cell_management_terminal.notice.cell_locked}
      * @param when     这条消息什么时候出现（写进 TOML 的注释）
      */
     public ModConfigSpec.BooleanValue define(ModConfigSpec.Builder builder, String shortKey, String when) {

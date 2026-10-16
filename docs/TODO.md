@@ -437,3 +437,14 @@ P0 不应新造范式，同文件里已有两处“每 tick 限量”的先例�
   1. 样板磁盘管理终端继承编码终端菜单，扫描/分组的守卫（`getGrid()` 里的 `node.isActive()`）比本终端严；但 `insertDisk` / `storeInventoryDisk` 用的是缓存 `hostsByName`，动作内**没有在线判据** ⟹ 离线时仍能对旧宿主下手。
   2. 本仓两个终端的在线判据至今不统一：编码/管理终端用 `node.isActive()`（覆盖断电，不覆盖无线电量），元件管理终端现在用 `canInteractWithGrid()`（两者都覆盖）。要不要统一到后者，等排期。
 - 顺带改正一处文档与实现不符（**非本次改动引入**，已在上面 M 条目改正）：那里原写「五个贴图变量**全部**改指本项目自己的文件…不再引用 `ae2:`/`ae2cs:` 贴图」，实际 `models/part/meteorite_pattern_provider_base.json` 的 `particle`/`back` 与 `models/item/cable_meteorite_pattern_provider.json` 的 `back`/`front` **共 4 处仍指向 `ae2cs:block/meteorite_pattern_provider/{back,base}`**（缺 AE2CS 时不渲染、不出日志；将来上游若给缺失贴图加告警，这 4 处会开始刷行）。
+
+### R. 聊天栏提示精简 — ✅（2026-10 记录）
+- 原先 52 条开关全部默认开，其中大半是「做成了」这类界面已自明的回执与常规误操作。本轮 **32 条出局，配置面 52 → 20**：
+  - **删掉 24 条**：成功回执 9（`took` / `put` / `moved` / `moved_to_encode` / `written_to_disk` / `mark_written` / `disk_store.ok` / `drive_pinned` / `drive_unpinned`）+ 常规误操作 15（点到空格、没先选目标、光标占用/为空、不是元件、编码槽忙/空、驱动器满、落点满、档位前置条件、`disk_store.no_disk` / `no_room`）。
+  - **改日志 8 条**（玩家看不出来、排障要看）：两次 `slot_changed`、`slot_empty`、`not_a_cell`、`content_changed`、`mark_skipped`、`mark_unidentified`，以及 `quickMoveCell` 的「背包满」（元件已离开驱动器，属真实状态变化）。
+  - **留聊天栏 20 条**：拒绝原因与环境变化（`cell_locked` / `cell_refused` / `cell_rejected` / `move_failed` / `drive_gone` / `grid_offline` / `priority_unsupported` / `mark_bookmarks` / 6 条 `disk_refused.*` / `no_blank_pattern` / `disk_store.no_host` / `disk_gone`）+ 唯一那条动作栏（扳手换向）。
+- **守卫一个没动**：该拦的还拦，只是不出声——尤其两处 `tryInsertIntoHost` 失败仍然 `return`（删掉会把光标上的盘扣掉）。`bindPrefix` 的 `announceSkip` 参数随之失去用途（唯一的 false 调用点已删），已去掉。
+- 复核时补上的两处漏改（同一个改法漏了消费点，且后果比改前更差）：① `moveCellToEncodeSlot` 那条改走 `notifyTakeFailure`——`takeFailureKey` 现在对「空着」返回 null，旧写法会拼出 `…notice.null`；② `putCell` 末尾的 `put` 回执删除——它的开关与语言键已删，而 `isShown` 对未登记键是 fail-open，留着会直接把**键原文串**打进聊天栏。
+- 日志级别与本仓既有口径一致：元件终端沿用 `LOGGER.info("[cell-mgmt] …")`，管理终端新加自己的 `LOGGER`（`[disk-store] …`）；只有「取件时格是空的」那条降到 debug（正常误点也会走这条路）。
+- 同步清理：两语各删 **96** 条语言键（32 键 × 消息/开关标签/说明），键数 341 → 245 且两语键集仍相等；`ChatMessageSwitches` 里拿当示例的键换成还存在的；`docs/PLATFORM_MCMOD.md` 的「52 条」改 20；`CHANGELOG.md` 的 0.9.0 段按体例不动（历史段落不重写）。配平由两道脚本核对：配置条目 20 条 ↔ 语言键三个键位（消息/标签/说明）中英齐全；以及**代码里发出的每个消息键在两语中都存在**（后一道正是拦住上面那两条键原文串的检查）。
+- 以后要单独收：① `no_blank_pattern` 仍有两份开关（客户端预检 + 服务端拒绝，同一个玩家可见症状）；② `grid_offline` 在离线时每点一次仍发一条，没做「状态变化才提示」的去重。

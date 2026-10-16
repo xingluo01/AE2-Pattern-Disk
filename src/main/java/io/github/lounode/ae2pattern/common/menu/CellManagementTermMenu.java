@@ -431,7 +431,6 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         }
         var encodeInv = host.getEncodeCellInventory();
         if (!encodeInv.getStackInSlot(0).isEmpty()) {
-            notice(NOTICE + "encode_busy");
             return;
         }
         Object owner = ownerOf(driveKey);
@@ -441,14 +440,13 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         var reason = new java.util.concurrent.atomic.AtomicReference<CellDriveScanner.ExtractResult>();
         ItemStack taken = CellDriveScanner.extractCell(owner, driveSlot, reason);
         if (taken.isEmpty()) {
-            notice(NOTICE + takeFailureKey(reason.get()));
+            notifyTakeFailure(reason.get());
             return;
         }
         encodeInv.setItemDirect(0, taken);
         host.markForSave();
         driveListDirty = true;
         broadcastChanges();
-        noticeWith(NOTICE + "moved_to_encode", taken.getHoverName().getString());
     }
 
     /** 把「驱动器键 + 格位」编成一个串（两者都不含分隔符：键是维度@坐标的数字串）。 */
@@ -486,7 +484,6 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         }
         // 光标上有东西就不取：取来的元件没地方放，硬顶上去会把玩家手上的东西弄丢。
         if (!getCarried().isEmpty()) {
-            notice(NOTICE + "carried_not_empty");
             return;
         }
         Object owner = ownerOf(driveKey);
@@ -496,12 +493,11 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         var reason = new java.util.concurrent.atomic.AtomicReference<CellDriveScanner.ExtractResult>();
         ItemStack taken = CellDriveScanner.extractCell(owner, driveSlot, reason);
         if (taken.isEmpty()) {
-            notice(NOTICE + takeFailureKey(reason.get()));
+            notifyTakeFailure(reason.get());
             return;
         }
         setCarried(taken);
         afterCellMoved(owner);
-        noticeWith(NOTICE + "took", taken.getHoverName().getString());
     }
 
     /** 左键一格空格：把光标上的元件放进去（驱动器拒收就不动）。 */
@@ -512,7 +508,6 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         }
         ItemStack carried = getCarried();
         if (carried.isEmpty()) {
-            notice(NOTICE + "nothing_carried");
             return;
         }
         Object owner = ownerOf(driveKey);
@@ -532,7 +527,6 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         rest.shrink(1);
         setCarried(rest);
         afterCellMoved(owner);
-        noticeWith(NOTICE + "put", name);
     }
 
     /**
@@ -547,13 +541,9 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         }
         ItemStack carried = getCarried();
         if (!carried.isEmpty()) {
-            String name = carried.getHoverName().getString();
             if (getPlayer().getInventory().add(carried)) {
                 setCarried(ItemStack.EMPTY);
                 broadcastChanges();
-                noticeWith(NOTICE + "put", name);
-            } else {
-                notice(NOTICE + "inventory_full");
             }
             return;
         }
@@ -564,19 +554,19 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         var reason = new java.util.concurrent.atomic.AtomicReference<CellDriveScanner.ExtractResult>();
         ItemStack taken = CellDriveScanner.extractCell(owner, driveSlot, reason);
         if (taken.isEmpty()) {
-            notice(NOTICE + takeFailureKey(reason.get()));
+            notifyTakeFailure(reason.get());
             return;
         }
         if (!getPlayer().getInventory().add(taken)) {
             // 背包满：先试着放回原格；驱动器可能刚被拆、或被拒收，那也不能凭空吞掉——掉在玩家脚下。
+            // 这一条虽不出声，但元件已经离开了驱动器（放回或掉地上），属真实状态变化，留一条日志。
+            LOGGER.info("[cell-mgmt] 背包满：取出的元件已放回原格或掉在玩家脚下");
             if (!CellDriveScanner.insertCell(owner, driveSlot, taken)) {
                 getPlayer().drop(taken, false);
             }
-            notice(NOTICE + "inventory_full");
             return;
         }
         afterCellMoved(owner);
-        noticeWith(NOTICE + "took", taken.getHoverName().getString());
     }
 
     /**
@@ -592,12 +582,15 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         }
         var inventory = getPlayer().getInventory();
         if (inventorySlot < 0 || inventorySlot >= inventory.getContainerSize()) {
-            notice(NOTICE + "slot_changed");
+            // 客户端报来的格位在当前容器里不存在：多半是两次点击之间背包变了。玩家侧只看到"没反应"，
+            // 这条留给排障（与本类里找不到 owner 那条同一个口径）。
+            LOGGER.info("[cell-mgmt] 存入的源格位已失效（报来 {}，当前 {} 格），丢弃这次存入",
+                    inventorySlot, inventory.getContainerSize());
             return;
         }
         ItemStack source = inventory.getItem(inventorySlot);
         if (!CellDriveScanner.isStorageCell(source)) {
-            notice(NOTICE + "not_a_cell");
+            LOGGER.info("[cell-mgmt] 源格位里不是存储元件（{}），丢弃这次存入", source.getItem());
             return;
         }
         var grid = gridOrNull();
@@ -610,7 +603,6 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
             notice(NOTICE + "drive_gone");
             return;
         }
-        String name = source.getHoverName().getString();
         for (CellHostListPayload.CellSlot slot : slots) {
             if (!slot.stack().isEmpty()) {
                 continue;
@@ -626,10 +618,8 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
             inventory.setItem(inventorySlot, remaining.isEmpty() ? ItemStack.EMPTY : remaining);
             inventory.setChanged();
             afterCellMoved(owner);
-            noticeWith(NOTICE + "put", name);
             return;
         }
-        notice(NOTICE + "drive_full");
     }
 
     /**
@@ -659,13 +649,12 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
             return;
         }
         if (slots.stream().noneMatch(slot -> slot.stack().isEmpty())) {
-            notice(NOTICE + "drive_full");
             return;
         }
         var reason = new java.util.concurrent.atomic.AtomicReference<CellDriveScanner.ExtractResult>();
         ItemStack taken = CellDriveScanner.extractCell(source, hostSlot, reason);
         if (taken.isEmpty()) {
-            notice(NOTICE + takeFailureKey(reason.get()));
+            notifyTakeFailure(reason.get());
             return;
         }
         for (CellHostListPayload.CellSlot slot : slots) {
@@ -677,7 +666,6 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
                 continue;
             }
             afterCellMoved(source, owner);
-            noticeWith(NOTICE + "moved", taken.getHoverName().getString());
             return;
         }
         if (!CellDriveScanner.insertCell(source, hostSlot, taken)) {
@@ -701,7 +689,6 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         var encodeInv = host.getEncodeCellInventory();
         ItemStack cell = encodeInv.getStackInSlot(0);
         if (cell.isEmpty()) {
-            notice(NOTICE + "encode_empty");
             return;
         }
         var grid = gridOrNull();
@@ -725,10 +712,8 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
             encodeInv.setItemDirect(0, ItemStack.EMPTY);
             host.markForSave();
             afterCellMoved(owner);
-            noticeWith(NOTICE + "put", cell.getHoverName().getString());
             return;
         }
-        notice(NOTICE + "drive_full");
     }
 
     /**
@@ -1088,17 +1073,28 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
     }
 
     /**
-     * 取不到元件时该报哪一句。
+     * 取不到元件时该报哪一句；**真的空着时不出声**（AE2 原生点空格也是静默的），返回 {@code null}。
      *
-     * <p>三态分明：格里有东西但被锁住时说锁，格里有东西却不知为何没取走时照实说「取不出来」，只有真的空着
-     * 才说「没有元件」——最后这条区分是必要的，否则玩家会以为东西被吞了。</p>
+     * <p>两态出声：格里有东西但被锁住时说锁，格里有东西却不知为何没取走时照实说「取不出来」。</p>
      */
+    @Nullable
     private static String takeFailureKey(CellDriveScanner.ExtractResult result) {
         return switch (result) {
             case LOCKED -> "cell_locked";
             case REFUSED -> "cell_refused";
-            default -> "slot_empty";
+            default -> null;
         };
+    }
+
+    /** 取件失败的回执；没有话说时（点到空格）只留一条 debug 日志，不打扰玩家。 */
+    private void notifyTakeFailure(CellDriveScanner.ExtractResult result) {
+        var key = takeFailureKey(result);
+        if (key == null) {
+            // 正常误点也会走到这里（点到空格），所以是 debug：排障时能看出「两端视图不一致」这种异常。
+            LOGGER.debug("[cell-mgmt] 取件时目标格为空，客户端与服务端视图可能不一致");
+            return;
+        }
+        notice(NOTICE + key);
     }
 
     private void takeCellEncoded(String encoded) {

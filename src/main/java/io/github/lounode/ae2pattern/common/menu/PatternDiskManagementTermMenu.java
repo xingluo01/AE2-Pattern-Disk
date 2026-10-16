@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Map;
 
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -66,6 +68,8 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
             .create((id, ip, host) -> new PatternDiskManagementTermMenu(id, ip, host),
                     PatternDiskManagementTerminalPart.class)
             .buildUnregistered(ResourceLocation.parse("ae2_pattern_disk:pattern_disk_management_terminal"));
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(PatternDiskManagementTermMenu.class);
 
     /** 客户端侧：服务端推送的分组清单（Screen 每帧读）。 */
     private List<DiskHostListPayload.HostGroup> hostList = List.of();
@@ -152,19 +156,17 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
         // 只认光标上那张盘：这一条手势就是「把手上这张放进去」。
         var carried = getCarried();
         if (!(carried.getItem() instanceof PatternDiskItem)) {
-            notifyPlayer("gui.ae2_pattern_disk.management_terminal.disk_store.no_disk");
             return;
         }
 
         if (!tryInsertIntoHost(host, carried)) {
-            notifyPlayer("gui.ae2_pattern_disk.management_terminal.disk_store.no_room", describeHost(host));
             return;
         }
         setCarried(carried.isEmpty() ? ItemStack.EMPTY : carried);
         // 菜单光标的同步在 broadcastChanges 里（本仓其它修改光标的动作也都显式推一次），不然客户端会同时
         // 看到「容器里多一张」与「鼠标上还拿着那张」。
         broadcastChanges();
-        afterDiskStored(host);
+        afterDiskStored();
     }
 
     /**
@@ -193,23 +195,24 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
         var player = getPlayer();
         var inventory = player.getInventory();
         if (request.containerSlot < 0 || request.containerSlot >= inventory.getContainerSize()) {
-            notifyPlayer("gui.ae2_pattern_disk.management_terminal.disk_store.slot_changed");
+            // 列表里的格位在当前背包里不存在：多半是两次点击之间背包变了。玩家侧只看到「没反应」，留日志给排障。
+            LOGGER.info("[disk-store] 源格位已失效（报来 {}，当前 {} 格），丢弃这次存入",
+                    request.containerSlot, inventory.getContainerSize());
             return;
         }
         var source = inventory.getItem(request.containerSlot);
         if (!(source.getItem() instanceof PatternDiskItem)) {
-            notifyPlayer("gui.ae2_pattern_disk.management_terminal.disk_store.slot_changed");
+            LOGGER.info("[disk-store] 源格位里不是样板磁盘（{}），丢弃这次存入", source.getItem());
             return;
         }
 
         // 减源只由 tryInsertIntoHost 做一次（它按实际插入量减）；这里再减会多扣一张。
         if (!tryInsertIntoHost(host, source)) {
-            notifyPlayer("gui.ae2_pattern_disk.management_terminal.disk_store.no_room", describeHost(host));
             return;
         }
         // 背包那份是活的 Inventory 对象（不在槽位包自动同步的范围里），得主动推一次。
         broadcastChanges();
-        afterDiskStored(host);
+        afterDiskStored();
     }
 
     /**
@@ -231,15 +234,15 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
         return false;
     }
 
-    /** 存入成功后的收尾：重推清单（表、空槽数与盘内容同一拍更新）并报一声。 */
-    private void afterDiskStored(IPatternDiskHost host) {
+    /** 存入成功后的收尾：重推清单（表、空槽数与盘内容同一拍更新）。 */
+    private void afterDiskStored() {
         refreshDiskList(); // 不等下一次扫描
-        notifyPlayer("gui.ae2_pattern_disk.management_terminal.disk_store.ok", describeHost(host));
     }
 
     /**
-     * 回执。全部走聊天栏：失败要说清原因，而成功那几条（Shift+左键连点、存盘）玩家也需要事后对得上账，
-     * 动作栏三秒就没、连点还会互相盖掉。
+     * 回执：只留给玩家事后需要对照的失败（选中的容器已不在网上、那张盘已经不在了）。
+     *
+     * <p>全部走聊天栏而不用动作栏：这些是回头要对账的，动作栏三秒就没、连点还会互相盖掉。</p>
      */
     private void notifyPlayer(String key, Object... args) {
         // 一句话一个开关，在 common 配置里：这些消息由服务端当场发出去，客户端配置拦不住，
@@ -624,16 +627,7 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
         return host instanceof PatternContainer container ? container.getTerminalGroup() : null;
     }
 
-    /**
-     * 回执里用的写法：显示名 + 坐标。表格里不写坐标（同名容器已合成一行，坐标反而打架），但聊天栏里需要它——
-     * 同名机器存进了哪一台，看坐标才知道。
-     */
-    private String describeHost(IPatternDiskHost host) {
-        var pos = host.getBlockPos();
-        return displayNameOf(host) + " (" + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + ")";
-    }
-
-    /** 一组同名宿主里挑一台还能收下盘的；都满了就给第一台（让「没有空的磁盘槽了」照旧能报出来）。 */
+    /** 一组同名宿主里挑一台还能收下盘的；都满了就给第一台。 */
     private static IPatternDiskHost hostWithFreeSlot(List<IPatternDiskHost> hosts) {
         for (var host : hosts) {
             if (countEmptySlots(host) > 0) {

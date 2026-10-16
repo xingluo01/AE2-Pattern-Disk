@@ -157,57 +157,23 @@ public final class AEPDConfig {
         // ---- 元件管理终端：表格手势的回执与拒绝原因 ----
         // 服务端只发「键 + 参数」，显示与否在这里定（CellNoticePayload.handleOnClient）。
         builder.comment("Cell management terminal - feedback for the table gestures, shown in the chat.");
-        MESSAGES.define(builder, "cell_management_terminal.notice.encode_busy",
-                "Shown when you move a cell into the encoding slot while another cell is already there.");
         MESSAGES.define(builder, "cell_management_terminal.notice.cell_locked",
                 "Shown when taking a cell out fails because the storage host locks it (an ECO infinite drive, for example).");
         MESSAGES.define(builder, "cell_management_terminal.notice.cell_refused",
                 "Shown when the slot holds something but the storage host refuses to hand it over.");
-        MESSAGES.define(builder, "cell_management_terminal.notice.slot_empty",
-                "Shown when taking a cell out of a slot that really is empty.");
-        MESSAGES.define(builder, "cell_management_terminal.notice.moved_to_encode",
-                "Shown after a cell was moved into the encoding slot.");
-        MESSAGES.define(builder, "cell_management_terminal.notice.carried_not_empty",
-                "Shown when taking a cell while your cursor already holds something.");
-        MESSAGES.define(builder, "cell_management_terminal.notice.took",
-                "Shown after a cell was taken out into your cursor.");
-        MESSAGES.define(builder, "cell_management_terminal.notice.nothing_carried",
-                "Shown when putting a cell while your cursor is empty.");
         MESSAGES.define(builder, "cell_management_terminal.notice.cell_rejected",
                 "Shown when the storage host you picked does not accept that cell.");
-        MESSAGES.define(builder, "cell_management_terminal.notice.put",
-                "Shown after a cell was stored into a drive or into the encoding slot.");
-        MESSAGES.define(builder, "cell_management_terminal.notice.inventory_full",
-                "Shown when a quick move of a cell fails because your inventory is full.");
-        MESSAGES.define(builder, "cell_management_terminal.notice.slot_changed",
-                "Shown when the target slot moved before the action ran.");
-        MESSAGES.define(builder, "cell_management_terminal.notice.not_a_cell",
-                "Shown when the item on your cursor is not a storage cell.");
         MESSAGES.define(builder, "cell_management_terminal.notice.grid_offline",
                 "Shown when the terminal's grid is offline (or the drive's owner could not be resolved).");
         MESSAGES.define(builder, "cell_management_terminal.notice.drive_gone",
                 "Shown when the selected drive is gone or was broken.");
-        MESSAGES.define(builder, "cell_management_terminal.notice.drive_full",
-                "Shown when the selected drive has no free cell slot.");
-        MESSAGES.define(builder, "cell_management_terminal.notice.moved",
-                "Shown after a cell was moved into the selected drive.");
         MESSAGES.define(builder, "cell_management_terminal.notice.move_failed",
                 "Shown when putting the cell back after a failed move did not work either.");
-        MESSAGES.define(builder, "cell_management_terminal.notice.encode_empty",
-                "Shown when storing the encoding slot's cell while that slot is empty.");
         MESSAGES.define(builder, "cell_management_terminal.notice.priority_unsupported",
                 "Shown when opening AE2's priority GUI is not supported for the current selection.");
-        MESSAGES.define(builder, "cell_management_terminal.notice.select_first",
-                "Shown when Shift+clicking a cell from your inventory without a drive selected.");
-        MESSAGES.define(builder, "cell_management_terminal.drive_pinned",
-                "Shown when you pin a drive (it is then drawn in the world).");
-        MESSAGES.define(builder, "cell_management_terminal.drive_unpinned",
-                "Shown when you unpin a drive.");
 
         // ---- 样板磁盘管理终端：客户端预检 ----
         builder.comment("Pattern disk management terminal - the client-side pre-check.");
-        MESSAGES.define(builder, "management_terminal.disk_store.select_first",
-                "Shown when Shift+clicking a disk from your inventory without a container selected.");
 
         // ---- 编码终端：客户端预检 ----
         builder.comment("Pattern encoding terminal - the client-side pre-check.");

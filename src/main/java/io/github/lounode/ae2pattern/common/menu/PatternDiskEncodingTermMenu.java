@@ -513,7 +513,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         if (candidate == null) {
             // 不在这里发提示：编不出来不等于什么都没发生——编码槽里停着一枚写好的样板时，下面会把它
             // 顺位写进唯一的目标盘（与合成/锻造/切石同款），那时再发「需要先选候选」就成了自相矛盾的两句。
-            // 提示统一由 encode() 在确实什么都没写之后发（见 notifyExtraTierNeedsInput）。
+            // 提示统一由 encode() 在确实什么都没写之后处理；现在这一类不再出声。
             return null;
         }
         return ChiselingRecipes.encode(input.getItem(), candidate.output());
@@ -526,7 +526,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
      * 来」），而源快照要从一个 ItemStack 取。面板与档位、存储都已就位，就差这一步接线——需要
      * {@code compileOnly} 上 AE2LT 才能在隔离包里调它的 Builder API（照 Rechiseled 那套）。
      * 在那之前这里返回 null，等于「编不出来」，{@code encode()} 会经
-     * {@code notifyExtraTierNeedsInput()} 给一句提示（不是默默无反应）。</p>
+     * 这几点不再单独出声（对应档位的空转在 AE2 原生里同样静默）。</p>
      */
     @Nullable
     private ItemStack encodeOverloadedPattern() {
@@ -617,32 +617,10 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
                     if (transferToFirstWritable(autoDisks) && autoDisks.length == 1) {
                         bindMarkIfUnmarked(autoDisks[0]);
                     }
-                } else {
-                    notifyExtraTierNeedsInput();
                 }
                 return;
             }
-            notifyExtraTierNeedsInput();
             clearPattern();
-        }
-    }
-
-    /**
-     * 额外档无从下笔时给一句提示。常规四档静默——那几档「网格里没东西可编」是正常状态，不必报告。
-     *
-     * <p>只在本轮确实什么都没写时调：编码槽里停着写好的样板且找到了唯一目标时，样板会被顺位写进盘，
-     * 那时再说「需要选目标」就与写盘回执自相矛盾了。</p>
-     *
-     * <p>过载档也要说话：它的编码路径要 AE2LT 在场且那张样板它解得开，任一条不成立时就是这里提示。
-     * （AE2LT 缺席时这一档根本不会出现，所以这条提示实际上只在「样板解不开」与「没摊出行」时出现。）</p>
-     */
-    private void notifyExtraTierNeedsInput() {
-        if (this.chiselingMode) {
-            tell("gui.ae2_pattern_disk.encoding_terminal.chiseling_needs_target");
-            return;
-        }
-        if (this.overloadedMode) {
-            tell("gui.ae2_pattern_disk.encoding_terminal.overloaded_needs_input");
         }
     }
 
@@ -877,7 +855,6 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
                 // 样板已存入磁盘：编码槽清空，原编码样板回退为空白样板并按 ME网络→玩家背包→编码槽 优先级落位
                 this.encodedPatternSlot.set(ItemStack.EMPTY);
                 returnBlankPatternToStorage();
-                notifyPatternWritten(stack.getHoverName());
                 return true;
             }
             if (refusedName == null) {
@@ -957,7 +934,6 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         if (request.index == WHOLE_DISK) {
             // 编辑槽只收样板，整张磁盘不进它（客户端不会这么请，防的是改造过的客户端）。
             if (request.target == ExtractTarget.ENCODED_SLOT || !hasRoomFor(request.target)) {
-                notifyNoRoom(request.target);
                 return;
             }
             inv.setItemDirect(ref.slot(), ItemStack.EMPTY);
@@ -976,7 +952,6 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
             return;
         }
         if (!hasRoomFor(request.target)) {
-            notifyNoRoom(request.target);
             return;
         }
         if (!consumeNetworkBlankPattern()) {
@@ -1016,28 +991,9 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         broadcastChanges();
     }
 
-    /** 落点满/被占时说明一句，否则玩家只看到点了没反应。 */
-    private void notifyNoRoom(ExtractTarget target) {
-        tell("gui.ae2_pattern_disk.encoding_terminal.no_room."
-                + target.name().toLowerCase(java.util.Locale.ROOT));
-    }
-
-    /** 盘里那张样板的序号已经无效（内容刚变过）时说明一句：不是落点问题，也不是网络缺料。 */
+    /** 盘里那张样板的序号已经无效（内容刚变过）时记一条：不是落点问题，也不是网络缺料。 */
     private void notifyContentChanged() {
-        tell("gui.ae2_pattern_disk.encoding_terminal.content_changed");
-    }
-
-    /** 样板写进磁盘后给个回执，免得玩家不确定刚才那一下到底落没落盘。 */
-    private void notifyPatternWritten(Component diskName) {
-        tell("gui.ae2_pattern_disk.encoding_terminal.written_to_disk", diskName);
-    }
-
-    /**
-     * 标记写入回执。与上传链路（{@link #notifyPatternWritten(Component)}）同一路：服务端发言、落在聊天栏——
-     * 玩家看到的是「这一次右键到底写没写成」，而不用去磁盘提示里猜。
-     */
-    private void notifyMarkWritten(Component diskName) {
-        tell("gui.ae2_pattern_disk.encoding_terminal.mark_written", diskName);
+        LOGGER.info("[encoding] 客户端列表滞后：盘里的样板序号已失效，丢弃这次取样板");
     }
 
     /**
@@ -1101,22 +1057,6 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         }
     }
 
-    /** 没写成的回执：光标上有东西就说清是哪件认不出来，光标为空则只说没有可用的类别。 */
-    private void notifyMarkNotWritten() {
-        // 这一层早退不是多余的：光标只在服务端读（客户端手里的菜单没有收发那一线），
-        // 先退就不用在客户端白读一次光标（tell 里那层 instanceof 是给其它调用点用的）。
-        if (!(getPlayer() instanceof ServerPlayer)) {
-            return;
-        }
-        // 光标上拿的是哪件，服务端自己有（菜单的光标槽是同步的），不必让客户端报一遍。口径必须与客户端一致：
-        // 两边都只看光标，主手/副手不算。
-        var held = getCarried();
-        if (held.isEmpty()) {
-            tell("gui.ae2_pattern_disk.encoding_terminal.mark_skipped");
-        } else {
-            tell("gui.ae2_pattern_disk.encoding_terminal.mark_unidentified", held.getHoverName());
-        }
-    }
 
     /**
      * Binds the current recipe type to the disk identified by serial, as a mark in the disk's
@@ -1146,22 +1086,19 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         if (existing != null && !existing.isEmpty()) {
             return;
         }
-        bindPrefix(serial, false, uploadMark());
+        bindPrefix(serial, uploadMark());
     }
 
     public void bindPrefix(long serial) {
-        bindPrefix(serial, true, null);
+        bindPrefix(serial, null);
     }
 
     /**
-     * @param announceSkip 类别缺失、写不出标记时，是否在聊天栏说一句。玩家右键打标要说——他明确是冲着标记来的；
-     *                     而编码后的顺手绑盘不说：那一刻已经在写盘路径上回执过成败，再补一句「标记未写入」
-     *                     会被读成写盘失败。
      * @param markOverride 非 null 时直接用它当作要写的标记、跳过 {@link #deriveMarkId()}。编码上传路径用它
      *                     给雕凿档指定固定标记（雕凿不在 {@link EncodingMode} 里、也不对应任何配方类别）；
      *                     右键打标那条手势传 null，沿用「光标上工作方块的类别 / 当前模式」那一套。
      */
-    private void bindPrefix(long serial, boolean announceSkip, @Nullable String markOverride) {
+    private void bindPrefix(long serial, @Nullable String markOverride) {
         if (isClientSide()) {
             // The mark depends on the imported recipe's category, which only the client knows, so it travels
             // as its own action just ahead of the bind.
@@ -1196,9 +1133,6 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         // 带着 markOverride 进来时不适用这条：雕凿的标记本来就是固定的，不需要「导入过类别」这个前提。
         if (markOverride == null && (pendingRecipeCategory == null || pendingRecipeCategory.isEmpty())) {
             LOGGER.info("Bind skipped for disk {}: nothing on the cursor and nothing imported", serial);
-            if (announceSkip) {
-                notifyMarkNotWritten();
-            }
             return;
         }
 
@@ -1208,7 +1142,6 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         var updated = stack.copy();
         updated.set(AEPatternRegistries.DISK_PREFIX, mark);
         writeDiskSlot(inv, ref.slot(), updated);
-        notifyMarkWritten(stack.getHoverName());
     }
 
     /**
@@ -1217,7 +1150,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
      *
      * <p>{@code #mode:} 那一支在绑盘链路上通常出不来：{@link #bindPrefix(long)} 会先判掉空的类别。例外是
      * 编码上传路径（{@link #uploadMark()}）——雕凿不在 {@link EncodingMode} 里、也没有配方类别，它带着
-     * 一个固定标记进 {@link #bindPrefix(long, boolean, String)}，绕过了那个判断。要刻意给磁盘打模式标记
+     * 一个固定标记进 {@link #bindPrefix(long, String)}，绕过了那个判断。要刻意给磁盘打模式标记
      * 还可以走 Shift+右键（{@link #bindSearchMark(long)}，它把搜索栏文本原样存下）。</p>
      *
      * <p>两套写法看起来是两种标记，但显示与搜索会把模式标记归一成对应的类别（见
@@ -2342,9 +2275,8 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         var isPlainProcessing = details instanceof AEProcessingPattern;
         var isAdvanced = AdvPatternSupport.isEditable(details);
         if (!isPlainProcessing && !isAdvanced) {
-            // 输出栏里没有可编辑的处理样板：停在空面板上，并说清楚为什么。
-            // 不回滚模式：玩家常常是先切进来、再往输出栏放样板；但一个空档配一句沉默很容易被当成坏了。
-            tell("gui.ae2_pattern_disk.encoding_terminal.advanced_needs_pattern");
+            // 输出栏里没有可编辑的处理样板：停在空面板上。
+            // 不回滚模式：玩家常常是先切进来、再往输出栏放样板。
             return;
         }
         // 输入从样板的「实际材料表」读，而不是从 getInputs()：后者给的是每格的候选模板，倍数与替代品都在
