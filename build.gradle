@@ -611,8 +611,13 @@ modrinth {
     changelog = System.getenv('MODRINTH_CHANGELOG') ?: 'See the GitHub release notes.'
     // minotaur 不会从 mod 元数据推断依赖，必须显式声明，否则 CI 发布的版本会丢掉这条；
     // 手工发布时是单独 PATCH 上去的。
+    // 第二条是 AE2WTLib（Modrinth 与 CF 的 slug 恰好相同：`applied-energistics-2-wireless-terminals`；
+    // Modrinth id `pNabrMMw`、CF 项目 459929）：它同样是**必需前置**——mods.toml 里
+    // `type="required"` / `[19.5.0,)`，两个无线终端（元件管理、样板磁盘）建在它的终端 API 上，
+    // 玩家的整合包里缺它整个模组不会加载。平台侧只能声明「必需」，版本地板由 jar 内的 mods.toml 卡。
     dependencies {
         required.project 'ae2'
+        required.project 'applied-energistics-2-wireless-terminals'
     }
     // debugMode = true
 }

@@ -180,9 +180,15 @@ jobs:
           # 注意 Eternal API（api.curseforge.com）的编号是另一套（1.21.1 = 89/12735），
           # 用错会报 invalid dependency。
           game_versions: '11779,10150,9638,9639'
-          # CF 侧的依赖关系：AE2 在 CF 的 slug（该 Action 只发 slug；CF 文档里数字 id 属可选
-          # 的 projectID 字段，写进 slug 位可能解析不到）。不在 CI 里声明的话，玩家在 CF 页看不到“需要 AE2”。
-          relations: 'applied-energistics-2:requiredDependency'
+          # CF 侧的依赖关系：两条都用 CF 的 slug（该 Action 只发 slug；CF 文档里数字 id 属可选
+          # 的 projectID 字段，写进 slug 位可能解析不到）。不在 CI 里声明的话，玩家在 CF 页看不到“需要 AE2 / 需要 AE2WTLib”。
+          # 用逗号分隔、**不加空格**：Action 按逗号切分后直接查表、**全程不 trim**，带空格的 slug 会被当另一个 slug、静默丢弃。
+          # 两平台的失败可见性不对称：CF 这边匹不上只静默丢（不报错），而 Modrinth 那边 slug 解析不到会直接让任务失败。
+          # AE2WTLib 是**必需前置**（mods.toml 里 `type="required"` / `[19.5.0,)`：两个无线终端建在它的终端
+          # API 上），所以与 AE2 并列声明成 requiredDependency。
+          # 注意 slug 要写**现代**那份的 `applied-energistics-2-wireless-terminals`（Mari_023，CF 项目 459929，
+          # 1.21.1 NeoForge），不是同名的老项目 `ae2wtlib`（p455w0rd，只出到 1.12.2）——写错会静默解析失败。
+          relations: 'applied-energistics-2:requiredDependency,applied-energistics-2-wireless-terminals:requiredDependency'
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v3

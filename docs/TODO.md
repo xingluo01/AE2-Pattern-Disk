@@ -334,7 +334,7 @@ P0 不应新造范式，同文件里已有两处“每 tick 限量”的先例�
   - `fail_on_unmatched_files: true`：未触发（产物名与 `-Pmod_version=0.2.3` 匹配，证明该保护不误杀正常产物）
   - **itsmeow 步骤实际表现已核实**：仍输出 `##[warning]Node.js 20 is deprecated … forced to run on Node.js 24: itsmeow/curseforge-upload@v3.1.2`，**上传功能正常** → 与 9/23 时间线判断一致（属「声明不受支持」，非「不可用」）
   - 观察（非阻塞）：minotaur 的 `:modrinth` 任务在配置缓存下报 `invocation of 'Task.project' at execution time is unsupported`（`Configuration cache entry discarded with 5 problems`），但 BUILD SUCCESSFUL、发布正常；若日后 Gradle 收紧，可加 `--no-configuration-cache` 或升级 minotaur
-  - 网页侧仍待人工（API 改不了）：Modrinth/CF 项目正文补一句「代码 LGPL-3.0，批处理装配室方块纹理与模型为作者自有 ARR」；Dependencies 标 AE2 required、Client/Server 环境标记、gallery 截图
+  - 网页侧仍待人工（API 改不了）：Modrinth/CF 项目正文补一句「代码 LGPL-3.0，批处理装配室方块纹理与模型为作者自有 ARR」；Client/Server 环境标记、gallery 截图。（**Dependencies 那项不在此列**：自 `release.yml` 加上 `relations:` 起已由 CI 自动声明，见下方 itsmeow 那段。）
 - **CF 双 API 混用（踩坑记录，缺一不可）**：
   - **上传**走传统接口 `POST https://minecraft.curseforge.com/api/projects/{数字id}/upload-file`，header `X-Api-Token`
     - token 是**网站账户 token**（UUID 形式，在 `curseforge.com/account/api-tokens` 生成）——不是 console 的 API key
@@ -348,9 +348,13 @@ P0 不应新造范式，同文件里已有两处“每 tick 限量”的先例�
       Eternal 那边的 1.21.1 是 89/12735 等，传进去会被拒为 invalid dependency）
 - **itsmeow/curseforge-upload（CI 用的 Action）行为**：`game_versions` 接受名称/slug，但只查表转 id，
   **不会自动补环境组**、**匹配不到会静默丢弃** → CI 里已改为直接写数字 id（`release.yml`）。
-  另已加 `relations: 'applied-energistics-2:requiredDependency'`（用 CF 的项目 slug：该 Action 只发 slug，
-  CF 文档里数字 id 属可选的 projectID 字段），让 CF 页也标出“需要 AE2”；
-  0.2.0 那份手工上传的文件没有这条，下一个版本的 CI 会带上。
+  另已加 `relations:` 让 CF 页也标出前置（用 CF 的项目 slug：该 Action 只发 slug，CF 文档里数字 id 属可选的
+  projectID 字段）：2026-10 起为 `'applied-energistics-2:requiredDependency,applied-energistics-2-wireless-terminals:requiredDependency'`
+  ——第二条是 AE2WTLib（必需前置，缺它整个模组不加载）；slug 用**现代**那份 `applied-energistics-2-wireless-terminals`
+  （Mari_023，CF 项目 459929），不是同名的老项目 `ae2wtlib`（p455w0rd，只到 1.12.2）。
+  Modrinth 侧同批加在 `build.gradle` 的 `modrinth { dependencies { required.project … } }`。
+  **待发布后核对（未验证过）**：CF 文件页 Relations 是否真出现这两条、Modrinth `GET /v2/version/{id}` 的
+  `dependencies` 里是否出现 `pNabrMMw` + `required`。0.2.0 那份手工上传的文件没有这些条，由下一个版本的 CI 带上。
 - 变量/密钥已全部配齐：vars `MODRINTH_PROJECT_ID` / `CURSEFORGE_PROJECT_ID` / `NEOECOAE_JAR_URL` / `MODDEVMCP_JAR_URL`；
   secrets `MODRINTH_TOKEN` / `CURSEFORGE_TOKEN`
 - **CI 待验证**：`mod_version` 已上调 `0.2.1`（0.2.0 在两平台都已存在，重推旧 tag 会失败）；推 `v0.2.1` 即可整链路验证
@@ -393,7 +397,7 @@ P0 不应新造范式，同文件里已有两处“每 tick 限量”的先例�
   - **时间线基线**：GitHub 自 **2026-06-16** 起让 runner 默认跑 Node24（node20 声明被自动迁移执行），
     **2026-09-23** 才是“移除 Node20 / opt-out 失效”。v0.2.1（9/16）已带着该 action 成功跑过一次
     ⇒ 它在 Node24 下**已实测可用**；9/23 的风险是“声明不受支持”而非“首次不可用”，下次发版核对即可。
-- 网页侧待办（API 改不了，需人工）：项目 Dependencies 标 AE2 为 required、Client/Server 环境标记（现为 unknown）、gallery 截图
+- 网页侧待办（API 改不了，需人工）：Client/Server 环境标记（现为 unknown）、gallery 截图（Dependencies 已由 `relations:` 自动声明，不在此列）
 - 依赖项对照：AE2 = `ae2`（id `XxWD5pD3`）、GuideME = `guideme`（id `Ck4E7v7R`）
 - 发版注意：首次建议先开 `build.gradle` 的 `debugMode = true` 干跑 Modrinth 再发正式版；重跑同一 tag 时 Modrinth 会因版本号已存在失败、CurseForge 不去重会再传一份，中断后优先改版本号重发
 - **CHANGELOG 未发布段需发版前改名**：`## [未发布]` 必须在发版前改成 `## [<版本号>] - <日期>`——CI 的 `awk` 是按 `[版本号]` 匹配取段的，取不到会静默回退成 commit log 拼接，发布说明会变成一堆提交标题。
