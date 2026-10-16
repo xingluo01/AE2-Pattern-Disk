@@ -39,6 +39,8 @@ categories:
 
 ## 合成配方
 
-<RecipesFor id="ae2_pattern_disk:meteorite_pattern_provider" />
+<Recipe id="ae2_pattern_disk:meteorite_pattern_provider" fallbackText="需要 AE2 Crystal Science。" />
 
-<RecipeFor id="ae2_pattern_disk:cable_meteorite_pattern_provider" />
+<Recipe id="ae2_pattern_disk:cable_meteorite_pattern_provider_to_block" fallbackText="" />
+
+<Recipe id="ae2_pattern_disk:meteorite_pattern_provider_to_cable" fallbackText="" />
