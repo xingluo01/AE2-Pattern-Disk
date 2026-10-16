@@ -424,4 +424,16 @@ P0 不应新造范式，同文件里已有两处“每 tick 限量”的先例�
   - 页首那两张图**保持 `<BlockImage>`/`<ItemImage>` 不动**（2026-10 定案：接受缺 AE2CS 时的这两个错误块，不做静态图、也不改指向其他物品的图）：本线（`gradle/libs.versions.toml` 锁 `guideme = 21.1.15`，1.21.1 线最新 v21.1.19 的 `ItemLinkCompiler` 与它**是同一个文件 blob**）的 `ItemLinkCompiler` **只读 `id`**，没有 `fallback`/`optional`（那是 26.3 线才有的），而 `<ItemImage>`/`<BlockImage>` 同样走 `MdxAttrs.getRequired*`、也没有降级属性 ⟹「缺 AE2CS 的人打开该页会看到 `Missing block/item` 错误块」这件事在本线**没有不新增资源的解法**。中途试过的 `<ItemLink … fallback=…>` 在本线不但无效，还会因为 `item_ids` 已删而让装了 AE2CS 的人**反倒多出** `No page found for item`，已回退。
   - 同页还有一处**既存**的同类写法：`<ItemLink id="ae2cs:overload_card" …>`（zh `:32` 写 `fallback="陨石超频卡"`、en `:39` 写 `fallback="Overload Card"`）——本线的 `fallback` 不生效，缺 AE2CS 时该行会报 `Missing item`。同属本线能力所限，本次未动。
   - 已知局限（未改配方）：配方的退出判据是 **mod 级** `neoforge:mod_loaded: ae2cs`，不保证玩家所装 AE2CS 里 `ae2cs:meteorite_pattern_provider` 这个**物品 id** 存在（本项目对 AE2CS 是 optional、未声明版本下限）；真出现「模组在、该 id 不在」的版本时，`recipe/meteorite_pattern_provider.json` 会在**数据加载期**因未知物品报日志（`fallbackText` 只管渲染期）。对照：代码侧同类情形已优雅降级（`AecsSoftDep.overloadCard()` 查不到卡就什么都不做）。要护栏得自定义一个「物品存在」条件，代价大于收益，暂不做。
+
+### Q. 元件管理终端「离线仍可操作」审计 — ✅（2026-10 记录）
+- 三种「离线」里，**超距 / 未链接 / 接入点所在网络断电**原本就拦得住（`getActionableNode()` 只认接入点，而接入点挑选要求 `wap.isActive()`）；漏的是另两种**节点还在、但此刻不该动网**的情形：
+  - 无线终端**自己电量耗尽**（仍在接入点范围内）：`currentAccessPoint` 只看距离、不看终端电量 ⟹ `getGridNode()` 非空；
+  - 面板终端所在网络**未通电 / 缺信道**：`AEBasePart.getActionableNode()` = `mainNode.getNode()` 恒非空。
+  两者都会让取放元件、开优先级界面、改优先级与列表同步照旧进行，而界面此时已铺了离线遮罩（`AbstractPatternDiskTermScreen` 用 `getMenu().getLinkStatus()`）——遮罩与实际可操作性对不上，这就是“离线仍可调节”的来源。
+- 修法：`CellManagementTermMenu.gridOrNull()` 前置 `if (!canInteractWithGrid()) return null;`。判据换成 AE2 自家网络交互用的那一条（`MEStorageMenu.canInteractWithGrid()` = `getLinkStatus().connected()`，AE2 的物品网格在 `:382/:407/:674` 正是这么判）；一处改动覆盖本菜单全部网络动作与 `syncDriveList`。同时把该提示的措辞从「先把它接进网络」改成覆盖这三种情形（没接进网络 / 终端没电 / 网络未通电）。
+  - **判据边界（按实际覆盖范围写）**：面板那条 = `ILinkStatus.ofManagedNode(mainNode)` → `node.isOnline()` = `isPowered() && meetsChannelRequirements()`，**不含「网格正在 booting」**（AE2 在 `IGridNode.isOnline()` 上明写有意忽略 booting）⟹ 「网络未启动」这一档不在我们手上，booting 期拦不拦得住未确认；要覆盖它得上 `isActive()`，但那会与界面的离线遮罩（读同一个 linkStatus，同样忽略 booting）脱钩，变成「遮罩说在线却动不了」，取舍是先不追。
+  - **已知例外**：带量子桥卡且桥有效时 `WTMenuHost.getLinkStatus()` 报 connected（`WTMenuHost:110-123`，`Status.Valid → ofConnected`），我们的闸随之放行——与 AE2WTLib 自家的闸同源（其 `CraftingTerminalHandler` 也用 `getLinkStatus().connected()`），改严会与遮罩不一致，故保留。
+- **未修（另行记录）**：
+  1. 样板磁盘管理终端继承编码终端菜单，扫描/分组的守卫（`getGrid()` 里的 `node.isActive()`）比本终端严；但 `insertDisk` / `storeInventoryDisk` 用的是缓存 `hostsByName`，动作内**没有在线判据** ⟹ 离线时仍能对旧宿主下手。
+  2. 本仓两个终端的在线判据至今不统一：编码/管理终端用 `node.isActive()`（覆盖断电，不覆盖无线电量），元件管理终端现在用 `canInteractWithGrid()`（两者都覆盖）。要不要统一到后者，等排期。
 - 顺带改正一处文档与实现不符（**非本次改动引入**，已在上面 M 条目改正）：那里原写「五个贴图变量**全部**改指本项目自己的文件…不再引用 `ae2:`/`ae2cs:` 贴图」，实际 `models/part/meteorite_pattern_provider_base.json` 的 `particle`/`back` 与 `models/item/cable_meteorite_pattern_provider.json` 的 `back`/`front` **共 4 处仍指向 `ae2cs:block/meteorite_pattern_provider/{back,base}`**（缺 AE2CS 时不渲染、不出日志；将来上游若给缺失贴图加告警，这 4 处会开始刷行）。

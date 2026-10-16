@@ -731,8 +731,20 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         notice(NOTICE + "drive_full");
     }
 
-    /** 终端所在的那张网；没连上时返回 null。 */
+    /**
+     * 终端所在的那张网；**现在连不上时返回 null**（动作与列表同步共用这一道门）。
+     *
+     * <p>判据取 AE2 自家网络交互的那一条 {@code canInteractWithGrid()}（= 宿主给的 link status 是否 connected），
+     * 而不是只看节点在不在：<b>无线终端电量耗尽</b>（仍在接入点范围内）与 <b>面板终端所在网络未通电/未启动</b>
+     * 这两种情况下，节点都在、{@code getActionableNode()} 也不为空，但此刻对网络的一切读写都该被拦住——
+     * AE2 的物品网格同一时刻用的就是这条判据（{@code MEStorageMenu} 里三处 {@code canInteractWithGrid}）。</p>
+     */
+    @Nullable
     private appeng.api.networking.IGrid gridOrNull() {
+        // 断链（超距 / 未链接 / 终端没电 / 网络未通电）时不分动作与列表同步，一律当作没有网。
+        if (!canInteractWithGrid()) {
+            return null;
+        }
         var gridNode = getGridNode();
         return gridNode != null ? gridNode.getGrid() : null;
     }
