@@ -308,4 +308,12 @@ node tools/check-screen-widgets.cjs .
 
 它核**本仓这 14 个屏幕/面板类里按 id 取控件与贴图的调用**（`widgets.add*("id")`、`style.getWidget` / `style.getImage`、`addOpenPriorityButton()`）是否已在对应文档里声明；`widgets.*` 与 `images.*` 两个键空间都查，动态拼接的 id（`modePanel0..3`）按「从 0 起连续编号」判定。退出码 0 = 全部已声明，1 = 有未声明，**2 = AE2 公共段落未取到、部分项无法判定——2 不算通过**。没登记映射的屏幕类会被指出来，不静默放过。
 
+**改聊天栏消息**：一条消息有三处落点——发它的代码（`tell` / `notice` / `showLocalNotice` / `displayClientMessage`）、配置里那一个开关（客户端表在 `AEPDConfig`、服务端表在 `AEPDCommonConfig`）、两语 lang 的三个键（消息本体 + 配置标签 + 同键 `.tooltip`）。删一条就三处一起删；漏掉发出点最麻烦——`Component.translatable` 查不到键不报错，玩家会在聊天栏看到键原文串，而 `compileJava` 毫无反应。改完跑一遍：
+
+```bash
+node tools/check-chat-message-keys.cjs .
+```
+
+它核**代码里发出的每个消息键是否都在两语 lang 里**（含 `NOTICE + "后缀"` 那种只写后缀的写法）、**每条开关是否配齐三处键**、两语键集是否相等；动态拼接的前缀（`void_mode.`、`disk_refused.`）按「至少有一个键兜底」判定。退出码 0 = 全部对齐，1 = 有键对不上，**2 = 没找到 lang / 源码目录，或语言文件不是合法 JSON，这次没核完——2 不算通过**。它的盲区写在脚本头部：`notice(NOTICE + 变量)` 这种**运行时才拼出的键它看不见**（上一轮踩的 `…notice.null` 正属此类，当时是靠字面痕迹才被拦住）、动态前缀只判「至少一个兜底」而不逐个后缀核、lang 孤儿键与屏幕样式 JSON 里 `"translate"` 引用的 GUI 文案键都不看——**通过只说明字面键对齐，不等于这类 bug 绝迹**。
+
 **动 API**：`api/package-info.java` 写明这个包是稳定面。改签名等于破坏第三方兼容，改之前先在 `../CHANGELOG.md` 记一笔。

@@ -301,12 +301,10 @@ public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen
         });
         addToLeftToolbar(this.naturalSortButton.widget());
 
-        // 编码/保存按钮
-        // 编码/保存按钮：网络里没有空白样板就不必白跑一趟服务端，直接说清楚原因。
+        // 编码/保存按钮：网络里没有空白样板就不必白跑一趟服务端（AE2 原生的编码终端此时也是静默的）。
         var encodeBtn = new ActionButton(appeng.api.config.ActionItems.ENCODE, act -> {
             if (!menu.canEncode()) {
-                // 本地预检：网络里没有空白样板就不白跑一趟服务端。开关走客户端的消息总闸。
-                showLocalNotice("gui.ae2_pattern_disk.encoding_terminal.no_blank_pattern");
+                // 本地预检：不白跑一趟服务端。不出声——AE2 原生在没空白样板时也是直接 return。
                 return;
             }
             menu.encode();

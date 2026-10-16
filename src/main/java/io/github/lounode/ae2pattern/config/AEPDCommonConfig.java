@@ -27,9 +27,6 @@ public final class AEPDCommonConfig {
         ChatMessageSwitches.section(builder, "chat_messages.cell_management_terminal.notice");
         ChatMessageSwitches.section(builder, "chat_messages.encoding_terminal");
         ChatMessageSwitches.section(builder, "chat_messages.encoding_terminal.disk_refused");
-        ChatMessageSwitches.section(builder, "chat_messages.encoding_terminal.no_room");
-        ChatMessageSwitches.section(builder, "chat_messages.management_terminal");
-        ChatMessageSwitches.section(builder, "chat_messages.management_terminal.disk_store");
         ChatMessageSwitches.section(builder, "chat_messages.pattern_disk_provider");
 
         builder.comment(
@@ -44,16 +41,12 @@ public final class AEPDCommonConfig {
                 "refusal reasons, not part of the flow.",
                 "",
                 "NOTE: messages this mod shows on the client instead (the client-side pre-checks) live",
-                "in ae2_pattern_disk-client.toml, not here. A couple of conditions report themselves on",
-                "both sides - 'no_blank_pattern' is one - and each side has its own switch, so to stop",
-                "seeing them everywhere turn off both.",
+                "in ae2_pattern_disk-client.toml, not here.",
                 "",
                 "Changes take effect on the next message; no restart needed.");
 
         // ---- 编码终端：编码/写盘/取样板/打标记时的回执与拒绝原因（PatternDiskEncodingTermMenu 的 tell） ----
         builder.comment("Pattern encoding terminal - why an encode / write / extract did not happen, and receipts.");
-        MESSAGES.define(builder, "encoding_terminal.no_blank_pattern",
-                "Shown when the ME network has no blank patterns to encode into (the server-side refusal; the client also pre-checks this condition with its own switch in the client config).");
         MESSAGES.define(builder, "encoding_terminal.disk_refused.full",
                 "Shown when the target disk has no room for another pattern.");
         MESSAGES.define(builder, "encoding_terminal.disk_refused.type_locked",
@@ -64,21 +57,12 @@ public final class AEPDCommonConfig {
                 "Shown when the pattern's type could not be resolved, so no disk can take it.");
         MESSAGES.define(builder, "encoding_terminal.disk_refused.unknown",
                 "Shown when a disk refused the pattern for a reason without its own message.");
-        MESSAGES.define(builder, "encoding_terminal.disk_refused.stale_target",
-                "Shown when the disk list on your client was older than the server's, so the click had no target (the list refreshes itself).");
 
-        // ---- 管理终端：把磁盘放进容器时的回执与拒绝原因（PatternDiskManagementTermMenu.notifyPlayer） ----
-        builder.comment("Pattern disk management terminal - storing a disk into a container.");
-        MESSAGES.define(builder, "management_terminal.disk_store.no_host",
-                "Shown when the container you picked is no longer on the grid.");
-        MESSAGES.define(builder, "management_terminal.disk_store.disk_gone",
-                "Shown when the disk you picked is no longer there.");
-
-        // ---- 元件管理终端：唯一一条服务端直发的回执（标记收藏的四项计数） ----
+        // ---- 元件管理终端：唯一一条服务端直发的回执（标记收藏的计数，且只在真有件没写进去时发） ----
         // 同终端的其余反馈走 CellNoticePayload 由客户端显示，那些开关在客户端配置里。
         builder.comment("Cell management terminal.");
         MESSAGES.define(builder, "cell_management_terminal.notice.mark_bookmarks",
-                "Shown after 'mark bookmarks' finished, with how many were marked / duplicated / had no room / were not items.");
+                "Shown after 'mark bookmarks' only when something could not be written (no room) or was skipped (not an item); the numbers say how many were marked / duplicated / had no room / were not items.");
 
         // ---- 部件：扳手切换推送方向（动作栏） ----
         builder.comment("Provider part - wrench changes the push direction.");

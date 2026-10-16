@@ -448,3 +448,16 @@ P0 不应新造范式，同文件里已有两处“每 tick 限量”的先例�
 - 日志级别与本仓既有口径一致：元件终端沿用 `LOGGER.info("[cell-mgmt] …")`，管理终端新加自己的 `LOGGER`（`[disk-store] …`）；只有「取件时格是空的」那条降到 debug（正常误点也会走这条路）。
 - 同步清理：两语各删 **96** 条语言键（32 键 × 消息/开关标签/说明），键数 341 → 245 且两语键集仍相等；`ChatMessageSwitches` 里拿当示例的键换成还存在的；`docs/PLATFORM_MCMOD.md` 的「52 条」改 20；`CHANGELOG.md` 的 0.9.0 段按体例不动（历史段落不重写）。配平由两道脚本核对：配置条目 20 条 ↔ 语言键三个键位（消息/标签/说明）中英齐全；以及**代码里发出的每个消息键在两语中都存在**（后一道正是拦住上面那两条键原文串的检查）。
 - 以后要单独收：① `no_blank_pattern` 仍有两份开关（客户端预检 + 服务端拒绝，同一个玩家可见症状）；② `grid_offline` 在离线时每点一次仍发一条，没做「状态变化才提示」的去重。
+
+### S. 聊天栏提示再精简（对齐 AE2 原生口径）— ✅（2026-10 记录）
+- 判据换了：不再凭「这条有没有用」，而是问 **AE2 原生在同类情境下说不说话**。对照 AE2 19.2.18（`D:\Temp\Applied-Energistics-2`，分支 `1.21.1`）读到的事实：
+  - AE2 给玩家的**操作类**反馈（存储卡读写成败、升级卡不兼容、元件拆解、ME 箱读不了、合成 CPU 忙、显示器锁定、伪装板循环）`displayClientMessage` **第二参全是 `true` = 动作栏**，只有命令与异常才进聊天栏。也就是说：AE2 的日常操作结果是「动作栏一行闪过」，不是聊天栏一行一行堆。
+  - `DeviceNotPowered` / `MachineNotPowered` 在 1.21.1 **零调用点**（死枚举）⇒ 离网/缺电 AE2 原生不出声。
+  - 驱动器槽：`CellValidInventoryFilter.allowInsert → StorageCells.isCellHandled(stack)`、`allowExtract → true` ⇒ 拒收非元件静默、取出永不拒。
+  - 编码终端：`PatternEncodingTermMenu.encode()` 输出槽空且没有空白样板时**直接 `return`**（源码注释 `// no blanks.`）。
+  - 目标消失：走 `AEBaseMenu.stillValid` 直接关界面，无消息。
+- 据此剥离 8 条开关：`cell_rejected`、`no_blank_pattern`（客户端预检 + 服务端拒绝两份）、`grid_offline`（5 个调用点）、`drive_gone`（6 处）、`disk_store.no_host`、`disk_store.disk_gone`、`disk_refused.stale_target`（5 处）⇒ 开关 20 → **12 条**，语言键 245 → 218（两语各删 27：7 条消息 × 3 + 3 个成空的节 × 2）。
+- **守卫一个没动**，静默点留线头：`gridOrNull()` 里加一条 debug（离网时所有调用点都经它，一条覆盖 5 个动作点；注意列表扫描 `syncDriveList()` 也走同一条路，离线开着终端时每 10 tick 就会落一行——触发面比「5 处」宽，调试日志按 2 行/秒估）、`cell_rejected` 与各「目标已不在」改 debug/info 日志。`notifyPlayer`（服务端直发聊天栏的唯一出口）随两条消息一起删除，`Component` / `AEPDCommonConfig` 两个 import 随之变成死引用也一并清掉。
+- `mark_bookmarks` 改为**只在真有未写入或被跳过时才发**（对齐 AE2 `MissingBlankPatterns` 只在缺料时出声的习惯；重复打标是无害的，不必报）。
+- `notice.no_network_quick_move` **保留**：它是「本终端不像 AE2 那样把物品送进网络」的唯一解释，删了玩家会以为坏了。
+- 新增自检脚本 `tools/check-chat-message-keys.cjs`（用法记在 `docs/ARCHITECTURE.md` 第 10 节）：核代码发出的每个键在两语 lang 都在、每条开关配齐三处键、两语键集相等，动态前缀（`void_mode.` / `disk_refused.`）按「至少一个键兜底」判定。**上一轮那两处漏改正是它能拦住的**，已用正反向演练验证：正常 0；把已删的发出点加回去是 1；删掉任一语言键也是 1。

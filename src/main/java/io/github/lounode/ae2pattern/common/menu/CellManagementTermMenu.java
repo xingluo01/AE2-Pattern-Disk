@@ -514,12 +514,12 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         if (owner == null) {
             return;
         }
-        String name = carried.getHoverName().getString();
         // 只交一份：元件本身不可堆叠，而对方若在内部 copyWithCount(1)（青春版就是这么写的），
         // 整栈交过去会让多出来的份数静默消失。
         if (!CellDriveScanner.insertCell(owner, driveSlot, carried.copyWithCount(1))) {
-            // 失败原因就那三种（格位已被占、驱动器不收这类东西、写完被回读判为没生效），对玩家是同一件事。
-            noticeWith(NOTICE + "cell_rejected", name);
+            // 失败原因就那三种（格位已被占、驱动器不收这类东西、写完被回读判为没生效）。AE2 原生的驱动器槽
+            // 也是静默拒收（槽位 filter 直接挡掉，不提示玩家），这里跟着不出声；该拦的仍然拦。
+            LOGGER.debug("[cell-mgmt] 这台主机不收这张元件，丢弃这次放入");
             return;
         }
         // 光标上还剩更多份时只减一份（当前元件不可堆叠，走不到，但不能在这埋一个吞东西的写法）。
@@ -595,12 +595,10 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         }
         var grid = gridOrNull();
         if (grid == null) {
-            notice(NOTICE + "grid_offline");
             return;
         }
         var slots = CellDriveScanner.slotsOfBlock(grid, leaderKey);
         if (slots.isEmpty()) {
-            notice(NOTICE + "drive_gone");
             return;
         }
         for (CellHostListPayload.CellSlot slot : slots) {
@@ -635,17 +633,14 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         }
         var grid = gridOrNull();
         if (grid == null) {
-            notice(NOTICE + "grid_offline");
             return;
         }
         Object source = CellDriveScanner.findOwner(grid, hostKey);
         if (source == null) {
-            notice(NOTICE + "drive_gone");
             return;
         }
         var slots = CellDriveScanner.slotsOfBlock(grid, targetLeaderKey);
         if (slots.isEmpty()) {
-            notice(NOTICE + "drive_gone");
             return;
         }
         if (slots.stream().noneMatch(slot -> slot.stack().isEmpty())) {
@@ -693,12 +688,10 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         }
         var grid = gridOrNull();
         if (grid == null) {
-            notice(NOTICE + "grid_offline");
             return;
         }
         var slots = CellDriveScanner.slotsOfBlock(grid, leaderKey);
         if (slots.isEmpty()) {
-            notice(NOTICE + "drive_gone");
             return;
         }
         for (CellHostListPayload.CellSlot slot : slots) {
@@ -728,6 +721,9 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
     private appeng.api.networking.IGrid gridOrNull() {
         // 断链（超距 / 未链接 / 终端没电 / 网络未通电）时不分动作与列表同步，一律当作没有网。
         if (!canInteractWithGrid()) {
+            // 这种状态下各调用点一律静默收手（AE2 原生终端离网时也没有提示，界面本身就是空的），
+            // 只在 debug 留一条线头，方便对着「点了没反应」的反馈分辨是断路还是别的原因。
+            LOGGER.debug("[cell-mgmt] 终端此刻连不上网络，本次操作按空网处理");
             return null;
         }
         var gridNode = getGridNode();
@@ -910,8 +906,12 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         broadcastChanges();
         // 这一条是元管终端唯一走服务端直发的回执（其余都是发「键 + 参数」的包、由客户端显示），
         // 所以它的开关在同终端的其他消息隔壁的 common 配置里。
+        // 只在真有东西没写进去或被跳过时才说：全部写入成功是玩家预期内的结果，不必再回执一句
+        // （AE2 的 MissingBlankPatterns 也只在缺料时出声）；重复项不算问题——重复打标本来就是无害的。
         var noticeKey = NOTICE + "mark_bookmarks";
-        if (getPlayer() instanceof ServerPlayer serverPlayer && AEPDCommonConfig.isMessageShown(noticeKey)) {
+        if ((noRoom > 0 || skippedNonItems > 0)
+                && getPlayer() instanceof ServerPlayer serverPlayer
+                && AEPDCommonConfig.isMessageShown(noticeKey)) {
             serverPlayer.sendSystemMessage(Component.translatable(noticeKey,
                     written, duplicate, noRoom, skippedNonItems));
         }
@@ -983,12 +983,10 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         }
         var grid = gridOrNull();
         if (grid == null) {
-            notice(NOTICE + "grid_offline");
             return;
         }
         Object owner = CellDriveScanner.findOwner(grid, leaderKey);
         if (owner == null) {
-            notice(NOTICE + "drive_gone");
             return;
         }
         // 只要能**写**优先级就放行：AE2/EAE 驱动器走 IPriorityHost，NEO ECO 各级存储与青春版的 L1 驱动器
@@ -1044,17 +1042,15 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         broadcastChanges();
     }
 
-    /** 按身份键找驱动器本体（驱动器可能在两次点击之间被拆了）；找不到时已经把原因告知玩家。 */
+    /** 按身份键找驱动器本体（驱动器可能在两次点击之间被拆了）；找不到时返回 null，界面上那一行也已经消失。 */
     private Object ownerOf(String driveKey) {
         var grid = gridOrNull();
         if (grid == null) {
-            notice(NOTICE + "grid_offline");
             return null;
         }
         Object owner = CellDriveScanner.findOwner(grid, driveKey);
         if (owner == null) {
             LOGGER.warn("[cell-mgmt] 找不到驱动器 owner：{}", driveKey);
-            notice(NOTICE + "drive_gone");
         }
         return owner;
     }

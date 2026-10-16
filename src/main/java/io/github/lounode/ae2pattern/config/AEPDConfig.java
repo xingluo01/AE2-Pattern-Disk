@@ -63,9 +63,6 @@ public final class AEPDConfig {
         ChatMessageSwitches.section(builder, "chat_messages");
         ChatMessageSwitches.section(builder, "chat_messages.cell_management_terminal");
         ChatMessageSwitches.section(builder, "chat_messages.cell_management_terminal.notice");
-        ChatMessageSwitches.section(builder, "chat_messages.management_terminal");
-        ChatMessageSwitches.section(builder, "chat_messages.management_terminal.disk_store");
-        ChatMessageSwitches.section(builder, "chat_messages.encoding_terminal");
         ChatMessageSwitches.section(builder, "chat_messages.notice");
 
         builder.comment(
@@ -149,8 +146,7 @@ public final class AEPDConfig {
                 "reasons, not part of the flow.",
                 "",
                 "Messages the SERVER sends into the chat itself are in ae2_pattern_disk-common.toml",
-                "(that side cannot be silenced from here). A couple of conditions report themselves on",
-                "both sides - 'no_blank_pattern' is one - and each side has its own switch.",
+                "(that side cannot be silenced from here).",
                 "",
                 "Changes take effect on the next message; no restart needed, just reload the config.");
 
@@ -161,24 +157,10 @@ public final class AEPDConfig {
                 "Shown when taking a cell out fails because the storage host locks it (an ECO infinite drive, for example).");
         MESSAGES.define(builder, "cell_management_terminal.notice.cell_refused",
                 "Shown when the slot holds something but the storage host refuses to hand it over.");
-        MESSAGES.define(builder, "cell_management_terminal.notice.cell_rejected",
-                "Shown when the storage host you picked does not accept that cell.");
-        MESSAGES.define(builder, "cell_management_terminal.notice.grid_offline",
-                "Shown when the terminal's grid is offline (or the drive's owner could not be resolved).");
-        MESSAGES.define(builder, "cell_management_terminal.notice.drive_gone",
-                "Shown when the selected drive is gone or was broken.");
         MESSAGES.define(builder, "cell_management_terminal.notice.move_failed",
                 "Shown when putting the cell back after a failed move did not work either.");
         MESSAGES.define(builder, "cell_management_terminal.notice.priority_unsupported",
                 "Shown when opening AE2's priority GUI is not supported for the current selection.");
-
-        // ---- 样板磁盘管理终端：客户端预检 ----
-        builder.comment("Pattern disk management terminal - the client-side pre-check.");
-
-        // ---- 编码终端：客户端预检 ----
-        builder.comment("Pattern encoding terminal - the client-side pre-check.");
-        MESSAGES.define(builder, "encoding_terminal.no_blank_pattern",
-                "Shown when you press encode while the ME network has no blank patterns (the client-side pre-check; the server's own refusal has its own switch in the common config).");
 
         // ---- 三个终端共用 ----
         builder.comment("Shared by all three terminals.");

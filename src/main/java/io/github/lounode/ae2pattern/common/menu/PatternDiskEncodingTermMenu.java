@@ -587,9 +587,9 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
                     && !AEItems.BLANK_PATTERN.is(encodeOutput)) {
                 return;
             } else if (encodeOutput.isEmpty()) {
-                // 空白样板来自网络，不再从槽里拿。扣不到就告诉玩家，而不是默默没反应。
+                // 空白样板来自网络，不再从槽里拿。扣不到就静默收手——AE2 原生的编码终端在没空白样板时
+                // 也是直接 return（源码里就写着 "no blanks."），不提示玩家。
                 if (!consumeNetworkBlankPattern()) {
-                    notifyNoBlankPattern();
                     return;
                 }
             }
@@ -689,11 +689,6 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         return isBlankPattern(blankPatternSlot.getItem())
                 || isBlankPattern(encodedOutput)
                 || PatternDetailsHelper.isEncodedPattern(encodedOutput);
-    }
-
-    /** 网络里拿不到空白样板时告诉玩家一声；静默失败会让人以为是界面卡了。 */
-    private void notifyNoBlankPattern() {
-        tell("gui.ae2_pattern_disk.encoding_terminal.no_blank_pattern");
     }
 
     /**
@@ -866,7 +861,9 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         if (refusedName != null) {
             notifyDiskRefused(refusedName, refusedReason);
         } else if (stale) {
-            notifyStaleTarget();
+            // 顺位里的盘全没了（客户端列表滞后）：AE2 原生对「目标已经不在」也是静默的（界面直接关/列表刷新），
+            // 这里不出声，留一条 debug 线头。
+            LOGGER.debug("[encoding] 顺位写盘时目标磁盘都已不在（客户端列表滞后）");
         }
         return false;
     }
@@ -880,11 +877,6 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
             case UNRESOLVABLE -> "unresolvable";
         };
         tell("gui.ae2_pattern_disk.encoding_terminal.disk_refused." + key, diskName);
-    }
-
-    /** 目标磁盘已不在列表里（客户端列表比服务端旧）时说明一句，否则又是点了没反应。 */
-    private void notifyStaleTarget() {
-        tell("gui.ae2_pattern_disk.encoding_terminal.disk_refused.stale_target");
     }
 
     // ---- 从磁盘取东西（管理终端的左键/Shift+左键/右键）--------------------------------------
@@ -921,13 +913,13 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         }
         var ref = diskIndex.refOf(request.serial);
         if (ref == null) {
-            notifyStaleTarget();
+            LOGGER.debug("[encoding] 目标磁盘已不在列表（客户端滞后），丢弃这次请求");
             return;
         }
         var inv = ref.host().getDiskInventory();
         var stack = inv.getStackInSlot(ref.slot());
         if (stack.isEmpty() || !(stack.getItem() instanceof PatternDiskItem disk)) {
-            notifyStaleTarget();
+            LOGGER.debug("[encoding] 槽里已不是样板磁盘（客户端滞后），丢弃这次请求");
             return;
         }
 
@@ -955,7 +947,6 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
             return;
         }
         if (!consumeNetworkBlankPattern()) {
-            notifyNoBlankPattern();
             return;
         }
 
@@ -1113,8 +1104,9 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
 
         var ref = diskIndex.refOf(serial);
         if (ref == null) {
-            // 客户端列表可能比服务端旧：那张盘已经被拿走了。不提示的话，玩家只会看到点了没反应。
-            notifyStaleTarget();
+            // 客户端列表可能比服务端旧：那张盘已经被拿走了。不出声（AE2 原生对目标消失也是静默的），
+            // 留一条 debug 线头。
+            LOGGER.debug("[encoding] 打标记时目标磁盘已不在列表（客户端滞后）");
             return;
         }
 
@@ -1122,7 +1114,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         var stack = inv.getStackInSlot(ref.slot());
         if (stack.isEmpty() || !(stack.getItem() instanceof PatternDiskItem)) {
             // 同一个理由：列表里还有它，槽里已经不是了。
-            notifyStaleTarget();
+            LOGGER.debug("[encoding] 打标记时槽里已不是样板磁盘（客户端滞后）");
             return;
         }
 

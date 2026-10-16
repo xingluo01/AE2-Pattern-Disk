@@ -10,7 +10,6 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.MenuType;
@@ -29,7 +28,6 @@ import appeng.helpers.patternprovider.PatternContainer;
 import appeng.menu.implementations.MenuTypeBuilder;
 
 import io.github.lounode.ae2pattern.api.IPatternDiskHost;
-import io.github.lounode.ae2pattern.config.AEPDCommonConfig;
 import io.github.lounode.ae2pattern.api.PatternDiskApi;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
 import io.github.lounode.ae2pattern.common.part.PatternDiskManagementTerminalPart;
@@ -148,7 +146,9 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
 
         var hosts = hostsByName.get(request.groupName);
         if (hosts == null || hosts.isEmpty()) {
-            notifyPlayer("gui.ae2_pattern_disk.management_terminal.disk_store.no_host");
+            // 那台容器已经不在网上了。AE2 原生对「目标已经不在」的做法也是静默（界面直接关 / 列表刷新），
+            // 这里跟着不出声，留一条日志。
+            LOGGER.debug("[disk-store] 选中的容器已不在网格上，丢弃这次存入");
             return;
         }
         var host = hostWithFreeSlot(hosts);
@@ -188,7 +188,8 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
         // 这里的宿主是“由盘推出来”的，盘没了自然也没容器可存。
         var host = diskHostOf(request.targetDiskSerial);
         if (host == null) {
-            notifyPlayer("gui.ae2_pattern_disk.management_terminal.disk_store.disk_gone");
+            // 那张盘已经不在了：宿主是由盘推出来的，盘没了自然也没容器可存。同样静默（AE2 原生亦然）。
+            LOGGER.debug("[disk-store] 选中的样板磁盘已不在，丢弃这次存入");
             return;
         }
 
@@ -237,23 +238,6 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
     /** 存入成功后的收尾：重推清单（表、空槽数与盘内容同一拍更新）。 */
     private void afterDiskStored() {
         refreshDiskList(); // 不等下一次扫描
-    }
-
-    /**
-     * 回执：只留给玩家事后需要对照的失败（选中的容器已不在网上、那张盘已经不在了）。
-     *
-     * <p>全部走聊天栏而不用动作栏：这些是回头要对账的，动作栏三秒就没、连点还会互相盖掉。</p>
-     */
-    private void notifyPlayer(String key, Object... args) {
-        // 一句话一个开关，在 common 配置里：这些消息由服务端当场发出去，客户端配置拦不住，
-        // 只能在这一侧定。关掉只让这句话不说，存入动作本身照做。
-        if (!AEPDCommonConfig.isMessageShown(key)) {
-            return;
-        }
-        var player = getPlayer();
-        if (player != null) {
-            player.displayClientMessage(Component.translatable(key, args), false);
-        }
     }
 
     @Override
