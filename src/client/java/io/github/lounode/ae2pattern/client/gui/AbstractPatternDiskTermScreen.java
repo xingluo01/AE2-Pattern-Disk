@@ -1,6 +1,7 @@
 package io.github.lounode.ae2pattern.client.gui;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
@@ -14,6 +15,10 @@ import appeng.client.gui.widgets.OpenGuideButton;
 import appeng.client.gui.widgets.SettingToggleButton;
 import appeng.core.localization.ButtonToolTips;
 import appeng.menu.slot.DisabledSlot;
+
+import guideme.color.ConstantColor;
+import guideme.document.LytRect;
+import guideme.render.SimpleRenderContext;
 
 import io.github.lounode.ae2pattern.common.menu.AbstractPatternDiskTermMenu;
 import io.github.lounode.ae2pattern.config.AEPDConfig;
@@ -79,6 +84,32 @@ public abstract class AbstractPatternDiskTermScreen<T extends AbstractPatternDis
         var player = Minecraft.getInstance().player;
         if (player != null) {
             player.displayClientMessage(Component.translatable(key), false);
+        }
+    }
+
+    /**
+     * 断开（未连接 / 无电 / 无信道）时在给定矩形上补一层遮罩；范围由调用方按自己的版面给。
+     *
+     * <p>AE2 自带那层只按「物品网格矩形」铺（{@code MEStorageScreen#renderLinkStatus}：从
+     * {@code style.getSlotPos(0, 0)} 到 {@code getSlotPos(rows - 1, slotsPerRow - 1)}，9 列宽 162），而本模组
+     * 两块自绘表格屏没有物品网格、格子区是 17 列 306 宽（含左右格框各 1px）——那层既盖不全，两层叠起来又会在左上留一块更深的暗斑，
+     * 所以那两块屏不再调 {@code super.drawFG}，改由本方法按各自格子区铺。</p>
+     *
+     * <p>颜色与文字样式与 AE2 那层同源（{@code 0x3f000000} 与 {@code ERROR_TEXT_STYLE}），状态文字居中于本矩形。</p>
+     */
+    protected void renderDisconnectedOverlay(GuiGraphics guiGraphics, int x, int y, int width, int height) {
+        var linkStatus = getMenu().getLinkStatus();
+        if (linkStatus.connected()) {
+            return;
+        }
+
+        var rect = new LytRect(x, y, width, height);
+        var renderContext = new SimpleRenderContext(LytRect.empty(), guiGraphics);
+        renderContext.fillRect(rect, new ConstantColor(0x3f000000));
+
+        var statusDescription = linkStatus.statusDescription();
+        if (statusDescription != null) {
+            renderContext.renderTextCenteredIn(statusDescription.getString(), ERROR_TEXT_STYLE, rect);
         }
     }
 

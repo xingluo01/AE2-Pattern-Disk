@@ -665,7 +665,11 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
 
     @Override
     public void drawFG(GuiGraphics guiGraphics, int offsetX, int offsetY, int mouseX, int mouseY) {
-        super.drawFG(guiGraphics, offsetX, offsetY, mouseX, mouseY);
+        // 不调 super.drawFG：AE2 那一层只做四件事——记鼠标位置（喂它那个已无人调用的私有 isHovered）、
+        // 给物品网格的钉住行描边、给合成状态按钮标作业数、按物品网格矩形铺离线遮罩。本屏没有物品网格槽
+        // （init 里整批移除）、样式也不开自动合成（supportsAutoCrafting=false），前三件都是空转；
+        // 第四件盖不住本屏 17 列 304 宽的格子区、还会与本屏那层叠成更深的暗斑，改由
+        // renderDisconnectedOverlay 按格子区铺。（AE2 升级时复核它的 drawFG。）
 
         // renderLabels 的 pose 已由 vanilla 平移到 (leftPos, topPos)，这里必须用裸局部坐标：
         // 再加 offsetX/offsetY 会把整个 GUI 原点算第二遍，表格内容整体右下偏移一格到数格（AE2 自家
@@ -696,6 +700,11 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
                 case FreeSlotsRow free -> drawFreeSlotsRow(guiGraphics, baseX, rowY, free);
             }
         }
+
+        // 断开时只压格子区：17 格 × 18 = 306 宽（含左右格框各 1px；实机确认只盖 304 时框线会露出 1px），
+        // 高随可见行数走。
+        renderDisconnectedOverlay(guiGraphics, LIST_X, this.headerHeight,
+                this.listWidth, this.visibleRows * this.rowHeight);
     }
 
     /**
