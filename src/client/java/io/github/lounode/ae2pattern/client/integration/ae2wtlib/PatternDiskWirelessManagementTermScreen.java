@@ -48,7 +48,7 @@ public class PatternDiskWirelessManagementTermScreen extends PatternDiskManageme
         }
         super.init();
         this.upgradesPanel.setMaxRows(Math.max(2, getVisibleRows()));
-        // 切换按钮的位置由父屏那份工具栏清单定（本屏排在第 8 位）。它不能排到末尾：本屏面板只有 220 高，
+        // 切换按钮的位置由父屏那份工具栏清单定（本屏排在第 8 位）。它不能排到末尾：本屏面板只有 221 高，
         // 而按钮步进 22px、起点 y≈3——末位 y≈245 已经在面板下沿之外，AE2LT 在场时还会再追加两枚，
         // 那时切换按钮与它弹出的选择面板一起落到可视区之外，点上去没反应。
     }

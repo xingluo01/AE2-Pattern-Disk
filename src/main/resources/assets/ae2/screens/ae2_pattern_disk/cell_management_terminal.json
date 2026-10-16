@@ -14,8 +14,9 @@
    "textureHeight": 512
   },
   "tableFooter": {
+   "$comment": "尾饰带 96 高：贴图的非透明内容画到 y=220 为止，那最后一行是面板底部的外框线（切到 95 会把整条底框裁掉）。高度与下面 terminalStyle 的 bottom 必须同值，面板总高才是 221 = 表头 17 + 6 行×18 + 尾饰 96。",
    "texture": "ae2_pattern_disk:textures/guis/cell_management_terminal.png",
-   "srcRect": [0, 125, 340, 95],
+   "srcRect": [0, 125, 340, 96],
    "textureWidth": 512,
    "textureHeight": 512
   },
@@ -93,14 +94,15 @@
   },
   "bottom": {
    "texture": "ae2_pattern_disk:textures/guis/cell_management_terminal.png",
-   "srcRect": [0, 125, 340, 95],
+   "srcRect": [0, 125, 340, 96],
    "textureWidth": 512,
    "textureHeight": 512
   }
  },
  "background": {
+  "$comment": "整图的声明尺寸：贴图实际画到 (338, 220)，故高 221（与 terminalStyle 那条链算出的面板总高同值）。",
   "texture": "ae2_pattern_disk:textures/guis/cell_management_terminal.png",
-  "srcRect": [0, 0, 340, 220],
+  "srcRect": [0, 0, 340, 221],
   "textureWidth": 512,
   "textureHeight": 512
  },
@@ -108,58 +110,58 @@
   "ae2_pattern_disk:cell_encode": {
    "$comment": "元件编码槽：右键盘里的存储元件移进来，它就是标记区正在编辑的那个元件。贴图坐标 181,194 的槽框内侧内容区。",
    "left": 182,
-   "bottom": 25
+   "bottom": 26
   },
   "ae2_pattern_disk:cell_upgrade": {
    "$comment": "元件升级槽：一行 6 格（贴图 219,194 宽 108）。槽位由菜单按「编码槽里那张元件」的 getUpgrades 自建，语义是本模组自己的 cell_upgrade。坐标按实机反馈在贴图基准上又向左、向下各挪了 1px（left 218 / bottom 25）。",
    "left": 218,
-   "bottom": 25,
+   "bottom": 26,
    "grid": "HORIZONTAL"
   },
   "ae2_pattern_disk:cell_marker_c0": {
    "$comment": "标记区（可见 7×3，实际 7×9=63 格靠窗口滚动）：一格一列语义，每列 VERTICAL 三格，这样才摆得下 7 列——AE2 的 SlotGridLayout 没有 7 列档。列宽 18，第一列贴图 x=181，最后一行底对齐 y=190。",
    "left": 181,
-   "bottom": 84,
+   "bottom": 85,
    "grid": "VERTICAL"
   },
   "ae2_pattern_disk:cell_marker_c1": {
    "left": 199,
-   "bottom": 84,
+   "bottom": 85,
    "grid": "VERTICAL"
   },
   "ae2_pattern_disk:cell_marker_c2": {
    "left": 217,
-   "bottom": 84,
+   "bottom": 85,
    "grid": "VERTICAL"
   },
   "ae2_pattern_disk:cell_marker_c3": {
    "left": 235,
-   "bottom": 84,
+   "bottom": 85,
    "grid": "VERTICAL"
   },
   "ae2_pattern_disk:cell_marker_c4": {
    "left": 253,
-   "bottom": 84,
+   "bottom": 85,
    "grid": "VERTICAL"
   },
   "ae2_pattern_disk:cell_marker_c5": {
    "left": 271,
-   "bottom": 84,
+   "bottom": 85,
    "grid": "VERTICAL"
   },
   "ae2_pattern_disk:cell_marker_c6": {
    "left": 289,
-   "bottom": 84,
+   "bottom": 85,
    "grid": "VERTICAL"
   },
   "PLAYER_INVENTORY": {
    "left": 8,
-   "bottom": 83,
+   "bottom": 84,
    "grid": "BREAK_AFTER_9COLS"
   },
   "PLAYER_HOTBAR": {
    "left": 8,
-   "bottom": 25,
+   "bottom": 26,
    "grid": "HORIZONTAL"
   }
  },
@@ -179,7 +181,7 @@
    },
    "position": {
     "left": 8,
-    "bottom": 93
+    "bottom": 94
    }
   }
  },
@@ -202,7 +204,7 @@
   "cellMarkerScrollbar": {
    "$comment": "标记区滚动条：贴图轨道实测 x=315..320（中心 317.5），滑块宽 12 -> 左缘 312（与表格那条不是同一个 x，两者贴在各自轨道上）；用 bottom 锚定而不是 top：AE2 对 top 取绝对值，而终端风格换档时面板会变高、标记区跟着底边走，只有等式的另一头也在底边（与标记格列的 bottom: 84 同源）才不会错位。屏幕每帧按该锚点重算落点。",
    "left": 312,
-   "bottom": 84,
+   "bottom": 85,
    "height": 54
   }
  }

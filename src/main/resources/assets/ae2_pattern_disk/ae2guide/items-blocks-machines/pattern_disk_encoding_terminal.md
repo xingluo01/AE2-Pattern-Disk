@@ -19,7 +19,9 @@ The ME Pattern Disk Encoding Terminal adds pattern disk support to the <ItemLink
 
 - The encoded pattern is written onto a pattern disk instead of being handed to a pattern provider; with no single target it stays in the encoded slot.
 - Blank patterns do not go into the slot: that slot only shows how many blank patterns the ME network holds, encoding takes one straight from the network, and it says so when there are none.
-- Processing mode has three further tools - multiply, divide and merge same items - for scaling a recipe's multiplier or merging input slots that hold the same item. The buttons' tooltips give the multipliers.
+- Processing mode has three further tools - multiply, divide and merge same items - for scaling a recipe's multiplier or merging input and output slots that hold the same item. The buttons' tooltips give the multipliers.
+
+**Merge same items** decides how identical items are written down: with it on, inputs and outputs holding the same item are folded into one slot; with it off, the recipe keeps as many slots as it has, both when a recipe is imported from JEI or EMI and when the pattern is encoded. AE2 itself merges identical inputs when it reads a pattern back, so crafting behaves the same either way - the difference is the structure the pattern is written with, and what the editing area shows. In advanced mode the faces are assigned per item, so two input slots holding the same item share one face. The overloaded tier lays items out row by row and does not take part in merging.
 
 Three more modes (advanced, chiseling, overloaded) appear once the matching encoder from another mod sits in an upgrade slot, and **dropping an encoded pattern into the output slot switches the terminal to that pattern's mode** - overloaded lays out each row's items with its input and output, advanced reads each slot's face back, chiseling works out what is being chiseled into what. Taking the pattern away does not switch back.
 

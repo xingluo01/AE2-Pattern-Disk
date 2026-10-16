@@ -20,7 +20,7 @@ import io.github.lounode.ae2pattern.integration.ae2wtlib.CellManagementWirelessT
  * 与{@link PatternDiskWirelessManagementTermScreen 无线样板磁盘管理终端}同一口径。
  *
  * <p>工具栏与另两个终端同一口径：清单在 {@code CellManagementTermScreen#toolbarPlan()} 里，「切换终端」
- * 就排在其中（第 7 位）。清单定顺序是有原因的：本屏面板只有 220 高（按钮步进 22px、起点 y≈3），
+ * 就排在其中（第 7 位）。清单定顺序是有原因的：本屏面板只有 221 高（按钮步进 22px、起点 y≈3），
  * 排在末尾的按钮会被 AE2LT 那类“往同一条栏追加按钮”的模组一起顶出可视区。</p>
  *
  * <p>{@code @IPNPlayerSideOnly}：整理模组的标注，与父屏同源（它没有 {@code @Inherited}，故在此重标一份）。</p>
@@ -54,7 +54,7 @@ public class CellManagementWirelessTermScreen extends CellManagementTermScreen
         this.upgradesPanel.setMaxRows(Math.max(2, getVisibleRows()));
         // 切换按钮不再重排：现在「排到哪」已由父屏那份工具栏清单统一决定，而它会把「切换终端」排在中部
         // （第 7 位，落点 y≈135），不再有旧口径那个麻烦——以前没有清单、靠自己在 init() 里挪，本屏面板
-        // 只有 220 高（按钮步进 22px、起点 y≈3），挪到末尾就会被 AE2LT 追加的按钮一起顶出可视区，
+        // 只有 221 高（按钮步进 22px、起点 y≈3），挪到末尾就会被 AE2LT 追加的按钮一起顶出可视区，
         // 表现为“点了没反应”。
     }
 
