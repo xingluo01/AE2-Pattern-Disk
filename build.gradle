@@ -42,6 +42,19 @@ configurations {
     runtimeClasspath.extendsFrom localRuntime
     clientRuntimeClasspath.extendsFrom clientLocalRuntime
     testRuntimeClasspath.extendsFrom testLocalRuntime
+
+    // ae2wtlib_api 的 POM 会把 maven 版 AE2 拖进运行期（它自己钉 19.2.17）。那条坐标与 localRuntime 里的
+    // CF 件（curse.maven:applied-energistics-2-223794）不是同一个 Gradle module，Gradle 不会替我们对齐，于是
+    // 运行期类路径上同时挂着两份 AE2。两份都声明 modId=ae2，FML 的 UniqueModListBuilder 按 modId 去重、
+    // **保留版本更高**的那份当 mod（另一份只因坐标不同而作为普通 classpath 条目存在）——同版时无差别，
+    // 版本一拉开就变成「加载哪份取决于谁更高」。
+    // 2026-10-16 随 AE2 运行期升 19.2.18 加这条：按版本目录把 maven 那份钉到同一版本。两件现为同一份字节
+    // （AE2 19.2.18 的 CF 件与 maven 件 sha1 相同，`bcd04bc7…`）。
+    // 注意：FML 取高版本的语义意味着「libs.versions.toml 抬了版本、而 CF 件坐标没跟着换」时，被当 mod 加载的
+    // 会从 CF 件切到 maven 件（发行渠道无声切换）——两个坐标要一起动。
+    configureEach {
+        resolutionStrategy.force "${libs.ae2.get()}"
+    }
 }
 
 modAccessor {
@@ -195,7 +208,16 @@ dependencies {
     clientCompileOnly(libs.guideme)
 
     // Runtime-only development mods.
-    localRuntime 'curse.maven:applied-energistics-2-223794:7027323'
+    // 2026-10-16：AE2 运行期从 19.2.17（7027323）升到 **19.2.18**（8992605，CF 上 1.21.1 的最新 release），
+    // 与编译基线 libs.versions.toml 的 `ae2 = "19.2.18"` 对齐。触发点是 Data Energistics 3.3.5（见下方那条）
+    // 把 ae2 写成**必需**地板 [19.2.18,)：运行期还停在 19.2.17 时，FML 会在预加载阶段直接拒绝加载 DE
+    // （FML 的报错文案格式见下方 JEI 分支里那条 ae2jeiintegration 的实测记录，即 `Mod data_energistics
+    // only supports ae2 19.2.18 or above / Currently, ae2 is 19.2.17` 这一形状）。
+    // 整环境逐构件扫过一遍 ae2 区间（读的是各构件 jar 内的 neoforge.mods.toml），没有第二条把 19.2.18 排除在外：
+    // ae2lt 是 [19.2.17,19.3)、ae2wtlib [19.2.17,20.0.0)、MEGA Cells / AE Omni Cells [19.2.15,)、
+    // NEO ECO AE Extension 与 Neo ECO Prototype 均 [19.2.17,)，其余（AE2CS / ExtendedAE / ae2addonlib /
+    // OmniSequence 等）为下界或通配。
+    localRuntime 'curse.maven:applied-energistics-2-223794:8992605'
     localRuntime 'maven.modrinth:guideme:21.1.15'
 
     // AECS development integration: the jar sits in libs/, so the dev runtime - and the
@@ -333,6 +355,7 @@ dependencies {
     // any AE2 version bump, smoke test: AE2 terminal -> autocrafting panels -> a JEI recipe page.
     // Note the AE2 lower bound is exactly 19.2.17 for ae2lt/thunderbolt, so dropping the runtime AE2
     // below that (or touching the AE2 localRuntime coordinate) trips the same FML dependency check.
+    // 运行期 AE2 现为 19.2.18（升它的原因见上方 "Runtime-only development mods" 注释）：仍在 [19.2.17,19.3) 内。
     localRuntime 'maven.modrinth:ae2-lightning-tech:2.1.1'
     localRuntime 'maven.modrinth:thunderbolt-core:2.0.1'
     localRuntime 'maven.modrinth:ae2lt-packaged-pattern-provider:1.2.1'
@@ -373,7 +396,8 @@ dependencies {
     //     OmniBatchAdmission / OmniBatchProbe / OmniPostAccountingOutputAdapterRegistry）签名也一致
     //     （javap 对比 9043224 与 9107363）。这一条很重要：`mods.toml` 里我们不设版本地板，靠的就是
     //     「旧版本上调不通就退场」——注册期有 catch 兜，回调期（maxCrafts/commit）则只能靠签名不变。
-    //   data-energistics 需 configuration [3.1.1,4) / ldlib2 [2.2.38.a,)；
+    //   data-energistics 3.3.5 需 ae2 [19.2.18,) / configuration [3.1.1,4)（jar 内标 embedded，本环境另有显式坐标）
+    //     / ldlib2 [2.2.40,)（与 ECO 21.2.1 同一条地板；3.2.2 时是 2.2.38.a）；
     //   ae2utility 需 JEI（已在环境里）。
     // 未恢复的是「闪电科技重生」那一支（AE2 Lightning Tech Reborn 等）：它与上方已装的「闪电科技」
     // **同为 modId ae2lt / thunderbolt**，只能整线择一，不能并存。
@@ -394,7 +418,18 @@ dependencies {
     // 直接中止启动；随它一并摘掉。它要的版本也麻烦：CF 3.0.8 与 Modrinth 2.0.2 版本号体系不同步，
     // 而它至今仍留下一组指向 data_energistics 旧包 ...util 的 mixin（实测 DE 3.1.3 及以后那类在
     // ...menu.patternprovider，旧包 ...util 已无此类），即它的 DE 桥本来就接不上。
-    localRuntime 'curse.maven:data-energistics-1565514:8841396'            // 3.2.2
+    // 2026-10-16 升到 3.3.5（构件 9095664；旧件 8841396 = 3.2.2）。Trinity 子系统在这个跨度里改过不止一轮：
+    // 3.3.0（2026-09-24）是「优化三位一体规划捕获与循环模型并统一时间预算」，3.3.5 另有一条「修复 Trinity 大型
+    // DAG 的可复用工具规划」；而我们实测到的刷屏栈正好落在 `…trinity.planning.graph.capture.TrinityCraftingGraphRebuilder`
+    // 的 capture 阶段，升完值得实机复测那条 `Canonical Trinity pattern identity collision` 是否消失——但别当成
+    // 必然修好（3.4.0 快照 2026-10-16 的 Fixed 里没有 Trinity 条目）。
+    // 3.3.5 的必需地板：ae2 [19.2.18,)（见上方 AE2 运行期那条）/ configuration [3.1.1,4) / ldlib2 [2.2.40,)；
+    // 可选件里本环境装了的都在区间内：jei 19.56.0.438、ae2jeiintegration 1.2.1、curios 9.5.1+1.21.1，
+    // 以及 ae2cs 1.3.0 / extendedae_plus 1.6.2 / ae2wtlib 19.5.1 / mekanism 10.7.19（这几条是 [0,)）。
+    // **例外：`-Pemi` 口径开不了**——它把 emi 加进运行期，而 DE 的 emi 地板是 [1.1.24+1.21.1,)、本仓
+    // libs.versions.toml 钉的是 1.1.22+1.21.1；FML 对**已安装的**可选依赖同样做版本检查，那个口径会直接加载失败。
+    // 要恢复 EMI 口径得把 libs.versions.toml 的 emi 抬到 ≥1.1.24（本轮未验证）。
+    localRuntime 'curse.maven:data-energistics-1565514:9095664'            // 3.3.5（原 3.2.2 = 8841396）
     // 用版本 id 而不是版本号：Modrinth 上 configuration 的 3.1.1 有 fabric / neoforge / forge 三个
     // 同名版本，写 3.1.1 会被解析到 forge 那份——FML 直接跳过该 jar（"is for Minecraft Forge or an
     // older version of NeoForge"），连带 data_energistics 的必需前置落空、整个 mod 加载失败。这一条与
