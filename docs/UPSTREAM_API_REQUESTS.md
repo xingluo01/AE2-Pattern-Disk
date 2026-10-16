@@ -167,8 +167,8 @@
 
 | 仓库 | issue | 提交时间 | 状态 |
 |---|---|---|---|
-| `DancingSnow0517/NeoECOAEExtension` | [#119](https://github.com/DancingSnow0517/NeoECOAEExtension/issues/119) | 2026-10-08T18:55Z（本地 10-09 02:55） | OPEN（我方补 1 条评论，上游未回复） |
-| `reliqwq/NeoECOPrototype` | [#5](https://github.com/reliqwq/NeoECOPrototype/issues/5) | 2026-10-08T18:55Z（本地 10-09 02:55） | OPEN（我方补 1 条评论，上游未回复） |
+| `DancingSnow0517/NeoECOAEExtension` | [#119](https://github.com/DancingSnow0517/NeoECOAEExtension/issues/119) | 2026-10-08T18:55Z（本地 10-09 02:55） | **已实现并已关闭**：ECO **21.2.6**（2026-10-16 发布）含 `api.storage.IECOStoragePriorityHost` 与提到 `api.storage` 的 `ICellHost`；维护者 Yang120231 于 2026-10-09 回「已添加」并标记 completed |
+| `reliqwq/NeoECOPrototype` | [#5](https://github.com/reliqwq/NeoECOPrototype/issues/5) | 2026-10-08T18:55Z（本地 10-09 02:55） | **已实现**（issue 仍 OPEN）：青春版 **1.3.6**（2026-10-16 发布）的 `SimplifyDriveBlockEntity` 已 `implements util.ICellHost` 并补 `setCellStack`；作者 reliqwq 于 2026-10-09 回「随下一个版本发出」 |
 
 提交账号：`xingluo01`。正文用中文（两个仓库既有 issue 以中文为主，见上方取证清单）。
 

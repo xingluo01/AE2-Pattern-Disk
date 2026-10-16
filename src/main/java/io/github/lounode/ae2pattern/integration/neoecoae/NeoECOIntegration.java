@@ -54,13 +54,43 @@ public class NeoECOIntegration {
     public void apply() {
         guarded("the encoding terminal upload", NeoECOIntegration::wireEncodingTerminalUpload);
         guarded("the parallel intake registration", NeoECOIntegration::registerParallelIntake);
+        // 这次的 API 请求（issue #119）落地后，优先级读写走公开契约、反射退居兜底。
+        // 先探类、再取方法引用：缺契约时连桥类都不加载（加载会解析它 implements 的超接口），
+        // 方法体里引用的邻居类型则要等执行时才解析——两道都挡上。探类本身不命名邻居类型。
+        if (classPresent(STORAGE_PRIORITY_CONTRACT)) {
+            guarded("the storage priority contract", NeoECOStoragePriority::register);
+        }
     }
 
-    /** Runs one wiring step, keeping a failure inside it from reaching the mod loader. */
+    /** ECO 21.2.6 才有的公开契约（存储优先级的读写口）。 */
+    private static final String STORAGE_PRIORITY_CONTRACT =
+            "cn.dancingsnow.neoecoae.api.storage.IECOStoragePriorityHost";
+
+    /** 类在不在；keep initialize=false，不触发对方静态初始化。 */
+    private static boolean classPresent(String name) {
+        try {
+            Class.forName(name, false, NeoECOIntegration.class.getClassLoader());
+            return true;
+        } catch (ClassNotFoundException | LinkageError absent) {
+            return false;
+        }
+    }
+
+    /**
+     * Runs one wiring step, keeping a failure inside it from reaching the mod loader.
+     *
+     * <p>捕 {@link LinkageError} 不只是防御：邻居模组是可选的，它们的类在旧版里可能不存在或签名不同，
+     * 那种失败是 {@code Error}（NoClassDefFoundError / NoSuchMethodError / AbstractMethodError），只捕
+     * RuntimeException 会把它放出去——而这一段跑在 ECO 的 mod 构造器里，放出去就是启动失败。</p>
+     *
+     * <p><b>它只包住 lambda 体，不包参数求值</b>：写 {@code guarded("x", SomeNeighbourClass::wire)} 时，
+     * 方法引用本身先于本方法求值（加载那个类）。所以面向可选邻居的引用必须先在外面用字符串探过类，
+     * 再放进 lambda 里取。</p>
+     */
     private static void guarded(String what, Runnable step) {
         try {
             step.run();
-        } catch (RuntimeException broken) {
+        } catch (RuntimeException | LinkageError broken) {
             LOGGER.warn("[AE2-Pattern-Disk] {} could not be wired; that feature stays off", what, broken);
         }
     }

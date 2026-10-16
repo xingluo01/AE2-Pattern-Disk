@@ -595,13 +595,49 @@ public final class CellDriveScanner {
     }
 
     /**
+     * 外部（{@code integration/} 层）注册的「存储优先级」适配器。
+     *
+     * <p>本类不引用任何邻居模组的类型：可选依赖缺席时那个包连类都不会被加载。想让公开契约优先于方法名反射，
+     * 就由集成层实现这个接口并回调 {@link #registerPriorityAdapter}；没注册时下面三处继续走反射。</p>
+     */
+    public interface PriorityAdapter {
+
+        /** 这个对象（或其存储控制器）归不归本适配器管；不管就交给反射。 */
+        boolean handles(Object owner);
+
+        /** 读优先级；读不到返回 null。 */
+        @Nullable
+        Integer read(Object owner);
+
+        /** 写优先级；写不进去返回 false（调用方据此报「只读」，不假装成功）。 */
+        boolean write(Object owner, int value);
+    }
+
+    private static volatile PriorityAdapter priorityAdapter;
+
+    /** 由集成层在邻居模组在场时调用一次；重复注册以最后一次为准。 */
+    public static void registerPriorityAdapter(PriorityAdapter adapter) {
+        priorityAdapter = adapter;
+    }
+
+    /**
      * 存储优先级：ECO 挂在存储控制器上（不是像 AE2 那样挂在单个驱动器上），青春版挂在它自己的 L1 宿主上。
-     * 两条路都按方法名探，探不到就认不出；读得到的机器未必写得进去（ECO 本体只有 getter）。
+     * 两条路都按方法名探，探不到就认不出。
+     *
+     * <p>邻居模组把契约公开之后（ECO 21.2.6 的 {@code api.storage.IECOStoragePriorityHost}），集成层可以注册
+     * 一个 {@link PriorityAdapter} 抢先接管；没注册（或缺那个模组）时继续走方法名反射，行为与从前一致。</p>
      *
      * @return 读不到返回 null（表格那列就是「—」）
      */
     @Nullable
     public static Integer readStoragePriority(Object owner) {
+        PriorityAdapter adapter = priorityAdapter;
+        if (adapter != null && adapter.handles(owner)) {
+            Integer contracted = adapter.read(owner);
+            if (contracted != null) {
+                return contracted;
+            }
+        }
         Object controller = storageController(owner);
         Object priority = controller != null ? invoke(controller, "getStoragePriority") : null;
         return priority instanceof Integer value ? value : null;
@@ -612,6 +648,11 @@ public final class CellDriveScanner {
         if (owner instanceof IPriorityHost) {
             return true;
         }
+        PriorityAdapter adapter = priorityAdapter;
+        if (adapter != null && adapter.handles(owner)) {
+            // 接口在手：它有抽象 setter，编译期就能确认写得进去。
+            return true;
+        }
         return hasIntSetter(owner) || hasIntSetter(storageController(owner));
     }
 
@@ -619,7 +660,7 @@ public final class CellDriveScanner {
      * 探 {@code setStoragePriority(int)}。
      *
      * <p>为什么入口判据是“可写”而不是“可读”：AE2 的优先级界面只把值交给宿主，不读回也不报错，所以对着一个
-     * 只有 getter 的设备（ECO 本体就是：它的 setter 是私有的、还要玩家参数）确认下去只会让玩家以为改成了。</p>
+     * 只有 getter 的设备（ECO 21.2.1–21.2.5 就是：它的 setter 是私有的、还要玩家参数）确认下去只会让玩家以为改成了。</p>
      */
     private static boolean hasIntSetter(@Nullable Object target) {
         if (target == null) {
@@ -642,10 +683,15 @@ public final class CellDriveScanner {
     /**
      * 把存储优先级写进这台设备的存储控制器；写不进去返回 false。
      *
-     * <p>**不是每家都能写**：青春版的 L1 宿主带 {@code setStoragePriority(int)}，而 ECO 本体目前只暴露
-     * 了 getter，对它写会返回 false。调用方据此回一句「只读」，而不是假装写成功。</p>
+     * <p>**不是每家都能写**：青春版的 L1 宿主一直是 public 的 {@code setStoragePriority(int)}；ECO 本体自
+     * 21.2.6 起把它公开并抽成了 {@code api.storage.IECOStoragePriorityHost}（更早的版本只有 getter，写必失败）。
+     * 写不进去就返回 false，调用方据此报一句「只读」，而不是假装写成功。</p>
      */
     public static boolean setStoragePriority(Object owner, int value) {
+        PriorityAdapter adapter = priorityAdapter;
+        if (adapter != null && adapter.handles(owner)) {
+            return adapter.write(owner, value);
+        }
         Object controller = storageController(owner);
         if (controller == null) {
             return false;
@@ -662,9 +708,11 @@ public final class CellDriveScanner {
     /**
      * 这台设备的存储控制器：ECO 本体在驱动器自己身上（{@code getStorageController()}），青春版在
      * {@code getCluster().getController()}（驱动器没有前者，但继承了 {@code NEBlockEntity.getCluster()}）。
+     *
+     * <p>公开是给集成层的 {@link PriorityAdapter} 用：拿到它才能 {@code instanceof} 邻居那个优先级接口。</p>
      */
     @Nullable
-    private static Object storageController(Object owner) {
+    public static Object storageController(Object owner) {
         Object controller = invoke(owner, "getStorageController");
         if (controller != null) {
             return controller;

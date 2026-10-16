@@ -192,7 +192,7 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
     /** 右键元件编码槽里的元件：把它上传到选中的那台驱动器。 */
     private static final String ACTION_STORE_ENCODE_CELL = "storeEncodeCell";
 
-    /** Shift+右键驱动器首格：打开那一台自己的存储优先级界面。 */
+    /** 中键驱动器首格：打开那一台自己的存储优先级界面。 */
     private static final String ACTION_OPEN_PRIORITY = "openPriority";
     /** 切编码槽那张元件的压缩截断物（MEGA 大宗元件专有）；参数是「是否反向」。 */
     private static final String ACTION_CYCLE_COMPRESSION_CUTOFF = "cycleCompressionCutoff";
