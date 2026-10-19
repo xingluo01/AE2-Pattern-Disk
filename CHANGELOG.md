@@ -4,7 +4,7 @@
 
 写法见 [docs/CHANGELOG_STYLE.md](docs/CHANGELOG_STYLE.md)：小节固定、一行一条、句首复用小节名当动词。体例底座是 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本。
 
-## [未发布]
+## [0.9.3] - 2026-10-19
 
 ### 改进
 
