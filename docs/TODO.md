@@ -474,3 +474,16 @@ P0 不应新造范式，同文件里已有两处“每 tick 限量”的先例�
 - `mark_bookmarks` 改为**只在真有未写入或被跳过时才发**（对齐 AE2 `MissingBlankPatterns` 只在缺料时出声的习惯；重复打标是无害的，不必报）。
 - `notice.no_network_quick_move` **保留**：它是「本终端不像 AE2 那样把物品送进网络」的唯一解释，删了玩家会以为坏了。
 - 新增自检脚本 `tools/check-chat-message-keys.cjs`（用法记在 `docs/ARCHITECTURE.md` 第 10 节）：核代码发出的每个键在两语 lang 都在、每条开关配齐三处键、两语键集相等，动态前缀（`void_mode.` / `disk_refused.`）按「至少一个键兜底」判定。**上一轮那两处漏改正是它能拦住的**，已用正反向演练验证：正常 0；把已删的发出点加回去是 1；删掉任一语言键也是 1。
+
+### T. 编码终端顺序按钮：Shift 轮换输入顺序 — ✅（2026-10 记录）
+
+- ✅ 一枚按钮两档：**默认轮换主产物**（行为未变），**按住 Shift 轮换输入顺序**。客户端在按钮回调里按 `Screen.hasShiftDown()` 分流，服务端各走各的动作包。
+- ✅ 新动作名 `cycleProcessingInput`，与既有 `cycleProcessingOutput` **分开**——「名字即协议」：不靠给已有动作加参数改负载形状，也不复用名字。已补进 `docs/ARCHITECTURE.md` 的动作名清单。
+- ✅ 轮换算术提成纯函数 `ProcessingOutputMath.rotated(ItemStack[])`（输入输出共用），`FakeSlot[]` 版改为委托它；同时新增无注册表依赖的 `canCycle(ItemStack[])`。原行为一字未变（空槽仍保持空、<2 个非空不动作）。
+- ✅ **语义边界（重要，不要当成 bug 再报）**：样板编码时 `AEPatternHelper.condenseStacks` 合并同物品、丢弃空槽，所以输入侧只存在「首次出现的先后」，没有格位；该顺序只在**目标吃插入顺序**（成形网格类方块、按位置落料的机器）时有可见效果。本模组自己的装配室与磁盘供应器都不读它（`PatternPlan`/`ParallelSlotProbe` 只按 key 汇总；`PatternDiskAssemblerBlockEntity` 的合成格位走 `fillCraftingGrid`，`getInputs()` 不暴露格位）。
+- ✅ **已知副作用**（与主产物轮换同类风险，非新问题）：同一配方仅输入顺序不同的两张样板在网络里是两个不同物品，匹配等权，选中哪张不确定；确认目标机器吃顺序再编，不要两种顺序并存。
+- ✅ tooltip 统一三行：`轮换` / `点击轮换主产物` / `Shift+点击轮换原材料`（首行固定按钮名、按档换第二行，与元件终端的「物质聚合」同一写法）。
+- ✅ 用例 `ProcessingOrderMathTest`（5 条）：<2 个非空不轮换、首位→末尾、空槽保持空且非空个数不变、81 格绕回后复原、不改入参。
+- ✅ 同轮文案层清理（用户逐条裁决）：玩家可见中文串的结尾句号归零、`复写/编写样板/打标/关掉` 收敛到 `复制/编码/标记/关闭`、en 的 `Shift +` 统一为 `Shift+`、6 条长 tooltip 精简（`mode_store_desc` 与 `mark_bookmarks` 计数报告有意保留）。校验口径：`node tools/check-chat-message-keys.cjs .`（两语 220 键对齐）。
+- ⚠ 未做（有意）：不给输入槽做「顺序可见化」（1..N 序号）。按钮效果对玩家不透明时容易误以为是坏的，但序号绘制要先解决 81 格分页视图的表现，本轮不做。
+

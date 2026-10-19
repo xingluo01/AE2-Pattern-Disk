@@ -204,7 +204,7 @@
 
 菜单里还有两套**字符串协议**，改名字等于改协议：
 
-- `registerClientAction("...")` 的动作名（`encode`、`clear`、`setMode`、`transferToDisk`、`extractFromDisk`、`bindPrefix`、`renameDisk`、`refreshDiskList`、`neoecoae:uploadPattern` 等）。客户端与服务端靠这些字符串配对，注释里写着"名字即协议"的地方不要动。
+- `registerClientAction("...")` 的动作名（`encode`、`clear`、`setMode`、`transferToDisk`、`extractFromDisk`、`bindPrefix`、`renameDisk`、`refreshDiskList`、`cycleProcessingOutput`、`cycleProcessingInput`、`neoecoae:uploadPattern` 等）。客户端与服务端靠这些字符串配对，注释里写着"名字即协议"的地方不要动。
 - `@GuiSync(n)` 的**注解值 n 就是协议键**。AE2 在菜单构造期按注解值反射注册同步项，同一个菜单里重复的 id 会当场抛异常；字段本身可以搬位置，n 不能改、也不能被第二个字段复用。
 
 磁盘清单里的序列号也是协议的一部分：它必须在一个终端会话内稳定，客户端拿它说话，服务端拿它找盘。
