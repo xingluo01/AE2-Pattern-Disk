@@ -408,8 +408,10 @@ public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen
         showUnmarked.setY(search.getY());
         showUnmarked.setState(menu.isShowUnmarkedDisks());
         showUnmarked.setTooltipOn(List.of(
+                Component.translatable("gui.ae2_pattern_disk.encoding_terminal.show_unmarked.title"),
                 Component.translatable("gui.ae2_pattern_disk.encoding_terminal.show_unmarked.on")));
         showUnmarked.setTooltipOff(List.of(
+                Component.translatable("gui.ae2_pattern_disk.encoding_terminal.show_unmarked.title"),
                 Component.translatable("gui.ae2_pattern_disk.encoding_terminal.show_unmarked.off")));
         addRenderableWidget(showUnmarked);
         this.showUnmarkedButton = showUnmarked;
