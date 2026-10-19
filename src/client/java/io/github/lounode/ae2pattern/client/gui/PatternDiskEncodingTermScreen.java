@@ -24,7 +24,6 @@ import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
-import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -1070,45 +1069,23 @@ public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen
     // ---- 过滤槽交互 ----------------------------------------------------------
 
     /**
-     * 处理模式的输入/输出过滤槽按玩家口径改写：右键携带物品=把该物品连同它的堆叠数标记进槽位（覆盖
-     * 槽内原有内容，不累加），左键=清空。
-     * AE2 默认的 FakeSlot 语义是“左键放物品、右键加减数量”，与这套口径不同，所以直接发显式的
-     * SET_FILTER，而不走默认的 FakeSlot 动作。
+     * 过滤槽（含处理模式的输入/输出）的左右键语义**一律交给 AE2**，本类不要覆写 {@code slotClicked}：
+     * 基类对 {@code FakeSlot} 发的是 {@code PICKUP_OR_SET_DOWN}（左键：携带物品即标记/叠加，空手即清空）
+     * 与 {@code SPLIT_OR_PLACE_SINGLE}（右键：同类按携带数减量、空手 -1、异类不动），服务端由
+     * {@code AEBaseMenu.handleFakeSlotAction} 落到 {@code FakeSlot.increase/decrease/set}。
      *
-     * <p>空手右键没有可标记的东西，交回 AE2 的默认语义（把槽内数量减一）；Shift 点击、拖动、双击也一律
-     * 走 AE2 默认，属已知差异。手持桶/瓶这类可倒空的容器时也交回基类，走 AE2 的 EMPTY_ITEM 把内容物
-     * 设成过滤（见 {@link #getEmptyingAction}），而不是把容器本身标记进去。</p>
-     */
-    @Override
-    protected void slotClicked(@Nullable Slot slot, int slotIdx, int mouseButton, ClickType clickType) {
-        if (clickType == ClickType.PICKUP && menu.isProcessingPatternSlot(slot)) {
-            var carried = menu.getCarried();
-            if (mouseButton == InputConstants.MOUSE_BUTTON_RIGHT) {
-                if (!carried.isEmpty()) {
-                    // 能倒空的容器（桶/瓶）优先：AE2 会把内容物设成过滤，这是手动设流体过滤的唯一入口。
-                    if (getEmptyingAction(slot, carried) != null) {
-                        super.slotClicked(slot, slotIdx, mouseButton, clickType);
-                        return;
-                    }
-                    sendSetFilter(slot.index, carried.copy());
-                    return;
-                }
-            } else if (mouseButton == InputConstants.MOUSE_BUTTON_LEFT) {
-                sendSetFilter(slot.index, ItemStack.EMPTY);
-                return;
-            }
-        }
-
-        super.slotClicked(slot, slotIdx, mouseButton, clickType);
-    }
-
-    /**
-     * 照抄 AE2 样板编码终端的口径：处理槽先直接问手里这件可倒空容器（{@link ContainerItemStrategies}）
+     * <p>曾经在这里把左键改成「清空」、右键改成「整堆覆盖标记」：{@code FakeSlot.mayPlace} 恒为 false，
+     * 覆写之后左键点槽只会把槽清空，物品再也标记不进去（输出槽最先暴露这个问题）。要整堆覆盖请顺手多敲
+     * 几下左键，或者走中键的数量对话框。</p>
+     *
+     * <p>下面这个方法照抄 AE2 样板编码终端的口径：处理槽先直接问手里这件可倒空容器（{@link ContainerItemStrategies}）
      * 能倒出什么，拿到了就把这个动作交给基类去走 EMPTY_ITEM，拿不到再退回基类判定。
      *
-     * <p>这里和 AE2 一样跳过了基类的 {@code isItemValid} 闸门。日后若给编码配置加上
-     * {@code supportedType}/{@code slotFilter} 限制，需同步补回校验，否则会出现「提示可倒空、服务端
-     * 静默不落」的空操作。</p>
+     * <p>这里和 AE2 一样跳过了基类的 {@code isItemValid} 闸门。因此今天就会出这个空操作：编码库存只收
+     * 物品键，手里拿桶/瓶时上面拿到的是流体动作，客户端发 EMPTY_ITEM，服务端在 {@code FakeSlot.set} →
+     * {@code ConfigMenuInventory.isItemValid} 一关静默拒掉，提示了却不落。上游同样是这个病，与
+     * {@code PatternEncodingTermScreen} 逐行同形；日后若给编码配置加上 {@code supportedType}/
+     * {@code slotFilter} 限制，需同步补回校验。</p>
      */
     @Override
     protected EmptyingAction getEmptyingAction(Slot slot, ItemStack carried) {
