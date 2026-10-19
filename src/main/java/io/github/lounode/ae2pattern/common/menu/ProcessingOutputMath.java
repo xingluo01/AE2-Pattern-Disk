@@ -20,11 +20,30 @@ public final class ProcessingOutputMath {
     private ProcessingOutputMath() {
     }
 
-    /** 是否值得轮换：只有一个（或零个）非空输出时轮换等于把它清空，不做。 */
+    /** 是否值得轮换：只有一个（或零个）非空项时轮换等于把它清空，不做。输入与输出共用这一判据。 */
     public static boolean canCycle(FakeSlot[] slots) {
+        return canCycle(itemsOf(slots));
+    }
+
+    /**
+     * 轮换已编码的处理槽位：每个位置取它后面第一个非空槽的内容（绕回开头），空槽保持空。
+     *
+     * <p>输出侧用它把主产物拨回主产物位；输入侧用它调整样板推给机器的先后顺序。两侧共用这一套算术。</p>
+     *
+     * <p>配方转移把主输出放错槽位时，玩家用它把顺序拨回来，而不是重编码一张样板。</p>
+     */
+    public static void cycle(FakeSlot[] slots) {
+        var next = rotated(itemsOf(slots));
+        for (int i = 0; i < next.length; i++) {
+            slots[i].set(next[i]);
+        }
+    }
+
+    /** {@link FakeSlot} 版判据的算术本体：非空项多于一个才值得轮换。 */
+    public static boolean canCycle(ItemStack[] current) {
         int filled = 0;
-        for (var slot : slots) {
-            if (!slot.getItem().isEmpty()) {
+        for (var stack : current) {
+            if (!stack.isEmpty()) {
                 filled++;
             }
         }
@@ -32,28 +51,36 @@ public final class ProcessingOutputMath {
     }
 
     /**
-     * 轮换已编码的处理输出：每个位置取它后面第一个非空槽的内容（绕回开头），空槽保持空。
+     * 轮换的算术本体，纯函数（不改入参）：每个非空位置取它后面第一个非空项的内容（绕回开头），空位保持空。
      *
-     * <p>配方转移把主输出放错槽位时，玩家用它把顺序拨回来，而不是重编码一张样板。</p>
+     * <p>槽位视图与样板实际携带的内容并不一致——编码时同物品合并、空槽丢弃，所以这里只保证「非空项之间的
+     * 相对顺序」，不试图保留格位。</p>
      */
-    public static void cycle(FakeSlot[] slots) {
-        var next = new ItemStack[slots.length];
-        for (int i = 0; i < slots.length; i++) {
+    public static ItemStack[] rotated(ItemStack[] current) {
+        var next = new ItemStack[current.length];
+        for (int i = 0; i < current.length; i++) {
             next[i] = ItemStack.EMPTY;
-            if (!slots[i].getItem().isEmpty()) {
-                // 往后找第一个非空槽（绕回开头），找不到就留空——这与"空槽不动"是同一件事。
-                for (int j = 1; j < slots.length; j++) {
-                    var candidate = slots[(i + j) % slots.length].getItem();
-                    if (!candidate.isEmpty()) {
-                        next[i] = candidate;
-                        break;
-                    }
+            if (current[i].isEmpty()) {
+                continue;
+            }
+            // 往后找第一个非空项（绕回开头），找不到就留空——这与“空槽不动”是同一件事。
+            for (int j = 1; j < current.length; j++) {
+                var candidate = current[(i + j) % current.length];
+                if (!candidate.isEmpty()) {
+                    next[i] = candidate;
+                    break;
                 }
             }
         }
-        for (int i = 0; i < next.length; i++) {
-            slots[i].set(next[i]);
+        return next;
+    }
+
+    private static ItemStack[] itemsOf(FakeSlot[] slots) {
+        var current = new ItemStack[slots.length];
+        for (int i = 0; i < slots.length; i++) {
+            current[i] = slots[i].getItem();
         }
+        return current;
     }
 
     /** 按槽位遍历倍乘全部非空堆叠，避免压缩索引错位。 */

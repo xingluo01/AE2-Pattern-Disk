@@ -4,6 +4,12 @@
 
 写法见 [docs/CHANGELOG_STYLE.md](docs/CHANGELOG_STYLE.md)：小节固定、一行一条、句首复用小节名当动词。体例底座是 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本。
 
+## [未发布]
+
+### 改进
+
+- 改进**编码终端的顺序按钮**：按住 Shift 点按改为轮换处理样板的输入顺序（样板推给机器的先后），不按 Shift 时照旧轮换主产物。
+
 ## [0.9.2] - 2026-10-19
 
 ### 修复

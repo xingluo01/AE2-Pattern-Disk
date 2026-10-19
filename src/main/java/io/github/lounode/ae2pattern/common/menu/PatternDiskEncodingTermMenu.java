@@ -108,6 +108,11 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
     private static final String ACTION_CLEAR = "clear";
     private static final String ACTION_SET_MODE = "setMode";
     private static final String ACTION_CYCLE_PROCESSING_OUTPUT = "cycleProcessingOutput";
+    /**
+     * 轮换处理样板的输入顺序。与输出轮换是两个动作名：{@code 名字即协议}，同一个名字不能被两件事复用，
+     * 也不能靠加参数改变已有动作的负载形状。
+     */
+    private static final String ACTION_CYCLE_PROCESSING_INPUT = "cycleProcessingInput";
     private static final String ACTION_MULTIPLY_OUTPUT = "multiplyOutput";
     private static final String ACTION_DIVIDE_OUTPUT = "divideOutput";
     private static final String ACTION_SET_ADVANCED_MODE = "setAdvancedMode";
@@ -439,6 +444,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         registerClientAction(ACTION_CLEAR, this::clear);
         registerClientAction(ACTION_SET_MODE, EncodingMode.class, encodingLogic::setMode);
         registerClientAction(ACTION_CYCLE_PROCESSING_OUTPUT, this::cycleProcessingOutput);
+        registerClientAction(ACTION_CYCLE_PROCESSING_INPUT, this::cycleProcessingInput);
         registerClientAction(ACTION_MULTIPLY_OUTPUT, Integer.class, this::multiplyOutput);
         registerClientAction(ACTION_DIVIDE_OUTPUT, Integer.class, this::divideOutput);
         registerClientAction("setSubstitution", Boolean.class, encodingLogic::setSubstitution);
@@ -1697,6 +1703,28 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
     // 仅当已编码多个处理输出时可轮换
     public boolean canCycleProcessingOutputs() {
         return mode == EncodingMode.PROCESSING && ProcessingOutputMath.canCycle(processingOutputSlots);
+    }
+
+    /**
+     * 轮换处理样板的输入顺序：首位挪到末尾，其余顺次前移，空槽不动。
+     *
+     * <p>样板编码时同物品会合并、空槽会丢弃，所以顺序是「首次出现的先后」，也是样板供应器推给机器的先后。
+     * 它不改主产物，也不改数量，与输出轮换是两件事。</p>
+     */
+    public void cycleProcessingInput() {
+        if (isClientSide()) {
+            sendClientAction(ACTION_CYCLE_PROCESSING_INPUT);
+            return;
+        }
+        if (mode != EncodingMode.PROCESSING || !canCycleProcessingInputs()) {
+            return;
+        }
+        ProcessingOutputMath.cycle(processingInputSlots);
+    }
+
+    // 仅当已编码多个处理输入时可轮换
+    public boolean canCycleProcessingInputs() {
+        return mode == EncodingMode.PROCESSING && ProcessingOutputMath.canCycle(processingInputSlots);
     }
 
     /**

@@ -81,14 +81,21 @@ public class ProcessingEncodingPanel extends DiskEncodingModePanel {
                 Component.translatable("gui.ae2_pattern_disk.encoding_terminal.merge_same_items_desc_off")));
         widgets.add("processingMergeItems", this.mergeItemsBtn);
 
-        // 主产物轮换（states.png 0,8,8,8）：主产物更换为第一个副产物，原主产物排列到最后。单形态按钮：
-        // 常态与悬停保持同一水平高度，不做 hover 下压动画。
-        this.rotatePrimaryBtn = new StatesIconButton(() -> ROTATE_PRIMARY, act -> menu.cycleProcessingOutput());
+        // 顺序轮换（states.png 0,8,8,8）：默认轮换主产物（主产物换为第一个副产物，原主产物排到最后）；
+        // 按住 Shift 时改为轮换输入顺序。单形态按钮：常态与悬停保持同一水平高度，不做 hover 下压动画。
+        this.rotatePrimaryBtn = new StatesIconButton(() -> ROTATE_PRIMARY, act -> {
+            if (Screen.hasShiftDown()) {
+                menu.cycleProcessingInput();
+            } else {
+                menu.cycleProcessingOutput();
+            }
+        });
         this.rotatePrimaryBtn.setHalfSize(true);
         this.rotatePrimaryBtn.setPressAnimation(false);
         this.rotatePrimaryBtn.setTooltip(List.of(
-                Component.translatable("gui.ae2_pattern_disk.encoding_terminal.rotate_primary"),
-                Component.translatable("gui.ae2_pattern_disk.encoding_terminal.rotate_primary_desc")));
+                Component.translatable("gui.ae2_pattern_disk.encoding_terminal.rotate_title"),
+                Component.translatable("gui.ae2_pattern_disk.encoding_terminal.rotate_click"),
+                Component.translatable("gui.ae2_pattern_disk.encoding_terminal.rotate_shift")));
         widgets.add("processingRotatePrimary", this.rotatePrimaryBtn);
 
         // 倍乘按钮：默认×2，Shift=×3，Ctrl=×5，Alt=×10；作用于全部输入与输出
