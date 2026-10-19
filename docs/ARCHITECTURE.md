@@ -20,7 +20,7 @@
 | `client` | `src/client/java` | 只在客户端加载。`build.gradle` 刻意把它与 main 分开，让公共代码无法误引客户端类——这不是洁癖，是编译期防线 |
 | `main/templates` | `src/main/templates` | `neoforge.mods.toml` 模板，构建期展开 |
 | `generated` | `src/generated/resources` | 数据生成的输出目录（`build.gradle` 已把 `--output` 指向它并接进 main 资源）。当前为空——没跑过 datagen |
-| `test` | `src/test/java` | 元件表快照、差量包与占用统计缓存的 JUnit 回归测试；界面交互另需实机验证 |
+| `test` | `src/test/java` | 元件表快照、差量包与占用统计缓存的 JUnit 回归测试，以及磁盘宿主的契约测试（镜像栏覆写、终端视图入口、存档键字面量）；界面交互与时序另需实机验证 |
 
 模块信息写在 `src/main/templates/META-INF/neoforge.mods.toml`，不要直接改构建产物。
 
@@ -31,24 +31,24 @@
 | （根包） | 3 | 模组入口 `AE2PatternDisk`、注册表 `AEPatternRegistries`、AECS 在场才注册的 `MeteoritePatternProviderRegistrations` |
 | `api` | 14 | **对外稳定面**。给"搬运磁盘"与"供应样板"的第三方模组用，包路径与签名改动等于破坏兼容 |
 | `common` | 1 | capability 注册入口 `AEPatternDiskCapabilities` |
-| `common/logic` | 14 | 纯逻辑。不依赖菜单、屏幕、网络，可在服务端线程之外读懂 |
-| `common/menu` | 15 | 菜单与其逻辑（编码逻辑、磁盘索引、标记规则、输出运算） |
+| `common/logic` | 15 | 纯逻辑。不依赖菜单、屏幕、网络，可在服务端线程之外读懂 |
+| `common/menu` | 24 | 菜单与其逻辑（编码逻辑、磁盘索引、标记规则、输出运算） |
 | `common/menu/slot` | 2 | 终端里的两个特殊槽 |
 | `common/block` | 5 | 方块类 |
-| `common/block/entity` | 8 | 方块实体 |
-| `common/part` | 4 | 线缆面板形态的部件 |
+| `common/block/entity` | 9 | 方块实体（含两个带磁盘供应器的抽象基类） |
+| `common/part` | 6 | 线缆面板形态的部件（含面板基类） |
 | `common/pattern` | 5 | 磁盘内容的数据结构、库存适配、容量档、内容版本快照 |
 | `common/item` | 2 | 磁盘物品与升级卡包装 |
 | `common/recipe` | 1 | 洗掉磁盘标记的合成 `ClearDiskMarkRecipe`（见 README「Clearing a disk's mark」） |
 | `common/util` | 2 | NBT 与掉落物小工具 |
-| `network` | 7 | 数据包（客户端与服务端各半） |
-| `integration/…` | 22 | 邻居模组适配，一个包一个邻居（10 个子包 + `package-info`） |
-| `config` | 1 | 模组配置 |
+| `network` | 10 | 数据包（客户端与服务端各半） |
+| `integration/…` | 29 | 邻居模组适配，一个包一个邻居（13 个子包 + `package-info`） |
+| `config` | 3 | 模组配置 |
 | `client`（客户端源集根） | 2 | 客户端入口 `AE2PatternDiskClient`、物品显示属性 `InitPatternDiskProperties` |
-| `client/gui` | 28 | 屏幕、面板、按钮、表格模型 |
-| `client/integration` | 23 | JEI / EMI / IPN / JECH 与各邻居的客户端侧适配 |
+| `client/gui` | 32 | 屏幕、面板、按钮、表格模型 |
+| `client/integration` | 28 | JEI / EMI / IPN / JECH 与各邻居的客户端侧适配 |
 | `client/sort` | 4 | 排序口径（数值序、阶层表、名字门槛） |
-| `client/render` | 1 | 高效分子装配室的 BEISR |
+| `client/render` | 2 | 高效分子装配室的 BEISR 与驱动器高亮 |
 | `mixin` | 1 | `KeySortersMixin`，在客户端源集，见 §7 |
 
 主源集 106 个 `.java`，客户端源集 59 个。
@@ -100,6 +100,8 @@
 
 跨模组还有一条路：`api/DiskHostCollector.java` 让别的模组把自家宿主交给本模组的编码终端，注册口是 `PatternDiskApi.registerDiskHost`，存储实现 `api/PatternDiskHostRegistry.java`。
 
+`api/PatternDiskHostView` 是给「自己也有样板槽」的宿主用的组合视图（自己的行在前、盘内样板在后）：它的调用方在别的模组里，仓库内零引用是预期，别因为「没人用」当死代码删掉。
+
 **序列号（serial）**是终端与机器之间的通用货币：客户端只认序号，不认槽位。`common/menu/DiskIndex.java` 负责"网格里的磁盘槽 ↔ 稳定序列号"这层映射，`common/pattern/DiskSlotVersions.java` 记内容版本快照，用来回答"自上次看过之后变没变"。
 
 ### 2.4 空白样板记账
@@ -112,9 +114,13 @@
 
 ### 3.1 ME 样板磁盘供应器
 
-方块 `common/block/PatternDiskProviderBlock.java` + 方块实体 `PatternDiskProviderBlockEntity` + 面板 `common/part/PatternDiskProviderPart.java`（416 行）。两形态共享一个宿主契约 `PatternDiskProviderHost` 与一份逻辑 `common/logic/PatternDiskProviderLogic.java`——出样板、收回产物那条路只写了一遍。
+方块 `common/block/PatternDiskProviderBlock.java` + 方块实体 `PatternDiskProviderBlockEntity` + 面板 `common/part/PatternDiskProviderPart.java`。两形态共享宿主契约 `PatternDiskProviderHost` 与一份逻辑 `common/logic/PatternDiskProviderLogic.java`——出样板、收回产物那条路只写了一遍。
 
-**自装配变体**：`MeteoritePatternProviderBlockEntity` 配 `SelfAssemblingPatternDiskProviderLogic`（378 行），能在供应器内部直接做完的合成不往外推。它整套注册在 `MeteoritePatternProviderRegistrations.java` 里，条件是 AE2 Crystal Science 在场（软依赖入口 `integration/ae2cs/AecsSoftDep.java`）。面板形态 `common/part/MeteoritePatternProviderPart.java`（本包最大的文件）共用同一份宿主契约与逻辑，自己只多两件事：自装配产物的回送由服务端的世界 tick 事件驱动（部件没有方块实体那种每 tick 回调，而网格的 `IGridTickable` 服务槽归 AE2 的供应器逻辑），贴附面顶替「推入方向」里的方位参照。
+**磁盘那半（2026-10 收敛）**：四台带磁盘的供应器（方块/面板 × 普通/自装配）原来各抄一份「磁盘栏 + 终端视图 + 重建 + 掉落顺序 + 内存卡剥离」，逐行重合接近一半，改一条语义要动三到四处（镜像只读那次修复就是那么改的）。现在只剩三层：`common/logic/DiskHostSupport.java`（104 行，磁盘栏与它的 NBT、终端视图与失效、重建、掉落前的镜像清理、内存卡拆样板段、磁盘变更通知）、`AbstractDiskPatternProviderBlockEntity`（93 行，AE2 那几个覆盖点的转接）、`AbstractDiskPatternProviderPart`（205 行，面板独有：推入方向、碰撞箱与连接长度、红石转发、部件生命周期、菜单入口）。四个具体宿主合计 121 行，各自只剩注册物品、逻辑类型与模型常量（行数口径：去注释、去 import、去 package、去空行）。批处理装配室不走这一层：它没有镜像样板栏，样板来自自己的配方池，与这边只共用终端视图本身。
+
+**镜像样板栏对外只读**：`PatternDiskProviderLogic#getPatternInv()` 返回只读视图（读给副本、写与取全拒、拒绝日志 5 秒冷却），镜像原件留在类内只供重建与清空。原因是第三方上传器可以绕过 `getTerminalPatternInventory()` 直接写镜像（ExtendedAE Plus 按类名子串匹配到自装配供应器后就是这么写的），而镜像里的样板没有任何磁盘背书：网络看得见、磁盘里没有、拆机不掉。
+
+**自装配变体**：`MeteoritePatternProviderBlockEntity` 配 `SelfAssemblingPatternDiskProviderLogic`（378 行），能在供应器内部直接做完的合成不往外推。它整套注册在 `MeteoritePatternProviderRegistrations.java` 里，条件是 AE2 Crystal Science 在场（软依赖入口 `integration/ae2cs/AecsSoftDep.java`）。面板形态 `common/part/MeteoritePatternProviderPart.java` 共用同一份宿主契约与逻辑，自己只多一件事：自装配产物的回送由服务端的世界 tick 事件驱动（部件没有方块实体那种每 tick 回调，而网格的 `IGridTickable` 服务槽归 AE2 的供应器逻辑），贴附面顶替「推入方向」里的方位参照也已收进面板基类。
 
 ### 3.2 样板转存器
 

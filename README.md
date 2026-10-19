@@ -31,6 +31,8 @@ form keeps the same nine disk slots and the same return inventory, just in a thi
 
 With ExtendedAE Plus installed, its "upload pattern to a provider" button works here too: the provider has no pattern slots of its own, so the uploaded pattern lands in a free space on one of the disks it holds.
 
+An open pattern access terminal keeps the rows it showed when it was opened. Changing the disks (inserting, removing, or encoding a new pattern) does not renumber the rows you are looking at; close and reopen the terminal to see the current layout. This is deliberate: AE2's pattern access terminal does not tolerate a provider whose row count changes mid-session.
+
 ### ME Pattern Transferer
 Moves encoded patterns between AE2 blank patterns and pattern disks. It has two modes. **Store** extracts encoded patterns into pattern disks, and also moves patterns from one disk to another, emptying the source disk. **Copy** duplicates a populated disk onto another one and leaves the source alone. Input slots accept encoded patterns or populated disks; destination slots hold the target disks. Blank patterns produced by extraction are returned to the connected ME network. Supports speed cards.
 

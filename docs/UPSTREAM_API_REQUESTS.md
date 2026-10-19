@@ -1,8 +1,8 @@
-# 上游 API 请求（ECO / ECO Prototype）
+# 上游 API 请求（ECO / ECO Prototype / ExtendedAE Plus）
 
-> 状态：**已提交**（本地 2026-10-09 02:55 / UTC `2026-10-08T18:55Z`，见文末「提交记录」）。下面两份草稿保留原文，便于日后追进或修订时对照。
+> 状态：前两份**已提交**（本地 2026-10-09 02:55 / UTC `2026-10-08T18:55Z`，见文末「提交记录」）；第三份是 2026-10 发现的兜底缺陷，**尚未提交**。下面三份草稿保留原文，便于日后追进或修订时对照。
 > 提出方：AE2 Pattern Disks（`ae2_pattern_disk`，作者 `xingluo01`）。
-> 用例：**元件管理终端**——把网络里所有能装存储元件的东西列成一张表，并支持取出/放入元件、调整存储优先级。
+> 用例：前两份是**元件管理终端**——把网络里所有能装存储元件的东西列成一张表，并支持取出/放入元件、调整存储优先级；第三份是**样板磁盘供应器的样板上传**。
 
 ## 为什么会有这些请求
 
@@ -141,6 +141,58 @@
 ## 取证方式
 
 以上签名来自 `neo-eco-prototype` 1.3.1（CurseForge file 9098136）的 `javap`，不是在源码树上读的；若有出入请以你那边为准。
+````
+
+---
+
+## 草稿 3 → `GaLicn/ExtendedAE_Plus`（尚未提交）
+
+**标题**
+
+```text
+「上传到装配矩阵」按简单类名匹配供应器，会写进磁盘背书的派生样板栏
+```
+
+**正文**
+
+````text
+## 背景
+
+我在维护 AE2 Pattern Disks（`ae2_pattern_disk`）。玩家反馈：用「上传到装配矩阵」把样板传到本模组的自装配样板磁盘供应器后，样板既不在任何磁盘上，也找不到去向；但合成 CPU 确实会把它当成可用样板派发，拆除设备后彻底消失。
+
+## 现状
+
+`ExtendedAEPatternUploadUtil.findAllMatrixPatternInventories(IGrid)`（`develop/1.21.1`，`82368cf`）末尾有一段按类名匹配的分支：
+
+    if (className != null && className.contains("MeteoritePatternProvider")) {
+        ...
+        InternalInventory inv = logic.getPatternInv();   // 直接写镜像栏
+        result.add(new MatrixInventoryTarget(inv, inv, null, false));
+
+这段是给 AE2 Crystal Science 的自装配供应器（`io.github.lounode.ae2cs.common.block.entity.MeteoritePatternProviderBlockEntity`）写的，那边的 `getPatternInv()` 就是真实的样板库存，写法没问题。
+
+问题是**匹配用的是简单类名子串**。本模组也有名为 `MeteoritePatternProviderBlockEntity` / `MeteoritePatternProviderPart` 的设备（自装配样板磁盘供应器），于是同样被命中；而那台设备的 `getPatternInv()` 只是磁盘展开出来的**派生副本**——真身在样板磁盘的物品组件里，终端读写的入口是 `getTerminalPatternInventory()`。
+
+于是 `uploadPatternToMatrix(...)` 的 `target.insertInventory().addItems(...)` 写进了派生副本：
+
+- 样板没进任何磁盘，却会被 `PatternProviderLogic#updatePatterns()` 解码成可用样板注册进网络；
+- 设备拆除时派生副本被清空且不进掉落，玩家等于凭空丢一张样板；
+- 磁盘内容一变动，重建就把这张样板抹掉，玩家无从追查。
+
+## 建议
+
+二选一（任一都能修掉）：
+
+1. **按命名空间判定**：改成 `machineClass.getName().startsWith("io.github.lounode.ae2cs.")`。简单类名撞名在模组生态里是常态，子串匹配会把同名的第三方设备一起吃掉。
+2. **统一走 `getTerminalPatternInventory()`**：AE2 给 `PatternContainer` 的这份契约本来就是写样板的入口，磁盘背书的设备会在那里把样板落到磁盘上；对 AE2CS 自己的供应器也没有行为变化。
+
+如果以后还要认「能存样板但不是装配矩阵」的设备，建议直接认 `PatternContainer`，让设备自己决定样板落到哪里。
+
+## 取证方式
+
+- 命中行：`ExtendedAEPatternUploadUtil.java:993-1014`（分支）、`:813` 与 `:896`（`addItems` 写入）、`:870` `uploadPatternToMatrix` 入口；触发入口 `CreateAndUploadPatternC2SPacket.java:136`（Ctrl+Q / JEI-EMI 书签）。
+- 读的是 `develop/1.21.1` 的 `82368cf`（2026-10-09），不是发布 jar；若已改过请以你那边为准。
+- 本模组侧已把 `getPatternInv()` 改成只读，升级后这一路径会明确报「上传失败」而不是静默丢样板；上游改了之后两边都正常。
 ````
 
 ---

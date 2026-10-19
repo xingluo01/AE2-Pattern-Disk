@@ -51,8 +51,12 @@ import io.github.lounode.ae2pattern.integration.advancedae.AdvPatternSupport;
  * pattern disks, instead of a fixed slot-per-pattern inventory.
  *
  * <p>We do NOT touch AE2's private {@code patterns}/{@code patternInputs} fields. Instead we write the
- * disk patterns into the parent's own {@code patternInventory} (via {@link #getPatternInv()}) and let the
+ * disk patterns into the parent's own {@code patternInventory} (the {@code mirror} field below) and let the
  * parent's {@link #updatePatterns()} decode and register them. This stays within public API.</p>
+ *
+ * <p><b>镜像栏对外只读</b>（{@link #getPatternInv()}）：那栏只是磁盘的派生副本，外部写进去的样板不会落到
+ * 任何磁盘上，却会被 `updatePatterns()` 当成可用样板注册进网络，于是成为「网络看得见、磁盘里没有」的幻影
+ * 样板——磁盘一变就被抹掉，拆机也不掉落。写样板必须走 {@code getTerminalPatternInventory()}。</p>
  *
  * <p>The disk inventory is supplied lazily via a {@link Supplier} so this logic may be constructed during
  * the block-entity's parent constructor before the disk inventory field is initialized.</p>
@@ -68,6 +72,16 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
     private final IManagedGridNode mainNode;
     /** 与父类同源的动作源（同一个 {@code MachineSource} 形态，挂在同一个网格节点上）。 */
     private final IActionSource actionSource;
+
+    /**
+     * 镜像样板栏的原件（磁盘展开出的样板副本，<b>不是真身</b>）：真身在磁盘物品组件里，终端的读写走
+     * {@code getTerminalPatternInventory()}。只在本类内部用（重建与清空）；不对外开访问器，那等于给只读化
+     * 留一个绕过口。
+     */
+    private final InternalInventory mirror;
+
+    /** {@link #getPatternInv()} 交出去的那份只读视图，构造一次、长期复用。 */
+    private final InternalInventory readOnlyMirror;
 
     /**
      * 上次重建时的磁盘内容快照（每槽一项），由 {@link DiskSlotVersions#ofInventory} 生成、用
@@ -86,6 +100,110 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
         this.host = host;
         this.mainNode = mainNode;
         this.actionSource = new MachineSource(mainNode::getNode);
+        // 父构造已经把镜像栏建好，这里抓住原件：覆写后的 getPatternInv() 只读，重建与清空要用原件。
+        this.mirror = super.getPatternInv();
+        this.readOnlyMirror = new ReadOnlyMirror();
+    }
+
+    /**
+     * 镜像栏的只读视图，见 {@link ReadOnlyMirror}。
+     *
+     * <p>这条口子必须自己堵：AE2 的 {@code PatternProviderLogicHost#getTerminalPatternInventory()} 只是默认
+     * 实现（返回 {@code getLogic().getPatternInv()}），第三方上传器完全可以绕过它直接写镜像。ExtendedAE Plus
+     * 的「上传到装配矩阵」就是按类名匹配到本设备后这么写的（它的 {@code findAllMatrixPatternInventories}）。
+     * 写进来的样板会进合成清单、却没有任何磁盘背书：磁盘一变就被重建抹掉，拆机也不掉落。</p>
+     */
+    @Override
+    public InternalInventory getPatternInv() {
+        // 构造期（父构造尚未返回）还没有建出这份视图；那时只有本类自己会问到，原样交回原件。
+        return readOnlyMirror != null ? readOnlyMirror : super.getPatternInv();
+    }
+
+    /**
+     * 只读的镜像栏：读转发给原件（返回副本，避免调用方改到共享的 ItemStack），写与取一律拒绝。
+     *
+     * <p>取出也要拒绝：镜像里的每张样板都还在某张磁盘上，放行等于免费复制。AE2 内部只用私有字段
+     * {@code patternInventory}，不经过 {@link #getPatternInv()}，所以拒绝不影响解码与投递。</p>
+     *
+     * <p>日志带 5 秒冷却：AE2 的 {@code addItems} 在大库存上逐槽试写，一次上传会问上百次，逐次记一行就是刷屏。</p>
+     */
+    private final class ReadOnlyMirror implements InternalInventory {
+
+        private static final long REFUSAL_LOG_COOLDOWN_NANOS = 5_000_000_000L;
+
+        private long lastRefusalLogNanos;
+
+        @Override
+        public int size() {
+            return mirror.size();
+        }
+
+        @Override
+        public ItemStack getStackInSlot(int slot) {
+            if (slot < 0 || slot >= mirror.size()) {
+                return ItemStack.EMPTY;
+            }
+            return mirror.getStackInSlot(slot).copy();
+        }
+
+        @Override
+        public void setItemDirect(int slot, ItemStack stack) {
+            refuse("setItemDirect");
+        }
+
+        @Override
+        public ItemStack insertItem(int slot, ItemStack stack, boolean simulate) {
+            if (stack.isEmpty()) {
+                return ItemStack.EMPTY;
+            }
+            // 模拟不是写尝试：上传器会满仓逐槽探一遍，那一步不该占日志。
+            if (!simulate) {
+                refuse("insertItem");
+            }
+            return stack;
+        }
+
+        @Override
+        public ItemStack extractItem(int slot, int amount, boolean simulate) {
+            if (simulate || amount <= 0 || getStackInSlot(slot).isEmpty()) {
+                return ItemStack.EMPTY;
+            }
+            refuse("extractItem");
+            return ItemStack.EMPTY;
+        }
+
+        @Override
+        public boolean isItemValid(int slot, ItemStack stack) {
+            return false;
+        }
+
+        @Override
+        public int getSlotLimit(int slot) {
+            // 样板按单张存；写又全拒，这个数只影响显示。
+            return 1;
+        }
+
+        @Override
+        public void clear() {
+            // 逐槽走 setItemDirect 只会把冷却日志刷满，空终态也拿不到：原件只有本类能清。
+            refuse("clear");
+        }
+
+        private void refuse(String action) {
+            long now = System.nanoTime();
+            if (now - lastRefusalLogNanos < REFUSAL_LOG_COOLDOWN_NANOS) {
+                return;
+            }
+            lastRefusalLogNanos = now;
+            LOGGER.warn("样板磁盘供应器在 {} 拒绝了外部对镜像样板栏的 {}：那栏只是磁盘的副本，写进去的样板会变成"
+                    + "既不在磁盘上、也不进掉落的幻影样板；写样板请走 getTerminalPatternInventory()",
+                    where(), action);
+        }
+
+        private String where() {
+            var blockEntity = host.getBlockEntity();
+            return blockEntity == null ? "未知位置" : String.valueOf(blockEntity.getBlockPos());
+        }
     }
 
     /**
@@ -371,7 +489,7 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
             return false; // unchanged: coalesce, skip full rebuild
         }
 
-        InternalInventory patternInv = getPatternInv();
+        InternalInventory patternInv = mirror;
         if (patternInv == null) {
             return false;
         }
@@ -431,7 +549,7 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
      * written while that flag is up; the disk inventory is not touched.</p>
      */
     public void clearMirror() {
-        InternalInventory patternInv = getPatternInv();
+        InternalInventory patternInv = mirror;
         if (patternInv == null) {
             return;
         }
@@ -441,6 +559,28 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
         } finally {
             rebuildingMirror = false;
         }
+        // 镜像已非磁盘内容的映像：不把快照作废的话，下一个非强制的 refresh 会拿旧快照比出「没变」而跳过重建。
+        lastDiskVersions = null;
+        updatePatterns();
+    }
+
+    /**
+     * 拆机/重置时清空镜像。父实现逐槽清，每槽一次通知就直接跑一次 9216 槽的 {@code updatePatterns()}——
+     * 通知量会被放大成几千万次槽访问。这里用与重建同一个抑制开关（{@link #rebuildingMirror}）把它压成一次，
+     * 末尾统一重建。
+     *
+     * <p>与 {@link #clearMirror()} 同一套思路：两个入口都只关心「空终态」。</p>
+     */
+    @Override
+    public void clearContent() {
+        rebuildingMirror = true;
+        try {
+            super.clearContent();
+        } finally {
+            rebuildingMirror = false;
+        }
+        // 镜像内容不再是磁盘内容的映像，快照得作废，否则下一个非强制刷新会拿旧快照比出「没变」。
+        lastDiskVersions = null;
         updatePatterns();
     }
 

@@ -27,6 +27,10 @@ import appeng.core.definitions.AEItems;
  * <p>The disk inventory is small, but the view is rebuilt from scratch by the constructor and by
  * {@link #invalidate()}, and its row layout must stay stable while a terminal is open - so the view is
  * cached between rebuilds and only replaced when the disks actually change.</p>
+ *
+ * <p><b>行数冻结是有意的，不要改成动态同步。</b>已经打开的样板访问终端拿着开屏时那一份实例，行数也跟着冻住；
+ * 中途中把行数拉高会超出终端客户端的固定槽数而崩服务端（AE2 的限制）。所以磁盘一变只作废缓存，下一次打开重扫
+ * 成紧凑的新行，已开的那份不动。</p>
  */
 public final class PatternDiskTerminalView implements BlankPatternSink {
 

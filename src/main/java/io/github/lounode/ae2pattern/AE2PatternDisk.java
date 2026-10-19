@@ -162,6 +162,9 @@ public class AE2PatternDisk {
      * form does above (that is the channel a molecular assembler pushes crafted results back through).
      */
     private void registerPartCapabilities(appeng.api.parts.RegisterPartCapabilitiesEvent event) {
+        // 两个变体必须各注册一次，不能按基类合一份：AE2 在 RegisterPartCapabilitiesEvent#register 里明确只收具体类
+        // （partClass 是接口或抽象类时直接抛 IllegalArgumentException，见 19.2.17 的 :91-94）。这不是本模组偷懒，
+        // 是上游 API 的形状。新增第三个变体时同样在这里补一段，并把类名加进 DiskProviderContractTest 的 HOSTS。
         event.addHostType(appeng.core.definitions.AEBlockEntities.CABLE_BUS.get());
         event.register(
                 appeng.api.AECapabilities.GENERIC_INTERNAL_INV,

@@ -1,237 +1,47 @@
 package io.github.lounode.ae2pattern.common.block.entity;
 
-import java.util.List;
-
-import org.jetbrains.annotations.Nullable;
-
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.HolderLookup;
-import net.minecraft.core.component.DataComponentMap;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.ItemContainerContents;
-import net.minecraft.world.level.Level;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.state.BlockState;
 
-import appeng.api.ids.AEComponents;
 import appeng.api.inventories.InternalInventory;
-import appeng.api.stacks.AEItemKey;
-import appeng.blockentity.crafting.PatternProviderBlockEntity;
-import appeng.helpers.patternprovider.PatternProviderLogic;
-import appeng.util.SettingsFrom;
-import appeng.util.inv.AppEngInternalInventory;
-import appeng.util.inv.InternalInventoryHost;
 
-import io.github.lounode.ae2pattern.api.PatternDiskApi;
-import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
-import io.github.lounode.ae2pattern.api.PatternDiskTerminalView;
-
-import io.github.lounode.ae2pattern.common.logic.PatternDiskProviderLogic;
 import io.github.lounode.ae2pattern.AEPatternRegistries;
+import io.github.lounode.ae2pattern.common.logic.PatternDiskProviderLogic;
 
 /**
- * Block entity for the pattern disk provider: holds up to {@link #DISK_SLOT_COUNT} pattern disks and
- * exposes every encoded pattern on them to the ME autocrafting service.
+ * 样板磁盘供应器的方块实体：带 {@link #DISK_SLOT_COUNT} 个磁盘槽，把磁盘上编码好的样板全部公开给 ME 自动合成。
+ *
+ * <p>磁盘那半与那条「样板栏只是磁盘镜像」的约定都在 {@link AbstractDiskPatternProviderBlockEntity}，
+ * 面板形态与自装配供应器用的是同一份；本类只有方块实体类型、逻辑类型与注册物品这三样。</p>
  */
-public class PatternDiskProviderBlockEntity extends PatternProviderBlockEntity
-        implements PatternDiskProviderHost, InternalInventoryHost {
+public class PatternDiskProviderBlockEntity extends AbstractDiskPatternProviderBlockEntity<PatternDiskProviderLogic>
+        implements PatternDiskProviderHost {
 
     public static final int DISK_SLOT_COUNT = 9;
 
-    private final AppEngInternalInventory diskInventory = new AppEngInternalInventory(this, DISK_SLOT_COUNT);
-
-    /**
-     * Terminal view shared with the panel part (see {@link PatternDiskTerminalView}). Cached because an
-     * open pattern access terminal keeps using the instance it grabbed at open time (rows frozen), so
-     * any disk change invalidates it and the next terminal that opens re-scans the disks.
-     */
-    private final PatternDiskTerminalView terminalView = PatternDiskApi.terminalView(diskInventory,
-            () -> getMainNode().getGrid(), this, this::markTerminalChanged, this::getLevel);
-
     public PatternDiskProviderBlockEntity(BlockPos pos, BlockState blockState) {
-        super(AEPatternRegistries.BE_PROVIDER.get(), pos, blockState);
+        super(AEPatternRegistries.BE_PROVIDER.get(), pos, blockState, DISK_SLOT_COUNT);
     }
 
     @Override
-    protected PatternProviderLogic createLogic() {
-        // Lazy supplier: the block entity's parent constructor calls createLogic() before the
-        // diskInventory field is initialized, so defer its access until refresh time.
+    protected PatternDiskProviderLogic createLogic() {
+        // 懒取磁盘栏：方块实体的父构造会先跑 createLogic()，那时磁盘栏字段还没赋值，所以只传一个刷新时才解析的
+        // supplier。
         return new PatternDiskProviderLogic(getMainNode(), this, DISK_SLOT_COUNT, this::getDiskInventory);
     }
 
-    public AppEngInternalInventory getDiskInventory() {
-        return diskInventory;
-    }
-
     @Override
-    public appeng.api.inventories.InternalInventory getTerminalPatternInventory() {
-        return terminalView.view();
-    }
-
-    /** Rebuilds the provider's pattern list and invalidates the cached terminal view after a real
-     * mutation. An already-open PAT keeps using its own instance (rows frozen, removals empty rows in
-     * place); the next PAT that opens rebuilds a fresh, compacted view of the current disk layout. */
-    private void markTerminalChanged() {
-        refreshFromDisks();
-        saveChanges();
-    }
-
-    @Override
-    public void onLoad() {
-        super.onLoad();
-        refreshFromDisks();
+    protected Item item() {
+        return AEPatternRegistries.ITEM_PROVIDER.get();
     }
 
     /**
-     * Rebuilds the provider's pattern list from current disk contents and invalidates the cached
-     * terminal view so the next PAT session opens a fresh, compacted view. An open PAT keeps its own
-     * (frozen-row) instance and is never re-synced here — re-syncing would grow its row count past the
-     * PAT's fixed client slot count and crash the server (AE2 limitation).
-     */
-    public void refreshFromDisks() {
-        refreshFromDisks(false);
-    }
-
-    /**
-     * @param force rebuild even when the disks look unchanged - a memory card import rewrites the mirror
-     *              with the disks still in place, which the state check cannot see
-     */
-    public void refreshFromDisks(boolean force) {
-        if (getLogic() instanceof PatternDiskProviderLogic diskLogic) {
-            diskLogic.refreshPatternsFromDisks(force);
-        }
-        terminalView.invalidate(); // next terminal opening rebuilds a fresh view
-    }
-
-    /**
-     * Empties the mirror without the per-slot update storm a plain {@code clear()} causes. Both callers
-     * only need the empty end state: the drop path wants the mirror empty, and the import path refills it
-     * with a forced refresh right after.
-     */
-    private void clearMirror() {
-        if (getLogic() instanceof PatternDiskProviderLogic diskLogic) {
-            diskLogic.clearMirror();
-        } else {
-            // Not reachable today, but the failure mode is a copied pattern rather than a slow one: AE2's
-            // addDrops dumps the mirror to the player, so falling back to the plain clear keeps the old
-            // hard guarantee instead of leaving the mirror full.
-            getLogic().getPatternInv().clear();
-        }
-    }
-
-    @Override
-    public void onChangeInventory(AppEngInternalInventory inv, int slot) {
-        if (inv == diskInventory) {
-            // 磁盘槽内容变化（含 PAT 取出真删、编码终端写盘、取盘/换盘）：磁盘已是最终状态，
-            // 只需重建 pattern 列表并使缓存视图失效（下次 PAT 打开重建紧凑视图）。
-            refreshFromDisks();
-            saveChanges();
-        }
-    }
-
-    @Override
-    public void saveChangedInventory(AppEngInternalInventory inv) {
-        saveChanges();
-    }
-
-    @Override
-    public boolean isClientSide() {
-        return level != null && level.isClientSide();
-    }
-
-    @Override
-    public void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
-        super.saveAdditional(tag, registries);
-        diskInventory.writeToNBT(tag, "disks", registries);
-    }
-
-    @Override
-    public void loadTag(CompoundTag tag, HolderLookup.Provider registries) {
-        super.loadTag(tag, registries);
-        diskInventory.readFromNBT(tag, "disks", registries);
-        refreshFromDisks();
-    }
-
-    @Override
-    public void addAdditionalDrops(Level level, BlockPos pos, List<ItemStack> drops) {
-        // Do NOT call super.addAdditionalDrops: the parent would drop the injected patternInventory
-        // (the encoded patterns copied out of disks into the provider logic), which is not the source
-        // of truth. Only the actual disk items should drop.
-        for (int i = 0; i < diskInventory.size(); i++) {
-            if (!diskInventory.getStackInSlot(i).isEmpty()) {
-                drops.add(diskInventory.getStackInSlot(i));
-            }
-        }
-        // Dropping has to cover everything the machine really holds: AE2's addDrops does the pending
-        // push list and the return inventory, but it also dumps the pattern inventory - which here is
-        // only a mirror of the disks. Empty the mirror first so the drop is purely the machine's own
-        // contents; super.addAdditionalDrops stays uncalled for the same reason.
-        clearMirror();
-        getLogic().addDrops(drops);
-        // Also clear the injected pattern inventory so nothing stale remains on break.
-        clearContent();
-    }
-
-    /**
-     * Applies a memory card while keeping the disk mirror intact: AE2's default implementation clears the
-     * provider's pattern inventory and hands those patterns to the player, but ours only mirrors the
-     * disks, so that would duplicate every encoded pattern (the disks keep the originals).
+     * 显式覆写只为一件事：给这个签名加一道编译期断言。AE2 的默认实现把<b>镜像样板栏</b>交给终端，而这里的镜像只是
+     * 磁盘的副本——本方法一旦因接口改名而失去覆盖，样板访问终端会静默读到镜像（取走时不碰磁盘）。实现仍在基类。
      */
     @Override
-    public void importSettings(SettingsFrom mode, DataComponentMap input, @Nullable Player player) {
-        var cleanInput = withoutPatterns(input);
-        if (mode == SettingsFrom.MEMORY_CARD) {
-            // The mirror is rewritten by whatever super.importSettings brings in, while the disks stay put -
-            // a change the state check cannot see.
-            clearMirror();
-        }
-        super.importSettings(mode, cleanInput, player);
-        if (mode == SettingsFrom.MEMORY_CARD) {
-            // Force the rebuild: the disks did not move, so the state check would skip and leave the
-            // mirror as super.importSettings left it.
-            refreshFromDisks(true);
-        }
-    }
-
-    /**
-     * Strips the pattern section from a memory card before anyone reads it. A card written by an older
-     * build - or by an AE2 pattern provider - still carries patterns, and importing those charges blank
-     * patterns for copies of what the disks already hold, only for the next refresh to discard them.
-     */
-    private static DataComponentMap withoutPatterns(DataComponentMap input) {
-        var sanitized = DataComponentMap.builder().addAll(input);
-        sanitized.set(AEComponents.EXPORTED_PATTERNS, ItemContainerContents.EMPTY);
-        return sanitized.build();
-    }
-
-    /**
-     * Writes the settings into a memory card, minus the pattern inventory: AE2's provider puts its own
-     * patterns in the card, but the card would then carry copies of what the disks already hold, and
-     * importing them elsewhere charges blank patterns for those copies.
-     */
-    @Override
-    public void exportSettings(SettingsFrom mode, DataComponentMap.Builder builder, @Nullable Player player) {
-        super.exportSettings(mode, builder, player);
-        if (mode == SettingsFrom.MEMORY_CARD) {
-            builder.set(AEComponents.EXPORTED_PATTERNS, ItemContainerContents.EMPTY);
-        }
-    }
-
-    @Override
-    public void clearContent() {
-        super.clearContent();
-        diskInventory.clear();
-        terminalView.invalidate();
-    }
-
-    @Override
-    public AEItemKey getTerminalIcon() {
-        return AEItemKey.of(AEPatternRegistries.ITEM_PROVIDER.get());
-    }
-
-    @Override
-    public ItemStack getMainMenuIcon() {
-        return new ItemStack(AEPatternRegistries.ITEM_PROVIDER.get());
+    public InternalInventory getTerminalPatternInventory() {
+        return super.getTerminalPatternInventory();
     }
 }

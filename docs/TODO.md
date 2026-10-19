@@ -82,7 +82,20 @@
   - **服务端那半其实早就在身上**：它的 `@Mixin(PatternProviderLogic.class)` 系列命中的正是本模组供应器继承的父类，所以两个开关的行为已生效，缺的只是那三个控件。
   - **不补的理由**：补它们只能反射 EAE+ 的 `EAPSettings` / `EAPServerSettingToggleButton` / `GuiUtil` 与它的 C2S 包，属于「拿内部类当 API」——而屏幕 UI 不像投递路径那样有「探不到就退回默认行为」的天然兼底。若上游日后开放按屏幕类登记按钮的接口，再补。
 - **样板清单容量 1024 待补文档**：`PatternDiskProviderLogic` 构造时把内部样板清单固定为 1024 槽（`super(mainNode, host, 1024)`）；多张磁盘的样板总数超过该上限时的行为：代码为 `i < all.size() && i < patternInv.size()` 填充镜像 → **静默截断**（超出的样板不提供给合成系统，既不报错也不提示）→ 稍后把这个上限与截断行为补进 README/指南
+- ✅ **镜像样板栏对第三方写入关闭（2026-10）**：`PatternDiskProviderLogic#getPatternInv()` 改为只读视图（读转发为副本、写与取全拒、拒绝日志带 5 秒冷却），镜像原件留在类内的 `mirror` 字段，只供自身重建与清空使用。起因：ExtendedAE Plus 的「上传到装配矩阵」按简单类名子串 `MeteoritePatternProvider` 匹配到本模组的自装配供应器后，直接往 `getPatternInv()` 写样板——写进的是镜像，样板不进磁盘却被注册进合成清单，拆机清镜像后即丢失（上游请求见 `UPSTREAM_API_REQUESTS.md` 草稿 3）。批处理装配室没有镜像栏，结构上不受影响。
+- **更正（上面那条 1024 的说法与条目 K 的截断结论）**：`PatternDiskProviderLogic` 的镜像容量早已不是固定 1024 槽，而是「磁盘槽数 × 最大档位」（9 × 1024 = 9216，`mirrorCapacity`）；镜像栏只由磁盘刷新重建，不承接外部写入。条目 F 里「超 1024 静默截断」与条目 K 表格中的 1024 行号均按旧实现写的，以本条为准。
+- ✅ **四台带磁盘供应器的宿主层已统一（2026-10）**：新增 `common/logic/DiskHostSupport`（磁盘栏与 NBT、终端视图、重建、掉落顺序、内存卡拆样、磁盘变更通知）+ 两个抽象基类（`AbstractDiskPatternProviderBlockEntity` / `AbstractDiskPatternProviderPart`）。四个具体宿主从 735 代码行降到 121 行（均按去注释、去 import、去 package、去空行统计），五条镜像语义现在只有一份；详述见 `ARCHITECTURE.md` §3.1。边界：批处理装配室**不**接这一层（无镜像样板栏，样板来自配方池），`api/PatternDiskHostView` 也继续留给仓库外「自己也有样板槽」的宿主。
 - ✅ **代码收敛已完成**：`BatchAssemblerBlockEntity` 原先自建了一份 `PatternDiskRemoveInventory` + 匿名 sink，现已改用与方块/面板共用的 `PatternDiskTerminalView`——核心的"取走样板要扣网络空样板并真删磁盘配方"逻辑（`PatternDiskRemoveInventory`）全仓只剩一份；NeoECO 反射适配器（`NeoECOBusTerminalView`/`NeoECOBusDisks`）仍保留自带的空样板抽取，因为那条总线不是 action host，其抽取刻意不归属任何玩家
+- ✅ **收敛后的风险已按「新引入 / 历史残留」分开，可自动化的那半已加测（2026-10）**：
+  - **新引入（已处理）**：① `getPatternInv()` 只读化后，任何仍想写镜像的代码只会静默失败 → 镜像覆写、`clearMirror`、`clearContent`、六个宿主的 `getTerminalPatternInventory()` 覆写、两个存档键字面量（`disks` / `pushDirection`）现有 JUnit 守着（`src/test/.../common/logic/DiskProviderContractTest.java`，只有「环境无 AE2」时跳过，缺本仓类算失败）；② 加载/清空期间逐槽通知引发的重复重建 → `DiskHostSupport` 加 `suppressRefresh` 批处理标志，读完/清完统一重建一次。
+  - **既存性能缺陷（顺带修掉）**：拆机/重置时 `logic.clearContent()` 逐槽清镜像，每槽一次通知就跑一次 9216 槽的全量 `updatePatterns()`（放大成几千万次槽访问）→ `PatternDiskProviderLogic` 覆写 `clearContent()`，复用重建用的 `rebuildingMirror` 把它压成一次。
+  - **历史残留（记录，不属缺陷）**：掉落正确性依赖 AE2 的 `addDrops` 会清私有 `patternInventory`；`addToWorld/removeFromWorld` 成对性依赖 AE2（`LOADED` 是弱集合，且 `Set.add` 天然幂等）；终端行数冻结受样板访问终端固定槽数限制；面板与方块的能力注册按具体类 cast。这四条在收敛前就是这样，改结构没有改变它们。
+  - **历史残留已逐条补完（2026-10）**：
+    - 掉落依赖 AE2 私有行为 → 已变成可执行的断言：GameTest `breakingDropsDisksOnly` 断言拆机掉落恰为「磁盘 + 返还仓内容」（反证做过：临时摸掉 `clearMirror()` 后该用例变红）；
+    - `addToWorld/removeFromWorld` 成对性 → `pumpCraftedContents` 遍历时顺手摘掉「宿主已没了」的条目（弱集合兼底不变，但表不再只增不减）；
+    - 样板访问终端行数冻结 → 属 AE2 会话内契约，不改成动态同步（那条路会崩服务端）；已在 `PatternDiskTerminalView` javadoc 与 README 写明「已打开的终端不跟磁盘变化，重开刷新」；
+    - 面板能力注册按具体类 → 上游硬限制（AE2 `RegisterPartCapabilitiesEvent#register` 遇抽象类直接抛 `IllegalArgumentException`，19.2.17 `:91-94`），已写在 `AE2PatternDisk.registerPartCapabilities` 的注释里，避免后人重试。
+  - **验证缺口已补上一层**：新增 `src/test/java/.../game/DiskProviderGameTest`（`@GameTestHolder(ae2_pattern_disk)`，模板 `empty` 由自备的 `src/test/resources/data/ae2_pattern_disk/structure/empty.nbt` 提供——GameTest 不自动造空模板，缺文件会在开测前抛 `Missing test structure`；该结构借自 AE2-Lightning-Tech-Reborn 的同名测试文件，LGPL-3、只在测试源集、不分发）。`./gradlew runGameTestServer` 跑 3 条：拆机只掉磁盘且返还仓内容照旧掉 / 存档往返后磁盘与镜像都在（存档里先摸掉 AE2 自己的镜像段，否则测不到重建）/ 内存卡两向都不带镜像样板（导入半边用「玩家空白样板数不变」判定）。当前 `All 3 required tests passed`；三条各自做过临时反证，对应失败均会让任务红。仍只能实机的：扳手 7 档循环（需先造线缆+部件夹具，成本问题）、自装配回送（需 AE2CS 在场）、盘内样板在真终端里可见（需网格 + 菜单）。
 
 ### G. 批处理装配室：允许一个 multiplier 由多个变体拼够（对齐 AE2）— P3 ⬜（2026-09 记录）
 
