@@ -73,6 +73,14 @@ public class AE2PatternDisk {
         modBus.addListener(this::registerPartCapabilities);
         modBus.addListener(this::registerPayloads);
 
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
+                (net.neoforged.neoforge.event.tick.LevelTickEvent.Post event) -> {
+                    if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel level) {
+                        io.github.lounode.ae2pattern.common.part.AbstractDiskPatternProviderPart
+                                .pumpLogic(level);
+                    }
+                });
+
         // A reload can change what a stored pattern decodes to without the items changing, so the
         // item-keyed decode memo has to be dropped. Nothing else observes reloads, and the bus's own
         // decode caches are rebuilt from slots on the next change.
@@ -183,19 +191,43 @@ public class AE2PatternDisk {
         }
     }
 
+    /**
+     * 给方块实体挂服务端 ticker。
+     *
+     * <p>为什么要有这个 helper：AE2 的 {@code AEBaseEntityBlock#setBlockEntity} 只是把 ticker 存下来，
+     * <b>不会</b>替实现了 {@link appeng.blockentity.ServerTickingBlockEntity} 的实体自动补一个；以前三处
+     * 注册里有两处直接传了 {@code null}，结果方块形态的供应器从来没有被 tick 过（抽取与攒批发配全部静默
+     * 失效），只有面板形态正常。泛型同时约束「AE 方块实体」与「实现 ServerTickingBlockEntity」，漏掉接口
+     * 会编译失败；{@link #verifyTickingBlockEntities()} 再兜一层运行期自检。</p>
+     *
+     * <p>只挂 <b>server</b> ticker（client 传 null）：本模组没有需要 {@code ClientTickingBlockEntity}
+     * 的方块，将来要客户端 tick 请另写一个 helper，别在这里加开关。</p>
+     */
+    private static <T extends appeng.blockentity.AEBaseBlockEntity & appeng.blockentity.ServerTickingBlockEntity>
+            void attachTickingBlockEntity(
+                    appeng.block.AEBaseEntityBlock<T> block,
+                    Class<T> blockEntityClass,
+                    net.minecraft.world.level.block.entity.BlockEntityType<T> blockEntityType) {
+        block.setBlockEntity(blockEntityClass, blockEntityType, null,
+                (lvl, pos, state, be) -> be.serverTick());
+        TICKING_BLOCKS.add(block);
+    }
+
+    /** 已经挂过 ticker 的方块；{@link #verifyTickingBlockEntities()} 用它做启动期自检。 */
+    private static final java.util.Set<appeng.block.AEBaseEntityBlock<?>> TICKING_BLOCKS =
+            java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+
     private void associateBlockEntities(RegisterEvent event) {
         if (event.getRegistryKey() == net.minecraft.core.registries.Registries.BLOCK_ENTITY_TYPE) {
-            AEPatternRegistries.BLOCK_TRANSFERER.get().setBlockEntity(
+            attachTickingBlockEntity(
+                    AEPatternRegistries.BLOCK_TRANSFERER.get(),
                     PatternTransfererBlockEntity.class,
-                    AEPatternRegistries.BE_TRANSFERER.get(),
-                    null,
-                    (lvl, p, st, be) -> ((appeng.blockentity.ServerTickingBlockEntity) be).serverTick());
+                    AEPatternRegistries.BE_TRANSFERER.get());
 
-            AEPatternRegistries.BLOCK_PROVIDER.get().setBlockEntity(
+            attachTickingBlockEntity(
+                    AEPatternRegistries.BLOCK_PROVIDER.get(),
                     PatternDiskProviderBlockEntity.class,
-                    AEPatternRegistries.BE_PROVIDER.get(),
-                    null,
-                    null);
+                    AEPatternRegistries.BE_PROVIDER.get());
 
             AEPatternRegistries.BLOCK_ASSEMBLER.get().setBlockEntity(
                     PatternDiskAssemblerBlockEntity.class,
@@ -210,11 +242,10 @@ public class AE2PatternDisk {
                     null);
 
             if (MeteoritePatternProviderRegistrations.isRegistered()) {
-                MeteoritePatternProviderRegistrations.BLOCK.get().setBlockEntity(
+                attachTickingBlockEntity(
+                        MeteoritePatternProviderRegistrations.BLOCK.get(),
                         MeteoritePatternProviderBlockEntity.class,
-                        MeteoritePatternProviderRegistrations.BE.get(),
-                        null,
-                        (lvl, p, st, be) -> ((appeng.blockentity.ServerTickingBlockEntity) be).serverTick());
+                        MeteoritePatternProviderRegistrations.BE.get());
             }
         }
     }
@@ -272,6 +303,33 @@ public class AE2PatternDisk {
 
     private void commonSetup(FMLCommonSetupEvent event) {
         event.enqueueWork(this::registerUpgrades);
+        event.enqueueWork(AE2PatternDisk::verifyTickingBlockEntities);
+    }
+
+    /**
+     * 启动期自检：必须 tick 的方块都得挂上 ticker。
+     *
+     * <p>这类漏挂不会报错、只会「功能静默不工作」：供应器不 tick 就等于产物抽取与攒批发配全废，
+     * 玩家从现象上根本看不出是注册漏了。宁可启动时硬失败。</p>
+     */
+    private static void verifyTickingBlockEntities() {
+        var required = new java.util.ArrayList<Object>();
+        required.add(AEPatternRegistries.BLOCK_PROVIDER.get());
+        required.add(AEPatternRegistries.BLOCK_TRANSFERER.get());
+        if (MeteoritePatternProviderRegistrations.isRegistered()) {
+            required.add(MeteoritePatternProviderRegistrations.BLOCK.get());
+        }
+        for (var block : required) {
+            if (!TICKING_BLOCKS.contains(block)) {
+                // 先单独打一条：FML 会把 enqueueWork 里的异常包成「Failed to complete deferred work」，
+                // 原始信息在崩溃摘要里往往看不出来。
+                org.slf4j.LoggerFactory.getLogger(AE2PatternDisk.class).error(
+                        "Block {} was registered without a server ticker; its serverTick() would never run",
+                        block);
+                throw new IllegalStateException("Block entity of " + block
+                        + " was registered without a server ticker; its serverTick() would never run");
+            }
+        }
     }
 
     private void registerUpgrades() {

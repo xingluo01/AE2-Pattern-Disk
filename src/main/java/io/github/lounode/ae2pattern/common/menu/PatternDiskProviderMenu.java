@@ -23,6 +23,9 @@ import appeng.menu.slot.AppEngSlot;
 
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskProviderHost;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
+import io.github.lounode.ae2pattern.common.logic.PatternDiskProviderLogic;
+import io.github.lounode.ae2pattern.common.logic.ProviderBlockingMode;
+import io.github.lounode.ae2pattern.common.logic.ProviderExtractionMode;
 import io.github.lounode.ae2pattern.integration.appflux.AppFluxInductionCard;
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 
@@ -48,7 +51,7 @@ public class PatternDiskProviderMenu extends AEBaseMenu {
     private final PatternDiskProviderHost host;
 
     @GuiSync(3)
-    public YesNo blockingMode = YesNo.NO;
+    public ProviderBlockingMode blockingMode = ProviderBlockingMode.DEFAULT;
     @GuiSync(4)
     public YesNo showInAccessTerminal = YesNo.YES;
     @GuiSync(5)
@@ -57,6 +60,12 @@ public class PatternDiskProviderMenu extends AEBaseMenu {
     public LockCraftingMode craftingLockedReason = LockCraftingMode.NONE;
     @GuiSync(7)
     public GenericStack unlockStack = null;
+    @GuiSync(8)
+    public boolean boostEnabled = false;
+    @GuiSync(9)
+    public int boostLimit = 0;
+    @GuiSync(10)
+    public ProviderExtractionMode extractionMode = ProviderExtractionMode.OFF;
 
     public PatternDiskProviderMenu(int id, Inventory playerInv, PatternDiskProviderHost host) {
         this(TYPE, id, playerInv, host);
@@ -90,6 +99,32 @@ public class PatternDiskProviderMenu extends AEBaseMenu {
         this.setupUpgradesOnce(AppFluxInductionCard.upgradesOf(host));
 
         this.createPlayerInventorySlots(playerInv);
+
+        // 本模组自己的三档阻挡、发配倍增与产物抽取：AE2 的 Settings 枚举不可扩展，只能走自己的动作。
+        registerClientAction("cycleProviderBlocking", this::cycleProviderBlocking);
+        registerClientAction("setProviderBoost", Boolean.class, this::setProviderBoost);
+        registerClientAction("setProviderBoostLimit", Integer.class, this::setProviderBoostLimit);
+        registerClientAction("cycleProviderExtraction", this::cycleProviderExtraction);
+    }
+
+    private void cycleProviderBlocking() {
+        providerLogic().cycleBlockingMode();
+    }
+
+    private void cycleProviderExtraction() {
+        providerLogic().cycleExtractionMode();
+    }
+
+    private void setProviderBoost(boolean enabled) {
+        providerLogic().setBoostEnabled(enabled);
+    }
+
+    private void setProviderBoostLimit(int limit) {
+        providerLogic().setBoostLimit(limit);
+    }
+
+    private PatternDiskProviderLogic providerLogic() {
+        return (PatternDiskProviderLogic) host.getLogic();
     }
 
     /**
@@ -121,19 +156,36 @@ public class PatternDiskProviderMenu extends AEBaseMenu {
     }
 
     private void blockingsModeFromLogic(appeng.helpers.patternprovider.PatternProviderLogic logic) {
-        blockingMode = logic.getConfigManager().getSetting(Settings.BLOCKING_MODE);
         showInAccessTerminal = logic.getConfigManager().getSetting(Settings.PATTERN_ACCESS_TERMINAL);
         lockCraftingMode = logic.getConfigManager().getSetting(Settings.LOCK_CRAFTING_MODE);
         craftingLockedReason = logic.getCraftingLockedReason();
         unlockStack = logic.getUnlockStack();
+        if (logic instanceof PatternDiskProviderLogic provider) {
+            blockingMode = provider.getBlockingMode();
+            boostEnabled = provider.isBoostEnabled();
+            boostLimit = provider.getBoostLimit();
+            extractionMode = provider.getExtractionMode();
+        }
     }
 
     public GenericStackInv getReturnInv() {
         return host.getLogic().getReturnInv();
     }
 
-    public YesNo getBlockingMode() {
+    public ProviderBlockingMode getBlockingMode() {
         return blockingMode;
+    }
+
+    public boolean isBoostEnabled() {
+        return boostEnabled;
+    }
+
+    public int getBoostLimit() {
+        return boostLimit;
+    }
+
+    public ProviderExtractionMode getExtractionMode() {
+        return extractionMode;
     }
 
     public YesNo getShowInAccessTerminal() {

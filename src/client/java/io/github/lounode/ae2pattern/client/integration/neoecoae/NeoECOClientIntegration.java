@@ -1,5 +1,8 @@
 package io.github.lounode.ae2pattern.client.integration.neoecoae;
 
+import org.jetbrains.annotations.Nullable;
+
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.neoforged.fml.ModList;
 
 import io.github.lounode.ae2pattern.client.gui.PatternDiskEncodingTermScreen;
@@ -17,12 +20,17 @@ public final class NeoECOClientIntegration {
     }
 
     /**
-     * Adds the UploadButton to the screen when NEO ECO is installed.
-     * Safe to call unconditionally: without it, the button is never created.
+     * 创建 NEO ECO 的 UploadButton，NEO ECO 不在场时返回 null。
+     *
+     * <p>坐标由调用方（{@code RightButtonColumn}）统一排，所以这里给 0,0。返回控件而不再由本类
+     * {@code addWidget}：右侧按钮列要把它们当成自己的槽来摆，并靠列的 bounds 自动进 JEI 排除区。</p>
      */
-    public static void addUploadButtonIfPresent(PatternDiskEncodingTermScreen screen, int left, int top) {
-        if (!hasUploadTarget()) return;
-        screen.addWidget(NeoECOClientButton.createButton(left, top, () -> screen.getMenu().uploadPattern()));
+    @Nullable
+    public static AbstractWidget createUploadButtonIfPresent(PatternDiskEncodingTermScreen screen) {
+        if (!hasUploadTarget()) {
+            return null;
+        }
+        return NeoECOClientButton.createButton(0, 0, () -> screen.getMenu().uploadPattern());
     }
 
     /** @return neoecoae 模组是否在场。 */

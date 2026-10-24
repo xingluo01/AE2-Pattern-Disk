@@ -1,8 +1,11 @@
 package io.github.lounode.ae2pattern.common.part;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
+import java.util.WeakHashMap;
 
 import org.jetbrains.annotations.Nullable;
 
@@ -12,6 +15,7 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.core.component.DataComponentMap;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -177,14 +181,54 @@ public abstract class AbstractDiskPatternProviderPart<L extends PatternDiskProvi
     @Override
     public void addToWorld() {
         super.addToWorld();
+        LOADED.add(this);
         onAddedToWorld();
         this.logic.updatePatterns();
     }
 
     @Override
     public void removeFromWorld() {
+        // 卸下前把攒着的批发出去：区块卸载时逻辑实例跟着消失，批里的材料就没了（方块形态同样有这条路径）。
+        if (getLogic() instanceof PatternDiskProviderLogic logic) {
+            logic.flushPending();
+        }
+        LOADED.remove(this);
         onRemovedFromWorld();
         super.removeFromWorld();
+    }
+
+    /**
+     * 在场面板表，服务端世界 tick 事件靠它驱动产物抽取。
+     *
+     * <p>弱引用 + 同步包装：进出世界成对登记/注销，漏注销那种（区块卸载没走到 {@code removeFromWorld}）也会
+     * 随部件被回收；遍历方先取快照。客户端也持有一份部件，遍历时按宿主校验世界。</p>
+     */
+    private static final Set<AbstractDiskPatternProviderPart<?>> LOADED =
+            Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
+
+    /**
+     * 驱动所有在场面板的供应器逻辑：攒批的停交兜底与产物抽取。
+     *
+     * <p>方块形态由 {@code serverTick} 自己驱动，这里只管面板：部件没有方块实体那种 tick 回调
+     * （网格的 tick 服务槽归 AE2 的供应器逻辑）。</p>
+     */
+    public static void pumpLogic(ServerLevel level) {
+        if (LOADED.isEmpty()) {
+            return;
+        }
+        for (var part : new ArrayList<>(LOADED)) {
+            var host = part.getBlockEntity();
+            if (host == null || host.isRemoved() || host.getLevel() != level) {
+                // 只摘「宿主已消失」的条目：别的世界的面板是正常的，不能动。
+                if (host == null || host.isRemoved()) {
+                    LOADED.remove(part);
+                }
+                continue;
+            }
+            if (part.getLogic() instanceof PatternDiskProviderLogic logic) {
+                logic.tickServer();
+            }
+        }
     }
 
     /** 进入世界后的额外登记（自装配面板靠它进回送节拍表）。 */

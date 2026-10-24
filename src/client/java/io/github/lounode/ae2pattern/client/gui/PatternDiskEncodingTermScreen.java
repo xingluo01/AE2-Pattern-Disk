@@ -82,6 +82,12 @@ public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen
     /** NEO ECO 上传按钮的尺寸（neoecoae 的 UploadButton 构造里写死的 18×20）。 */
     static final int NEO_ECO_UPLOAD_BUTTON_WIDTH = 18;
     static final int NEO_ECO_UPLOAD_BUTTON_HEIGHT = 20;
+
+    /** 上传按钮列首个槽距 GUI 底边的距离（改写前手算式里的 173）。 */
+    private static final int NEO_ECO_UPLOAD_BOTTOM_OFFSET = 173;
+
+    /** ExtendedAE Plus 上传按钮的尺寸：标准 1.0 缩放下的 16×16（它接在 ECO 按钮正下方，无间隙）。 */
+    private static final int EXTENDED_AE_PLUS_UPLOAD_BUTTON_SIZE = 16;
     private static final Blitter ICON_CRAFTING = Blitter
             .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/states.png"))
             .src(0, 16, 16, 16);
@@ -142,6 +148,12 @@ public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen
     private OverloadedEncodingPanel overloadedPanel;
     private final DiskListPanel diskListPanel;
     protected final ModeDropdownButton modeButton;
+
+    /**
+     * 界面右缘外的一列按钮：本模组摆的（NEO ECO 上传）与别人摆的（ExtendedAE Plus 上传只占一个槽）。
+     * 位置与 JEI 排除区都只在这里算一次。
+     */
+    private final RightButtonColumn uploadColumn;
 
     /** 上次写进模式选择钮的 tooltip 输入；变了才重建那几行文本，不必每帧新建。 */
     private EncodingMode tooltipMode;
@@ -291,6 +303,23 @@ public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen
                 this::modeChoices);
         this.modeButton.setBackground(BG_MODE_NORMAL, BG_MODE_HOVER);
         addToLeftToolbar(this.modeButton);
+
+        // 右侧上传按钮列：槽**在构造期就登记**——ExtendedAE Plus 在 init 的 TAIL 就来要锚点，那时候屏幕的
+        // init() 体还没执行，现填槽就晚了；这里只定几何，控件在 init() 里绑定。
+        // （覆写 usesNeoEcoUploadButton() 的子类只返回常量——管理终端 false——构造期调用是安全的。）
+        this.uploadColumn = new RightButtonColumn();
+        this.uploadColumn.setBottomOffset(NEO_ECO_UPLOAD_BOTTOM_OFFSET);
+        this.widgets.add("uploadColumn", this.uploadColumn);
+        if (usesNeoEcoUploadButton()
+                && io.github.lounode.ae2pattern.client.integration.neoecoae.NeoECOClientIntegration.hasUploadTarget()) {
+            this.uploadColumn.reserve(NEO_ECO_UPLOAD_BUTTON_WIDTH, NEO_ECO_UPLOAD_BUTTON_HEIGHT);
+            // 判据与屏幕选择同一份（AE2PatternDiskClient 用它选上传屏）：EAE+ 在场但版本没带上传契约时，
+            // 不会有人来要锚点，多留一个槽只会让 JEI 排除区白多 16px。
+            if (io.github.lounode.ae2pattern.integration.extendedae_plus.ExtendedAEPlusCompat.hasUploadContract()) {
+                // ExtendedAE Plus 的按钮由它自己的 mixin 建，只回来要锚点（见 ExtendedAEPlusUploadScreen）。
+                this.uploadColumn.reserve(EXTENDED_AE_PLUS_UPLOAD_BUTTON_SIZE, EXTENDED_AE_PLUS_UPLOAD_BUTTON_SIZE);
+            }
+        }
         // 提示语每帧回写（它报的是当前所属的配方类型），这里不设死文本。
 
         // 二级排序开关：贴在 AE2 那三枚排序按钮后面，只在「按 mod」那一档显示（见 updateBeforeRender）。
@@ -300,7 +329,7 @@ public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen
         });
         addToLeftToolbar(this.naturalSortButton.widget());
 
-        // 编码/保存按钮：网络里没有空白样板就不必白跑一趟服务端（AE2 原生的编码终端此时也是静默的）。
+        // 编码/保存按钮：槽里和网络里都没有空白样板就不必白跑一趟服务端（AE2 原生的编码终端此时也是静默的）。
         var encodeBtn = new ActionButton(appeng.api.config.ActionItems.ENCODE, act -> {
             if (!menu.canEncode()) {
                 // 本地预检：不白跑一趟服务端。不出声——AE2 原生在没空白样板时也是直接 return。
@@ -338,9 +367,7 @@ public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen
      * <p>{@link #init()} 造按钮与 ExtendedAE Plus 的适配屏幕取锚点都走这一份算式，免得两处位置漂移。</p>
      */
     public Rect2i neoEcoUploadButtonBounds() {
-        int left = (this.width - imageWidth) / 2 + imageWidth;
-        int top = (this.height - imageHeight) / 2 + imageHeight - 173;
-        return new Rect2i(left, top, NEO_ECO_UPLOAD_BUTTON_WIDTH, NEO_ECO_UPLOAD_BUTTON_HEIGHT);
+        return this.uploadColumn.anchorOf(0);
     }
 
     /**
@@ -390,10 +417,14 @@ public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen
         // （AE2 自己的容器搜索框拿不拿焦点仍由父类决定，本屏不干预。）
         this.miniSearchField.setFocused(false);
         var search = this.miniSearchField;
-        if (usesNeoEcoUploadButton()) {
-            var ecoUpload = neoEcoUploadButtonBounds();
-            io.github.lounode.ae2pattern.client.integration.neoecoae.NeoECOClientIntegration.addUploadButtonIfPresent(this,
-                    ecoUpload.getX(), ecoUpload.getY());
+        // 控件在 init 里绑定（槽已在构造期登记，所以那里拿得到锚点）；绑上之后本轮手动挂一次——
+        // 首次 init 时通道的 populateScreen 已跑过、当时槽里还没控件，不手动加就不会绘制。
+        if (usesNeoEcoUploadButton() && !this.uploadColumn.hasWidget(0)) {
+            var ecoUpload = io.github.lounode.ae2pattern.client.integration.neoecoae.NeoECOClientIntegration
+                    .createUploadButtonIfPresent(this);
+            if (ecoUpload != null && this.uploadColumn.attach(0, ecoUpload)) {
+                addWidget(ecoUpload);
+            }
         }
 
         // 无标记磁盘的显示开关，贴在搜索栏右边 2px（搜索栏的可见宽度含内边距，所以要用它的 tooltip 区域），
@@ -407,11 +438,12 @@ public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen
         showUnmarked.setX(searchArea.getX() + searchArea.getWidth() + 2);
         showUnmarked.setY(search.getY());
         showUnmarked.setState(menu.isShowUnmarkedDisks());
+        // 标题本身随状态走（常态 / 强制），状态行只讲显隐差别：两行各说一件事，不把两个状态挤在标题里。
         showUnmarked.setTooltipOn(List.of(
-                Component.translatable("gui.ae2_pattern_disk.encoding_terminal.show_unmarked.title"),
+                Component.translatable("gui.ae2_pattern_disk.encoding_terminal.show_unmarked.title.on"),
                 Component.translatable("gui.ae2_pattern_disk.encoding_terminal.show_unmarked.on")));
         showUnmarked.setTooltipOff(List.of(
-                Component.translatable("gui.ae2_pattern_disk.encoding_terminal.show_unmarked.title"),
+                Component.translatable("gui.ae2_pattern_disk.encoding_terminal.show_unmarked.title.off"),
                 Component.translatable("gui.ae2_pattern_disk.encoding_terminal.show_unmarked.off")));
         addRenderableWidget(showUnmarked);
         this.showUnmarkedButton = showUnmarked;
@@ -1132,6 +1164,21 @@ public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen
         }
 
         return super.mouseClicked(xCoord, yCoord, btn);
+    }
+
+    /**
+     * 展开的模式列表开在 GUI 左侧（工具栏那一列之外），把它报给 JEI 的排除区：物品面板会因此让开，
+     * 而不是盖住列表或被列表盖住。子类（管理终端、无线版、上传屏）共用这一份。
+     *
+     * <p>右侧的上传按钮列（NEO ECO 的 18×20 与 ExtendedAE Plus 接在它下方的 16×16）同样落在 GUI 之外，
+     * 而且 JEI 的默认物品面板就在右边，必须一并报进去。</p>
+     */
+    @Override
+    public List<Rect2i> getExclusionZones() {
+        var zones = super.getExclusionZones();
+        this.modeButton.addExclusionZone(zones);
+        // 右侧上传按钮列不用手算：它作为组合控件进了 widgets，bounds 超出 GUI 时 AE2 会自动报给 JEI。
+        return zones;
     }
 
     /**

@@ -1050,7 +1050,9 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
             }
             for (var input : plan.inputs()) {
                 if (input != null) {
-                    keys.addAll(input.candidates());
+                    for (var candidate : input.candidates()) {
+                        keys.add(candidate.key());
+                    }
                 }
             }
         }

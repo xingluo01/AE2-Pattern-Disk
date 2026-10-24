@@ -5,12 +5,16 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -19,14 +23,18 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import net.neoforged.neoforge.capabilities.Capabilities;
 import appeng.api.AECapabilities;
 import appeng.api.config.Actionable;
 import appeng.api.config.LockCraftingMode;
+import appeng.api.config.Settings;
+import appeng.api.config.YesNo;
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.implementations.blockentities.ICraftingMachine;
 import appeng.api.inventories.InternalInventory;
 import appeng.api.networking.IManagedGridNode;
 import appeng.api.networking.security.IActionSource;
+import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.AEKeyType;
 import appeng.api.stacks.KeyCounter;
@@ -37,12 +45,14 @@ import appeng.helpers.patternprovider.PatternProviderLogicHost;
 import appeng.helpers.patternprovider.PatternProviderTarget;
 import appeng.me.helpers.MachineSource;
 import appeng.me.storage.CompositeStorage;
+import appeng.parts.AEBasePart;
 import appeng.parts.automation.StackWorldBehaviors;
 import appeng.util.inv.AppEngInternalInventory;
 
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
 import io.github.lounode.ae2pattern.common.pattern.DiskSlotVersions;
 import io.github.lounode.ae2pattern.common.pattern.PatternDiskTier;
+import io.github.lounode.ae2pattern.api.PatternDiskApi;
 import io.github.lounode.ae2pattern.api.PatternDiskContents;
 import io.github.lounode.ae2pattern.integration.advancedae.AdvPatternSupport;
 
@@ -91,6 +101,74 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
      * 能用引用比较、以及它对「原地修改内容」看不见，见 {@link DiskSlotVersions} 的类注释。</p>
      */
     private List<Object> lastDiskVersions;
+
+    // ---- 本模组的供应器设置（AE2 的 Settings 枚举不可扩展，这几项自带 NBT 与菜单同步） ----
+
+    public static final String NBT_BLOCKING_MODE = "blockingMode";
+    public static final String NBT_BOOST_ENABLED = "boostEnabled";
+    public static final String NBT_BOOST_LIMIT = "boostLimit";
+    public static final String NBT_EXTRACTION_MODE = "extractionMode";
+
+    /** 上限输入栏的可接受范围：0 表示不设上限，24px 的输入框也只放得下三位数。 */
+    public static final int MAX_BOOST_LIMIT = 999;
+
+    /** 没设上限时单批最多攒这么多份，防止目标一直不收时把材料堆在机器里。 */
+    private static final int BOOST_SAFETY_CAP = 64;
+
+    private ProviderBlockingMode blockingMode = ProviderBlockingMode.DEFAULT;
+    private boolean boostEnabled;
+    private int boostLimit;
+
+    /** 产物抽取模式：不抽 / 每 20 tick / 带退避的快速档。 */
+    private ProviderExtractionMode extractionMode = ProviderExtractionMode.OFF;
+    /** 还要等多少 tick 才再抽一次；0 表示下一次 tick 就抽。 */
+    private int extractionCooldown;
+    /** 快速档当前间隔（退避用，抽到就回落到 1）。 */
+    private int extractionInterval = ProviderExtractionPacing.FAST_START_INTERVAL;
+
+    /**
+     * 攒批：每张样板一批，按到达顺序。值里的每个 {@code KeyCounter[]} 是 CPU 交来的一份完整输入。
+     *
+     * <p>只在 {@link #boostEnabled} 时非空。攒批期间材料在这里，不在父类的发送队列里，所以拆机必须由
+     * {@link #addDrops} 掉出去。</p>
+     */
+    private final Map<IPatternDetails, List<KeyCounter[]>> pendingBatches = new LinkedHashMap<>();
+    /** 最近一次收到交付的游戏时间，用来把「上一 tick 的批」认定为 CPU 已停交。 */
+    private long pendingBatchTick = -1L;
+
+    /** 全部已装样板的输入集合缓存（阻挡档判据用）；{@link #updatePatterns()} 时作废。 */
+    private Set<AEKey> cachedPatternInputs;
+
+    /** 全部已装样板的输出集合缓存（产物抽取白名单）；{@link #updatePatterns()} 时作废。 */
+    private Set<AEKey> cachedPatternOutputs;
+
+    /** 只报一次的「抽取后塞不回目标」纸条，避免目标长期拒收时刷屏。 */
+    private final Set<AEKey> extractionReturnWarned = new HashSet<>();
+
+    /** 连续多少次抽取都没抽到任何东西时打一条诊断（含面数 / 可读存储 / 白名单大小）。 */
+    private static final int EXTRACTION_DIAGNOSE_AFTER = 64;
+    private int extractionMissStreak;
+    /** 每隔这么多 tick 做一次全视图扫描（其余轮只查正对面）：既省 cache 注册，又不漏「产物在别的面」。 */
+    private static final long FULL_SWEEP_INTERVAL = 40L;
+    private static final Direction[] DIRECTIONS = Direction.values();
+    /** 侧视图连续这么多轮没产出就停掉粘性全扫。 */
+    private static final int STICKY_IDLE_LIMIT = 20;
+    private long lastFullSweep;
+    /** 换档后首轮要立刻做一次全视图扫描（否则最长要等 {@link #FULL_SWEEP_INTERVAL} tick 才看得到别的面）。 */
+    private boolean extractionSweepDue = true;
+    /** 已报过异常的视图（"坐标:标签" 字符串键：视图对象每轮新建，用身份做键既拦不住重复又会吊住 cache）。 */
+    private final Set<String> extractionViewWarned = new HashSet<>();
+    /** 侧视图上一轮抽到过东西：下一轮仍做全视图扫描，否则 FAST 档对「产物只在侧面」的机器会退化成 2 秒一次。 */
+    private boolean sweepSticky;
+    private int sweepStickyIdle;
+    /** 本轮是否需要收集「目标里看得到什么」这类贵信息（只在首轮与 64 次那轮开）。 */
+    /** 每个面拿到了哪些 AEKeyType 的存储包装（判断「没暴露物品」还是「暴露了但槽空」的关键证据）。 */
+    /** 每个面的 IItemHandler 到底存不存在、有几个槽、槽里是什么——区分「没暴露」与「暴露了但看不到产物」。 */
+    /** 本轮在目标里看到的、恰好属于白名单的 key 数量（>0 说明「容器里确实有样板产物」）。 */
+    /** 上一次打周期性诊断的 tick。 */
+
+    /** 只报一次的「部分投出」纸条，避免同一样板长期短少时刷屏。 */
+    private final Set<IPatternDetails> partialWarned = new HashSet<>();
 
     public PatternDiskProviderLogic(IManagedGridNode mainNode, PatternProviderLogicHost host,
             int diskSlots, Supplier<AppEngInternalInventory> diskInventorySupplier) {
@@ -226,20 +304,359 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
      */
     @Override
     public boolean pushPattern(IPatternDetails patternDetails, KeyCounter[] inputHolder) {
+        if (boostEnabled || blockingMode == ProviderBlockingMode.SMART) {
+            return pushWithOwnRules(patternDetails, inputHolder);
+        }
         if (!AdvPatternSupport.hasDirectionalInputs(patternDetails)) {
             return super.pushPattern(patternDetails, inputHolder);
         }
         // 与父类同一批前置守卫。方向投递是另一条路，不是绕过它们的特权：这四条里「锁定合成」最要紧——
         // AE2 全仓只在父类的 pushPattern 里读它，漏掉这一条就等于这类样板上的锁完全失效，开着锁也照推。
-        if (isBusy() || !mainNode.isActive()
-                || getCraftingLockedReason() != LockCraftingMode.NONE
-                || !getAvailablePatterns().contains(patternDetails)) {
+        if (!canPush(patternDetails)) {
             return false;
         }
         if (pushDirectionally(patternDetails, inputHolder)) {
             return true;
         }
         return super.pushPattern(patternDetails, inputHolder);
+    }
+
+    /** 父类 {@code pushPattern} 开头那四条守卫，自己的投递路径必须逐条重放。 */
+    private boolean canPush(IPatternDetails patternDetails) {
+        return !isBusy() && mainNode.isActive()
+                && getCraftingLockedReason() == LockCraftingMode.NONE
+                && getAvailablePatterns().contains(patternDetails);
+    }
+
+    // ---- 智能阻挡 / 智能倍增：自己的投递路径 ---------------------------------
+
+    /**
+     * 智能阻挡与发配倍增走这里。
+     *
+     * <p>倍增时「攒批」：CPU 在同一 tick 内交来的多份先存着，等它停交（或攒满上限）再一次性投给目标。
+     * 停交没有公开信号：方块形态由宿主 {@code serverTick} 每 tick 逼一次，面板形态没有可用的 tick
+     * （{@code IGridTickable} 服务槽被 AE2 供应器逻辑占着），因此<b>面板形态不攒批</b>——立即逐份投递，
+     * 宁可退化成普通发配也不让材料卡在内存里发不出去。</p>
+     */
+    private boolean pushWithOwnRules(IPatternDetails details, KeyCounter[] inputs) {
+        long now = gameTime();
+        // 上一 tick 留下的批先发：CPU 停交后不一定会再给我们一次 pushPattern。
+        flushIfStale(now);
+        if (!canPush(details)) {
+            return false;
+        }
+        if (!boostEnabled) {
+            return deliver(details, inputs, declaredInputs(details), false) != Delivery.NONE;
+        }
+
+        int capacity = batchCapacity();
+        if (pendingCount() >= capacity) {
+            flushAll(now);
+            if (pendingCount() >= capacity) {
+                // 目标一直收不下：这一份还没收下，不返回 true，让 CPU 下个 tick 重投（材料仍在网络里）。
+                return false;
+            }
+        }
+
+        pendingBatches.computeIfAbsent(details, k -> new ArrayList<>()).add(copyInputs(inputs));
+        pendingBatchTick = now;
+        var batch = pendingBatches.get(details);
+        if (boostLimit > 0 && batch.size() >= boostLimit) {
+            // flush 会把没投出去的份留在 pending（材料所有权已在本机），所以这里一律回答「已收下」，
+            // 不能把 false 交给 CPU——那样它会拿同一份材料重投，pending 里就会出现两份。
+            flush(details);
+        }
+        return true;
+    }
+
+    /** 一次投递的结果：完全投出、只投出一部分（余量净丢、不得重投）、完全未投。 */
+    private enum Delivery { NONE, PARTIAL, ALL }
+
+    /** 一次投进目标。{@code inventoryOnly} 为真时跳过机器（机器只认「一份」语义，合并批不能塞给它）。 */
+    private Delivery deliver(IPatternDetails details, KeyCounter[] inputs, Set<AEKey> ownInputs,
+            boolean inventoryOnly) {
+        var be = host.getBlockEntity();
+        if (!(be.getLevel() instanceof ServerLevel level)) {
+            return Delivery.NONE;
+        }
+        var sides = activeSides();
+        var takenByMachine = EnumSet.noneOf(Direction.class);
+
+        if (!inventoryOnly) {
+            for (var facing : sides) {
+                var adjacentPos = be.getBlockPos().relative(facing);
+                var fromUs = facing.getOpposite();
+                var machine = ICraftingMachine.of(level, adjacentPos, fromUs);
+                if (machine != null && machine.acceptsPlans()) {
+                    if (machine.pushPattern(details, inputs, fromUs)) {
+                        resetCraftingLock();
+                        return Delivery.ALL;
+                    }
+                    takenByMachine.add(facing);
+                }
+            }
+        }
+
+        if (!details.supportsPushInputsToExternalInventory()) {
+            return Delivery.NONE;
+        }
+
+        for (var facing : sides) {
+            if (takenByMachine.contains(facing)) {
+                continue;
+            }
+            var adjacentPos = be.getBlockPos().relative(facing);
+            var adjacentBe = level.getBlockEntity(adjacentPos);
+            var fromUs = facing.getOpposite();
+
+            if (blockingMode == ProviderBlockingMode.SMART) {
+                if (hasForeignInput(level, adjacentPos, adjacentBe, fromUs, ownInputs)) {
+                    // 目标里已经有别的配方的原料：换一个目标，这才是「智能阻挡」。
+                    continue;
+                }
+            } else if (isBlocking() && containsAnyPatternInput(level, adjacentPos, adjacentBe, fromUs)) {
+                // 阻挡档（AE2 原生）：目标已有任一已注册样板的输入就换目标。延着 boost 走这条路径时
+                // 父类不会替我们做这个判定，所以在这里补上，与原生口径一致。
+                continue;
+            }
+
+            // 预检与实投共用同一份 key→target 映射：两处若按不同面解析，会预检出 A 目标、实投去 B 目标。
+            var targets = resolveTargets(details, inputs, level, adjacentPos, adjacentBe, fromUs);
+            if (targets.isEmpty() || !acceptsAll(targets, inputs)) {
+                continue;
+            }
+
+            var result = pushToTarget(details, inputs, targets);
+            if (result != Delivery.NONE) {
+                // 全额与部分都算已交付：材料已经进了目标，重投就是复制。
+                // 锁定合成只能清、不能重新武装（父类 onPushPatternSuccess 是 private），但清锁仍要做。
+                resetCraftingLock();
+                if (result == Delivery.PARTIAL && notePartialWarning(details)) {
+                    LOGGER.warn("Pattern disk provider at {} handed over part of {}; the shortfall is not "
+                            + "recoverable and will not be retried",
+                            be.getBlockPos(), details.getClass().getSimpleName());
+                }
+                return result;
+            }
+        }
+        return Delivery.NONE;
+    }
+
+    /** 目标里是否有任何一张已注册样板的输入（与父类 {@code patternInputs} 同口径，按样板集合缓存）。 */
+    private boolean containsAnyPatternInput(ServerLevel level, BlockPos pos, @Nullable BlockEntity be,
+            Direction meSide) {
+        var all = allPatternInputs();
+        if (all.isEmpty()) {
+            return false;
+        }
+        var target = targetAt(level, pos, be, meSide, meSide, actionSource);
+        return target != null && target.containsPatternInput(all);
+    }
+
+    /** 全部已装样板的输入集合；样板一变（{@link #updatePatterns()}）就重建。 */
+    private Set<AEKey> allPatternInputs() {
+        if (cachedPatternInputs == null) {
+            var all = new HashSet<AEKey>();
+            for (var pattern : getAvailablePatterns()) {
+                all.addAll(declaredInputs(pattern));
+            }
+            cachedPatternInputs = all;
+        }
+        return cachedPatternInputs;
+    }
+
+    /** 按样板声明的接入面把每个 key 映到一个目标；任一 key 解析不到目标就整份放弃。 */
+    private Map<AEKey, PatternProviderTarget> resolveTargets(IPatternDetails details, KeyCounter[] inputs,
+            ServerLevel level, BlockPos adjacentPos, @Nullable BlockEntity adjacentBe, Direction fromUs) {
+        var targets = new HashMap<AEKey, PatternProviderTarget>();
+        for (var counter : inputs) {
+            if (counter == null) {
+                continue;
+            }
+            for (var key : counter.keySet()) {
+                var declared = AdvPatternSupport.accessSide(details, key);
+                var target = targetAt(level, adjacentPos, adjacentBe, fromUs,
+                        declared != null ? declared : fromUs, actionSource);
+                if (target == null) {
+                    return Map.of();
+                }
+                targets.put(key, target);
+            }
+        }
+        return targets;
+    }
+
+    /** @return true 表示这张样板还没报过，应当打一条 warn */
+    private boolean notePartialWarning(IPatternDetails details) {
+        if (partialWarned.size() > 64) {
+            // 有界：被喂进无数种样板时宁可重报，也不能无限增长。
+            partialWarned.clear();
+        }
+        return partialWarned.add(details);
+    }
+
+    /** 用同一份 key→target 映射做全额模拟。
+     *
+     * <p>逐 key 独立模拟，同一个目标上多个 key 的总量可能被高估（模拟不累计）——因此 PARTIAL 仍可能发生，
+     * 且必须由调用方按「已交付、不重投」处理。这条近似换来的是不依赖目标内部的剩余容量接口。</p>
+     */
+    private static boolean acceptsAll(Map<AEKey, PatternProviderTarget> targets, KeyCounter[] inputs) {
+        for (var counter : inputs) {
+            if (counter == null) {
+                continue;
+            }
+            for (var key : counter.keySet()) {
+                var amount = counter.get(key);
+                var target = targets.get(key);
+                if (target == null || target.insert(key, amount, Actionable.SIMULATE) < amount) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /** 把输入交给样板自己派发（按声明的接入面找 sink），与方向投递同一套。 */
+    private Delivery pushToTarget(IPatternDetails details, KeyCounter[] inputs,
+            Map<AEKey, PatternProviderTarget> targets) {
+        boolean[] complete = { true };
+        boolean[] any = { false };
+        details.pushInputsToExternalInventory(inputs, (what, amount) -> {
+            var target = targets.get(what);
+            if (target == null) {
+                complete[0] = false;
+                return;
+            }
+            any[0] = true;
+            long inserted = target.insert(what, amount, Actionable.MODULATE);
+            if (inserted < amount) {
+                complete[0] = false;
+                LOGGER.warn("Pattern disk provider at {} handed over {} x{} but its target took only {}",
+                        host.getBlockEntity() == null ? "?" : host.getBlockEntity().getBlockPos(), what, amount,
+                        inserted);
+            }
+        });
+        if (!any[0]) {
+            return Delivery.NONE;
+        }
+        return complete[0] ? Delivery.ALL : Delivery.PARTIAL;
+    }
+
+    /** 目标内容快照里是否存在与本样板无关的原料。读不到存储（无 ME 能力）时按「无外来物」处理。 */
+    private static boolean hasForeignInput(ServerLevel level, BlockPos pos, @Nullable BlockEntity be, Direction meSide,
+            Set<AEKey> ownInputs) {
+        var storage = be != null
+                ? level.getCapability(AECapabilities.ME_STORAGE, be.getBlockPos(), be.getBlockState(), be, meSide)
+                : level.getCapability(AECapabilities.ME_STORAGE, pos, meSide);
+        if (storage == null) {
+            return false;
+        }
+        return ProviderBlockingRules.hasForeignInput(storage.getAvailableStacks(), ownInputs);
+    }
+
+    /** 停交兜底：上一 tick 的批在本 tick 还没有新交付时发出。 */
+    private void flushIfStale(long now) {
+        if (!pendingBatches.isEmpty() && pendingBatchTick != now) {
+            flushAll(now);
+        }
+    }
+
+    private void flushAll(long now) {
+        for (var details : new ArrayList<>(pendingBatches.keySet())) {
+            flush(details);
+        }
+        pendingBatchTick = now;
+    }
+
+    /** 发出一张样板攒下的全部份数；合并批先试，不行再逐份（逐份失败交给父类的发送队列）。 */
+    private void flush(IPatternDetails details) {
+        var batch = pendingBatches.remove(details);
+        if (batch == null || batch.isEmpty()) {
+            return;
+        }
+        var ownInputs = declaredInputs(details);
+        if (batch.size() > 1) {
+            var merged = deliver(details, merge(batch), ownInputs, true);
+            if (merged != Delivery.NONE) {
+                // ALL 与 PARTIAL 都算已接管：合并批已进入目标，重投就是复制。
+                return;
+            }
+        }
+        var leftover = new ArrayList<KeyCounter[]>();
+        for (var one : batch) {
+            var result = deliver(details, one, ownInputs, false);
+            if (result != Delivery.NONE) {
+                // 部分投出也算已交付：材料已经进去，重投就是复制。
+                continue;
+            }
+            if (super.pushPattern(details, one)) {
+                continue;
+            }
+            // 只回填真的没投出去的那几份：整批回填会把已投出的份再投一次（复制）。
+            leftover.add(one);
+        }
+        if (!leftover.isEmpty()) {
+            pendingBatches.computeIfAbsent(details, k -> new ArrayList<>()).addAll(leftover);
+        }
+    }
+
+    /** 由宿主的服务端 tick 调用：保证单一一份的订单在下一个 tick 也能被发出。 */
+    public void flushPending() {
+        if (!pendingBatches.isEmpty()) {
+            flushAll(gameTime());
+        }
+    }
+
+    private int pendingCount() {
+        int total = 0;
+        for (var list : pendingBatches.values()) {
+            total += list.size();
+        }
+        return total;
+    }
+
+    /** 单批上限：设了上限按上限，没设按安全阀。 */
+    private int batchCapacity() {
+        return boostLimit > 0 ? boostLimit : BOOST_SAFETY_CAP;
+    }
+
+    private long gameTime() {
+        var be = host.getBlockEntity();
+        var level = be == null ? null : be.getLevel();
+        return level == null ? 0L : level.getGameTime();
+    }
+
+    private static KeyCounter[] copyInputs(KeyCounter[] inputs) {
+        var copy = new KeyCounter[inputs.length];
+        for (int i = 0; i < inputs.length; i++) {
+            copy[i] = new KeyCounter();
+            if (inputs[i] != null) {
+                for (var entry : inputs[i]) {
+                    copy[i].add(entry.getKey(), entry.getLongValue());
+                }
+            }
+        }
+        return copy;
+    }
+
+    /** 同槽同 key 求和：N 份同一模板合起来就是 N 倍的一份。 */
+    private static KeyCounter[] merge(List<KeyCounter[]> batch) {
+        KeyCounter[] merged = null;
+        for (var inputs : batch) {
+            if (merged == null) {
+                merged = copyInputs(inputs);
+                continue;
+            }
+            for (int i = 0; i < merged.length && i < inputs.length; i++) {
+                if (inputs[i] == null) {
+                    continue;
+                }
+                for (var entry : inputs[i]) {
+                    merged[i].add(entry.getKey(), entry.getLongValue());
+                }
+            }
+        }
+        return merged == null ? new KeyCounter[0] : merged;
     }
 
     /**
@@ -527,6 +944,10 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
     @Override
     public void updatePatterns() {
         super.updatePatterns();
+        // 样板集合变了，阻挡档的全量输入缓存与抽取白名单都得重建。
+        cachedPatternInputs = null;
+        cachedPatternOutputs = null;
+        extractionReturnWarned.clear();
     }
 
     /**
@@ -581,7 +1002,465 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
         }
         // 镜像内容不再是磁盘内容的映像，快照得作废，否则下一个非强制刷新会拿旧快照比出「没变」。
         lastDiskVersions = null;
+        // 攒批里的材料已经由 addDrops 掉出去了，这里只清账，避免拆机后再被 flush 一遍。
+        pendingBatches.clear();
         updatePatterns();
+    }
+
+    // ---- 供应器设置：阻挡三档与发配倍增 -----------------------------------
+
+    public ProviderBlockingMode getBlockingMode() {
+        return blockingMode;
+    }
+
+    /**
+     * 切换阻挡档位。{@link ProviderBlockingMode#ALL} 交回父类，其余两档在父类眼里都是「关」——
+     * 智能阻挡的判据在本类，父类只要不插手。
+     */
+    public void setBlockingMode(@Nullable ProviderBlockingMode mode) {
+        if (mode == null || mode == blockingMode) {
+            return;
+        }
+        blockingMode = mode;
+        getConfigManager().putSetting(Settings.BLOCKING_MODE,
+                mode == ProviderBlockingMode.ALL ? YesNo.YES : YesNo.NO);
+        saveChanges();
+    }
+
+    public void cycleBlockingMode() {
+        setBlockingMode(blockingMode.next());
+    }
+
+    // ---- 产物抽取 -------------------------------------------------------------
+
+    public ProviderExtractionMode getExtractionMode() {
+        return extractionMode;
+    }
+
+    /**
+     * 切换产物抽取模式。切档后立即生效（下一 tick 就抽一次），不把上一档的退避带过来。
+     */
+    public void setExtractionMode(@Nullable ProviderExtractionMode mode) {
+        if (mode == null || mode == extractionMode) {
+            return;
+        }
+        extractionMode = mode;
+        extractionCooldown = 0;
+        extractionInterval = ProviderExtractionPacing.FAST_START_INTERVAL;
+        extractionMissStreak = 0;
+        extractionSweepDue = true;
+        saveChanges();
+    }
+
+    public void cycleExtractionMode() {
+        setExtractionMode(extractionMode.next());
+    }
+
+    /**
+     * 服务端每 tick 的唯一入口：攒批的停交兜底 + 产物抽取节拍。
+     *
+     * <p>方块形态由 {@code serverTick} 调，面板形态由 {@code pumpLogic} 调——两条驱动通道只在这里汇合，
+     * 想改「每 tick 做什么」只改这一处，不用在两个宿主里各改一遍。</p>
+     */
+    public void tickServer() {
+        flushPending();
+        tickExtraction();
+    }
+
+    /**
+     * 每 tick 的抽取节拍：由方块形态的 {@code serverTick} 与面板形态的世界 tick 事件驱动。
+     *
+     * <p>冷却递减与实际抽取都放在这里，是因为只有这两个入口知道「这个世界在跑」；逻辑自己不持有 tick 源。</p>
+     */
+    public void tickExtraction() {
+        if (extractionMode == ProviderExtractionMode.OFF) {
+            extractionCooldown = 0;
+            return;
+        }
+        if (allPatternOutputs().isEmpty()) {
+            extractionCooldown = 0;
+            extractionMissStreak = 0;
+            return;
+        }
+        var sides = activeSides();
+        if (sides.isEmpty()) {
+            // 这台供应器无事可做：磁盘里没有样板产物，或没有可用的目标面。不计空抽、不告警——
+            // 否则空机器每 64 轮刷一条「抽不到」，把真正的故障埋掉。
+            extractionCooldown = 0;
+            extractionMissStreak = 0;
+            return;
+        }
+        if (extractionCooldown > 0) {
+            extractionCooldown = ProviderExtractionPacing.advanceCooldown(extractionCooldown);
+            if (extractionCooldown > 0) {
+                return;
+            }
+        }
+        boolean extracted = extractProducts(sides);
+        extractionInterval = ProviderExtractionPacing.nextInterval(extractionMode, extractionInterval, extracted);
+        extractionCooldown = extractionInterval;
+        if (extracted) {
+            extractionMissStreak = 0;
+        } else if (++extractionMissStreak == EXTRACTION_DIAGNOSE_AFTER) {
+            // 开着抽取却连续抽不到：通常是目标没有把样板产物暴露在任何一面，报一次便于定位。
+            LOGGER.warn("Pattern disk provider at {} has extraction on ({}) but nothing was extracted in the last "
+                    + "{} passes; check that the target exposes the pattern outputs on one of its faces",
+                    host.getBlockEntity() == null ? "?" : host.getBlockEntity().getBlockPos(), extractionMode,
+                    EXTRACTION_DIAGNOSE_AFTER);
+        }
+    }
+
+    /**
+     * 从活跃面把「属于已装样板输出」的物品抽进 ME 网络。
+     *
+     * <p>白名单是样板自己的 {@code getOutputs()}：目标里剩的原料、工具、其它物品都不动，否则抽取会变成
+     * 「把机器拆了」。每个视图各自跑一遍，能抽多少抽多少，网络装不下就留在目标里。</p>
+     *
+     * @return 是否真的抽到了东西（快速档靠它决定要不要退避）
+     */
+    private boolean extractProducts(Set<Direction> sides) {
+        var be = host.getBlockEntity();
+        if (!(be.getLevel() instanceof ServerLevel level)) {
+            return false;
+        }
+        var outputs = allPatternOutputs();
+        if (outputs.isEmpty()) {
+            return false;
+        }
+        var grid = mainNode.getNode().getGrid();
+        if (grid == null) {
+            return false;
+        }
+        var network = grid.getStorageService().getInventory();
+
+        boolean extractedAny = false;
+        long now = gameTime();
+        boolean fullSweep = extractionSweepDue || sweepSticky || now - lastFullSweep >= FULL_SWEEP_INTERVAL;
+        if (fullSweep) {
+            lastFullSweep = now;
+            extractionSweepDue = false;
+        }
+        for (var facing : sides) {
+            var adjacentPos = be.getBlockPos().relative(facing);
+            var storages = extractableStorages(level, adjacentPos, facing.getOpposite(), fullSweep);
+            int viewIndex = 0;
+            boolean sideProduced = false;
+            for (var storage : storages) {
+                int viewIdx = viewIndex++;
+                boolean sideView = viewIdx > 0;
+                try {
+                    boolean got = extractFromStorage(storage, outputs, network, actionSource, be.getBlockPos());
+                    extractedAny |= got;
+                    if (got && sideView) {
+                        sideProduced = true;
+                    }
+                } catch (RuntimeException e) {
+                    // 视图来源各不相同：一个第三方实现抛异常不该让整轮抽取停摆，只跳过它并限流告警。
+                    var warnKey = adjacentPos.toShortString() + ":" + viewIdx;
+                    if (extractionViewWarned.size() > 64) {
+                        extractionViewWarned.clear();
+                    }
+                    if (extractionViewWarned.add(warnKey)) {
+                        LOGGER.warn("Pattern disk provider at {}: storage view {} threw while extracting; "
+                                + "skipping it this pass", be.getBlockPos(), warnKey, e);
+                    }
+                }
+            }
+            if (sideProduced) {
+                sweepSticky = true;
+                sweepStickyIdle = 0;
+            } else if (sweepSticky && ++sweepStickyIdle >= STICKY_IDLE_LIMIT) {
+                // 侧视图连续这么多个抽取轮都没产出，就退回只查正对面。
+                sweepSticky = false;
+                sweepStickyIdle = 0;
+            }
+        }
+        return extractedAny;
+    }
+    /**
+     * 目标这一面实际持有的「去组件 key → 实际 key」索引，只收<b>无组件且唯一</b>的条目。
+     *
+     * <p>两道限定的理由：带组件的变体不是样板声明的那一种，回退到它会抽走别的物品；而同一个去组件 key
+     * 对应两个变体时，留哪个取决于 {@code getAvailableStacks()} 的迭代顺序，抽到的东西会随 tick 摇摆。
+     * 两者都宁可判「抽不到」，交给玩家把样板编码成精确变体。</p>
+     */
+    private static Map<AEKey, AEKey> indexByNormalizedKey(MEStorage storage) {
+        var index = new HashMap<AEKey, AEKey>();
+        var ambiguous = new HashSet<AEKey>();
+        for (var stack : storage.getAvailableStacks()) {
+            var key = stack.getKey();
+            if (key == null) {
+                continue;
+            }
+            var normalized = key.dropSecondary();
+            if (!key.equals(normalized) || ambiguous.contains(normalized)) {
+                continue;
+            }
+            if (index.putIfAbsent(normalized, key) != null) {
+                // 多义：两个「干净」变体共享同一个去组件 key，宁可不抽。
+                index.remove(normalized);
+                ambiguous.add(normalized);
+            }
+        }
+        return index;
+    }
+    /** 在单个存储视图上跑一轮「白名单 → 网络」的抽取。 */
+    private boolean extractFromStorage(MEStorage storage, Set<AEKey> outputs, MEStorage network,
+            IActionSource actionSource, BlockPos bePos) {
+        boolean extractedAny = false;
+        Map<AEKey, AEKey> byNormalized = null;
+        for (var key : outputs) {
+            long available = storage.extract(key, Long.MAX_VALUE, Actionable.SIMULATE, actionSource);
+            var target = key;
+            if (available <= 0) {
+                if (byNormalized == null) {
+                    byNormalized = indexByNormalizedKey(storage);
+                }
+                var actual = byNormalized.get(key.dropSecondary());
+                if (actual == null) {
+                    continue;
+                }
+                target = actual;
+                available = storage.extract(target, Long.MAX_VALUE, Actionable.SIMULATE, actionSource);
+            }
+            if (available <= 0) {
+                continue;
+            }
+            // 先问网络收多少，再按那个量抽：顺序反过来的话，网络装不下的部分要退回目标，而退不回就是净丢。
+            long accepted = network.insert(target, available, Actionable.SIMULATE, actionSource);
+            if (accepted <= 0) {
+                continue;
+            }
+            long taken = storage.extract(target, accepted, Actionable.MODULATE, actionSource);
+            if (taken <= 0) {
+                continue;
+            }
+            long inserted = network.insert(target, taken, Actionable.MODULATE, actionSource);
+            // 只认「真的进了网络」：目标能抽、网络却拒收（SIMULATE 后被别人占满）时，抽出来又要退回，
+            // 把它算成成功会让快速档掉回每 tick，变成抽出再塞回的空转。
+            extractedAny |= inserted > 0;
+            if (inserted < taken) {
+                // 抽出来之后网络才满（同一 tick 里别的东西占了位置）：多出来的塞回目标。
+                long leftover = taken - inserted;
+                long returned = storage.insert(target, leftover, Actionable.MODULATE, actionSource);
+                if (returned < leftover && noteExtractionReturnWarning(target)) {
+                    LOGGER.warn(
+                            "Pattern disk provider at {} extracted {} x{} but the target took back only {}{}; "
+                                    + "the shortfall is not recoverable",
+                            bePos, target, leftover, returned,
+                            target == key ? "" : " (via normalized-key fallback, the target face may be output-only)");
+                }
+            }
+        }
+        return extractedAny;
+    }
+
+    /** 全部已装样板的输出集合（抽取白名单）；样板一变（{@link #updatePatterns()}）就重建。
+     *
+     * <p>存的是样板的<b>原型 key</b>，不是 {@code dropSecondary()} 后的爪化版：{@code extract} 要的是精确 key
+     * （爪化只适合比较），用爪化版去抽会把「带组件的产物」漏掉或抽错变体。</p>
+     *
+     * <p><b>主来源是父类解码好的 {@code patterns} 列表</b>（零额外解码）；列表为空时退回直接解码镜像栏
+     * 本身（`{@code mirror}` 就是磁盘内容的派生态）作为兜底。这两个来源读的是同一份库存、用的是同一个
+     * AE2 helper，结果等价——所以这里的兜底只防「父类还没解码过」这一种边界，不要把它当成修了什么同步问题。
+     * 缓存仍按 {@code updatePatterns()} 失效，不在每 tick 的抽取路径上重解。</p>
+     *
+     * <p><b>不剔除「同时也是输入」的 key</b>：早先为了避免与投递抢料做过一次全局剔除，结果链式生产
+     * （A 的产物正是 B 的原料）里那个中间产物永远抽不出来，看起来就像功能没生效。现在的取舍是按用户口径
+     * 只认输出：料被抽回网络后如果还要用，推送会再取一次。</p>
+     */
+    private Set<AEKey> allPatternOutputs() {
+        if (cachedPatternOutputs == null) {
+            var outputs = new HashSet<AEKey>();
+            for (var details : getAvailablePatterns()) {
+                collectOutputs(details, outputs);
+            }
+            if (outputs.isEmpty()) {
+                // 兜底：父类还没解码过（刚加载、或列表被清空的那一瞬）时直接解码镜像栏。
+                var be = host.getBlockEntity();
+                if (this.mirror != null && be != null && be.getLevel() != null) {
+                    for (int slot = 0; slot < this.mirror.size(); slot++) {
+                        var details = PatternDiskApi.decodePattern(this.mirror.getStackInSlot(slot), be.getLevel());
+                        collectOutputs(details, outputs);
+                    }
+                }
+            }
+            cachedPatternOutputs = outputs;
+        }
+        return cachedPatternOutputs;
+    }
+
+    private static void collectOutputs(@Nullable IPatternDetails details, Set<AEKey> into) {
+        if (details == null) {
+            return;
+        }
+        for (var stack : details.getOutputs()) {
+            if (stack != null && stack.what() != null) {
+                into.add(stack.what());
+            }
+        }
+    }
+
+    /** @return true 表示这个 key 还没报过退回失败，应当打一条 warn */
+    private boolean noteExtractionReturnWarning(AEKey key) {
+        if (extractionReturnWarned.size() > 64) {
+            extractionReturnWarned.clear();
+        }
+        return extractionReturnWarned.add(key);
+    }
+
+
+    /**
+     * 一次抽取轮要查的存储视图（调用内不缓存）。Mekanism 等机器按面暴露槽位，正对的那一面可能根本不含
+     * 产物槽，所以除正对面之外还查无面视图与其余五面——见方法体里的说明。
+     *
+     * <p>AE2 的 ME 能力（{@link AECapabilities#ME_STORAGE}）若存在则视为权威视图（它自己代表机器的完整
+     * 库存），不再叠平台能力，否则同一库存会被抽两次。</p>
+     */
+    private List<MEStorage> extractableStorages(ServerLevel level, BlockPos pos, Direction meSide,
+            boolean fullSweep) {
+        var be = level.getBlockEntity(pos);
+        var direct = be != null
+                ? level.getCapability(AECapabilities.ME_STORAGE, be.getBlockPos(), be.getBlockState(), be, meSide)
+                : level.getCapability(AECapabilities.ME_STORAGE, pos, meSide);
+        if (direct != null) {
+            // ME 能力是权威视图，它自己就代表机器的完整库存，不再叠平台能力（叠了会抽同一个库存两次）。
+            return List.of(direct);
+        }
+        var storages = new ArrayList<MEStorage>(7);
+        collectExternal(level, pos, meSide, storages);
+        if (!fullSweep) {
+            return storages;
+        }
+        // 全视图扫描：产物槽不一定在正对的那一面。无面视图（side = null）在多数实现里是未按面过滤的全槽，
+        // 其余五面则覆盖「输出面开在侧面」的机器。白名单仍只认样板输出，多查几个视图不会多抽东西。
+        collectExternal(level, pos, null, storages);
+        for (var side : DIRECTIONS) {
+            if (side != meSide) {
+                collectExternal(level, pos, side, storages);
+            }
+        }
+        return storages;
+    }
+    /** 把某个面（{@code side} 可为 null）上的平台存储能力包成一个 {@link MEStorage} 加进 {@code into}。 */
+    private void collectExternal(ServerLevel level, BlockPos pos, @Nullable Direction side,
+            List<MEStorage> into) {
+        var strategies = StackWorldBehaviors.createExternalStorageStrategies(level, pos, side);
+        var external = new IdentityHashMap<AEKeyType, MEStorage>(2);
+        for (var entry : strategies.entrySet()) {
+            var wrapper = entry.getValue().createWrapper(false, () -> {
+            });
+            if (wrapper != null) {
+                external.put(entry.getKey(), wrapper);
+            }
+        }
+        if (!external.isEmpty()) {
+            into.add(new CompositeStorage(external));
+        }
+    }
+
+    public boolean isBoostEnabled() {
+        return boostEnabled;
+    }
+
+    public void setBoostEnabled(boolean enabled) {
+        if (enabled == boostEnabled) {
+            return;
+        }
+        boostEnabled = enabled;
+        if (!enabled) {
+            // 关掉时把攒着的批立即发出去，不让材料滞在机器里。
+            flushAll(gameTime());
+        }
+        saveChanges();
+    }
+
+    public int getBoostLimit() {
+        return boostLimit;
+    }
+
+    public void setBoostLimit(int limit) {
+        int clamped = Math.max(0, Math.min(MAX_BOOST_LIMIT, limit));
+        if (clamped == boostLimit) {
+            return;
+        }
+        boostLimit = clamped;
+        saveChanges();
+    }
+
+    /**
+     * 攒批非空时对外算忙：CPU 见到忙就不再交付，于是上限在那里真正生效，超出的材料留在网络里。
+     *
+     * <p>同时这里也是「CPU 停交」的兵家必争之处：CPU 每 tick 都会问一次，上一 tick 的批就在这一步发出。
+     */
+    @Override
+    public boolean isBusy() {
+        if (!pendingBatches.isEmpty()) {
+            // 兜底：正常路径已由 tickServer()（方块 serverTick / 面板 pumpLogic）每 tick 覆盖，
+            // 这里只防两条驱动通道都不可用的极端情形。
+            flushIfStale(gameTime());
+        }
+        return super.isBusy() || pendingCount() >= batchCapacity();
+    }
+
+    @Override
+    public void writeToNBT(CompoundTag tag, HolderLookup.Provider registries) {
+        super.writeToNBT(tag, registries);
+        tag.putString(NBT_BLOCKING_MODE, blockingMode.name());
+        tag.putBoolean(NBT_BOOST_ENABLED, boostEnabled);
+        tag.putInt(NBT_BOOST_LIMIT, boostLimit);
+        tag.putString(NBT_EXTRACTION_MODE, extractionMode.name());
+    }
+
+    @Override
+    public void readFromNBT(CompoundTag tag, HolderLookup.Provider registries) {
+        super.readFromNBT(tag, registries);
+        blockingMode = parseBlockingMode(tag.getString(NBT_BLOCKING_MODE));
+        boostEnabled = tag.getBoolean(NBT_BOOST_ENABLED);
+        boostLimit = Math.max(0, Math.min(MAX_BOOST_LIMIT, tag.getInt(NBT_BOOST_LIMIT)));
+        // 退避进度是运行时状态，不落盘：快速档的初始间隔永远是 1 tick（读档后从最快档重新开始）。
+        extractionInterval = ProviderExtractionPacing.FAST_START_INTERVAL;
+        extractionCooldown = 0;
+        // 读档后把 AE2 的设置对齐一次：内存卡/旧存档里那个开关可能与本模组的三档不一致。
+        getConfigManager().putSetting(Settings.BLOCKING_MODE,
+                blockingMode == ProviderBlockingMode.ALL ? YesNo.YES : YesNo.NO);
+    }
+
+    private static ProviderBlockingMode parseBlockingMode(String name) {
+        for (var mode : ProviderBlockingMode.values()) {
+            if (mode.name().equals(name)) {
+                return mode;
+            }
+        }
+        return ProviderBlockingMode.DEFAULT;
+    }
+
+    private static ProviderExtractionMode parseExtractionMode(String name) {
+        for (var mode : ProviderExtractionMode.values()) {
+            if (mode.name().equals(name)) {
+                return mode;
+            }
+        }
+        return ProviderExtractionMode.OFF;
+    }
+
+    /** 拆机时把攒批里的物品掉出去，与父类处理发送队列同口径。 */
+    @Override
+    public void addDrops(List<ItemStack> drops) {
+        super.addDrops(drops);
+        for (var batch : pendingBatches.values()) {
+            for (var inputs : batch) {
+                for (var counter : inputs) {
+                    for (var entry : counter) {
+                        if (entry.getKey() instanceof AEItemKey itemKey && entry.getLongValue() > 0) {
+                            drops.add(itemKey.toStack(
+                                    (int) Math.min(Integer.MAX_VALUE, entry.getLongValue())));
+                        }
+                    }
+                }
+            }
+        }
+        pendingBatches.clear();
     }
 
     @Override

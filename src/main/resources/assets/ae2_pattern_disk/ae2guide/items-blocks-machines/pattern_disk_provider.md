@@ -43,6 +43,30 @@ With ExtendedAE Plus installed, its "upload pattern to a provider" button works 
 
 Storing a pattern on a disk returns the blank pattern it freed to the ME network, the mirror image of the blank pattern spent when a pattern is taken back out. A network that is gone or full refuses the write: the upload fails, the pattern stays with the uploader, and the blank pattern is not consumed.
 
+## Blocking and dispatch boost
+
+The left toolbar carries two provider-specific buttons.
+
+**Blocking mode** cycles through three states:
+
+- **Non-blocking** - ignore the contents of the target.
+- **Blocking** - AE2's blocking mode: do not push crafting ingredients if the target inventory contains a pattern input.
+- **Smart blocking** - do not push crafting ingredients if the target inventory contains anything other than this pattern's inputs. A target made up only of this pattern's inputs, or an empty one, stays usable.
+
+**Dispatch boost** has two states, standard dispatch and smart boost. In smart boost the block form holds the copies the crafting CPU hands over during the same tick and merges them into a single delivery once the CPU has stopped handing over. The field to the left of the button caps the copies per batch; `0` means unlimited. Targets that only accept the usual single-pattern push are unaffected: the copies fall back to one delivery each. The panel form accumulates the same way; its flush is driven by a server level tick.
+
+Both states take over the provider's own dispatch path, which means the **crafting lock is not re-armed** while either of them is on (the lock is merely cleared) - AE2 only re-arms it inside its private push handler.
+
+**Output extraction** cycles through three states:
+
+- **Do not extract** - only the target machine's own push is used.
+- **Extract** - pull outputs out of the target every 20 ticks.
+- **Fast extraction** - the initial extraction interval is 1 tick; after a miss the interval doubles (capped at 20 ticks) and snaps back to 1 tick as soon as something is extracted.
+
+Extraction only takes items that appear in the **outputs of an installed pattern**, so leftover ingredients, tools and anything else stay where they are. Each pass moves as much as the network accepts; whatever does not fit stays in the target.
+
+Because the whitelist is the pattern outputs, a product that is also the input of another installed pattern can be pulled back into the network too. If two patterns share one machine and one feeds the other, keep them on separate providers or leave extraction off on that machine.
+
 ## Recipes
 
 <RecipesFor id="ae2_pattern_disk:pattern_disk_provider" />

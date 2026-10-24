@@ -55,6 +55,7 @@ public class MeteoritePatternProviderBlockEntity
      */
     @Override
     public void serverTick() {
+        super.serverTick();
         if (getLogic() instanceof SelfAssemblingPatternDiskProviderLogic logic) {
             logic.tickCraftedContents();
         }

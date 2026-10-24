@@ -120,16 +120,18 @@ public final class BatchSynthesisEngine {
             if (input == null || input.isEmpty()) {
                 continue;
             }
-            long needed = input.multiplier();
-            if (needed <= 0 || needed > Long.MAX_VALUE / jobs) {
-                return false;
-            }
-            long total = needed * jobs;
             boolean covered = false;
             for (var candidate : input.candidates()) {
-                if (cells.extract(candidate, total, Actionable.SIMULATE) >= total) {
-                    if (needed > 1 && plans.remainderFor(input, candidate) != null) {
-                        // A slot that wants more than one item and leaves a container behind is answered by two
+                // One craft consumes the template count times the amount one template holds - for a fluid
+                // substituted bucket slot that is the container's whole content, not one unit.
+                long needed = input.neededFor(candidate.key());
+                if (needed <= 0 || needed > Long.MAX_VALUE / jobs) {
+                    return false;
+                }
+                long total = needed * jobs;
+                if (cells.extract(candidate.key(), total, Actionable.SIMULATE) >= total) {
+                    if (needed > 1 && plans.remainderFor(input, candidate.key()) != null) {
+                        // A slot that wants more than one unit and leaves a container behind is answered by two
                         // different conventions: the per-slot API scales the remainder with the slot's demand,
                         // while the whole-grid API answers per grid position. Running those crafts one at a time
                         // is the only way to keep the machine's return exactly equal to what the CPU expects.
@@ -212,7 +214,14 @@ public final class BatchSynthesisEngine {
             if (input == null || usedKey == null) {
                 continue;
             }
-            long needed = input.multiplier() * jobs;
+            long perCraft = input.neededFor(usedKey);
+            if (perCraft <= 0 || perCraft > Long.MAX_VALUE / jobs) {
+                // An unusable or unrepresentable amount must never consume a partial batch.
+                rollbackInputs(consumed);
+                state.accept(BatchWorkState.INPUTS_UNAVAILABLE);
+                return false;
+            }
+            long needed = perCraft * jobs;
             if (cells.extract(usedKey, needed, Actionable.MODULATE) < needed) {
                 rollbackInputs(consumed);
                 state.accept(BatchWorkState.INPUTS_UNAVAILABLE);
@@ -259,15 +268,15 @@ public final class BatchSynthesisEngine {
                 resolved.add(null);
                 continue;
             }
-            long needed = input.multiplier();
-            if (needed <= 0 || needed > Long.MAX_VALUE / jobs) {
-                return null;
-            }
-            long total = needed * jobs;
             AEKey covered = null;
             for (var candidate : input.candidates()) {
-                if (cells.extract(candidate, total, Actionable.SIMULATE) >= total) {
-                    covered = candidate;
+                long needed = input.neededFor(candidate.key());
+                if (needed <= 0 || needed > Long.MAX_VALUE / jobs) {
+                    return null;
+                }
+                long total = needed * jobs;
+                if (cells.extract(candidate.key(), total, Actionable.SIMULATE) >= total) {
+                    covered = candidate.key();
                     break;
                 }
             }
@@ -288,8 +297,9 @@ public final class BatchSynthesisEngine {
             var key = resolved.get(i);
             var input = plan.inputs().get(i);
             if (key != null && input != null) {
-                // One craft's worth for the slot: the amount the pattern declares for this input.
-                table[i].add(key, input.multiplier());
+                // One craft's worth for the slot: the template count times the amount one template holds.
+                // resolveUniformInputs has already rejected a slot whose amount is unusable, so this is positive.
+                table[i].add(key, input.neededFor(key));
             }
         }
         var items = new ItemStack[9];
@@ -451,14 +461,14 @@ public final class BatchSynthesisEngine {
     }
 
     private @Nullable AEKey resolveVariant(PatternPlan.Input input, @Nullable Level world, KeyCounter buffer) {
-        long needed = input.multiplier();
-        if (needed < 0) {
-            // Malformed slot: a negative requirement must never reach the cells as a negative extract.
-            return null;
-        }
         for (var candidate : input.candidates()) {
-            if (cells.extract(candidate, needed, Actionable.SIMULATE) >= needed) {
-                return candidate;
+            long needed = input.neededFor(candidate.key());
+            if (needed <= 0) {
+                // Malformed slot: an unusable amount must never reach the cells as a free or negative extract.
+                return null;
+            }
+            if (cells.extract(candidate.key(), needed, Actionable.SIMULATE) >= needed) {
+                return candidate.key();
             }
         }
         if (world == null) {
@@ -467,12 +477,16 @@ public final class BatchSynthesisEngine {
         // Nothing the pattern listed is available: look for a same-item variant sitting in the buffer. The
         // pattern itself decides which variants it accepts, so this cannot widen a pattern's contract.
         for (var candidate : input.candidates()) {
-            if (!(candidate instanceof appeng.api.stacks.AEItemKey itemCandidate)) {
+            if (!(candidate.key() instanceof appeng.api.stacks.AEItemKey itemCandidate)) {
                 continue;
             }
             for (var variant : buffer.findFuzzy(itemCandidate, FuzzyMode.IGNORE_ALL)) {
                 var key = variant.getKey();
-                if (key.equals(candidate) || !input.accepts(key, world)) {
+                if (key.equals(candidate.key()) || !input.accepts(key, world)) {
+                    continue;
+                }
+                long needed = input.neededFor(key);
+                if (needed <= 0) {
                     continue;
                 }
                 if (cells.extract(key, needed, Actionable.SIMULATE) >= needed) {
@@ -497,7 +511,12 @@ public final class BatchSynthesisEngine {
             if (input == null || usedKey == null) {
                 continue;
             }
-            long needed = input.multiplier();
+            long needed = input.neededFor(usedKey);
+            if (needed <= 0) {
+                // The slot declares no usable amount; treat it as unavailable instead of consuming nothing.
+                rollbackInputs(byKey);
+                return null;
+            }
             if (cells.extract(usedKey, needed, Actionable.MODULATE) < needed) {
                 // The simulation and the real extraction disagreed (something else emptied the slot in
                 // between): hand back what this run took and leave the job queued.

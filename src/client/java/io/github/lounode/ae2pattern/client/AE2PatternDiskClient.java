@@ -27,6 +27,7 @@ import io.github.lounode.ae2pattern.client.gui.CellManagementTermScreen;
 import io.github.lounode.ae2pattern.common.menu.CellManagementTermMenu;
 import io.github.lounode.ae2pattern.client.gui.PatternDiskEncodingTermScreen;
 import io.github.lounode.ae2pattern.client.gui.PatternDiskManagementTermScreen;
+import io.github.lounode.ae2pattern.client.gui.PatternDiskMarkTooltip;
 import io.github.lounode.ae2pattern.client.gui.PatternDiskAssemblerScreen;
 import io.github.lounode.ae2pattern.client.gui.PatternDiskProviderScreen;
 import io.github.lounode.ae2pattern.client.gui.PatternTransfererScreen;
@@ -61,6 +62,8 @@ public class AE2PatternDiskClient {
         modBus.addListener(this::registerItemColors);
         // 元件管理终端选中驱动器时在世界里圈出那个方块（线框状态见 DriveHighlight）。
         net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(DriveHighlight::onRenderLevel);
+        // 磁盘的标记补进物品自身的 tooltip：可读名要靠配方查看器，只能在客户端拼（见 PatternDiskMarkTooltip）。
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(PatternDiskMarkTooltip::appendMark);
         // 退出世界时把「钉住」的高亮一并清掉：钉子只按维度 + 坐标记，换个存档就会指到别人身上。
         net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
                 (net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent.LoggingOut event) -> DriveHighlight.clearPinned());

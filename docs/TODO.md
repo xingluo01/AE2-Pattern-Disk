@@ -487,3 +487,10 @@ P0 不应新造范式，同文件里已有两处“每 tick 限量”的先例�
 - ✅ 同轮文案层清理（用户逐条裁决）：玩家可见中文串的结尾句号归零、`复写/编写样板/打标/关掉` 收敛到 `复制/编码/标记/关闭`、en 的 `Shift +` 统一为 `Shift+`、6 条长 tooltip 精简（`mode_store_desc` 与 `mark_bookmarks` 计数报告有意保留）。校验口径：`node tools/check-chat-message-keys.cjs .`（两语 220 键对齐）。
 - ⚠ 未做（有意）：不给输入槽做「顺序可见化」（1..N 序号）。按钮效果对玩家不透明时容易误以为是坏的，但序号绘制要先解决 81 格分页视图的表现，本轮不做。
 
+
+### U. 批处理装配室：模板量与流体替代的后续口径 — P3 ⬜（2026-10 记录）
+
+- ✅ 已修：一次执行的消耗改为 `getMultiplier() × getPossibleInputs()[i].amount()`（AE2 `CraftingCpuHelper.extractTemplates` 同口径）。此前只取 `getMultiplier()`，流体替代槽每份只扣 1 单位，出现「1000 mB 原料只扣 10 mB」。模板量取自容器实际容量，非固定 1000。
+- ⬜ 畸形槽无日志：`BatchSynthesisEngine.consumeInputs` 把 `neededFor == 0`（模板量不可用/溢出）与「真的缺料」共用 `INPUTS_UNAVAILABLE`，每 tick 重试且不出日志，运维无法区分。需要时仿 `noteWarned` 加一次性 debug。
+- ⬜ 同族口径：`PatternDiskAssemblerBlockEntity` 的可用性预判仍按 `getMultiplier()` 判「每格 1 件」，对流体替代样板只会静默填不出格（不扣料、不丢件）；与该机器的格子语义一并审视。
+- 混合模板拼够一条见 G。

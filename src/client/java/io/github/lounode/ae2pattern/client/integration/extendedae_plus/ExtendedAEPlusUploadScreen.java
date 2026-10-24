@@ -50,8 +50,8 @@ public class ExtendedAEPlusUploadScreen extends PatternDiskEncodingTermScreen im
         if (!NeoECOClientIntegration.hasUploadTarget()) {
             return null;
         }
-        // 位置只能自己算：EAE+ 是在 AEBaseScreen.init 的 TAIL 取锚点，而本屏幕的 ECO 按钮要等
-        // super.init() 返回之后才创建，那一刻取不到那个控件。算式与父类的 neoEcoUploadButtonBounds() 同源。
+        // 位置问父类的右侧按钮列要（{@code neoEcoUploadButtonBounds()} → {@code uploadColumn.anchorOf(0)}）：
+        // 列的槽在屏幕构造期就登记了，所以 init 的 TAIL 这一刻锚点已经算得出来，不必再手写一份算式。
         var eco = neoEcoUploadButtonBounds();
         // 宽高传 0：EAE+ 按 getUploadScale()（1.0）算尺寸，即 16x16。y 取 ECO 按钮下沿，两者间隙 0px；
         // x 再左移 1px：ECO 的底板与它的控件框同宽，但画在 x-1 处（见 neoecoae 的 UploadButton），实机里

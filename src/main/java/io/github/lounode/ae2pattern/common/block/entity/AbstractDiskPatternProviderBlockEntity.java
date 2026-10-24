@@ -20,6 +20,7 @@ import appeng.api.ids.AEComponents;
 import appeng.api.inventories.InternalInventory;
 import appeng.api.stacks.AEItemKey;
 import appeng.blockentity.crafting.PatternProviderBlockEntity;
+import appeng.blockentity.ServerTickingBlockEntity;
 import appeng.util.SettingsFrom;
 import appeng.util.inv.AppEngInternalInventory;
 import appeng.util.inv.InternalInventoryHost;
@@ -46,7 +47,7 @@ import io.github.lounode.ae2pattern.common.logic.PatternDiskProviderLogic;
  */
 public abstract class AbstractDiskPatternProviderBlockEntity<L extends PatternDiskProviderLogic>
         extends PatternProviderBlockEntity
-        implements InternalInventoryHost, DiskHostSupport.Host {
+        implements InternalInventoryHost, DiskHostSupport.Host, ServerTickingBlockEntity {
 
     private final DiskHostSupport disks;
 
@@ -103,6 +104,20 @@ public abstract class AbstractDiskPatternProviderBlockEntity<L extends PatternDi
     @Override
     public void onChangeInventory(AppEngInternalInventory inv, int slot) {
         disks.onChangeInventory(inv, slot);
+    }
+
+    /**
+     * 服务端 tick：把供应器攒着的发配批发出去。
+     *
+     * <p>攒批的停交判据没有公开信号，只能靠一个每 tick 都会跑的地方兜底：AE2 自己的供应器 tick 里面那两个
+     * 方法是私有的，外面接管不了；部件形态也没有可用的 tick，只能靠 {@code isBusy} 被询问时先发。
+     * 方块形态在这里做，面板形态见 {@code PatternDiskProviderLogic#isBusy()}。</p>
+     */
+    @Override
+    public void serverTick() {
+        if (getLogic() instanceof PatternDiskProviderLogic logic) {
+            logic.tickServer();
+        }
     }
 
     @Override

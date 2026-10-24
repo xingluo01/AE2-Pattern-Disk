@@ -291,6 +291,7 @@
   }
  },
  "widgets": {
+  "uploadColumn": {"left": 0, "top": 0, "width": 0, "height": 0},
   "modePanel0": {
    "left": 175,
    "bottom": 76,

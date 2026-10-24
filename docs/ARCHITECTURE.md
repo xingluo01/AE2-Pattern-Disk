@@ -45,13 +45,13 @@
 | `integration/…` | 29 | 邻居模组适配，一个包一个邻居（13 个子包 + `package-info`） |
 | `config` | 3 | 模组配置 |
 | `client`（客户端源集根） | 2 | 客户端入口 `AE2PatternDiskClient`、物品显示属性 `InitPatternDiskProperties` |
-| `client/gui` | 32 | 屏幕、面板、按钮、表格模型 |
+| `client/gui` | 33 | 屏幕、面板、按钮、表格模型 |
 | `client/integration` | 28 | JEI / EMI / IPN / JECH 与各邻居的客户端侧适配 |
 | `client/sort` | 4 | 排序口径（数值序、阶层表、名字门槛） |
 | `client/render` | 2 | 高效分子装配室的 BEISR 与驱动器高亮 |
 | `mixin` | 1 | `KeySortersMixin`，在客户端源集，见 §7 |
 
-主源集 106 个 `.java`，客户端源集 59 个。
+主源集 131 个 `.java`，客户端源集 70 个。
 
 ### 分层规矩
 
@@ -82,6 +82,8 @@
 
 规则集中在 `common/menu/DiskMarkRules.java`（模式 → 标记、标记 → 可读名前的清洗）；可读名与 tooltip 那一侧在 `client/gui/PatternDiskMarks.java`。
 
+物品自身的 tooltip 那行由 `client/gui/PatternDiskMarkTooltip.java` 挂在客户端的 `ItemTooltipEvent` 上拼——可读名要靠 EMI/JEI 的配方类别名，写进 `PatternDiskItem.appendHoverText` 会让主源集反向依赖客户端源集。
+
 **已知行为**：雕凿档有专属标记 `#mode:chiseling`（它不在 AE2 的 `EncodingMode` 里、也没有配方类别，标记由上传路径直给）；
 而**高级档没有专属标记**，写盘时它盖的是「进入高级档之前那个常规档」的标记——这是已记录项，不是缺陷，详见 `TODO.md` 的 L 条。
 
@@ -106,7 +108,7 @@
 
 ### 2.4 空白样板记账
 
-往磁盘里写一张样板，欠网络一张空白样板。`api/BlankPatternSink.java` 是网络那一侧的契约（扣取与退还），终端在取盘/回流时与它对账。只显示不扣取的槽是 `common/menu/slot/NetworkBlankPatternSlot.java`。
+往磁盘里写一张样板，欠网络一张空白样板。`api/BlankPatternSink.java` 是网络那一侧的契约（扣取与退还），终端在取盘/回流时与它对账。终端自己那一格空白样板是真存货（`common/menu/slot/BlankPatternSlot.java`，上限一叠 64）：菜单每 tick 从网络补齐差额，编码与从磁盘取样板都先扣它、槽空了才向网络要；退还的空白样板也先进这一格，满了才溢出到网络。网络那侧的补料与回退都走 `StorageHelper.poweredExtraction`，与 AE2 终端取物同一道能耗口径。
 
 ---
 
@@ -204,7 +206,7 @@
 
 菜单里还有两套**字符串协议**，改名字等于改协议：
 
-- `registerClientAction("...")` 的动作名（`encode`、`clear`、`setMode`、`transferToDisk`、`extractFromDisk`、`bindPrefix`、`renameDisk`、`refreshDiskList`、`cycleProcessingOutput`、`cycleProcessingInput`、`neoecoae:uploadPattern` 等）。客户端与服务端靠这些字符串配对，注释里写着"名字即协议"的地方不要动。
+- `registerClientAction("...")` 的动作名（`encode`、`clear`、`setMode`、`transferToDisk`、`extractFromDisk`、`bindPrefix`、`renameDisk`、`refreshDiskList`、`cycleProcessingOutput`、`cycleProcessingInput`、`cycleProviderBlocking`、`setProviderBoost`、`setProviderBoostLimit`、`neoecoae:uploadPattern` 等）。客户端与服务端靠这些字符串配对，注释里写着"名字即协议"的地方不要动。
 - `@GuiSync(n)` 的**注解值 n 就是协议键**。AE2 在菜单构造期按注解值反射注册同步项，同一个菜单里重复的 id 会当场抛异常；字段本身可以搬位置，n 不能改、也不能被第二个字段复用。
 
 磁盘清单里的序列号也是协议的一部分：它必须在一个终端会话内稳定，客户端拿它说话，服务端拿它找盘。
@@ -264,7 +266,7 @@ NEO ECO 的类型名与方法名集中在 `NeoECOTypes.java`，改版本时先�
 
 **协议面，只搬逻辑不搬标识**
 
-- 客户端动作名、`@GuiSync` 的注解值、NBT key 字面量、序列号语义、`api` 包的签名。每台设备自己的键见它的 `saveAdditional` / `writeToNBT`：批处理装配室是 `cell0..8`、`disks`、`upgrades`、`fastBatchMode`、`pendingOutputs`；转存器是 `inv`、`mode`、`patternAccumulator`；自装配是 `crafted_contents`。
+- 客户端动作名、`@GuiSync` 的注解值、NBT key 字面量、序列号语义、`api` 包的签名。每台设备自己的键见它的 `saveAdditional` / `writeToNBT`：批处理装配室是 `cell0..8`、`disks`、`upgrades`、`fastBatchMode`、`pendingOutputs`；样板磁盘供应器是 `blockingMode`、`boostEnabled`、`boostLimit`；转存器是 `inv`、`mode`、`patternAccumulator`；自装配是 `crafted_contents`。
 
 **线程边界**
 
@@ -274,6 +276,28 @@ NEO ECO 的类型名与方法名集中在 `NeoECOTypes.java`，改版本时先�
 **状态一致性**
 
 - 批处理窗口那一组字段（`queue`、`lastInputGameTime`、`lastActivityGameTime`、`lastRunJobs`、`shortRunStreak`、`idleFlushDone`、`returnStalled`、`lastHandedPattern`）默认只在服务端 tick 线程读写。拆解时不要复制成两份，要共用同一个持有者。`fastBatchMode` 不算——它是会存进存档的设置。
+
+- **供应器的两条自管路径**（智能阻挡、发配倍增）不经过父类 `PatternProviderLogic.pushPattern`：
+  - 锁定合成只能靠 `resetCraftingLock()` 补上（父类 `onPushPatternSuccess` 是 private），不要动那行调用；
+  - 档位 `ALL` 走倍增时，阻挡判据由 `containsAnyPatternInput()` 自己重放（父类只在它自己的 pushPattern 里判）；
+  - 攒批 `pendingBatches` **不落盘**：两种形态都由宿主 tick 逼一次，最多滞留一 tick——方块形态是 `AbstractDiskPatternProviderBlockEntity#serverTick`，面板形态是 `AE2PatternDisk` 里注册的 `LevelTickEvent.Post` → `AbstractDiskPatternProviderPart#pumpLogic(level)`（部件没有方块实体那种 tick 回调，网格的 tick 服务槽归 AE2 的供应器逻辑，所以走世界 tick）。
+  - **锁定合成在这两档下退化为不锁**：`resetCraftingLock()` 只能清掉锁定，无法按 `LOCK_UNTIL_PULSE/RESULT` 重新武装（那在父类 private 的 `onPushPatternSuccess` 里）。
+
+- **产物抽取**（`ProviderExtractionMode` + `ProviderExtractionPacing`）：
+  - 节拍只能靠宿主的 tick：方块形态是 `AbstractDiskPatternProviderBlockEntity#serverTick`，面板形态是同一个 `LevelTickEvent.Post` → `AbstractDiskPatternProviderPart#pumpLogic(level)`（攒批与抽取共用这一处；部件没有方块实体那种 tick 回调，网格的 tick 服务槽归 AE2 的供应器逻辑）。面板的在场表是 `AbstractDiskPatternProviderPart.LOADED`（弱引用 + 同步包装），登记/注销在 `addToWorld`/`removeFromWorld`，不要移到 `onAddedToWorld/onRemovedFromWorld` 那两个子类钩子里——陨石面板覆写了钩子且不调 super。
+  - 白名单是已装样板的 `getOutputs()`（`allPatternOutputs()`，`updatePatterns()` 时失效）：抽非白名单物品等于把机器里的原料与工具一起搬走。**不做「同时也是输入」的剔除**——那会把链式生产（A 产 X、B 吃 X）的中间产物永久排除，表现为「抽取好像没生效」，见 `allPatternOutputs()` 的注释；代价是这类中间产物会被抽回网络，已写进指南提示分供应器。
+  - 抽取顺序是「问目标能抽多少 → 问网络能收多少 → 按较小者实抽 → 实插」，网络中途装不满时把余量 `insert` 回目标；不能反过来先抽后查，因为退回失败就是净丢。
+  - 快速档的间隔翻倍是纯算术，锁在 `ProviderExtractionPacing`（有单测），不要在逻辑里另写一份。
+  - **退避进度不落盘**：NBT 只存档位。读档、换档后的初始间隔恒为 1 tick（`FAST_START_INTERVAL`）——否则「快速档初始间隔 1 tick」不成立，重启一下就要等上一次退避到的上限（目前 20 tick）。
+
+**屏幕与布局文档**
+
+- `PatternDiskProviderScreen` 被两份设备共用：普通供应器与自装配（陨石）供应器。布局拆成三层：
+  - 基底 `assets/ae2/screens/ae2_pattern_disk/pattern_disk_provider_base.json`：背景、槽位、共用字样、控件，以及 `common.json` / `player_inventory.json` 两个公共 include；
+  - 派生 `pattern_disk_provider.json` 与 `meteorite_pattern_provider.json`：只写 `helpTopic` 与 `text.dialog_title`，其余全靠 include。
+- 新增一个「从布局文档取控件」的 `widgets.add*` 调用，写进**基底**即可，派生自动拿到。漏写时 AE2 的 `ScreenStyle.getWidget` 会抛 `IllegalStateException: Screen is missing required widget`，而这个异常发生在开屏的网络处理器里——后果不是画错，是玩家开界面时被踢下线。`ProviderScreenLayoutTest` 沿 include 链守着这条。
+- 不要在两份派生文档里重复 include 公共文档（`common.json` 等）：AE2 的 `StyleManager` 用 `Set` 记录已加载文件，同一文件在一次加载里出现两次会抛 `IllegalStateException: Recursive style includes`。公共文档只在基底写一次，测试也会查这一点。
+- 合并语义（AE2 `StyleManager.combineLayers`）：顶层键（`background`、`helpTopic`、`$schema`）后层整体覆盖；`slots` / `text` / `palette` / `images` / `terminalStyle` / `widgets` 按键合并，同名子对象整体覆盖（所以派生写 `dialog_title` 必须写全的 `text` + `position`，不能只写一半）。
 
 **日志**
 

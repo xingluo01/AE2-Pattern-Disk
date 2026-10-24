@@ -49,6 +49,7 @@ public class ExtendedAEPlusWirelessUploadScreen extends PatternDiskWirelessEncod
             return null;
         }
         // 算式与父类 neoEcoUploadButtonBounds() 同源：贴在 ECO 按钮下沿（间隙 0px），x 左移 1px 对齐底板左沿。
+        // 锚点来自右侧按钮列的 0 号槽，而槽在屏幕构造期就登记了，init 的 TAIL 这一刻可用。
         var eco = neoEcoUploadButtonBounds();
         return new Rect2i(eco.getX() - 1, eco.getY() + eco.getHeight(), 0, 0);
     }

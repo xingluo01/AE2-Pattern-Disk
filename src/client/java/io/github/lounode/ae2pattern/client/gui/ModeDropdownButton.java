@@ -71,6 +71,23 @@ public final class ModeDropdownButton extends StatesIconButton {
     }
 
     /**
+     * 展开的档位列表是否正占着屏幕（隐藏时不算）。
+     */
+    public boolean isMenuOpen() {
+        return this.menuOpen && this.visible;
+    }
+
+    /**
+     * 展开时把列表区域报给 JEI 的排除区：列表开在按钮左侧（GUI 外），不在工具栏自带的那一条排除区里，
+     * 不报就会被物品面板盖住（或被我们盖住）。收起时不占位。
+     */
+    public void addExclusionZone(List<Rect2i> zones) {
+        if (isMenuOpen()) {
+            zones.add(getPanelArea());
+        }
+    }
+
+    /**
      * 按本体只翻转展开状态，不再轮换档位——轮换改由展开列表里直接点选。
      *
      * <p>覆写这个方法而不是给构造器传动作：{@code Button} 的鼠标处理调的是这个虚方法，所以动作字段

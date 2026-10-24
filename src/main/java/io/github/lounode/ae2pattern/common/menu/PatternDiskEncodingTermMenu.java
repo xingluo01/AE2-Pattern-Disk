@@ -62,6 +62,7 @@ import appeng.menu.implementations.MenuTypeBuilder;
 import appeng.api.storage.ITerminalHost;
 import appeng.api.storage.ILinkStatus;
 import appeng.api.storage.MEStorage;
+import appeng.api.storage.StorageHelper;
 import appeng.api.upgrades.UpgradeInventories;
 import appeng.api.util.IConfigManager;
 import appeng.menu.ISubMenu;
@@ -80,7 +81,7 @@ import io.github.lounode.ae2pattern.integration.rechiseledae.ChiselingRecipes;
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
 import io.github.lounode.ae2pattern.common.menu.DiskEncodingLogic;
-import io.github.lounode.ae2pattern.common.menu.slot.NetworkBlankPatternSlot;
+import io.github.lounode.ae2pattern.common.menu.slot.BlankPatternSlot;
 import io.github.lounode.ae2pattern.common.menu.slot.PatternOutputSlot;
 import io.github.lounode.ae2pattern.common.part.PatternDiskEncodingTerminalPart;
 import io.github.lounode.ae2pattern.api.IPatternDiskHost;
@@ -230,7 +231,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
     private final FakeSlot smithingTableBaseSlot;
     private final FakeSlot smithingTableAdditionSlot;
     private final PatternTermSlot craftOutputSlot;
-    private final NetworkBlankPatternSlot blankPatternSlot;
+    private final BlankPatternSlot blankPatternSlot;
     private final RestrictedInputSlot encodedPatternSlot;
 
     private RecipeHolder<CraftingRecipe> currentRecipe;
@@ -322,6 +323,15 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
     public String overloadedMatchModes = "";
 
     /**
+     * 服务端：ME 网络里可持续供应的空白样板数（{@link #refillBlankPatternSlot()} 抽料后剩下的量）。
+     *
+     * <p>槽改成实物之后，客户端光看槽已经不知道网络还有没有货，而「编码按钮要不要亮」靠这个判断。
+     * 取 int 是因为 {@code @GuiSync} 只认得基本类型与字符串，而这个数只用来回答「有没有」。
+     */
+    @GuiSync(105)
+    public int networkBlankPatternCount;
+
+    /**
      * 客户端侧：最近一次从 EMI/JEI 导入的配方类别 id。绑定标记时优先用它——它才是「这是一台什么
      * 机器」的答案，编码模式只是四个粗类。为空则退回编码模式。
      */
@@ -402,9 +412,9 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         this.smithingTableAdditionSlot.setHideAmount(true);
 
         // Blank + encoded pattern slots
-        // Blank pattern slot: a read-only mirror of what the network holds. The terminal no longer has to be
-        // stocked by hand - encoding pulls from the network (see encode()).
-        this.addSlot(this.blankPatternSlot = new NetworkBlankPatternSlot(), SlotSemantics.BLANK_PATTERN);
+        // 空白样板槽是终端自己的实物缓冲：由网络补满、编码先扣它（见 BlankPatternSlot）；编码槽只收已编好的样板。
+        this.addSlot(this.blankPatternSlot = new BlankPatternSlot(encodingLogic.getBlankPatternInv(), 0),
+                SlotSemantics.BLANK_PATTERN);
         this.addSlot(
                 this.encodedPatternSlot = new PatternOutputSlot(encodingLogic.getEncodedPatternInv(), 0),
                 SlotSemantics.ENCODED_PATTERN);
@@ -593,9 +603,9 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
                     && !AEItems.BLANK_PATTERN.is(encodeOutput)) {
                 return;
             } else if (encodeOutput.isEmpty()) {
-                // 空白样板来自网络，不再从槽里拿。扣不到就静默收手——AE2 原生的编码终端在没空白样板时
-                // 也是直接 return（源码里就写着 "no blanks."），不提示玩家。
-                if (!consumeNetworkBlankPattern()) {
+                // 先扣终端槽里的那一份，槽空了才向网络要（见 consumeBlankPattern）。扣不到就静默收手——
+                // AE2 原生的编码终端在没空白样板时也是直接 return（源码里就写着 "no blanks."），不提示玩家。
+                if (!consumeBlankPattern()) {
                     return;
                 }
             }
@@ -659,67 +669,85 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         return !output.isEmpty() && AEItems.BLANK_PATTERN.is(output);
     }
 
-    // ---- 空白样板：网络镜像 -----------------------------------------------------
+    // ---- 空白样板：槽优先，网络兜底 -----------------------------------------------------
 
-    /** 旧存档遗留在样板槽里的空白样板只迁移一次。 */
-    private boolean legacyBlankPatternsMigrated;
-
-    /** 服务端：网络里可用的空白样板数量（模拟提取，不动库存）。网络不在时是 0，也就编不了码。 */
-    public long getNetworkBlankPatternCount() {
+    /**
+     * 服务端：把空白样板槽补满（从网络抽，只抽差额），并返回抽完之后网络里还剩多少。
+     *
+     * <p>槽是终端自带的一格存货，不是网络库存的又一次同步——网络只是它的来源。补满放在每个 tick 的
+     * {@code broadcastChanges} 里，所以编码消耗一张、玩家拿走一张，下一 tick 都会回到一叠；网络里没那么多
+     * 就抽到多少算多少（不能凭空造）。</p>
+     *
+     * <p>返回值就是 {@link #networkBlankPatternCount} 的来源：一次模拟查询同时回答「要不要补」与「还能不能编」，
+     * 不必为同一个答案问网络两次。</p>
+     *
+     * @return 网络里现在可用的空白样板数（已扣除本次抽走的量）；网络不在时是 0
+     */
+    private long refillBlankPatternSlot() {
         var grid = getGrid();
         var storage = grid == null ? null : grid.getStorageService();
         if (storage == null) {
             return 0;
         }
-        return storage.getInventory().extract(AEItemKey.of(AEItems.BLANK_PATTERN), Long.MAX_VALUE,
-                Actionable.SIMULATE, IActionSource.ofPlayer(getPlayer()));
+        var key = AEItemKey.of(AEItems.BLANK_PATTERN);
+        var source = getActionSource();
+        long available = storage.getInventory().extract(key, Long.MAX_VALUE, Actionable.SIMULATE, source);
+
+        var current = blankPatternSlot.getItem();
+        int has = current.isEmpty() ? 0 : current.getCount();
+        int missing = BlankPatternSlot.CAPACITY - has;
+        if (missing <= 0 || available <= 0) {
+            return available;
+        }
+        // 走 AE2 的带能耗提取：终端从网络拿东西要付能量，与 ME 终端 Shift 取货同一口径。
+        long drawn = StorageHelper.poweredExtraction(energySource, storage.getInventory(), key,
+                Math.min(missing, available), source);
+        if (drawn <= 0) {
+            return available;
+        }
+        // 从现有栈派生而不是新建一叠：第三方给空白样板挂的组件不该被补料抹掉。
+        blankPatternSlot.set(current.isEmpty()
+                ? AEItems.BLANK_PATTERN.stack((int) drawn)
+                : current.copyWithCount(has + (int) drawn));
+        return available - drawn;
     }
 
-    /** 从网络取走一个空白样板；网络里没有则返回 false。 */
+    /**
+     * 取一张空白样板：先扣槽里的，槽空了才向网络要（槽本身就由网络补满，这一层让“编出来的第一张”
+     * 用玩家看得见的那一份）。两处都没有就返回 false。
+     */
+    private boolean consumeBlankPattern() {
+        var inSlot = blankPatternSlot.getItem();
+        if (isBlankPattern(inSlot)) {
+            var remaining = inSlot.copyWithCount(inSlot.getCount() - 1);
+            blankPatternSlot.set(remaining);
+            return true;
+        }
+        return consumeNetworkBlankPattern();
+    }
+
+    /** 从网络取走一个空白样板；网络里没有或能量不够则返回 false（带能耗提取，与 AE2 终端取物同口径）。 */
     private boolean consumeNetworkBlankPattern() {
         var grid = getGrid();
         var storage = grid == null ? null : grid.getStorageService();
         if (storage == null) {
             return false;
         }
-        return storage.getInventory().extract(AEItemKey.of(AEItems.BLANK_PATTERN), 1,
-                Actionable.MODULATE, IActionSource.ofPlayer(getPlayer())) > 0;
+        return StorageHelper.poweredExtraction(energySource, storage.getInventory(),
+                AEItemKey.of(AEItems.BLANK_PATTERN), 1, getActionSource()) > 0;
     }
 
     /**
-     * 客户端：现在能不能编码——网络里有空白样板，或者编码槽里停着一个已经从网络取出的样板（空白载体、
-     * 或可被直接覆盖的已编码样板），后两种情形都不再需要网络。这只是提前拦住，真正的裁决仍在服务端。
+     * 客户端：现在能不能编码——槽里有空白样板，或者网络里还有（数量由服务端同步，见
+     * {@link #networkBlankPatternCount}），或者编码槽里停着一枚可直接覆盖的样板（空白载体、已编码样板）。
+     * 这只是提前拦住，真正的裁决仍在服务端。
      */
     public boolean canEncode() {
         var encodedOutput = encodedPatternSlot.getItem();
         return isBlankPattern(blankPatternSlot.getItem())
+                || networkBlankPatternCount > 0
                 || isBlankPattern(encodedOutput)
                 || PatternDetailsHelper.isEncodedPattern(encodedOutput);
-    }
-
-    /**
-     * 旧存档里玩家是往样板槽塞样板的，现在那个槽只是网络镜像、放不下东西了。把遗留的物品转进网络，
-     * 网络收不下就还给玩家，别让它卡在只用于显示的地方再也拿不出来。网络未就绪时直接退化为还给玩家。
-     */
-    private void migrateLegacyBlankPatterns() {
-        var inv = encodingLogic.getBlankPatternInv();
-        var legacy = inv.getStackInSlot(0);
-        if (legacy.isEmpty()) {
-            return;
-        }
-        inv.setItemDirect(0, ItemStack.EMPTY);
-
-        var remainder = legacy.copy();
-        var grid = getGrid();
-        var storage = grid == null ? null : grid.getStorageService();
-        if (storage != null) {
-            var inserted = storage.getInventory().insert(AEItemKey.of(AEItems.BLANK_PATTERN), remainder.getCount(),
-                    Actionable.MODULATE, IActionSource.ofPlayer(getPlayer()));
-            remainder.shrink((int) inserted);
-        }
-        if (!remainder.isEmpty() && !getPlayer().getInventory().add(remainder)) {
-            getPlayer().drop(remainder, false);
-        }
     }
 
     /**
@@ -952,7 +980,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         if (!hasRoomFor(request.target)) {
             return;
         }
-        if (!consumeNetworkBlankPattern()) {
+        if (!consumeBlankPattern()) {
             return;
         }
 
@@ -1347,17 +1375,17 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
     }
 
     /**
-     * 样板存入磁盘后，把回退产生的空白样板还回去。样板本来就取自网络，所以优先入网；网络不在或满了
-     * 就落玩家背包；背包也满则留在编码槽由玩家手动取走（不丢失）。
+     * 样板存入磁盘后，把回退产生的空白样板还回去：先进终端自己的那格空白样板槽，槽满才入网；网络不在
+     * 或满了就落玩家背包；背包也满则留在编码槽由玩家手动取走（不丢失）。
      */
     private void returnBlankPatternToStorage() {
         returnPatternToStorage(AEPatternRegistries.blankPattern());
     }
 
     /**
-     * 把一张样板交回：优先网络存储，其次玩家背包，两处都放不下时退回编码槽——调用方已经清空编码槽，
-     * 那是它唯一的去处。网络只吃下了一部分时，余量接着走同一条兜底链：不能因为「进去了一点」就把整张
-     * 当作已退。
+     * 把一张样板交回：先回终端自己的空白样板槽（那是它的家，槽满才溢出），再网络，再背包，都放不下时退回
+     * 编码槽——调用方已经清空编码槽，那是它唯一的去处。网络只吃下了一部分时，余量接着走同一条兜底链：
+     * 不能因为「进去了一点」就把整张当作已退。
      *
      * <p>今天所有调用方都只退单件（编码槽本身限一件），所以「部分合入」在这些路径上不可达；这里仍按
      * {@code count} 推导余量，免得将来有人拿它退多件时把余量吞掉。与 NEO ECO 那边「替代物要进到网络里
@@ -1369,6 +1397,14 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         var remaining = pattern.copy();
         if (remaining.isEmpty()) {
             return;
+        }
+        // 槽优先：空白样板回到终端自己那一格，网络只是后备（与快捷移动、编码消耗同一口径）。
+        if (isBlankPattern(remaining) && blankPatternSlot.mayPlace(remaining)) {
+            remaining = blankPatternSlot.safeInsert(remaining);
+            if (remaining.isEmpty()) {
+                broadcastChanges();
+                return;
+            }
         }
         var grid = getGrid();
         var storage = grid == null ? null : grid.getStorageService();
@@ -1603,11 +1639,10 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
             this.stonecuttingRecipeId = encodingLogic.getStonecuttingRecipeId();
             this.recipePrefix = Objects.toString(resolveCurrentRecipePrefix(), "");
             syncDiskList();
-            if (!legacyBlankPatternsMigrated) {
-                legacyBlankPatternsMigrated = true;
-                migrateLegacyBlankPatterns();
-            }
-            blankPatternSlot.updateMirror(getNetworkBlankPatternCount());
+            // 槽是实物、网络只是它的来源：每 tick 把差额补齐，再把「网络还剩多少」同步给客户端。
+            // 顺手取代了原先的镜像写入与旧存档搬迁——槽又能放东西了，存档里的内容就是槽的内容。
+            long networkBlanks = refillBlankPatternSlot();
+            this.networkBlankPatternCount = (int) Math.min(networkBlanks, Integer.MAX_VALUE);
             this.advancedModeAvailable = hasAdvancedEncoder();
             if (!this.advancedModeAvailable && this.advancedMode) {
                 // 卡被拿走了：模式立刻退出去，否则面板会停在一个再也读不出方向的空档上。
@@ -2478,18 +2513,54 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
 
     @Override
     protected int transferStackToMenu(ItemStack input) {
-        // 已编码的样板优先回编辑槽（AE2 的老规矩：拿着编好的样板 Shift+左键＝接着改它）；其余的照常规
-        // 进 ME 网络——本屏有物品网格，送进去看得见（与 AE2 原版编码终端一致）。那个编码槽只吃
-        // **已编码**样板，空白样板不在此列。管理终端把这条改成了 0（那边没有网络物品栏）。
+        // 先槽后网络：空白样板落空白样板槽（满了才继续往下），已编码样板回编码槽（AE2 的老规矩：拿着编好的
+        // 样板 Shift+左键＝接着改它），剩下的才进 ME 网络——本屏有物品网格，送进去看得见（与 AE2 原版一致）。
+        // 管理终端把网络那半改成不进（那边没有网络物品栏），槽那半照旧，见 insertIntoPatternSlots。
         int initialCount = input.getCount();
-        if (encodedPatternSlot.mayPlace(input)) {
-            input = encodedPatternSlot.safeInsert(input);
-            if (input.isEmpty()) {
-                return initialCount;
-            }
+        var rest = insertIntoPatternSlots(input);
+        int placed = initialCount - rest.getCount();
+        if (rest.isEmpty()) {
+            return placed;
         }
-        int transferred = initialCount - input.getCount();
-        return transferred + super.transferStackToMenu(input);
+        return placed + super.transferStackToMenu(rest);
+    }
+
+    /**
+     * 把物品放进终端自己的两格样板槽：空白样板优先落空白样板槽，已编码样板落编码槽，都不收则原样返回。
+     *
+     * <p>这一层单独抽出来是给管理终端用的：那边不进网络，但两格槽照样收东西（它继承本类，只把网络那半关掉）。
+     * 空白槽在编码槽之前——两张槽的准入不重叠，顺序不影响结果，但写成「先装料、后成品」读起来才顺。</p>
+     */
+    protected ItemStack insertIntoPatternSlots(ItemStack input) {
+        var rest = input;
+        if (blankPatternSlot.mayPlace(rest)) {
+            rest = blankPatternSlot.safeInsert(rest);
+        }
+        if (!rest.isEmpty() && encodedPatternSlot.mayPlace(rest)) {
+            rest = encodedPatternSlot.safeInsert(rest);
+        }
+        return rest;
+    }
+
+    /**
+     * 从网络物品网格里 Shift 取货时，已编码样板先进编码槽，而不是直接落玩家背包——「接着改这份样板」是那一步的
+     * 意图，AE2 原生终端也是这个口径。AE2 默认的目的地只含玩家侧槽，所以这里给它补一格并排在最前。
+     *
+     * <p>只在 {@code fromPlayerSide == false}（从网络往背包搬）且物品确实是已编码样板时才动；其余情形原样返回，
+     * 免得影响背包 → 槽那侧已有的优先级。</p>
+     */
+    @Override
+    protected List<Slot> getQuickMoveDestinationSlots(ItemStack stackToMove, boolean fromPlayerSide) {
+        var destinations = super.getQuickMoveDestinationSlots(stackToMove, fromPlayerSide);
+        if (fromPlayerSide
+                || !PatternDetailsHelper.isEncodedPattern(stackToMove)
+                || !encodedPatternSlot.mayPlace(stackToMove)) {
+            return destinations;
+        }
+        var reordered = new ArrayList<Slot>(destinations.size() + 1);
+        reordered.add(encodedPatternSlot);
+        reordered.addAll(destinations);
+        return reordered;
     }
 
     /**
