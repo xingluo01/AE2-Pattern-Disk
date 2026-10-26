@@ -2,11 +2,16 @@
 
 给接手这套代码的人：这页讲**代码怎么组织、东西放在哪、改哪里**。
 
-玩法说明在 `../README.md`（英文，商店页与 GitHub 首页用），平台差异在 `PLATFORM.md`（MCMOD 版在 `PLATFORM_MCMOD.md`），未完成与已知欠账在 `TODO.md`，历次改动在 `../CHANGELOG.md`，本地依赖怎么凑齐在 `LOCAL_DEPS.md`。本手册不重复它们。
+玩法说明在 `../README.md`（英文，商店页与 GitHub 首页用），平台差异在 `PLATFORM.md`（MCMOD 版在 `PLATFORM_MCMOD.md`），未完成与已知欠账在 `TODO.md`，待发改动在 `../CHANGELOG_UNRELEASED.md`、已发布留档在 `../CHANGELOG.md`，发版流程与踩坑在 `RELEASE.md`，本地依赖怎么凑齐在 `LOCAL_DEPS.md`。本手册不重复它们。
 
-（本目录 `docs/` 只放文档：本手册、平台说明两份、待办、上游 API 请求、编码模式注册规范 `ENCODING_MODES.md`，以及两份**本机本地**信息——`LOCAL_DEPS.md`（路径索引）与 `LOCAL_CLONES.md`（上游镜像基线），后两份已列入 `.gitignore`，不随仓库分发。仓库根只留 `README.md`、`CHANGELOG.md` 这两个按惯例必须在根的文件，外加给 AI 代理的入口 `AGENTS.md`。）
+（本目录 `docs/` 只放文档：本手册、平台说明两份、待办、上游 API 请求、发版手册 `RELEASE.md`、编码模式注册规范 `ENCODING_MODES.md`，以及两份**本机本地**信息——`LOCAL_DEPS.md`（路径索引）与 `LOCAL_CLONES.md`（上游镜像基线），后两份已列入 `.gitignore`，不随仓库分发。仓库根只留 `README.md`、`CHANGELOG.md`、`CHANGELOG_UNRELEASED.md` 这三个按惯例必须在根的文件，外加给 AI 代理的入口 `AGENTS.md`。）
 
-版本基线：NeoForge 21.1.241 / MC 1.21.1 / AE2 19.2.18 / Java 21。
+版本基线：NeoForge 21.1.241 / MC 1.21.1 / AE2 19.2.18 / Java 21。取数口径是 `gradle/libs.versions.toml` 的 `ae2`（`build.gradle` 走 `libs.ae2`）；`gradle.properties` 里的 `ae2_version` 是未使用的历史键，不要把它当真相。
+
+三条工程约束：
+
+- **只用 AE2 公共 API**：不反射内部类当 API，也不 mixin AE2 核心。现存唯一例外是客户端混入 `KeySortersMixin`（`@Mixin(targets = "appeng.client.gui.me.common.KeySorters")`，把终端「按 mod」排序的组内顺序换成数值序，`require = 0` + `required: false`，AE2 改签名时只是静默失效；见 §7）。新增例外必须有明确理由，并记进 `TODO.md` 的「有意不做」或 `UPSTREAM_API_REQUESTS.md`。
+- **美术资源归本项目**：机器资源统一放 `assets/ae2_pattern_disk/textures/`，不直接引用 `ae2:` 纹理。借用的复制件清单与授权分档见 `README.md` 的授权表；零件/物品显示模型仍继承 `ae2:item/display_base`、`ae2:part/display_off`、`ae2:item/cable_interface`，这算模型继承而不是贴图借用。
 
 ---
 
@@ -56,7 +61,7 @@
 ### 分层规矩
 
 - `api` 只放第三方会写的类型（接口、数据对象、门面）。它不反向依赖 `common/menu` 或屏幕。
-- `common/logic` 里放"能单独读懂、能单独讲清"的东西：`CellBuffer`、`SmoothReturnQueue`、`PatternPlanCache`、`BatchSynthesisEngine`、`ProductDelivery`、`TransfererOperations`、`AssemblerOutputResolver`、`DiskSlotVersions`。回调优先——构造参数接 `Supplier` / `Runnable`，不主动抓菜单服务。确实需要宿主时可以直接收 BE 类型（`TransfererOperations` 收 `PatternTransfererBlockEntity`，`PatternDiskProviderLogic` 收 MC `BlockEntity`），该不该留在 logic 按 §9 那三个"不"判，不按"认不认识 BE"判。当前回归测试覆盖 `common/menu` 的元件表与统计缓存；本包尚无测试。
+- `common/logic` 里放"能单独读懂、能单独讲清"的东西：`CellBuffer`、`SmoothReturnQueue`、`PatternPlanCache`、`BatchSynthesisEngine`、`BatchLane`、`ProductDelivery`、`TransfererOperations`、`AssemblerOutputResolver`、`DiskSlotVersions`。回调优先——构造参数接 `Supplier` / `Runnable`，不主动抓菜单服务。确实需要宿主时可以直接收 BE 类型（`TransfererOperations` 收 `PatternTransfererBlockEntity`，`PatternDiskProviderLogic` 收 MC `BlockEntity`），该不该留在 logic 按 §9 那三个"不"判，不按"认不认识 BE"判。当前回归测试覆盖 `common/menu` 的元件表与统计缓存，本包的供应器阻挡、抽取节拍、磁盘契约、流体替代与 `BatchLane` 调度。
 - `common/menu` 里放"必须知道菜单服务"的东西。判据很简单：一段代码要不要用 `getPlayer()`、`sendClientAction`、`notify*`、`sendPacketToClient`？要，就留在菜单。
 - `integration/<邻居>` 只写那个邻居的适配，**邻居的类型不得漏进总是加载的类**（这才是红线，见 §6）。核心代码引用 `integration` 包自己写的门禁与契约类是允许的，现在是 7 个文件共 19 处 import：入口 `AE2PatternDisk`（5，五个软依赖门禁）、`AEPatternRegistries`（4，NeoForge 延迟注册必须在物品注册处拿到无线终端的类型 + EAE+ 契约）、`PatternDiskEncodingTermMenu`（6，高级/雕凿/过载/polymorph）、`PatternEncodingLogic`、`PatternDiskProviderLogic`、`PatternDiskProviderMenu`、`SelfAssemblingPatternDiskProviderLogic` 各 1。客户端侧 `client` 核心包对 `client/integration` 是 **0 处 import**，比主源集更严。
 - `common/menu` 与 `common/logic` 的归属按内容判、不按"能不能单独测"判：`DiskEncodingLogic`、`PatternEncodingLogic`、`DiskIndex`、`DiskMarkRules`、`ProcessingOutputMath` 都不碰菜单服务，看着像 logic，但它们读写的是菜单的 `@GuiSync` 项与宿主接口，留在 `common/menu` 是和协议同位置，不要搬。
@@ -134,11 +139,12 @@
 
 ### 3.4 批处理装配室
 
-全项目最复杂的一台。`common/block/entity/BatchAssemblerBlockEntity.java`（1313 行）是编排者，真正的重活拆在 `common/logic`：
+全项目最复杂的一台。`common/block/entity/BatchAssemblerBlockEntity.java` 是编排者，真正的重活拆在 `common/logic`：
 
 | 类 | 干什么 |
 |---|---|
-| `BatchSynthesisEngine`（516 行） | 一条作业怎么兑现成产物：摊销块与单件慢路径 |
+| `BatchSynthesisEngine` | 一条作业怎么兑现成产物：摊销块与单件慢路径 |
+| `BatchLane` | 一条任务通道：自己的队列、静默窗口、分批分类与批龄上限 |
 | `BatchPatternAnalyser` | 分析新入队样板的线程池（速度卡定尺寸）与失败上报 |
 | `BatchRecipePool` | 九张盘上的样板汇总成一份对 CPU 可见的池子 |
 | `PatternPlan` / `PatternPlanCache` | 把样板解析成执行计划并缓存 |
@@ -147,7 +153,7 @@
 | `ParallelSlotProbe` | "这次交付能装下几份完整配方" |
 | `BatchWorkState` | 对外报告的工作状态（12 档） |
 
-速度卡买的是分析线程数（`1 << 卡数`），不是执行并行度：元件与网络都不是线程安全的，所有实际访问留在服务端 tick 线程。窗口逻辑（批窗口、短窗口、空闲复位）是 BE 里那几行 `tickingRequest` / `runBatch` 的编排，没有单独成类——它和队列共享可变状态，抽出去只会变成跨对象协议。
+速度卡买的是分析线程数（`1 << 卡数`），不是执行并行度：元件与网络都不是线程安全的，所有实际访问留在服务端 tick 线程。调度层有两条通道：轻载收零散小单、重载收整批交付与攒起来的大单，各自一份静默窗口、分批分类与操作预算——原先只有一份「最后一次到货」的时钟，任何推送都会把整台机器的窗口往回拨，一条流式到货的大订单能把同一台机器上的小订单饿死。窗口口径（整窗、短窗、整窗探针、久停复位）与批龄上限都在 `BatchLane` 里，可以单独检验；`BatchAssemblerBlockEntity` 只负责分流（`routeArrival`）、按通道派预算（`runLanes`）与逐条通道执行（`runLane`）。
 
 ### 3.5 编码终端与管理终端
 
@@ -184,7 +190,7 @@
 
 ### 4.4 批处理的一次执行
 
-推料 → 入窗口（`CellBuffer` 收材料）→ 静默窗口到期 → `runBatch` 逐条计划：先试摊销块（一个槽位一个变体的最大块），剩下的走单件；产出进 `SmoothReturnQueue`，按 tick 额度回网络；网络正在索要的 key 跳过平滑直接交。任何一步失败都回滚材料，作业留在队列。
+推料 → 按通道分流（整批交付与攒过阈值的进重载通道，其余进轻载）→ 该通道静默窗口到期（或积压到批龄上限）→ `runLane` 逐条计划：先试摊销块（一个槽位一个变体的最大块），剩下的走单件；产出进 `SmoothReturnQueue`，按 tick 额度回网络；网络正在索要的 key 跳过平滑直接交。任何一步失败都回滚材料，作业留在队列。
 
 能量在扣料之后、记账之前扣：材料能还，能量不能。
 
@@ -275,16 +281,19 @@ NEO ECO 的类型名与方法名集中在 `NeoECOTypes.java`，改版本时先�
 
 **状态一致性**
 
-- 批处理窗口那一组字段（`queue`、`lastInputGameTime`、`lastActivityGameTime`、`lastRunJobs`、`shortRunStreak`、`idleFlushDone`、`returnStalled`、`lastHandedPattern`）默认只在服务端 tick 线程读写。拆解时不要复制成两份，要共用同一个持有者。`fastBatchMode` 不算——它是会存进存档的设置。
+- 批处理窗口那一组状态（通道上的 `queue`、`lastArrivalGameTime`、`backlogSinceGameTime`、`lastRunJobs`、`shortRunStreak`，加上方块实体上的 `lastActivityGameTime`、`idleFlushDone`、`returnStalled`、`lastHandedPattern`）默认只在服务端 tick 线程读写。通道那五项现在住在 `BatchLane` 里，由两条通道各持一份；拆解时不要复制成两份，要共用同一个持有者。`fastBatchMode` 不算——它是会存进存档的设置。
 
 - **供应器的两条自管路径**（智能阻挡、发配倍增）不经过父类 `PatternProviderLogic.pushPattern`：
   - 锁定合成只能靠 `resetCraftingLock()` 补上（父类 `onPushPatternSuccess` 是 private），不要动那行调用；
   - 档位 `ALL` 走倍增时，阻挡判据由 `containsAnyPatternInput()` 自己重放（父类只在它自己的 pushPattern 里判）；
-  - 攒批 `pendingBatches` **不落盘**：两种形态都由宿主 tick 逼一次，最多滞留一 tick——方块形态是 `AbstractDiskPatternProviderBlockEntity#serverTick`，面板形态是 `AE2PatternDisk` 里注册的 `LevelTickEvent.Post` → `AbstractDiskPatternProviderPart#pumpLogic(level)`（部件没有方块实体那种 tick 回调，网格的 tick 服务槽归 AE2 的供应器逻辑，所以走世界 tick）。
+  - 发配倍增的合并表 `pendingBatches` **会进存档**（`writeToNBT` → 编码样板物品 + 每份按槽的输入；`readFromNBT` 只搬原始 tag，首个 tick 有 `level` 时才解码）。落地判据是「玩家设的份数上限」（`BoostMergeLimit.isDue`）或「发送方停手满 `QUIET_TICKS` 个 tick」。**不能恢复成每 tick 无条件清空**——那会把 IO 次数绑到 tick 数上，合并形同虚设，原材料会陆陆续续单独写进目标。填 0（不设限）时只剩停手判据，发送方一直不停手就一直在攒：那是有意的取舍，要上界就填数字，不要用计时去偷懒。两种形态都由宿主 tick 逼一次——方块形态是 `AbstractDiskPatternProviderBlockEntity#serverTick`，面板形态是 `AE2PatternDisk` 里注册的 `LevelTickEvent.Post` → `AbstractDiskPatternProviderPart#pumpLogic(level)`（部件没有方块实体那种 tick 回调，网格的 tick 服务槽归 AE2 的供应器逻辑，所以走世界 tick）。
+  - 写入存档的撺批份数有硬上限 `MAX_PERSISTED_BATCHES`（512）：超出部分只留在内存，`0`（不设限）时不封的话一张大订单能把存档搅到数 MB。
+  - 退回网络失败的材料进 `pendingReturns` 缓冲（也进存档），每 `QUIET_TICKS` 重试一次；**不能改成掉在地上**——掉落物会过期、玩家也未必在场，那是不可回滚的丢料。只有拆机（`addDrops`）才掉。
+  - **批处理装配室没有接收侧撺批层**：它收到即写元件。它面对的是 ECO 的整批交付（`eco$pushPatternBatch` 本来就一次一大批）与 AE2 的单份推送，两者都由 `availableParallelSlots` / `acceptPatternBatch` 的容量自限控制节奏，不在设备侧再攒一层。
   - **锁定合成在这两档下退化为不锁**：`resetCraftingLock()` 只能清掉锁定，无法按 `LOCK_UNTIL_PULSE/RESULT` 重新武装（那在父类 private 的 `onPushPatternSuccess` 里）。
 
 - **产物抽取**（`ProviderExtractionMode` + `ProviderExtractionPacing`）：
-  - 节拍只能靠宿主的 tick：方块形态是 `AbstractDiskPatternProviderBlockEntity#serverTick`，面板形态是同一个 `LevelTickEvent.Post` → `AbstractDiskPatternProviderPart#pumpLogic(level)`（攒批与抽取共用这一处；部件没有方块实体那种 tick 回调，网格的 tick 服务槽归 AE2 的供应器逻辑）。面板的在场表是 `AbstractDiskPatternProviderPart.LOADED`（弱引用 + 同步包装），登记/注销在 `addToWorld`/`removeFromWorld`，不要移到 `onAddedToWorld/onRemovedFromWorld` 那两个子类钩子里——陨石面板覆写了钩子且不调 super。
+  - 节拍只能靠宿主的 tick：方块形态是 `AbstractDiskPatternProviderBlockEntity#serverTick`，面板形态是同一个 `LevelTickEvent.Post` → `AbstractDiskPatternProviderPart#pumpLogic(level)`（合并交接与抽取共用这一处；部件没有方块实体那种 tick 回调，网格的 tick 服务槽归 AE2 的供应器逻辑）。面板的在场表是 `AbstractDiskPatternProviderPart.LOADED`（弱引用 + 同步包装），登记/注销在 `addToWorld`/`removeFromWorld`，不要移到 `onAddedToWorld/onRemovedFromWorld` 那两个子类钩子里——陨石面板覆写了钩子且不调 super。
   - 白名单是已装样板的 `getOutputs()`（`allPatternOutputs()`，`updatePatterns()` 时失效）：抽非白名单物品等于把机器里的原料与工具一起搬走。**不做「同时也是输入」的剔除**——那会把链式生产（A 产 X、B 吃 X）的中间产物永久排除，表现为「抽取好像没生效」，见 `allPatternOutputs()` 的注释；代价是这类中间产物会被抽回网络，已写进指南提示分供应器。
   - 抽取顺序是「问目标能抽多少 → 问网络能收多少 → 按较小者实抽 → 实插」，网络中途装不满时把余量 `insert` 回目标；不能反过来先抽后查，因为退回失败就是净丢。
   - 快速档的间隔翻倍是纯算术，锁在 `ProviderExtractionPacing`（有单测），不要在逻辑里另写一份。
@@ -328,6 +337,8 @@ NEO ECO 的类型名与方法名集中在 `NeoECOTypes.java`，改版本时先�
 
 **加一个磁盘容量档**：`PatternDiskTier` → 物品注册 → lang 两份 → `../README.md` 的容量表 →（若档位参与排序）`client/sort/SortTiers` 的配置。
 
+**加一个配置项（含聊天栏开关）**：配置类 → 两份 lang 各补标签与 tooltip → 若属于聊天栏开关，还要进 `ChatMessageSwitches` 的表。**NeoForge 配置屏的兜底键形态要记住**：兜底键是「模组 id + `.configuration.` + **本节内的局部名**」，不是全路径 ⇒ 值键必须在 `define` 前用 `builder.translation(...)` 显式登记；节键要 `builder.translation(全路径)` **后紧跟** `builder.push(同路径)`（顺序不能反：先 `push` 的话，后设的键会被下一个 `define` 当成值键吃掉，节上反而没有键）；且 `section()` 必须排在所有 `comment()` **之前**（`push` 会把当时悬着的注释当成该节的注释收走）。收在 `ChatMessageSwitches.define` / `.section`。漏登记就表现为界面直接显示原始键名；节缺 `.button` 键则回退平台自带的「编辑 / Edit」。
+
 **改终端布局**：`assets/ae2/screens/ae2_pattern_disk/*.json` 是唯一布局源，屏幕代码只按它给的位置摆放。能进文档的不止坐标：控件尺寸（`widgets.*` 的 width/height，面板的 `getBounds` 读它）、贴图切片（`images`，管理终端的表头带/六条行带/尾饰带/空槽格都在那里）、文字颜色（`palette`，`style.getColor(PaletteColor.X)`）都归文档。管理终端的行高、表头高、尾饰高与格距是从 `images` 切片的 srcRect 反推的，不再抄写常量——但同一份文档里 `terminalStyle` 的 header/row/bottom 与 `images` 的对应带高必须一致（前者算面板总高，后者反推行数）。控件在代码里必须按 id 注册（`widgets.add`）：文档有键而代码没注册，那块永远不出现；代码注册而文档没键，开屏即抛 `IllegalStateException`。
 
 后一种已惹过一次祸：批装屏加 `addOpenPriorityButton()` 时没同步 `batch_molecular_assembler.json`，玩家点开 GUI 就被踢（`Screen is missing required widget: openPriority`，抛在屏幕构造期，NeoForge 拿不到屏幕实例）。改布局或加控件后跑一遍：
@@ -346,4 +357,4 @@ node tools/check-chat-message-keys.cjs .
 
 它核**代码里发出的每个消息键是否都在两语 lang 里**（含 `NOTICE + "后缀"` 那种只写后缀的写法）、**每条开关是否配齐三处键**、两语键集是否相等；动态拼接的前缀（`void_mode.`、`disk_refused.`）按「至少有一个键兜底」判定。退出码 0 = 全部对齐，1 = 有键对不上，**2 = 没找到 lang / 源码目录，或语言文件不是合法 JSON，这次没核完——2 不算通过**。它的盲区写在脚本头部：`notice(NOTICE + 变量)` 这种**运行时才拼出的键它看不见**（上一轮踩的 `…notice.null` 正属此类，当时是靠字面痕迹才被拦住）、动态前缀只判「至少一个兜底」而不逐个后缀核、lang 孤儿键与屏幕样式 JSON 里 `"translate"` 引用的 GUI 文案键都不看——**通过只说明字面键对齐，不等于这类 bug 绝迹**。
 
-**动 API**：`api/package-info.java` 写明这个包是稳定面。改签名等于破坏第三方兼容，改之前先在 `../CHANGELOG.md` 记一笔。
+**动 API**：`api/package-info.java` 写明这个包是稳定面。改签名等于破坏第三方兼容，改之前先在 `../CHANGELOG_UNRELEASED.md` 记一笔。

@@ -17,9 +17,11 @@ AE2（应用能源 2）的附属模组 `ae2_pattern_disk`：样板磁盘、磁�
 |---|---|
 | `docs/ARCHITECTURE.md` | 改任何代码前。分层、目录职责、`integration/` 的红线 |
 | `docs/ENCODING_MODES.md` | 碰编码终端档位时：档位状态散在菜单 / logic / 屏幕 / 面板 / 样式 / 模型六处 |
-| `docs/CHANGELOG_STYLE.md` | 改 `CHANGELOG.md` 前：格式被 CI 硬约束，`## [` 是段落边界 |
-| `docs/TODO.md` | 想知道「这事做没做、为什么没做」时：含已知欠账与明确「有意不做」的条目 |
-| `CHANGELOG.md` | 发行说明（版本段会被 CI 取为发布文案）；**改格式前先读 `docs/CHANGELOG_STYLE.md`** |
+| `docs/CHANGELOG_STYLE.md` | 改任一份更新日志前：两份文件分工、格式硬约束、`## [` 是段落边界 |
+| `docs/TODO.md` | 想知道「还剩什么事没做」时：只放未完成任务（进行中 / 待实机 / 未开始 / 暂缓 / 已放弃），已完成条目不留档 |
+| `docs/RELEASE.md` | 打 tag 发版前：流程、变量与密钥、CF 双 API、Action 版本、已踩过的坑 |
+| `CHANGELOG_UNRELEASED.md` | **待发改动写这里**：未发布的累计调整，发版时整段并入 `CHANGELOG.md` |
+| `CHANGELOG.md` | 已发布内容的留档（版本段会被 CI 取为发布文案）；**改格式前先读 `docs/CHANGELOG_STYLE.md`** |
 | `docs/UPSTREAM_API_REQUESTS.md` | 要向上游（NEO ECO / ECO Prototype）提请求或跟进时 |
 | `README.md` | 玩法自述（英文，商店页与 GitHub 首页） |
 | `docs/PLATFORM.md` · `docs/PLATFORM_MCMOD.md` | 对外平台说明（英文 / MCMOD 中文） |
@@ -37,7 +39,7 @@ AE2（应用能源 2）的附属模组 `ae2_pattern_disk`：样板磁盘、磁�
 
 ## 三、动手前必须知道的硬约定
 
-- **语言**：注释、`docs/` 与 `CHANGELOG.md` 一律中文；**对外英文文案（`README.md`、`docs/PLATFORM.md`）**、代码标识符与游戏内英文文案除外。
+- **语言**：注释、`docs/` 与两份更新日志一律中文；**对外英文文案（`README.md`、`docs/PLATFORM.md`）**、代码标识符与游戏内英文文案除外。
 - **集成红线**：`integration/<邻居>` 只写那个邻居的适配；**邻居的类型名不得漏进总是加载的类**——
   缺那个模组时会在加载阶段炸。
 - **「名字即协议」**：`registerClientAction("...")` 的动作名与 `@GuiSync(n)` 的注解值靠客户端/服务端配对，

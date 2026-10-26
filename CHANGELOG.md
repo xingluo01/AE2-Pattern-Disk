@@ -4,6 +4,8 @@
 
 写法见 [docs/CHANGELOG_STYLE.md](docs/CHANGELOG_STYLE.md)：小节固定、一行一条、句首复用小节名当动词。体例底座是 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本。
 
+本文件只留**已发布**的版本；待发的改动累积在 [CHANGELOG_UNRELEASED.md](CHANGELOG_UNRELEASED.md)，发版时整段并入。
+
 ## [0.9.4] - 2026-10-24
 
 ### 新增

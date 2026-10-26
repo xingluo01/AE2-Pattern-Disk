@@ -283,6 +283,17 @@ private    String  tierTypeOf(DiskEntry)            // 标记反查优先，没�
   Shift+右键拿它打标，存的标记反查不出类型（四常规档的类别里没这一条）。补它得把上游那个类别 id 写进这里
   （可选模组的耦合），而后果只在一小段路径上（搜索栏清空后、且那张盘只带这个标记），所以暂不补。
 
+### 给某个档补一个专属标记
+
+雕凿档 2026-10 加过（`#mode:chiseling`），照这套走：
+
+- 常量放 `DiskMarkRules`，形状与 `CHISELING_MARK` 一致；`modeMarkId` 不需要重载（枚举拿不到额外档）。
+- 分支只加在上传路径（`uploadMark()`），**不要改 `deriveMarkId()`**——右键打标有自己的语义。
+- `PatternDiskMarks.displayName` 的识别分支必须落在 `parseMode` 返回 null **之后**、`literal` 回落**之前**。
+- `matchesCurrentType` 的分支必须在 `categoryForMode` 早退**之前**，否则从处理档进入时 `category == null` 会先 return false，分支成死代码。
+- `PatternDiskMarks` 直接引用 `DiskMarkRules` 的常量，不要再抄一份字面量。
+- 代价：`uploadMark()` 是「先短路再回退 `deriveMarkId()`」，固定标记会顶掉「导入过配方就写 `#<配方类别>`」那一支。要不要保留类别信息，先定这个取舍（高级档至今未定，见 `TODO.md` 的 L 条）。
+
 ## 八、档位跟随样板输出栏
 
 往样板输出栏里放一枚已编码样板时，终端会**切到与它对应的那一档**

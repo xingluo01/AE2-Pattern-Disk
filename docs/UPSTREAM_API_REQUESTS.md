@@ -1,8 +1,8 @@
 # 上游 API 请求（ECO / ECO Prototype / ExtendedAE Plus）
 
-> 状态：前两份**已提交**（本地 2026-10-09 02:55 / UTC `2026-10-08T18:55Z`，见文末「提交记录」）；第三份是 2026-10 发现的兜底缺陷，**尚未提交**。下面三份草稿保留原文，便于日后追进或修订时对照。
+> 状态：前两份与第四份**已提交**（前两份本地 2026-10-09 02:55 / UTC `2026-10-08T18:55Z`，第四份 UTC `2026-10-25T10:10Z`，均已实现或待处理，见文末「提交记录」）；第三份是 2026-10 发现的兜底缺陷，**尚未提交**。下面四份草稿保留原文，便于日后追进或修订时对照。
 > 提出方：AE2 Pattern Disks（`ae2_pattern_disk`，作者 `xingluo01`）。
-> 用例：前两份是**元件管理终端**——把网络里所有能装存储元件的东西列成一张表，并支持取出/放入元件、调整存储优先级；第三份是**样板磁盘供应器的样板上传**。
+> 用例：前两份是**元件管理终端**——把网络里所有能装存储元件的东西列成一张表，并支持取出/放入元件、调整存储优先级；第三份是**样板磁盘供应器的样板上传**；第四份是**批处理装配室的极大数合成**——单次交接量被 int 容量契约封在 21.4 亿份，而 FastPath 的 long 容量面没有注册表可用。
 
 ## 为什么会有这些请求
 
@@ -19,7 +19,13 @@
 - 写入成功与否没有返回值可依，只能「写完再读一次」兜底；
 - 取不出元件时无法区分「没装元件」与「被锁住」，终端只能笼统报一句「该槽位为空」。
 
-下面两份草稿就是把这几处换成公开契约。
+以上是前两份草稿的由来；第三份见它自己的「背景」。第四份的缺口与这两处不同，见下。
+
+### 第四份的来由
+
+批处理装配室通过 `ECOParallelCraftingProvider` 接收合成批次，这条路径的容量签名是 `int eco$getAvailableParallelSlots()`，于是单次交接封顶 21.4 亿份。按 9:1 逐阶压缩九层的订单（目标 2.1e9 个九重）算，底层要 8.13e17 件圆石精华、整条链约 1.0e17 次合成——按 21.4 亿份/次的上限，这一单要几千万次交接。即使摊销路径本身不吃亏，交接次数也把它拖成跑不完的量级。
+
+`ECOFastPathDispatchProvider` 的 `Preparation.capacity` 是 `long`，覆盖这个量级没有困难。问题在发现面上：ordinary 路径有 `ECOParallelCraftingProviders.register(...)` 这个注册表，FastPath 没有对应的，`ECOFastPathFacade` 只认 `instanceof` 加两个硬编码的 mod 专用桥。本模组不能把 ECO 的类型写进总是加载的类（可选依赖，缺 ECO 时会在加载阶段炸），所以只能走注册面。
 
 ---
 
@@ -197,9 +203,83 @@
 
 ---
 
+## 草稿 4 → `DancingSnow0517/NeoECOAEExtension`（已提交）
+
+**标题**
+
+```text
+建议给 FastPath 加一个和 ECOParallelCraftingProviders 同形的 provider 注册表
+```
+
+**正文**
+
+````text
+## 背景
+
+我在维护 AE2 Pattern Disks（`ae2_pattern_disk`），其中一台「批处理装配室」通过你的 provider 契约接收合成批次。
+
+普通并行路径已经在用了：`ECOParallelCraftingProviders.register(...)` 注册一个 adapter，`eco$getAvailableParallelSlots()` + `eco$pushPatternBatch(...)` 都在跑。这部分没有问题。
+
+卡住的是容量。`eco$getAvailableParallelSlots()` 返回 `int`，所以单次交接最多 21.4 亿份。我这边常见的订单是 9:1 逐阶压缩九层，目标 2.1e9 个顶层物品——整条链约 1.0e17 次合成，按这个上限要几千万次交接。即使摊销路径本身不吃亏，交接次数也把它拖成跑不完的量级。
+
+`ECOFastPathDispatchProvider.Preparation.capacity` 是 `long`，量级上没有这个限制，这是我想走的路径。
+
+## 现状
+
+问题在发现面。`ECOFastPathFacade` 认 provider 的方式是：
+
+    public static boolean supports(ICraftingProvider provider) {
+        return provider instanceof ECOFastPathDispatchProvider
+            || ECOExtendedAEPlusMatrixBridge.supportsProvider(provider)
+            || ECOUselessBatchProviderBridge.supports(provider);
+    }
+
+    public static ECOFastPathDispatchProvider resolveProvider(ICraftingProvider provider) {
+        if (provider instanceof ECOFastPathDispatchProvider nativeProvider) return nativeProvider;
+        var matrix = ECOExtendedAEPlusMatrixBridge.adapt(provider);
+        return matrix != null ? matrix : ECOUselessBatchProviderBridge.adapt(provider);
+    }
+
+也就是说：要么 provider 类自己 `implements ECOFastPathDispatchProvider`，要么命中那两个写死的桥。ordinary 那边的 `ECOParallelCraftingProviders` 是通用注册表（第三方类不能实现你的接口，所以由集成方交一个 adapter 进来），FastPath 没有对应物。
+
+我的机器方块实体在 `ae2_pattern_disk` 的总是加载的类里。ECO 对我是可选依赖，把 `implements ECOFastPathDispatchProvider` 写上去就等于强制依赖——缺 ECO 时加载阶段直接炸。这不是能靠 try/catch 挡住的。
+
+## 建议
+
+给 FastPath 补上发现面。三种形状，改动量从小到大：
+
+1. **复用既有注册表（最小）**。`ECOParallelCraftingProviders.find(...)` 已经是公开入口；adapter 返回的对象本来就允许**同时**实现 `ECOParallelCraftingProvider` 与 `ECOFastPathDispatchProvider`——返回类型不限制运行期实现。只要 `ECOFastPathFacade` 在那几处接口测试里、`instanceof` 判空之后多查一次注册表并对结果再 `instanceof ECOFastPathDispatchProvider`，整条链路就通了：改一个文件、约四行，不改任何公开签名。
+2. **新建 `ECOFastPathProviders`**，照抄 `ECOParallelCraftingProviders` 的形状（`register(Class<? extends ICraftingProvider>, Adapter<E>)` + `find(Object)`），facade 里多一处查询。比第 1 种多一个公开类、一张表、一套缓存。
+3. **放宽 `Adapter` 的返回类型**（不推荐）。`find()` 的返回值被普通派发直接当 `ECOParallelCraftingProvider` 用，放宽要么加类型参数、要么在普通派发侧再加分支——改动面最大，而且动的是已经在跑的那条公共契约。
+
+三种都以 `find` 命中为准，未注册的 provider 行为完全不变。另外，`ECOFastPathFacade.prepareAllocated`（`ECOFastPathFacade.java:103-105`）也直接 `instanceof ECOFastPathDispatchProvider`；如果那条入口也要对第三方 provider 生效，第 1 种里「那几处」要把这处算进去。
+
+## 我这边会怎么用
+
+注册一个 adapter，返回的对象实现 `ECOFastPathDispatchProvider`：
+
+- `eco$prepareFastPath(context)` 不消耗任何资源，只读 `context` 与自己的元件缓冲，返回 `Preparation(capacity = 元件还能装下的完整配方数, statefulCalculator = null, statefulCalculatorRequired = false, dispatch = ..., supportsExactInputs = false)`；算出来装不下一份（capacity < 1）时直接返回 `null`，因为 `Preparation` 的构造器对非正容量会抛，而那个抛出去会被上游吞成一行 debug 日志。后三个参数就是 `Preparation` 四参重载的默认值，写四参也一样；
+- `dispatch` 里把 `batch.inputTotal()` 的材料真实搬进元件缓冲，全成功才返回 true；任何一个 key 装不下就返回 false（不做部分接受）；
+- `statefulCalculator` 我确实没法用——`ECOVerifiedFastPathRecipe.trusted(...)` 是包私有的，recipe 只能由你自己的 fastpath 缓存签发。如果以后想让我们这类第三方 provider 也能表达「可复用晶体整批只抽一次」的语义，那需要另一个面；这一条不阻塞，`null` 加 `required = false` 就能走线性路径。
+
+`eco$prepareExactFastPath` 我暂时用不上：我的订单在 long 范围内（整条链 1.0e17 次合成，远低于 9.22e18）。但如果注册面通了，后续接 BigInteger 订单只是实现一个方法。
+
+## 一处需要注意的地方
+
+`ECOBatchDispatchContext.inputs()` 是**单份**口径（每个输入槽一行、代表一份配方），`Batch.inputTotal` 是**总量**。两者名字接近但不可缩放：前者只用来算「一份要什么」，后者才是这次交接要搬走的量。`Batch` 的集合被输入租约持有用于回滚，我不会改动它们。
+
+## 取证方式
+
+以上行号与签名读的是 `main` 分支：`ECOFastPathFacade.java:37-41`（`supports`）与 `:44-48`（`resolveProvider`）、`ECOParallelCraftingProviders.java:43-49`（`Adapter` 的返回类型）、`ECOFastPathDispatchProvider.java:43`（`Preparation.capacity` 是 `long`）与 `:54-57`（非正容量直接抛）、`ECOParallelCraftingProvider.java:10`（`int eco$getAvailableParallelSlots()`）。若已改过请以你那边为准。
+
+如果你的设计意图是「FastPath 只给已验证的自家与个别合作方使用」，直接说一声也行，我就停在 ordinary 路径、不再追这个面。
+````
+
+---
+
 ## 取证清单
 
-所有签名来自实际 jar 的 `javap`，不是源码树：
+前三份的签名来自实际 jar 的 `javap`；第四份读的是上游 `main` 分支源码（本地克隆 `D:/Temp/NeoECOAEExtension`，`api/me/provider` 的七个文件与 21.2.10 逐个比对一致；未联网核对 blob sha）。两类的区别在表内分别标出。
 
 | 事实 | 来源 |
 |---|---|
@@ -214,6 +294,11 @@
 | 上游**没有**现成的等价 API（已逐项找过） | ① ECO 全仓 `IPriorityHost` 0 命中；`command/` 无 priority；`api/`（含 `api/storage/`、`api/integration/`）无 `Priority` / `CellHost` 类型。② 唯一能写优先级的是 `private void setStoragePriority(Player,int)`，且只被自家 LDLib 的 `StorageHostActionUI.Config` lambda 驱动。③ 青春版无 `setCellStack` |
 | ECO 仓库地址取自其 `mods.toml` 的 `issueTrackerURL`；青春版 `mods.toml` **未**声明 tracker，仓库为 `reliqwq/NeoECOPrototype` | 两个 jar 的 `META-INF/neoforge.mods.toml` + GitHub 检索 |
 | 上游 `21.2.1` **确实**编译期依赖本模组的 `PatternDiskApi`（与 `NeoECOIntegration` 的 javadoc 一致） | 该 jar 里有 `cn/dancingsnow/neoecoae/integration/ae2pattern/`（`AepdPatternDiskBackend` 等）；`mods.toml` 把 `ae2_pattern_disk` 列为可选依赖 |
+| `ECOFastPathFacade.supports` 只认 `instanceof` + 两个硬编码桥，无注册表 | `ECOFastPathFacade.java:37-41`（`main`）；`resolveProvider` 在 `:44-48`；`prepareAllocated` 在 `:103-105` 也硬测该接口；`ECOBatchCapacityProvider.java` 是它的 `@Deprecated` 旧名 |
+| `ECOParallelCraftingProviders.Adapter` 的返回类型被写死为 `ECOParallelCraftingProvider` | `ECOParallelCraftingProviders.java:43-49`（`main`） |
+| FastPath 容量是 `long`，ordinary 容量是 `int`，且非正容量在构造器就抛 | `ECOFastPathDispatchProvider.java:43` / `:54-57`；`ECOParallelCraftingProvider.java:10`（`main`） |
+| `ECOVerifiedFastPathRecipe.trusted` 是包私有，第三方无法构造 `ECOStatefulBatchCalculator` | `crafting/execution/fastpath/ECOVerifiedFastPathRecipe.java:54`（`main`） |
+| `ECOJobAwareCraftingProvider` 在 21.2.10 才有，本地克隆（`ecba648`）里没有 | 上游 `api/me/provider` 目录页 vs 本地目录列举 |
 
 ## 提交记录
 
@@ -221,6 +306,7 @@
 |---|---|---|---|
 | `DancingSnow0517/NeoECOAEExtension` | [#119](https://github.com/DancingSnow0517/NeoECOAEExtension/issues/119) | 2026-10-08T18:55Z（本地 10-09 02:55） | **已实现并已关闭**：ECO **21.2.6**（2026-10-16 发布）含 `api.storage.IECOStoragePriorityHost` 与提到 `api.storage` 的 `ICellHost`；维护者 Yang120231 于 2026-10-09 回「已添加」并标记 completed |
 | `reliqwq/NeoECOPrototype` | [#5](https://github.com/reliqwq/NeoECOPrototype/issues/5) | 2026-10-08T18:55Z（本地 10-09 02:55） | **已实现**（issue 仍 OPEN）：青春版 **1.3.6**（2026-10-16 发布）的 `SimplifyDriveBlockEntity` 已 `implements util.ICellHost` 并补 `setCellStack`；作者 reliqwq 于 2026-10-09 回「随下一个版本发出」 |
+| `DancingSnow0517/NeoECOAEExtension` | [#134](https://github.com/DancingSnow0517/NeoECOAEExtension/issues/134) | 2026-10-25T10:10Z（本地 10-25 18:10） | **待处理**：请 FastPath 补一个与 `ECOParallelCraftingProviders` 同形的 provider 注册面，让第三方能在不硬依赖 ECO 的前提下拿到 `long` 容量。未实现前本模组的批处理装配室停在 ordinary 并行路径 |
 
 提交账号：`xingluo01`。正文用中文（两个仓库既有 issue 以中文为主，见上方取证清单）。
 
