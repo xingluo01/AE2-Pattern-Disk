@@ -18,7 +18,7 @@ AE2（应用能源 2）的附属模组 `ae2_pattern_disk`：样板磁盘、磁�
 | `docs/ARCHITECTURE.md` | 改任何代码前。分层、目录职责、`integration/` 的红线 |
 | `docs/ENCODING_MODES.md` | 碰编码终端档位时：档位状态散在菜单 / logic / 屏幕 / 面板 / 样式 / 模型六处 |
 | `docs/CHANGELOG_STYLE.md` | 改任一份更新日志前：两份文件分工、格式硬约束、`## [` 是段落边界 |
-| `docs/TODO.md` | 想知道「还剩什么事没做」时：只放未完成任务（进行中 / 待实机 / 未开始 / 暂缓 / 已放弃），已完成条目不留档 |
+| `docs/TODO.md` | 想知道「还剩什么事没做」时：只放未完成任务（进行中 / 待实机 / 未开始 / 暂缓），已完成条目不留档 |
 | `docs/RELEASE.md` | 打 tag 发版前：流程、变量与密钥、CF 双 API、Action 版本、已踩过的坑 |
 | `CHANGELOG_UNRELEASED.md` | **待发改动写这里**：未发布的累计调整，发版时整段并入 `CHANGELOG.md` |
 | `CHANGELOG.md` | 已发布内容的留档（版本段会被 CI 取为发布文案）；**改格式前先读 `docs/CHANGELOG_STYLE.md`** |

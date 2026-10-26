@@ -10,7 +10,7 @@
 
 三条工程约束：
 
-- **只用 AE2 公共 API**：不反射内部类当 API，也不 mixin AE2 核心。现存唯一例外是客户端混入 `KeySortersMixin`（`@Mixin(targets = "appeng.client.gui.me.common.KeySorters")`，把终端「按 mod」排序的组内顺序换成数值序，`require = 0` + `required: false`，AE2 改签名时只是静默失效；见 §7）。新增例外必须有明确理由，并记进 `TODO.md` 的「有意不做」或 `UPSTREAM_API_REQUESTS.md`。
+- **只用 AE2 公共 API**：不反射内部类当 API，也不 mixin AE2 核心。现存唯一例外是客户端混入 `KeySortersMixin`（`@Mixin(targets = "appeng.client.gui.me.common.KeySorters")`，把终端「按 mod」排序的组内顺序换成数值序，`require = 0` + `required: false`，AE2 改签名时只是静默失效；见 §7）。新增例外必须有明确理由，并记进 `UPSTREAM_API_REQUESTS.md`（属上游行为时）或该例外旁的代码注释。
 - **美术资源归本项目**：机器资源统一放 `assets/ae2_pattern_disk/textures/`，不直接引用 `ae2:` 纹理。借用的复制件清单与授权分档见 `README.md` 的授权表；零件/物品显示模型仍继承 `ae2:item/display_base`、`ae2:part/display_off`、`ae2:item/cable_interface`，这算模型继承而不是贴图借用。
 
 ---

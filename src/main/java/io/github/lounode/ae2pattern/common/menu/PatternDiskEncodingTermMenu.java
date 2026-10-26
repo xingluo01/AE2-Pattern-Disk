@@ -1177,7 +1177,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
      * <p><b>已知行为（不是缺陷）</b>：高级档（{@code advancedMode}）不在 {@link EncodingMode} 里、切进去时也不改
      * {@code mode}，所以它<b>没有专属标记</b>——读到的 {@code mode} 是「进入高级档之前那个常规档」，
      * 写出来就是那个常规档的标记（从处理档进去就是处理档的）。
-     * 已记在 {@code docs/TODO.md} 的「功能缺口」一节里，后续审查不必再把它当新问题报。雕凿档因为样板语义不同
+     * 已记在 {@code docs/TODO.md} 的 L 条里，后续审查不必再把它当新问题报。雕凿档因为样板语义不同
      * （记「把谁雕成谁」，与导入的配方类别无关），单独走 {@link #uploadMark()} 给了固定标记；若日后要给高级档
      * 补一个，照 {@link DiskMarkRules#CHISELING_MARK} 那一套加，且同样<b>只加在上传路径上</b>。</p>
      */
