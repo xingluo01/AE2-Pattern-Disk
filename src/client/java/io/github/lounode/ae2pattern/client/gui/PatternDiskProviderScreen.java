@@ -150,8 +150,8 @@ public class PatternDiskProviderScreen extends AEBaseScreen<PatternDiskProviderM
         this.boostLimitField.setMaxLength(3);
         this.boostLimitField.setFilter(text -> text.matches("\\d{0,3}"));
         this.boostLimitField.setTooltipMessage(List.of(
-                Component.translatable("gui.ae2_pattern_disk.provider.boost.limit"),
-                Component.translatable("gui.ae2_pattern_disk.provider.boost.limit_hint")));
+                Component.translatable("gui.ae2_pattern_disk.boost.limit"),
+                Component.translatable("gui.ae2_pattern_disk.boost.limit_hint")));
         this.boostLimitField.setResponder(this::onBoostLimitChanged);
 
         // 输入栏只在真的开了智能发配时出现：没开倍增就没有上限可设。
@@ -211,7 +211,7 @@ public class PatternDiskProviderScreen extends AEBaseScreen<PatternDiskProviderM
     }
 
     /**
-     * 输入栏只在已开智能发配时显示：没开倍增就没有上限可设。方块与面板形态同理——面板也有世界 tick 驱动攒批。
+     * 输入栏只在已开智能发配时显示：没开倍增就没有上限可设。方块与面板形态同理——面板也有世界 tick 驱动合并。
      */
     private boolean showsBoostLimit() {
         return this.menu.isBoostEnabled();
@@ -313,11 +313,11 @@ public class PatternDiskProviderScreen extends AEBaseScreen<PatternDiskProviderM
 
     private List<Component> boostTooltip() {
         var lines = new ArrayList<Component>();
-        lines.add(Component.translatable("gui.ae2_pattern_disk.provider.boost"));
+        lines.add(Component.translatable("gui.ae2_pattern_disk.boost"));
         // 上限说明只属于左侧输入栏（它自己的 tooltip 里已有），不要重复挂到按钮上。
         lines.add(Component.translatable(this.menu.isBoostEnabled()
-                ? "gui.ae2_pattern_disk.provider.boost.on"
-                : "gui.ae2_pattern_disk.provider.boost.off"));
+                ? "gui.ae2_pattern_disk.boost.on"
+                : "gui.ae2_pattern_disk.boost.off"));
         return lines;
     }
 

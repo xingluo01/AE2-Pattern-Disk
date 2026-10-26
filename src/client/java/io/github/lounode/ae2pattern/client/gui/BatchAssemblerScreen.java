@@ -13,6 +13,7 @@ import appeng.client.gui.style.Blitter;
 import appeng.client.gui.style.StyleManager;
 import appeng.menu.slot.AppEngSlot;
 
+import io.github.lounode.ae2pattern.common.block.entity.BatchAssemblerBlockEntity;
 import io.github.lounode.ae2pattern.common.menu.BatchAssemblerMenu;
 
 /**

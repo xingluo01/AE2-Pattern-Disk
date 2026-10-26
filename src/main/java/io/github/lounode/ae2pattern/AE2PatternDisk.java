@@ -196,7 +196,7 @@ public class AE2PatternDisk {
      *
      * <p>为什么要有这个 helper：AE2 的 {@code AEBaseEntityBlock#setBlockEntity} 只是把 ticker 存下来，
      * <b>不会</b>替实现了 {@link appeng.blockentity.ServerTickingBlockEntity} 的实体自动补一个；以前三处
-     * 注册里有两处直接传了 {@code null}，结果方块形态的供应器从来没有被 tick 过（抽取与攒批发配全部静默
+     * 注册里有两处直接传了 {@code null}，结果方块形态的供应器从来没有被 tick 过（抽取与发配倍增后的发配全部静默
      * 失效），只有面板形态正常。泛型同时约束「AE 方块实体」与「实现 ServerTickingBlockEntity」，漏掉接口
      * 会编译失败；{@link #verifyTickingBlockEntities()} 再兜一层运行期自检。</p>
      *
@@ -309,7 +309,7 @@ public class AE2PatternDisk {
     /**
      * 启动期自检：必须 tick 的方块都得挂上 ticker。
      *
-     * <p>这类漏挂不会报错、只会「功能静默不工作」：供应器不 tick 就等于产物抽取与攒批发配全废，
+     * <p>这类漏挂不会报错、只会「功能静默不工作」：供应器不 tick 就等于产物抽取与发配倍增后的发配全废，
      * 玩家从现象上根本看不出是注册漏了。宁可启动时硬失败。</p>
      */
     private static void verifyTickingBlockEntities() {

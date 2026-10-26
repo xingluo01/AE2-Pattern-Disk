@@ -38,6 +38,8 @@ Products are handed to the ME network in full. When the network is short on spac
 
 The machine batches by quiet time: every arriving material restarts the clock, and once materials actually stop the batch starts and everything buffered runs at once.
 
+Bulk orders and scattered small orders queue separately: small orders share their own queue, which only watches that queue's feed going quiet (all small orders on it share one quiet timer), so an order still being delivered cannot hold them back. An order pushed one craft at a time moves to the bulk queue once it reaches 8 jobs, and an order delivered several crafts at once goes straight to the bulk queue. Either queue starts once its backlog has waited 120 ticks, without waiting for the feed to stop.
+
 - **Standard**: batches after 40 ticks of quiet.
 - **Fast**: batches after 10 ticks of quiet.
 - **Small batch, quick start**: a batch of fewer than 8 jobs makes the next batch wait only 1 tick; after 32 such small runs the machine re-measures the feed over one full window, and a feed stopped for 8 windows resets the classification. Runs of 8 jobs or more, and machines that have not run a first batch yet, always wait the full window.

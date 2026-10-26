@@ -207,7 +207,7 @@ public abstract class AbstractDiskPatternProviderPart<L extends PatternDiskProvi
             Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
 
     /**
-     * 驱动所有在场面板的供应器逻辑：攒批的停交兜底与产物抽取。
+     * 驱动所有在场面板的供应器逻辑：发配倍增的停交兜底与产物抽取。
      *
      * <p>方块形态由 {@code serverTick} 自己驱动，这里只管面板：部件没有方块实体那种 tick 回调
      * （网格的 tick 服务槽归 AE2 的供应器逻辑）。</p>

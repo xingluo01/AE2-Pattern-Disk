@@ -15,8 +15,11 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
 import org.jetbrains.annotations.Nullable;
@@ -49,6 +52,7 @@ import appeng.parts.AEBasePart;
 import appeng.parts.automation.StackWorldBehaviors;
 import appeng.util.inv.AppEngInternalInventory;
 
+import io.github.lounode.ae2pattern.common.logic.BoostMergeLimit;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
 import io.github.lounode.ae2pattern.common.pattern.DiskSlotVersions;
 import io.github.lounode.ae2pattern.common.pattern.PatternDiskTier;
@@ -109,11 +113,14 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
     public static final String NBT_BOOST_LIMIT = "boostLimit";
     public static final String NBT_EXTRACTION_MODE = "extractionMode";
 
-    /** 上限输入栏的可接受范围：0 表示不设上限，24px 的输入框也只放得下三位数。 */
-    public static final int MAX_BOOST_LIMIT = 999;
+    /** 上限输入栏的可接受范围：真值在 {@link BoostMergeLimit#MAX_LIMIT}。保留这个别名是因为界面侧仍按机器类取它。 */
+    public static final int MAX_BOOST_LIMIT = BoostMergeLimit.MAX_LIMIT;
 
-    /** 没设上限时单批最多攒这么多份，防止目标一直不收时把材料堆在机器里。 */
-    private static final int BOOST_SAFETY_CAP = 64;
+    /**
+     * 发配倍增的合并额度。额度在 {@link BoostMergeLimit}（目前只有本机在用）：它量的是
+     * 「这一批攒了多少份合成所需的输入」，单位是份（样板输入倍数），不是交接次数也不是 tick。
+     */
+    private BoostMergeLimit mergeLimit = new BoostMergeLimit(0);
 
     private ProviderBlockingMode blockingMode = ProviderBlockingMode.DEFAULT;
     private boolean boostEnabled;
@@ -127,14 +134,57 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
     private int extractionInterval = ProviderExtractionPacing.FAST_START_INTERVAL;
 
     /**
-     * 攒批：每张样板一批，按到达顺序。值里的每个 {@code KeyCounter[]} 是 CPU 交来的一份完整输入。
+     * 发配倍增的合并表：每张样板一条，按到达顺序。值里的每个 {@code KeyCounter[]} 是 CPU 交来的一份完整输入。
      *
-     * <p>只在 {@link #boostEnabled} 时非空。攒批期间材料在这里，不在父类的发送队列里，所以拆机必须由
+     * <p>只在 {@link #boostEnabled} 时非空。发配倍增期间材料在这里，不在父类的发送队列里，所以拆机必须由
      * {@link #addDrops} 掉出去。</p>
      */
     private final Map<IPatternDetails, List<KeyCounter[]>> pendingBatches = new LinkedHashMap<>();
-    /** 最近一次收到交付的游戏时间，用来把「上一 tick 的批」认定为 CPU 已停交。 */
+    /** 最近一次收到交付的游戏时间，用来判定「发送方停手了」。 */
     private long pendingBatchTick = -1L;
+
+    /**
+     * 读档时把攒批的原始条目暂存到这里，等首个 tick（有 level）再解码成样板。
+     *
+     * <p>{@code readFromNBT} 只拿到 {@link HolderLookup.Provider}，没有 {@code Level}，而
+     * {@code PatternDetailsHelper.decodePattern} 必须要 level。所以读档阶段只搬运原始 tag，不在那里解码。</p>
+     *
+     * <p>存的是「编码样板物品 + 每份的扁平输入」，不存 {@code IPatternDetails}：样板是磁盘内容的派生态，
+     * 每次重建都是新实例，只有物品形态能跨存档。</p>
+     */
+    private List<PendingBatchRestore> pendingRestore = List.of();
+
+    /** 一条待还原的批：样板物品 + 每份的输入总量（每份一个 ListTag）。 */
+    private record PendingBatchRestore(CompoundTag pattern, List<ListTag> batches) {}
+
+    /** 攒批表与待还原表的 NBT 键。 */
+    private static final String NBT_PENDING_BATCHES = "pendingBatches";
+    private static final String NBT_PENDING_PATTERN = "pattern";
+    private static final String NBT_PENDING_INPUTS = "inputs";
+    private static final String NBT_PENDING_RETURNS = "pendingReturns";
+
+    /**
+     * 退回网络失败的材料，等网络可用了再退。
+     *
+     * <p>与 {@link #pendingRestore} 同一种性质：材料是 CPU 已经记过账的交付，网络没接上（断电、被拆下来）
+     * 时<b>既不能丢也不能掉在地上</b>——掉成物品就成了不可回滚，而且机器在无人加载的区块里时会直接被清除。
+     * 所以先留在这里，通电后每 {@link BoostMergeLimit#QUIET_TICKS} 个 tick 重试一次。</p>
+     *
+     * <p>它也进存档：重试窗口可能刚好跨到一次存档，不写就白等了。</p>
+     */
+    private final List<KeyCounter> pendingReturns = new ArrayList<>();
+
+    /** 下一次尝试退回网络的时间，避免网络长时间不通时每 tick 刷一遍。 */
+    private long nextReturnAttempt;
+
+    /**
+     * 写进存档的撺批份数上限。
+     *
+     * <p>撺批表在“份数上限填 0”（不设限）时没有上界，而每份都要写一组 tag。不封的话一张大订单可以把存档
+     * 撑到数 MB，区块存档和网络同步都跟着变慢。超过的部分不写盘——它们仍在内存里、仍会正常投递，只是存档
+     * 不背这个量；真碰上崩服就会丢，所以配一次限流告警把玩家引向“填个数字”。</p>
+     */
+    private static final int MAX_PERSISTED_BATCHES = 512;
 
     /** 全部已装样板的输入集合缓存（阻挡档判据用）；{@link #updatePatterns()} 时作废。 */
     private Set<AEKey> cachedPatternInputs;
@@ -333,15 +383,15 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
     /**
      * 智能阻挡与发配倍增走这里。
      *
-     * <p>倍增时「攒批」：CPU 在同一 tick 内交来的多份先存着，等它停交（或攒满上限）再一次性投给目标。
-     * 停交没有公开信号：方块形态由宿主 {@code serverTick} 每 tick 逼一次，面板形态没有可用的 tick
-     * （{@code IGridTickable} 服务槽被 AE2 供应器逻辑占着），因此<b>面板形态不攒批</b>——立即逐份投递，
-     * 宁可退化成普通发配也不让材料卡在内存里发不出去。</p>
+     * <p>倍增时合并交接：CPU 交来的多份先存着，等它停交（或攒满上限、或攒满一个静默窗口）再一次性投给目标。
+     * 停交没有公开信号：方块形态由宿主 {@code serverTick} 每 tick 逼一次，面板形态没有 {@code IGridTickable}
+     * 服务槽（被 AE2 供应器逻辑占着），走 {@code LevelTickEvent.Post} → {@code pumpLogic} 汇合到同一个
+     * {@code tickServer()}，所以两种形态的攒批与落地时机完全一致。</p>
      */
     private boolean pushWithOwnRules(IPatternDetails details, KeyCounter[] inputs) {
         long now = gameTime();
         // 上一 tick 留下的批先发：CPU 停交后不一定会再给我们一次 pushPattern。
-        flushIfStale(now);
+        flushIfQuiet(now);
         if (!canPush(details)) {
             return false;
         }
@@ -349,22 +399,28 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
             return deliver(details, inputs, declaredInputs(details), false) != Delivery.NONE;
         }
 
-        int capacity = batchCapacity();
-        if (pendingCount() >= capacity) {
+        // 没设份数上限（isDue 恒 false）时这一段完全跳过：落地交给下面的停手判据，
+        // 不能用「pendingCount >= 0」这种比较——那会每次都 flushAll 并拒收。
+        if (mergeLimit.isDue(pendingCount())) {
             flushAll(now);
-            if (pendingCount() >= capacity) {
+            if (mergeLimit.isDue(pendingCount())) {
                 // 目标一直收不下：这一份还没收下，不返回 true，让 CPU 下个 tick 重投（材料仍在网络里）。
                 return false;
             }
         }
 
-        pendingBatches.computeIfAbsent(details, k -> new ArrayList<>()).add(copyInputs(inputs));
+        pendingBatches.computeIfAbsent(details, k -> new ArrayList<>()).add(BoostMerge.copy(inputs));
         pendingBatchTick = now;
         var batch = pendingBatches.get(details);
-        if (boostLimit > 0 && batch.size() >= boostLimit) {
+        // 这份数是该样板攒了多少份合成：AE2 的 pushPattern 一次一份，所以 list 的长度就是份数。
+        if (mergeLimit.isDue(batch.size())) {
             // flush 会把没投出去的份留在 pending（材料所有权已在本机），所以这里一律回答「已收下」，
             // 不能把 false 交给 CPU——那样它会拿同一份材料重投，pending 里就会出现两份。
+            //
+            // 目标持续收不下时 batch.size() 会一直超过额度，于是每次 push 都重试一次落地。这是既有行为，
+            // 不存在丢料或叠份，只是失败重试比停手窗口那 10 tick 的节奏密。
             flush(details);
+            pendingBatchTick = now;
         }
         return true;
     }
@@ -554,9 +610,22 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
         return ProviderBlockingRules.hasForeignInput(storage.getAvailableStacks(), ownInputs);
     }
 
-    /** 停交兜底：上一 tick 的批在本 tick 还没有新交付时发出。 */
-    private void flushIfStale(long now) {
-        if (!pendingBatches.isEmpty() && pendingBatchTick != now) {
+    /**
+     * 发送方停手就把攒着的批交出去。
+     *
+     * <p>判据只有一条：距上次收下满 {@link BoostMergeLimit#QUIET_TICKS} 个 tick。</p>
+     *
+     * <p>不能改成「只要不是本 tick 就 flush」——那等于发送方隔一 tick 来一次就把批清一次，合并攒不起来，
+     * 原材料会陆陆续续单独写进目标，正是「发配倍增好像没生效」的那种表现。</p>
+     *
+     * <p><b>没设份数上限（填 0）时，这里是唯一的落地触发。</b>发送方如果一直不停手，批就一直攒着——这是
+     * 有意的取舍：要上界就填数字，填了就由 {@code isDue(craftCount)} 按份数落地，而不是靠计时。</p>
+     */
+    private void flushIfQuiet(long now) {
+        if (pendingBatches.isEmpty()) {
+            return;
+        }
+        if (now - pendingBatchTick >= BoostMergeLimit.QUIET_TICKS) {
             flushAll(now);
         }
     }
@@ -575,8 +644,14 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
             return;
         }
         var ownInputs = declaredInputs(details);
-        if (batch.size() > 1) {
-            var merged = deliver(details, merge(batch), ownInputs, true);
+        // 合并成一次 IO：槽数对不上时 merge 返回 null（那两种到货形状下标意义不同，按下标截断会丢料），
+        // 那就跳过合并、直接走下面的逐份路径。
+        //
+        // 单份批次（size == 1）不进合并：没有可合并的，合并的意义只是把它的投递降成 inventoryOnly（只给存储、
+        // 不给机器），而单份恰好是机器最愿意接的形状。所以它走逐份路径的 deliver(..., false)。
+        var mergedInputs = batch.size() > 1 ? BoostMerge.merge(batch) : null;
+        if (mergedInputs != null) {
+            var merged = deliver(details, mergedInputs, ownInputs, true);
             if (merged != Delivery.NONE) {
                 // ALL 与 PARTIAL 都算已接管：合并批已进入目标，重投就是复制。
                 return;
@@ -600,11 +675,9 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
         }
     }
 
-    /** 由宿主的服务端 tick 调用：保证单一一份的订单在下一个 tick 也能被发出。 */
+    /** 由宿主的服务端 tick 调用：只在发送方停手时把攒着的批交出去，不做每 tick 无条件清空。 */
     public void flushPending() {
-        if (!pendingBatches.isEmpty()) {
-            flushAll(gameTime());
-        }
+        flushIfQuiet(gameTime());
     }
 
     private int pendingCount() {
@@ -615,49 +688,15 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
         return total;
     }
 
-    /** 单批上限：设了上限按上限，没设按安全阀。 */
-    private int batchCapacity() {
-        return boostLimit > 0 ? boostLimit : BOOST_SAFETY_CAP;
-    }
-
     private long gameTime() {
         var be = host.getBlockEntity();
         var level = be == null ? null : be.getLevel();
         return level == null ? 0L : level.getGameTime();
     }
 
-    private static KeyCounter[] copyInputs(KeyCounter[] inputs) {
-        var copy = new KeyCounter[inputs.length];
-        for (int i = 0; i < inputs.length; i++) {
-            copy[i] = new KeyCounter();
-            if (inputs[i] != null) {
-                for (var entry : inputs[i]) {
-                    copy[i].add(entry.getKey(), entry.getLongValue());
-                }
-            }
-        }
-        return copy;
-    }
+    /** 深拷与合并都在 {@link BoostMerge}。 */
 
-    /** 同槽同 key 求和：N 份同一模板合起来就是 N 倍的一份。 */
-    private static KeyCounter[] merge(List<KeyCounter[]> batch) {
-        KeyCounter[] merged = null;
-        for (var inputs : batch) {
-            if (merged == null) {
-                merged = copyInputs(inputs);
-                continue;
-            }
-            for (int i = 0; i < merged.length && i < inputs.length; i++) {
-                if (inputs[i] == null) {
-                    continue;
-                }
-                for (var entry : inputs[i]) {
-                    merged[i].add(entry.getKey(), entry.getLongValue());
-                }
-            }
-        }
-        return merged == null ? new KeyCounter[0] : merged;
-    }
+    /** 同槽同 key 求和与深拷都在 {@link BoostMerge}。 */
 
     /**
      * AdvancedAE 式的方向投递：邻居照旧按候选方向挑，声明面只决定「从哪一面接入它」。
@@ -948,6 +987,44 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
         cachedPatternInputs = null;
         cachedPatternOutputs = null;
         extractionReturnWarned.clear();
+        dropOrphanBatches();
+    }
+
+    /**
+     * 把「样板已经不在磁盘上」的撺批退出去。
+     *
+     * <p>撺批表的 key 是 {@code IPatternDetails}，而样板是磁盘内容的派生态：玩家把磁盘抽了、或换了一张别的，
+     * 旧表里那一项就再也没有对应的样板了。它的材料是 CPU 已经记过账的交付，不能留在表里等一个永远不会发生的
+     * 投递（也不该到存档时才被当成“没有样板可存”默默丢掉）。</p>
+     *
+     * <p>放在 {@code updatePatterns} 里而不是写盘时：镜像是从磁盘重建的，重建完那一刻就是判断“还在不在”最准的
+     * 时机；写在写盘路径里会把副作用塞进存档流程，而存档应该只读。</p>
+     */
+    private void dropOrphanBatches() {
+        if (pendingBatches.isEmpty()) {
+            return;
+        }
+        var be = host.getBlockEntity();
+        if (be == null || !(be.getLevel() instanceof ServerLevel level)) {
+            return;
+        }
+        var byPattern = patternStacksByDetails(level);
+        var iterator = pendingBatches.entrySet().iterator();
+        while (iterator.hasNext()) {
+            var entry = iterator.next();
+            if (byPattern.containsKey(entry.getKey())) {
+                continue;
+            }
+            int dropped = entry.getValue().size();
+            for (var inputs : entry.getValue()) {
+                returnInputsToNetwork(flatten(inputs));
+            }
+            iterator.remove();
+            if (LOGGER.isWarnEnabled()) {
+                LOGGER.warn("Pattern disk provider at {} dropped {} merged hand-over(s) of a pattern that is no "
+                        + "longer on the disks; their inputs went back to the network", be.getBlockPos(), dropped);
+            }
+        }
     }
 
     /**
@@ -1002,7 +1079,7 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
         }
         // 镜像内容不再是磁盘内容的映像，快照得作废，否则下一个非强制刷新会拿旧快照比出「没变」。
         lastDiskVersions = null;
-        // 攒批里的材料已经由 addDrops 掉出去了，这里只清账，避免拆机后再被 flush 一遍。
+        // 合并中的材料已经由 addDrops 掉出去了，这里只清账，避免拆机后再被 flush 一遍。
         pendingBatches.clear();
         updatePatterns();
     }
@@ -1057,12 +1134,15 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
     }
 
     /**
-     * 服务端每 tick 的唯一入口：攒批的停交兜底 + 产物抽取节拍。
+     * 服务端每 tick 的唯一入口：发配倍增的停交兜底 + 产物抽取节拍。
      *
      * <p>方块形态由 {@code serverTick} 调，面板形态由 {@code pumpLogic} 调——两条驱动通道只在这里汇合，
      * 想改「每 tick 做什么」只改这一处，不用在两个宿主里各改一遍。</p>
      */
     public void tickServer() {
+        // 读档时攒批只存了原始 Tag（没有 level 解不出样板），到第一次 tick 才还原。没事时是一次空列表检查。
+        restorePendingBatches();
+        retryReturns(gameTime());
         flushPending();
         tickExtraction();
     }
@@ -1380,32 +1460,41 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
     }
 
     public void setBoostLimit(int limit) {
-        int clamped = Math.max(0, Math.min(MAX_BOOST_LIMIT, limit));
-        if (clamped == boostLimit) {
+        var next = mergeLimit.withConfigured(limit);
+        if (next.configured() == boostLimit) {
             return;
         }
-        boostLimit = clamped;
+        mergeLimit = next;
+        boostLimit = next.configured();
         saveChanges();
     }
 
     /**
-     * 攒批非空时对外算忙：CPU 见到忙就不再交付，于是上限在那里真正生效，超出的材料留在网络里。
+     * 攒到玩家设的份数上限时对外算忙：CPU 见到忙就不再交付，超出的材料留在网络里。
      *
-     * <p>同时这里也是「CPU 停交」的兵家必争之处：CPU 每 tick 都会问一次，上一 tick 的批就在这一步发出。
+     * <p>攒批期间（未达上限）<b>不算忙</b>：材料已经收进本机内存，让 CPU 继续交付才能攒得更深。由此有一条
+     * 硬约束——攒批期间必须有人把批捅出去。玩家填了数字时由 {@code isDue} 负责；填 0（不设限）时就只剩
+     * {@link #flushIfQuiet} 的停手判据，发送方若永不停手批就会一直攒着。那是有意的取舍：要上界就填数字。</p>
+     *
+     * <p>同时这里也是「CPU 停交」的兵家必争之处：CPU 每 tick 都会问一次，到期的那批就在这一步发出。</p>
      */
     @Override
     public boolean isBusy() {
         if (!pendingBatches.isEmpty()) {
             // 兜底：正常路径已由 tickServer()（方块 serverTick / 面板 pumpLogic）每 tick 覆盖，
             // 这里只防两条驱动通道都不可用的极端情形。
-            flushIfStale(gameTime());
+            flushIfQuiet(gameTime());
         }
-        return super.isBusy() || pendingCount() >= batchCapacity();
+        return super.isBusy() || mergeLimit.isDue(pendingCount());
     }
 
     @Override
     public void writeToNBT(CompoundTag tag, HolderLookup.Provider registries) {
         super.writeToNBT(tag, registries);
+        writePendingBatches(tag, registries);
+        // 退回缓冲与攒批表分开写：它不依赖 level，也不受「盘里没有样板」这些早退影响，
+        // 而「只压着退回材料、没攒批」恰恰是最常见的状态，两者必须各自独立进入存档。
+        writePendingReturns(tag, registries);
         tag.putString(NBT_BLOCKING_MODE, blockingMode.name());
         tag.putBoolean(NBT_BOOST_ENABLED, boostEnabled);
         tag.putInt(NBT_BOOST_LIMIT, boostLimit);
@@ -1417,13 +1506,373 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
         super.readFromNBT(tag, registries);
         blockingMode = parseBlockingMode(tag.getString(NBT_BLOCKING_MODE));
         boostEnabled = tag.getBoolean(NBT_BOOST_ENABLED);
-        boostLimit = Math.max(0, Math.min(MAX_BOOST_LIMIT, tag.getInt(NBT_BOOST_LIMIT)));
+        boostLimit = Math.max(0, Math.min(BoostMergeLimit.MAX_LIMIT, tag.getInt(NBT_BOOST_LIMIT)));
+        mergeLimit = new BoostMergeLimit(boostLimit);
         // 退避进度是运行时状态，不落盘：快速档的初始间隔永远是 1 tick（读档后从最快档重新开始）。
         extractionInterval = ProviderExtractionPacing.FAST_START_INTERVAL;
         extractionCooldown = 0;
         // 读档后把 AE2 的设置对齐一次：内存卡/旧存档里那个开关可能与本模组的三档不一致。
         getConfigManager().putSetting(Settings.BLOCKING_MODE,
                 blockingMode == ProviderBlockingMode.ALL ? YesNo.YES : YesNo.NO);
+        readPendingBatches(tag);
+        readPendingReturns(tag, registries);
+    }
+
+    /** 待退回材料写成平平的 key/amount 表：它们不需要样板就能还原。 */
+    private void writePendingReturns(CompoundTag tag, HolderLookup.Provider registries) {
+        if (pendingReturns.isEmpty()) {
+            return;
+        }
+        var list = new ListTag();
+        for (var counter : pendingReturns) {
+            for (var stack : counter) {
+                if (stack.getLongValue() <= 0) {
+                    continue;
+                }
+                if (list.size() >= MAX_PERSISTED_BATCHES) {
+                    // 超出部分仍留在内存里、仍会重试，只是不进存档。
+                    if (LOGGER.isWarnEnabled()) {
+                        LOGGER.warn("Pattern disk provider saved only the first {} of {} entries in its "
+                                + "pending-return buffer; the rest stay in memory only",
+                                MAX_PERSISTED_BATCHES, list.size());
+                    }
+                    tag.put(NBT_PENDING_RETURNS, list);
+                    return;
+                }
+                var keyTag = stack.getKey().toTagGeneric(registries);
+                if (keyTag == null) {
+                    // 与写攒批表同口径：编不出来的 key 至少留一条日志，否则「缓冲里少了一点」永远查不到。
+                    if (LOGGER.isWarnEnabled()) {
+                        LOGGER.warn("Pattern disk provider cannot serialise {} in its pending-return buffer; "
+                                + "x{} stays in memory only", stack.getKey(), stack.getLongValue());
+                    }
+                    continue;
+                }
+                var entryTag = new CompoundTag();
+                entryTag.put("key", keyTag);
+                entryTag.putLong("amount", stack.getLongValue());
+                list.add(entryTag);
+            }
+        }
+        if (!list.isEmpty()) {
+            tag.put(NBT_PENDING_RETURNS, list);
+        }
+    }
+
+    private void readPendingReturns(CompoundTag tag, HolderLookup.Provider registries) {
+        pendingReturns.clear();
+        if (!tag.contains(NBT_PENDING_RETURNS, Tag.TAG_LIST)) {
+            return;
+        }
+        var list = tag.getList(NBT_PENDING_RETURNS, Tag.TAG_COMPOUND);
+        var counter = new KeyCounter();
+        for (int i = 0; i < list.size(); i++) {
+            var entry = list.getCompound(i);
+            long amount = entry.getLong("amount");
+            if (amount <= 0 || !entry.contains("key", Tag.TAG_COMPOUND)) {
+                continue;
+            }
+            var key = AEKey.fromTagGeneric(registries, entry.getCompound("key"));
+            if (key != null) {
+                counter.add(key, amount);
+            }
+        }
+        if (!counter.isEmpty()) {
+            pendingReturns.add(counter);
+        }
+    }
+
+    /**
+     * 把攒批表写进 NBT。
+     *
+     * <p>样板是磁盘内容的派生态，存不进存档；这里存的是编码样板<b>物品</b>，与 {@code mirror} 里的那一张
+     * 对应。反查靠 {@code IPatternDetails} 的 equals：{@code getAvailablePatterns()} 本身就是个 Set，
+     * 样板实现必然重写了 equals/hashCode，否则父类没法去重。</p>
+     *
+     * <p>找不到对应物品的批直接跳过并记一条 warn——那说明磁盘已经换过、这条批成了孤儿，它的材料应该早在
+     * {@code updatePatterns} 里退回去了，不应该还留在这里。</p>
+     */
+    private void writePendingBatches(CompoundTag tag, HolderLookup.Provider registries) {
+        if (pendingBatches.isEmpty()) {
+            return;
+        }
+        var be = host.getBlockEntity();
+        var level = be == null ? null : be.getLevel();
+        if (level == null) {
+            return;
+        }
+        var byPattern = patternStacksByDetails(level);
+        if (byPattern.isEmpty()) {
+            return;
+        }
+
+        var list = new ListTag();
+        int written = 0;
+        boolean truncated = false;
+        for (var entry : pendingBatches.entrySet()) {
+            var patternStack = byPattern.get(entry.getKey());
+            if (patternStack == null) {
+                // 正常不可达：{@link #dropOrphanBatches} 在每次镜像重建后就把孤儿批退掉了。
+                // 真到了这里说明磁盘在两次重建之间被动过，不写盘、也不在这里做副作用（存档只读）。
+                if (LOGGER.isWarnEnabled()) {
+                    LOGGER.warn("Pattern disk provider at {} has a merged batch with no disk pattern left; "
+                            + "it is not written to the save", be.getBlockPos());
+                }
+                continue;
+            }
+
+            var batches = new ListTag();
+            for (var inputs : entry.getValue()) {
+                if (written >= MAX_PERSISTED_BATCHES) {
+                    truncated = true;
+                    break;
+                }
+                written++;
+                // 三层：每份 → 每个输入槽 → 条目。槽位形状必须留着，否则读档后的批与新建的批槽数不等，
+                // BoostMerge 合并不了，那台样板会退化成逐份投递。
+                var slotsTag = new ListTag();
+                for (var counter : inputs) {
+                    var slotTag = new ListTag();
+                    if (counter != null) {
+                        for (var stack : counter) {
+                            if (stack.getLongValue() <= 0) {
+                                continue;
+                            }
+                            var keyTag = stack.getKey().toTagGeneric(registries);
+                            if (keyTag == null) {
+                                if (LOGGER.isWarnEnabled()) {
+                                    LOGGER.warn("Pattern disk provider cannot persist {} in a merged batch; "
+                                            + "it will be missing from the save", stack.getKey());
+                                }
+                                continue;
+                            }
+                            var entryTag = new CompoundTag();
+                            entryTag.put("key", keyTag);
+                            entryTag.putLong("amount", stack.getLongValue());
+                            slotTag.add(entryTag);
+                        }
+                    }
+                    slotsTag.add(slotTag);
+                }
+                batches.add(slotsTag);
+            }
+
+            var patternTag = new CompoundTag();
+            patternTag.put(NBT_PENDING_PATTERN, patternStack.saveOptional(registries));
+            patternTag.put(NBT_PENDING_INPUTS, batches);
+            list.add(patternTag);
+            if (truncated) {
+                break;
+            }
+        }
+        if (!list.isEmpty()) {
+            tag.put(NBT_PENDING_BATCHES, list);
+        }
+        if (truncated && LOGGER.isWarnEnabled()) {
+            LOGGER.warn("Pattern disk provider at {} only saved the first {} of {} merged hand-over(s); the other {} "
+                    + "stay in memory only. Set a hand-over cap to keep the save small", be.getBlockPos(),
+                    MAX_PERSISTED_BATCHES, pendingCount(),
+                    Math.max(0, pendingCount() - MAX_PERSISTED_BATCHES));
+        }
+    }
+
+    /** 读档只搬运原始 tag：decode 要 level，而这里拿不到。 */
+    private void readPendingBatches(CompoundTag tag) {
+        pendingRestore = List.of();
+        if (!tag.contains(NBT_PENDING_BATCHES, Tag.TAG_LIST)) {
+            return;
+        }
+        var list = tag.getList(NBT_PENDING_BATCHES, Tag.TAG_COMPOUND);
+        var restored = new ArrayList<PendingBatchRestore>(list.size());
+        for (int i = 0; i < list.size(); i++) {
+            var entry = list.getCompound(i);
+            if (!entry.contains(NBT_PENDING_PATTERN, Tag.TAG_COMPOUND)) {
+                continue;
+            }
+            var batchesTag = entry.getList(NBT_PENDING_INPUTS, Tag.TAG_LIST);
+            var batches = new ArrayList<ListTag>(batchesTag.size());
+            for (int b = 0; b < batchesTag.size(); b++) {
+                batches.add(batchesTag.getList(b));
+            }
+            restored.add(new PendingBatchRestore(entry.getCompound(NBT_PENDING_PATTERN), batches));
+        }
+        pendingRestore = restored;
+    }
+
+    /**
+     * 首个 tick 把待还原的批解码回 {@code pendingBatches}。
+     *
+     * <p>解码不出来（样板已经不在磁盘里、或者物品 tag 损坏）时，这一批的材料<b>退回网络</b>；网络也没接上
+     * （断电、已拆除）就掉在该机器位置——这两条都是为了不让 CPU 已经记过账的材料凭空消失。</p>
+     */
+    private void restorePendingBatches() {
+        if (pendingRestore.isEmpty()) {
+            return;
+        }
+        var be = host.getBlockEntity();
+        var level = be == null ? null : be.getLevel();
+        if (level == null) {
+            return;
+        }
+        var restore = pendingRestore;
+        pendingRestore = List.of();
+
+        for (var entry : restore) {
+            var patternStack = ItemStack.parseOptional(level.registryAccess(), entry.pattern());
+            var details = patternStack.isEmpty() ? null : PatternDiskApi.decodePattern(patternStack, level);
+            if (details == null) {
+                // 样板没了：把这一批的材料原样退回去，不让它跟着方块一起消失。
+                for (var inputsTag : entry.batches()) {
+                    returnInputsToNetwork(flatten(readSlicedInputs(inputsTag, level.registryAccess())));
+                }
+                if (LOGGER.isWarnEnabled()) {
+                    LOGGER.warn("Pattern disk provider at {} could not restore a merged batch (pattern gone); "
+                            + "its inputs go to the pending-return buffer", be.getBlockPos());
+                }
+                continue;
+            }
+
+            var existing = pendingBatches.get(details);
+            var target = existing != null ? existing : new ArrayList<KeyCounter[]>();
+            for (var inputsTag : entry.batches()) {
+                var inputs = readSlicedInputs(inputsTag, level.registryAccess());
+                if (isBlank(inputs)) {
+                    continue;
+                }
+                target.add(inputs);
+            }
+            if (!target.isEmpty()) {
+                pendingBatches.put(details, target);
+            }
+        }
+        pendingBatchTick = gameTime();
+    }
+
+    /** 把一份按槽的输入还原成 KeyCounter[]；槽数原样保留，读档后的批才能与新建的批合并。 */
+    private static KeyCounter[] readSlicedInputs(ListTag slotsTag, HolderLookup.Provider registries) {
+        var inputs = new KeyCounter[slotsTag.size()];
+        for (int slot = 0; slot < slotsTag.size(); slot++) {
+            var counter = new KeyCounter();
+            var slotTag = slotsTag.getList(slot);
+            for (int i = 0; i < slotTag.size(); i++) {
+                var entry = slotTag.getCompound(i);
+                long amount = entry.getLong("amount");
+                if (amount <= 0 || !entry.contains("key", Tag.TAG_COMPOUND)) {
+                    continue;
+                }
+                var key = AEKey.fromTagGeneric(registries, entry.getCompound("key"));
+                if (key != null) {
+                    counter.add(key, amount);
+                }
+            }
+            inputs[slot] = counter;
+        }
+        return inputs;
+    }
+    /** 把按槽的输入压成一个平坦 counter，供退回/掉落使用（那边不关心槽位）。 */
+    private static KeyCounter flatten(KeyCounter[] inputs) {
+        var counter = new KeyCounter();
+        for (var slice : inputs) {
+            if (slice == null) {
+                continue;
+            }
+            for (var stack : slice) {
+                counter.add(stack.getKey(), stack.getLongValue());
+            }
+        }
+        return counter;
+    }
+
+    /** 一份输入里有没有料；全空就不必占一个位置。 */
+    private static boolean isBlank(KeyCounter[] inputs) {
+        for (var slice : inputs) {
+            if (slice != null && !slice.isEmpty()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** 磁盘镜像里每一张样板对应的物品：{@code IPatternDetails} 靠 equals 反查到它来自哪一格。 */
+    private Map<IPatternDetails, ItemStack> patternStacksByDetails(Level level) {
+        var result = new HashMap<IPatternDetails, ItemStack>();
+        for (int slot = 0; slot < mirror.size(); slot++) {
+            var stack = mirror.getStackInSlot(slot);
+            if (stack.isEmpty()) {
+                continue;
+            }
+            var details = PatternDiskApi.decodePattern(stack, level);
+            if (details != null) {
+                result.putIfAbsent(details, stack);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * 把材料退回网络。
+     *
+     * <p>网络没接上（断电、被拆下来）或装不下时，余量进 {@link #pendingReturns} 静静等着，
+     * 通电后每 {@link BoostMergeLimit#QUIET_TICKS} 个 tick 重试一次。<b>不掉地上</b>：掉落物会过期、
+     * 玩家也未必在场，那是不可回滚的丢料；只有拆机（{@code addDrops}）才该掉。
+     */
+    private void returnInputsToNetwork(KeyCounter inputs) {
+        var leftover = insertIntoNetwork(inputs);
+        if (leftover != null && !leftover.isEmpty()) {
+            // 网络接不上或装不下：先攒着，通电后节流重试。不掉地上——那是不可回滚的。
+            pendingReturns.add(leftover);
+        }
+    }
+
+    /** 把材料插回网络，返回没插进去的那部分（全部插进去时返回 null）。 */
+    @Nullable
+    private KeyCounter insertIntoNetwork(KeyCounter inputs) {
+        // 节点可能尚未初始化或已销毁（AE2 的 IManagedGridNode 允许 getNode() 为空，面板形态首 tick
+        // 尤其容易碰上）。这里不能直接解引用：抛异常会打断 tickServer，而本意是「接不上就静静等着」。
+        var node = mainNode.getNode();
+        if (node == null || node.getGrid() == null) {
+            return inputs;
+        }
+        var network = node.getGrid().getStorageService().getInventory();
+        KeyCounter leftover = null;
+        for (var entry : inputs) {
+            long amount = entry.getLongValue();
+            if (amount <= 0) {
+                continue;
+            }
+            long inserted = network.insert(entry.getKey(), amount, Actionable.MODULATE, actionSource);
+            long rest = amount - inserted;
+            if (rest > 0) {
+                if (leftover == null) {
+                    leftover = new KeyCounter();
+                }
+                leftover.add(entry.getKey(), rest);
+            }
+        }
+        return leftover;
+    }
+
+    /**
+     * 把攒着待退回的材料再试一次。
+     *
+     * <p>节流到每 {@link BoostMergeLimit#QUIET_TICKS} 个 tick 一次：网络断开时这两个数可能是几百 tick，
+     * 每 tick 跑一次模拟插入没意义，还会把主线程的预算吃掉。</p>
+     */
+    private void retryReturns(long now) {
+        if (pendingReturns.isEmpty() || now < nextReturnAttempt) {
+            return;
+        }
+        nextReturnAttempt = now + BoostMergeLimit.QUIET_TICKS;
+        // 整表替换而不是边遍历边改：同一次重试里没退完的会变成新的剩余量，直接写回原表会 CME。
+        var stillPending = new ArrayList<KeyCounter>();
+        for (var pending : pendingReturns) {
+            var leftover = insertIntoNetwork(pending);
+            if (leftover != null && !leftover.isEmpty()) {
+                stillPending.add(leftover);
+            }
+        }
+        pendingReturns.clear();
+        pendingReturns.addAll(stillPending);
     }
 
     private static ProviderBlockingMode parseBlockingMode(String name) {
@@ -1444,7 +1893,7 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
         return ProviderExtractionMode.OFF;
     }
 
-    /** 拆机时把攒批里的物品掉出去，与父类处理发送队列同口径。 */
+    /** 拆机时把合并中的物品掉出去，与父类处理发送队列同口径。 */
     @Override
     public void addDrops(List<ItemStack> drops) {
         super.addDrops(drops);
@@ -1461,6 +1910,16 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
             }
         }
         pendingBatches.clear();
+        // 退回缓冲里也是 CPU 已记账的材料：拆机时不掉出去就永远没有了。
+        for (var counter : pendingReturns) {
+            for (var entry : counter) {
+                if (entry.getKey() instanceof AEItemKey itemKey && entry.getLongValue() > 0) {
+                    drops.add(itemKey.toStack(
+                            (int) Math.min(Integer.MAX_VALUE, entry.getLongValue())));
+                }
+            }
+        }
+        pendingReturns.clear();
     }
 
     @Override

@@ -61,6 +61,7 @@ import io.github.lounode.ae2pattern.api.PatternDiskTerminalView;
 
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
+import io.github.lounode.ae2pattern.common.logic.BatchLane;
 import io.github.lounode.ae2pattern.common.logic.BatchPatternAnalyser;
 import io.github.lounode.ae2pattern.common.logic.BatchRecipePool;
 import io.github.lounode.ae2pattern.common.logic.BatchSynthesisEngine;
@@ -86,14 +87,20 @@ import io.github.lounode.ae2pattern.common.util.DropStacks;
  * once the machine has gone idle is handed back to the network after {@link #IDLE_FLUSH_TICKS} quiet ticks,
  * so leftovers do not pile up in the machine; a full network defers that handover rather than dropping it.</p>
  *
- * <p>Two delays are cut on purpose. A window that gathered next to nothing - fewer than eight jobs - is dead
- * time on the next arrival, so the machine then starts after a single quiet tick instead; every
- * {@link #PROBE_EVERY_RUNS} such runs it serves the full window once more, which is how a supply that has
- * turned into a steady stream gets noticed instead of being run push by push forever, and a silence of
- * {@link #IDLE_RESET_WINDOWS} windows wipes the classification so an order arriving after a long pause
- * aggregates exactly as it always did. Runs that do gather a batch always serve the full window, which is
- * what keeps a bulk order accumulating. Keys the network is currently waiting for skip the smooth-return
- * trickle too, instead of arriving over {@link #OUTPUT_RETURN_TICKS} ticks.</p>
+ * <p>The machine runs two lanes, not one queue: a light lane for the scattered small orders and a bulky lane
+ * for whole-hand-over batches and the orders that accumulated past a threshold. Each lane keeps its own quiet
+ * window, its own batch classification and its own operation budget, so a bulk order that keeps arriving no
+ * longer pushes a small order's countdown back - the window measures how quiet <em>that lane</em> is. Two delays
+ * are cut on purpose per lane: a window that gathered next to nothing - fewer than eight jobs - is dead time on
+ * the next arrival, so the lane then starts after a single quiet tick instead; every
+ * {@link BatchLane#PROBE_EVERY_RUNS} such runs it serves the full window once more, which is how a supply that
+ * has turned into a steady stream gets noticed instead of being run push by push forever, and a silence of
+ * {@link BatchLane#IDLE_RESET_WINDOWS} windows wipes the classification so an order arriving after a long pause
+ * aggregates exactly as it always did. Runs that do gather a batch always serve the full window, which is what
+ * keeps a bulk order accumulating. A lane whose backlog has waited {@link #BATCH_AGE_LIMIT_TICKS} is let through
+ * regardless of the window, which is the only hard bound on a supply that never goes quiet. Keys the network is
+ * currently waiting for skip the smooth-return trickle too, instead of arriving over {@link #OUTPUT_RETURN_TICKS}
+ * ticks.</p>
  */
 public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         implements InternalInventoryHost, IUpgradeableObject, IGridTickable, ICraftingMachine, ICraftingProvider,
@@ -108,20 +115,11 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     /** Flush window: idle ticks after the last input that trigger a batch, regardless of queue size. */
     private static final int STANDARD_BATCH_TICKS = 40;
     private static final int FAST_BATCH_TICKS = 10;
-    /** A run that assembles this many jobs is a real batch: the quiet window did its job, so the machine
-     * serves the full window from then on instead of the short one. */
-    private static final int LARGE_BATCH_JOBS = 8;
-    /** Consecutive small runs after which the machine serves the full window once more. Without that probe a
-     * supply that turned into a stream would be run push by push forever: each run catches about one tick of
-     * arrivals, so it can never grow into the batch that would end the short window. */
-    private static final int PROBE_EVERY_RUNS = 32;
-    /** Quiet windows of silence that wipe the batch classification: an order arriving after such a pause is
-     * aggregated like it always was, whatever the machine ran before it. */
-    private static final int IDLE_RESET_WINDOWS = 8;
-    /** Quiet ticks a push needs while the machine is on the short window. */
-    private static final int SHORT_WINDOW_TICKS = 1;
+    // 分批口径（短窗、整窗探针、久停复位、分批大小）跟着通道走，见 {@link BatchLane}：它们现在是每条通道
+    // 各自的状态，不再是整台机器共用的一份。
     /** Quiet ticks after which an idle machine hands whatever its cells still hold back to the network. */
     private static final int IDLE_FLUSH_TICKS = 10;
+
     /** Upper bound on what a claimed key hands over in one tick (never less than the smooth rate). A
      * catalyst-sized amount therefore arrives in full on the spot, while a huge batch still never becomes
      * one giant IO burst - the reason the smooth return exists at all. */
@@ -149,7 +147,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
      */
     private static final int OUTPUT_RETURN_TICKS =
             Math.max(1, Integer.getInteger("ae2pattern.outputReturnTicks", 1));
-    /** AE charged per assembled job (container remainders and parallels do not change this). */
+
     private static final double ENERGY_PER_RUN = 10.0;
 
     /**
@@ -174,21 +172,30 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
      */
     private int priority;
 
-    /** @return how many assembly jobs are still queued. */
+    /** @return how many assembly jobs are still queued on both lanes. */
     public long getQueuedJobCount() {
-        long total = 0;
-        for (long remaining : queue.values()) {
-            total += remaining;
-        }
-        return total;
+        return lightLane.queuedJobs() + bulkLane.queuedJobs();
     }
 
-    /** @return the quiet ticks still needed before a batch runs, or 0 when one is free to run now. */
+    /**
+     * @return the quiet ticks still needed before the earliest lane runs, or 0 when one is free to run now
+     */
     public int getTicksUntilBatch() {
-        if (queue.isEmpty()) {
-            return 0;
+        long now = currentGameTime();
+        int window = batchIdleTicks();
+        int wait = Integer.MAX_VALUE;
+        if (!lightLane.isEmpty()) {
+            wait = lightLane.ticksUntilRun(now, window);
         }
-        return (int) Math.max(0, effectiveWindowTicks() - inputGapTicks());
+        if (!bulkLane.isEmpty()) {
+            wait = Math.min(wait, bulkLane.ticksUntilRun(now, window));
+        }
+        return wait == Integer.MAX_VALUE ? 0 : wait;
+    }
+
+    /** @return whether neither lane has anything left to assemble. */
+    private boolean queueEmpty() {
+        return lightLane.isEmpty() && bulkLane.isEmpty();
     }
 
     /** @return what the machine is doing, or why it is not doing it. */
@@ -208,12 +215,12 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         if (exposedPatterns.isEmpty()) {
             return BatchWorkState.NO_PATTERN;
         }
-        if (!returns.isEmpty() && queue.isEmpty()) {
+        if (!returns.isEmpty() && queueEmpty()) {
             // Distinguished from a return in progress because only one of the two has anything its owner can act
             // on, and from the outside the queue draining and the queue stuck look exactly alike.
             return returnStalled ? BatchWorkState.OUTPUT_BLOCKED : BatchWorkState.RETURNING_OUTPUTS;
         }
-        if (queue.isEmpty() && returns.isEmpty()) {
+        if (queueEmpty() && returns.isEmpty()) {
             return BatchWorkState.IDLE;
         }
         return workState;
@@ -270,33 +277,37 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     private final BatchRecipePool recipePool = new BatchRecipePool();
     private final List<IPatternDetails> exposedPatterns = new ArrayList<>();
 
-    /** Pushed jobs still to assemble, keyed by pattern with the remaining execution count. */
-    private final Map<IPatternDetails, Long> queue = new LinkedHashMap<>();
+    /**
+     * 两条任务通道。轻载通道收零散的小订单，重载通道收整批 hand-over 与攒起来的大订单；两条道各有自己的
+     * 静默窗口、分批分类与操作预算，于是大订单的持续到货不会再把小订单的计时拨回去。判定与记账都在
+     * {@link BatchLane}，这里只决定谁进哪条道。
+     */
+    private final BatchLane<IPatternDetails> lightLane = new BatchLane<>(BATCH_AGE_LIMIT_TICKS);
+    private final BatchLane<IPatternDetails> bulkLane = new BatchLane<>(BATCH_AGE_LIMIT_TICKS);
+
+    /** 两条通道，按调度顺序：轻载先跑，重载拿剩下的预算。 */
+    private final List<BatchLane<IPatternDetails>> lanes = List.of(lightLane, bulkLane);
 
     /**
-     * Upper bound on the parallel slots advertised to callers. Unlimited by default: the machine's own ceiling
-     * is not a real constraint, so it must not become the limit a pack runs into. What actually bounds one
-     * hand-over is the cell buffer's shared free space (measured in {@link #availableParallelSlotsLong()}), and
-     * past that what the CPU can put in its inventory, its material and its energy - all of which the CPU already
-     * clamps itself. Reporting the type's own maximum therefore hands the limit to the factors that exist rather
-     * than to a constant here.
+     * 对外公布的并行槽位上限（long 契约用），默认不限。
      *
-     * <p>A {@code long} rather than an {@code int}: the buffer's room is not bounded by {@code Integer.MAX_VALUE},
-     * and an int ceiling made the long form of the estimate pointless in two ways - it capped the answer after the
-     * fact, and the probe below used it as a multiplier as well, so on a cell that answers a probe by echoing it
-     * back - AE2's own cells with a void upgrade do exactly that - the advertised number came out around
-     * {@code Integer.MAX_VALUE / slots} instead.</p>
+     * <p><b>它不是探测值的乘数。</b>估算实际上按「配置上限与本次调用能用到的数量取小」去探测——即
+     * {@link ParallelSlotProbe#estimate} 的 {@code cap} 参数。契约把槽位数写成 int 的调用方（NEO ECO 的并行
+     * 派发）传 {@link Integer#MAX_VALUE}，于是探测只按 21.4 亿份去问，元件不必为多出来的两个数量级做模拟插入；
+     * 契约是 long 的（OmniSequence）传这个常量，拿到的是元件真实能装下的份数。两条契约共用同一个记忆槽，
+     * 但按「配方 + tick + 上限」分键：答案不会互相污染，代价是同一配方被两条契约各问一次时要重算一遍。</p>
      *
-     * <p>Callers whose contract names an int still get their ceiling from {@link #availableParallelSlots()};
-     * NEO ECO's parallel dispatch is the one that does.</p>
+     * <p><b>为什么不设小。</b>这个数就是「一次交接能带走几份完整配方」：调小它只会把 CPU 必须做的交接
+     * 次数成倍放大。这台机器面向的订单——9:1 逐阶压缩九层、目标 2.1e9 个九重——底层是 {@code 8.13e17} 件
+     * 物品，整条链约 {@code 1.0e17} 次合成。</p>
      *
-     * <p>Overridable with {@code -Dae2pattern.maxParallelSlots=N} to bring back a ceiling. {@code N} is parsed as
-     * in {@code Long.getLong} - same {@code 0x} and leading-zero-octal acceptance as {@code Integer.getInteger} -
-     * and a malformed value falls back to unlimited, which would quietly run the other group of a comparison, so
-     * check the effective value logged at class load (see {@link #logEffectiveTuning}). A value at or below zero
-     * becomes 1: one craft per hand-over, meant only for the lower end of a comparison. The default has to stay a
-     * primitive {@code long} literal: the boxed {@code getLong(String, Long)} overload returns null for a
-     * malformed value, and unboxing that would throw.</p>
+     * <p>用 {@code -Dae2pattern.maxParallelSlots=N} 可收紧上限。{@code N} 按 {@code Long.getLong} 的规则解析
+     * （与 {@code Integer.getInteger} 一样接受 {@code 0x} 与前导零八进制），写坏了就回落到这个默认值——那会
+     * 悄悄改变对照实验里另一组的结果，所以启动时请核对 {@link #logEffectiveTuning} 打出的实际值。小于等于零
+     * 按 1 处理：一次交接一份配方，只用于对照实验的下限组。默认值必须写成原始数字字面量（{@code int} 或
+     * {@code long} 都行）：这样才能选中 {@code getLong(String, long)}，它不会装箱。要小心另外两个会装箱的重载
+     * ——{@code getLong(String, Long)} 遇到畸形值返回的是你传进去的默认值（不是 null），而单参的
+     * {@code getLong(String)} 才真的返回 null，对它拆箱会抛异常。</p>
      */
     private static final long MAX_ADVERTISED_PARALLEL_SLOTS =
             Math.max(1L, Long.getLong("ae2pattern.maxParallelSlots", Long.MAX_VALUE));
@@ -317,6 +328,35 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
      */
     private static final int OPERATIONS_PER_RUN =
             Math.max(1, Integer.getInteger("ae2pattern.operationsPerRun", 128));
+
+    /**
+     * 两条通道同时就绪时轻载通道最多用掉的操作数，其余留给重载通道。
+     *
+     * <p>只有一条就绪时它拿满 {@link #OPERATIONS_PER_RUN}：份额是为了让两边同时跑时不被对方挤掉一整轮，
+     * 不是给任意一方设上限。默认对半分。{@code OPERATIONS_PER_RUN} 被调到 1 时轻载通道会拿走那唯一一个操作，
+     * 重载通道本轮让位、下一轮再跑——这是该极端配置下唯一的交接方式。</p>
+     *
+     * <p>Overridable with {@code -Dae2pattern.lightOperationShare=N}; same parsing and same fallback as the
+     * other tuning properties - see {@link #logEffectiveTuning}.</p>
+     */
+    private static final int LIGHT_OPERATION_SHARE =
+            Math.max(1, Integer.getInteger("ae2pattern.lightOperationShare", OPERATIONS_PER_RUN / 2));
+
+    /** 一个样板在轻载通道累计到这么多件就迁到重载通道：单件推送的大订单只能靠件数认出来。 */
+    private static final long PROMOTE_TO_BULK_JOBS =
+            Math.max(2L, Long.getLong("ae2pattern.promoteToBulkJobs", BatchLane.SMALL_RUN_JOBS));
+
+    /**
+     * 同一段积压最多等多少 tick 就强制放一轮。
+     *
+     * <p>静默判定对「一直有料进来」的通道没有上界：只要还在推，窗口就永远不闭合，一条稳定的供料流能把一条
+     * 通道压到地老天荒。上限兜住这一头，保证任何一件任务最多等这么久就会被跑到。
+     * {@code 0} 关掉上限，只按静默判定。</p>
+     *
+     * <p>Overridable with {@code -Dae2pattern.batchAgeLimitTicks=N}.</p>
+     */
+    private static final int BATCH_AGE_LIMIT_TICKS =
+            Math.max(0, Integer.getInteger("ae2pattern.batchAgeLimitTicks", 120));
 
     /**
      * Most item stacks a block break may scatter for one leftover key.
@@ -346,15 +386,22 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         var returns = System.getProperty("ae2pattern.outputReturnTicks");
         var operations = System.getProperty("ae2pattern.operationsPerRun");
         var dropStacks = System.getProperty("ae2pattern.maxLeftoverDropStacks");
-        if (slots == null && returns == null && operations == null && dropStacks == null) {
+        var lightShare = System.getProperty("ae2pattern.lightOperationShare");
+        var promote = System.getProperty("ae2pattern.promoteToBulkJobs");
+        var ageLimit = System.getProperty("ae2pattern.batchAgeLimitTicks");
+        if (slots == null && returns == null && operations == null && dropStacks == null
+                && lightShare == null && promote == null && ageLimit == null) {
             return;
         }
         if (LOGGER.isInfoEnabled()) {
             LOGGER.info("Batch assembler tuning overridden: maxParallelSlots={} (requested {}), "
                             + "outputReturnTicks={} (requested {}), operationsPerRun={} (requested {}), "
-                            + "maxLeftoverDropStacks={} (requested {})",
+                            + "maxLeftoverDropStacks={} (requested {}), lightOperationShare={} (requested {}), "
+                            + "promoteToBulkJobs={} (requested {}), batchAgeLimitTicks={} (requested {})",
                     MAX_ADVERTISED_PARALLEL_SLOTS, slots, OUTPUT_RETURN_TICKS, returns,
-                    OPERATIONS_PER_RUN, operations, MAX_LEFTOVER_DROP_STACKS, dropStacks);
+                    OPERATIONS_PER_RUN, operations, MAX_LEFTOVER_DROP_STACKS, dropStacks,
+                    LIGHT_OPERATION_SHARE, lightShare, PROMOTE_TO_BULK_JOBS, promote,
+                    BATCH_AGE_LIMIT_TICKS, ageLimit);
         }
     }
 
@@ -379,25 +426,13 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     private final BatchSynthesisEngine engine = new BatchSynthesisEngine(cellBuffer, plans, returns,
             this::getLevel, this::getBlockPos, this::consumePower, s -> workState = s);
 
-    /** Game time of the last accepted input push. The batch window is the gap measured from here, so
-     * material that keeps arriving simply keeps the window open. */
-    private long lastInputGameTime;
-    /** Game time of the last thing the machine actually did (accepted a push, ran a batch, returned
-     * outputs). The idle flush counts its quiet ticks from here. */
+    /** 机器最后一次真正干活的游戏时间（收货、跑批、回送都算）。闲置回灌从这里数静默 tick。 */
     private long lastActivityGameTime;
-    /** How many jobs the last run assembled. 0 means the machine has not produced anything yet - it never
-     * ran, or its last run assembled nothing - which keeps the full window: the first productive run is what
-     * shows whether the supply is a steady stream or a slow trickle. */
-    private long lastRunJobs;
-    /** Consecutive runs that came out small; every {@link #PROBE_EVERY_RUNS} of them the full window is served
-     * once more to re-measure the supply. */
-    private int shortRunStreak;
     /** Whether this idle period already tried the cell flush - the network may simply be full, and retrying
      * that every tick would be pointless. Cleared as soon as the machine does anything again. */
     private boolean idleFlushDone;
     /** Fast batch mode flushes after 10 quiet ticks instead of the standard 40. */
     private boolean fastBatchMode = false;
-    /** 分析线程池（速度卡定尺寸）与失败上报都在 {@link BatchPatternAnalyser} 里，这里只持有它。 */
     private final BatchPatternAnalyser analyser;
 
     public BatchAssemblerBlockEntity(BlockPos pos, BlockState blockState) {
@@ -517,7 +552,12 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
             // Defensive: a pattern without inputs would queue forever as an empty freebie.
             return false;
         }
-        if (!acceptsPlans() || !bufferInputs(inputHolder)) {
+        if (!acceptsPlans()) {
+            return false;
+        }
+        if (!bufferInputs(inputHolder)) {
+            // 拒收就封本 tick，理由同 {@link #acceptPatternBatch}。
+            denyParallelSlots(patternDetails);
             return false;
         }
         // Each push books exactly one job: the CPU delivers the full order one push at a time, so the job
@@ -533,22 +573,54 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
      * their complete input sets - in a single call.
      */
     private void bookArrival(IPatternDetails patternDetails, long jobs) {
-        queue.merge(patternDetails, jobs, Long::sum);
-        lastHandedPattern = patternDetails;
         long now = currentGameTime();
-        // A pause this long means the last batch is history: whatever it looked like - a small run that put the
-        // machine on the short window, say - must not decide how a fresh order is handled. Clearing the
-        // classification lets that order aggregate exactly as it did before the short window existed.
-        if (lastInputGameTime != 0 && now - lastInputGameTime >= (long) batchIdleTicks() * IDLE_RESET_WINDOWS) {
-            lastRunJobs = 0;
-            shortRunStreak = 0;
-        }
-        // Every arrival restarts the window: the machine waits for the arrivals to actually stop.
-        lastInputGameTime = now;
+        routeArrival(patternDetails, jobs, now);
+        lastHandedPattern = patternDetails;
         idleFlushDone = false;
         lastActivityGameTime = now;
+        // 元件内容刚刚变过，估算记忆值必须作废。它不是「缓存不准」这种精度问题：ECO 拿到同一 tick 的旧答案会
+        // 再交付同样的份数，而本机是 all-or-nothing，于是拒绝、ECO 重试、旧答案再报同一个数——服务端主线程
+        // 在这个环里出不来（表现为世界停更、除背包外任何 GUI 都打不开，因为那些都要服务端回包）。
+        parallelSlots.invalidate();
         alertTicker();
         saveChanges();
+    }
+
+    /**
+     * 把一次到货放进它该去的通道。
+     *
+     * <p>判定只看两件事，因为机器知道的信息就只有这两件：这一次 hand-over 带了几件，以及这个样板已在轻载
+     * 通道上攒了多少。整批交付（并行接入路径）一次就是多件，直接进重载通道；单件推送先当小订单，等它累计到
+     * {@link #PROMOTE_TO_BULK_JOBS} 再迁过去——一条大订单走 AE2 原生路径时只能靠件数认出来。</p>
+     *
+     * <p>迁移会把整份剩余件数原样搬过去，而不是重开一份：CPU 已经为这些件数过账，搬丢了就是少交货。
+     * 搬过去的同时批龄从头算——重载通道的积压起点是这次迁移的时刻，所以迁过来的件数最多等一个
+     * {@link #BATCH_AGE_LIMIT_TICKS}，不会继承轻载通道上已经等过的那段。</p>
+     */
+    private void routeArrival(IPatternDetails patternDetails, long jobs, long now) {
+        int idleResetTicks = batchIdleTicks() * BatchLane.IDLE_RESET_WINDOWS;
+        // 已经在重载通道上的样板不再回头：它已经是大订单了。
+        if (bulkLane.contains(patternDetails)) {
+            bulkLane.arrive(patternDetails, jobs, now, idleResetTicks);
+            return;
+        }
+        if (lightLane.contains(patternDetails)) {
+            long held = lightLane.remainingOf(patternDetails);
+            if (held + jobs < PROMOTE_TO_BULK_JOBS) {
+                lightLane.arrive(patternDetails, jobs, now, idleResetTicks);
+                return;
+            }
+            // 攒够了：整份迁到重载通道，剩下的这点要在长窗口里聚合，而不是被短窗一件一件磨。
+            lightLane.remove(patternDetails);
+            bulkLane.arrive(patternDetails, held + jobs, now, idleResetTicks);
+            return;
+        }
+        if (jobs > 1) {
+            // 整批 hand-over：并行接入路径一次给出一份完整的多件任务。
+            bulkLane.arrive(patternDetails, jobs, now, idleResetTicks);
+            return;
+        }
+        lightLane.arrive(patternDetails, jobs, now, idleResetTicks);
     }
 
     @Override
@@ -556,6 +628,46 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         // Whether the buffer can actually take the material is decided by bufferInputs; require at
         // least one usable cell so jobs are never accepted without a place to store the inputs.
         return cellBuffer.hasAnyCell();
+    }
+
+    /**
+     * 给 NEO ECO 的阻塞开关探测一个快路径。
+     *
+     * <p>它每次派发前都会问「这个供应器开了阻塞吗」。探测方式是反射：先试 {@code getLogic()}，拿到的对象再看
+     * 是不是 {@code PatternProviderLogic}、有没有 {@code isBlocking()}，最后才退回 {@code getConfigManager()}。
+     * 本机三者都没有，于是每问一次就抛<b>三个</b> {@link NoSuchMethodException}，每个都要 {@code fillInStackTrace}。
+     * 而它是在派发每个候选、每次派发之前问的——大订单下每 tick 上万次，异常构造的开销把主线程吃掉了（实测
+     * 服务端线程 291 秒内烧了 118 秒 CPU，全在 ECO 的派发链里）。</p>
+     *
+     * <p>提供这两个方法让它走出那条路：{@code getLogic()} 返回自己，{@code isBlocking()} 答 {@code false}
+     * ——与它原本反射全部失败后的返回值一致，行为不变，只是不再抛异常。</p>
+     *
+     * <p>签名刻意不涉及 NEO ECO 的任何类型：这里是总能加载的类，不能因为可选依赖而漏进邻居的类型名。</p>
+     *
+     * <p><b>三条不能动的约束</b>：</p>
+     *
+     * <ol>
+     * <li>只能返回 {@code this}。返回别的对象会让对方后续的 {@code instanceof} 换一支走，要么被当成别的模组的
+     * 逻辑，要么在别人的代码里 ClassCastException。它不是一个通用逻辑访问器，别的地方不要拿它当入口。</li>
+     * <li>类与方法必须保持 {@code public}。类一旦改成包私有，{@code invoke} 会抛
+     * {@code IllegalAccessException}，而那条 catch 的返回值是 {@code true}——语义直接反转成「认为本机在阻塞」。</li>
+     * <li>将来真做了阻塞模式，{@link #isBlocking()} 必须跟着改，否则对方会继续按非阻塞批量派发。</li>
+     * </ol>
+     */
+    public Object getLogic() {
+        return this;
+    }
+
+    /**
+     * 本机没有阻塞模式（不像 AE2 样板供应器那样「目标满了就停供」），所以一律答不在阻塞。
+     *
+     * <p>这不是占位值：它必须等于真实的阻塞行为。固定 {@code false} 是因为这台机器根本没有那个开关，而不是
+     * 因为没人填。改成非 {@code false} 会改变 ECO 的派发策略。</p>
+     *
+     * @see #getLogic()
+     */
+    public boolean isBlocking() {
+        return false;
     }
 
     @Override
@@ -649,8 +761,9 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
      * 元件缓冲还能吃下多少个完整配方（用于 CPU 正在派发的那个配方）。估算算法与它的取舍都在
      * {@link ParallelSlotProbe}。
      *
-     * <p>返回 {@code long}：缓冲的空间不受 {@code Integer.MAX_VALUE} 约束，够大的元件能装下 int 说不出的
-     * 份数。契约指名 int 的调用方走 {@link #availableParallelSlots()}，那里会夹住。</p>
+     * <p>返回 {@code long}：上限是 {@link #MAX_ADVERTISED_PARALLEL_SLOTS}，默认不限，所以够大的元件能报出
+     * {@code int} 说不出的份数。契约指名 int 的调用方走 {@link #availableParallelSlots()}，那里用 int 上限
+     * 单独探测一次并夹住。</p>
      */
     public long availableParallelSlotsLong() {
         return availableParallelSlotsFor(currentDispatchPattern());
@@ -672,7 +785,11 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
      */
     public long availableParallelSlotsFor(@Nullable IPatternDetails patternDetails) {
         // 没有配方时不碰时钟：空闲机器每 tick 都会被问到这里，没必要为了一个必然为 0 的答案读世界时间。
-        return patternDetails == null ? 0L : parallelSlots.estimate(patternDetails, currentGameTime());
+        if (patternDetails == null) {
+            return 0L;
+        }
+        long estimate = parallelSlots.estimate(patternDetails, currentGameTime(), MAX_ADVERTISED_PARALLEL_SLOTS);
+        return Math.max(0L, estimate);
     }
 
     /**
@@ -694,16 +811,32 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     }
 
     /**
-     * {@link #availableParallelSlotsLong()} clamped to {@code int}, for contracts that name the type that way.
+     * {@link #availableParallelSlotsLong()} 夹到 {@code int}，给契约把类型写成 int 的调用方。
      *
-     * <p>NEO ECO's parallel dispatch states its slot count as an {@code int}, so that path cannot advertise more
-     * than {@link Integer#MAX_VALUE} crafts per hand-over however much room the cells hold. That ceiling belongs
-     * to the protocol, not to this machine: the long form reports what the buffer actually has, and how many
-     * crafts fit in one tick no longer depends on this number at all - the amortised path measures a hand-over
-     * in blocks rather than in crafts.</p>
+     * <p>NEO ECO 的并行派发把槽位数写成 {@code int}，所以那条路径无论元件还有多少空间，一次交接都不可能
+     * 超过 {@link Integer#MAX_VALUE} 份。这里因此按 {@code Integer.MAX_VALUE} 单独探测一次，而不是先算 long
+     * 再夹：按 long 去算会用 {@link #MAX_ADVERTISED_PARALLEL_SLOTS} 当探测值，而这条路径根本用不到那么多，
+     * 多出来的部分只是让元件的模拟插入变贵。一个 tick 能装下几份配方与此无关——摊销路径是按块而不是按份数
+     * 计一次交接的。</p>
      */
     public int availableParallelSlots() {
-        return (int) Math.min(Integer.MAX_VALUE, availableParallelSlotsLong());
+        var patternDetails = currentDispatchPattern();
+        if (patternDetails == null) {
+            return 0;
+        }
+        long estimate = parallelSlots.estimate(patternDetails, currentGameTime(), Integer.MAX_VALUE);
+        return (int) Math.min(Integer.MAX_VALUE, Math.max(0L, estimate));
+    }
+
+    /**
+     * 封本 tick 的可交付份数：两条契约各按自己的上限封一次。
+     *
+     * <p>只封一个档位不够：刚拒收的那条路径用的可能是另一个上限，另一档仍会拿着未过期的旧值让供给方再交付。</p>
+     */
+    private void denyParallelSlots(IPatternDetails patternDetails) {
+        long now = currentGameTime();
+        parallelSlots.denyFor(patternDetails, now, MAX_ADVERTISED_PARALLEL_SLOTS);
+        parallelSlots.denyFor(patternDetails, now, Integer.MAX_VALUE);
     }
 
     /**
@@ -725,7 +858,13 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         if (patternDetails.getInputs().length == 0) {
             return false;
         }
-        if (!acceptsPlans() || !bufferInputs(inputTotal)) {
+        if (!acceptsPlans()) {
+            return false;
+        }
+        if (!bufferInputs(inputTotal)) {
+            // 拒收后不能只清缓存：元件被回滚过、探测是确定性的，重算会给出同一个过大的数（多输入样板逐 key
+            // 模拟时各自以为能独占整片空闲），ECO 拿着它再交一次、再被拒，同 tick 内出不去。封本 tick。
+            denyParallelSlots(patternDetails);
             return false;
         }
         bookArrival(patternDetails, craftCount);
@@ -739,15 +878,18 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     private IPatternDetails currentDispatchPattern() {
         // Only while it is still what the machine works on: once its jobs are done, sizing the next hand-over by
         // a pattern that is no longer queued could only overshoot.
-        if (lastHandedPattern != null && queue.containsKey(lastHandedPattern)) {
+        if (lastHandedPattern != null
+                && (lightLane.contains(lastHandedPattern) || bulkLane.contains(lastHandedPattern))) {
             return lastHandedPattern;
         }
         IPatternDetails best = null;
         long bestCount = 0;
-        for (var entry : queue.entrySet()) {
-            if (entry.getValue() > bestCount) {
-                bestCount = entry.getValue();
-                best = entry.getKey();
+        for (var lane : lanes) {
+            for (var entry : lane.entries().entrySet()) {
+                if (entry.getValue() > bestCount) {
+                    bestCount = entry.getValue();
+                    best = entry.getKey();
+                }
             }
         }
         return best;
@@ -755,15 +897,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
 
     /** True while buffered jobs are waiting to be assembled (drives the slot locks). */
     public boolean hasBufferedWork() {
-        return queuedJobs() > 0;
-    }
-
-    private long queuedJobs() {
-        long total = 0;
-        for (var count : queue.values()) {
-            total += count;
-        }
-        return total;
+        return !queueEmpty();
     }
 
     /**
@@ -837,7 +971,8 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
             // as one long silence, which would hand the cells over on the very first tick.
             lastActivityGameTime = now;
         }
-        if (queue.isEmpty() && returns.isEmpty()) {
+        // 开做之前没有任何东西需要提前备料：材料收到即写元件（没有接收侧撺批层）。
+        if (queueEmpty() && returns.isEmpty()) {
             return idleTick(now);
         }
         // The output drain runs every tick, independent of batch scheduling: the smooth-return queue
@@ -846,28 +981,29 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         if (pendingWork) {
             drainOutputs();
         }
+        int window = batchIdleTicks();
+        // 每一条道各自算自己的窗口：一条道上的到货不会把另一条道的计时拨回去，这正是通道存在的意义。
+        boolean lightDue = lightLane.isDue(now, window);
+        boolean bulkDue = bulkLane.isDue(now, window);
         // Restated every evaluation so a reason cannot outlive the situation that produced it; a run below
         // overwrites it with whatever it ran into.
-        if (queue.isEmpty()) {
+        if (queueEmpty()) {
             workState = pendingWork ? BatchWorkState.RETURNING_OUTPUTS : BatchWorkState.IDLE;
-        } else if (inputGapTicks() < effectiveWindowTicks()) {
+        } else if (!lightDue && !bulkDue) {
             workState = BatchWorkState.WAITING_FOR_MATERIAL;
         }
-        // A batch starts only while the material is genuinely quiet: the window is the gap since the last
-        // accepted push, so as long as material keeps arriving the machine keeps waiting. Nothing forces
-        // a batch through on a timer.
+        // A batch starts only while its own lane is genuinely quiet - or when that lane's backlog has waited
+        // long enough to be let through regardless. Nothing forces a batch through on a plain timer otherwise.
         boolean worked = false;
-        // Inside the short-window case one quiet tick is enough: the last batch gathered next to nothing, so
-        // holding this one back for a full window would only be dead time.
-        if (!queue.isEmpty() && inputGapTicks() >= effectiveWindowTicks()) {
-            worked = runBatch();
+        if (lightDue || bulkDue) {
+            worked = runLanes(now, lightDue, bulkDue);
         }
         if (worked || pendingWork) {
             idleFlushDone = false;
             lastActivityGameTime = now;
             saveChanges();
         }
-        if (!queue.isEmpty() || !returns.isEmpty()) {
+        if (!queueEmpty() || !returns.isEmpty()) {
             return TickRateModulation.IDLE;
         }
         return TickRateModulation.SLEEP;
@@ -893,15 +1029,52 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     }
 
     /**
-     * Assembles the whole queue in one pass, with no per-tick ceiling: a batch runs until the queued jobs
-     * are done or the cell buffer runs out of matching material. Inputs are consumed only through the
-     * cells, and produced outputs enter the smooth-return queue instead of hitting the network storage in
-     * one burst. Internal chaining is deliberately not performed - see {@link BatchRecipePool}.
+     * 跑两条通道，总额度 {@link #OPERATIONS_PER_RUN}。
+     *
+     * <p>两条都就绪时轻载通道先跑、只拿 {@link #LIGHT_OPERATION_SHARE}，其余留给重载通道；只有一条就绪时
+     * 它拿满。先轻后重是有意的：小订单短，通常几个操作就清空，剩下的预算正好交给重订单，而不是让大订单把整轮
+     * 吃光。</p>
+     *
+     * @return 是否有任何一条通道真的组出了东西
      */
-    private boolean runBatch() {
-        // Analyse patterns the machine has not seen before. That step only reads immutable pattern data,
-        // so it is the one part of a run that may leave the server thread.
-        plans.prepare(queue.keySet(), queue.keySet(), analyser.pool(), analyser::reportFailure);
+    private boolean runLanes(long now, boolean lightDue, boolean bulkDue) {
+        if (!lightDue && !bulkDue) {
+            return false;
+        }
+        // 计划只在这里补齐一次：两条通道共用一个缓存，按单条道传 live 会在缓存超限时把另一条道的计划
+        // 也丢给回收。这一步只读样板数据，是整轮里唯一可以离开服务端线程的部分。
+        var live = queuedPatterns();
+        plans.prepare(live, live, analyser.pool(), analyser::reportFailure);
+
+        if (lightDue && bulkDue) {
+            int lightBudget = OPERATIONS_PER_RUN <= 1
+                    ? OPERATIONS_PER_RUN
+                    : Math.min(OPERATIONS_PER_RUN - 1, LIGHT_OPERATION_SHARE);
+            int used = runLane(lightLane, lightBudget, now);
+            // 不用短路：重载通道的这一轮不能因为轻载通道已经跑出东西就被跳过。
+            boolean workedBulk = runLane(bulkLane, OPERATIONS_PER_RUN - used, now) > 0;
+            return used > 0 || workedBulk;
+        }
+        if (lightDue) {
+            return runLane(lightLane, OPERATIONS_PER_RUN, now) > 0;
+        }
+        return runLane(bulkLane, OPERATIONS_PER_RUN, now) > 0;
+    }
+
+    /**
+     * 跑一条通道，最多用掉 {@code budget} 个操作。
+     *
+     * <p>与原先「整队列跑一轮」的差别只在边界：预算按通道给，遍历只碰这条道的队列，分批分类也记在这条道上。
+     * 摊销块与单件慢路径的顺序、以及「一个样板没跑完就轮到下一个」的规则都照旧。Inputs are consumed only
+     * through the cells, and produced outputs enter the smooth-return queue instead of hitting the network
+     * storage in one burst. Internal chaining is deliberately not performed - see {@link BatchRecipePool}.</p>
+     *
+     * @return 用掉的操作数
+     */
+    private int runLane(BatchLane<IPatternDetails> lane, int budget, long now) {
+        if (budget <= 0 || lane.isEmpty()) {
+            return 0;
+        }
 
         // Snapshot of what the buffer holds, built on first use: it is only consulted to discover candidate
         // variants the pattern never spelled out (a tool that already lost durability). Availability is
@@ -910,12 +1083,11 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
 
         boolean worked = false;
         long assembled = 0;
-        // Operations used up in this run, against OPERATIONS_PER_RUN. Shared across the whole queue, so one
-        // pattern cannot spend the tick's budget and leave the rest to start their own.
-        int operations = OPERATIONS_PER_RUN;
+        // 本通道这一轮的操作预算。跨样板共享，于是单个样板不能把整轮的额度花光、让后面的样板连一条都开不了头。
+        int operations = budget;
         // Set when a run stops for a reason of its own, so that a later pattern which does run cannot erase it.
         boolean stopped = false;
-        var it = queue.entrySet().iterator();
+        var it = lane.entries().entrySet().iterator();
         while (it.hasNext()) {
             var entry = it.next();
             var plan = plans.analyse(entry.getKey(), analyser::reportFailure);
@@ -992,23 +1164,19 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
             }
         }
 
-        lastRunJobs = assembled;
-        if (assembled > 0 && assembled < LARGE_BATCH_JOBS) {
-            // A small run: the window gathered next to nothing, so the next batch is not made to wait for it.
-            // Saturated rather than allowed to wrap, so the streak cannot turn negative and stop the short
-            // window from ever coming back.
-            if (shortRunStreak < Integer.MAX_VALUE) {
-                shortRunStreak++;
-            }
-        } else {
-            // A real batch (or a run that assembled nothing): the queue is not starved of arrivals, or there
-            // is nothing to gather - either way the full window comes back.
-            shortRunStreak = 0;
-        }
+        // 分批分类记在通道自己身上：整窗探针、短窗与久停复位都跟着这条道走。
+        lane.recordRun(assembled, now);
         if (worked) {
             saveChanges();
         }
-        return worked;
+        return budget - operations;
+    }
+
+    /** 两条通道上的全部样板。 */
+    private Set<IPatternDetails> queuedPatterns() {
+        var all = new HashSet<IPatternDetails>(lightLane.patterns());
+        all.addAll(bulkLane.patterns());
+        return all;
     }
 
     /**
@@ -1043,15 +1211,17 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
      */
     private Set<AEKey> queuedInputKeys() {
         var keys = new HashSet<AEKey>();
-        for (var pattern : queue.keySet()) {
-            var plan = plans.get(pattern);
-            if (plan == null) {
-                continue;
-            }
-            for (var input : plan.inputs()) {
-                if (input != null) {
-                    for (var candidate : input.candidates()) {
-                        keys.add(candidate.key());
+        for (var lane : lanes) {
+            for (var pattern : lane.patterns()) {
+                var plan = plans.get(pattern);
+                if (plan == null) {
+                    continue;
+                }
+                for (var input : plan.inputs()) {
+                    if (input != null) {
+                        for (var candidate : input.candidates()) {
+                            keys.add(candidate.key());
+                        }
                     }
                 }
             }
@@ -1133,13 +1303,10 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
 
     /** Empties the cell buffer back into the ME network (used by the "cancel crafting" action). */
     public void cancelAndReturnContents() {
-        queue.clear();
-        // Reset the window: the queue is gone, so the next push must go through a fresh batch window.
+        // 通道清空时自己的窗口统计一并归零：下一份订单必须重新走一遍完整窗口，不能继承上一份的短窗判定。
+        clearLanes();
         long now = currentGameTime();
-        lastInputGameTime = now;
         lastActivityGameTime = now;
-        lastRunJobs = 0;
-        shortRunStreak = 0;
         idleFlushDone = false;
         // Flush the smooth-return queue immediately: after the block is removed (drops path) nothing
         // would tick anymore, and the crafting CPU is still waiting for these outputs. Whatever the network
@@ -1171,6 +1338,13 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         alertTicker();
     }
 
+    /** 清空两条通道及其窗口统计。 */
+    private void clearLanes() {
+        for (var lane : lanes) {
+            lane.clear();
+        }
+    }
+
     private void alertTicker() {
         this.getMainNode().ifPresent((grid, node) -> grid.getTickManager().alertDevice(node));
     }
@@ -1183,25 +1357,12 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         return level == null ? 0 : level.getGameTime();
     }
 
-    /**
-     * Ticks since the last accepted input push - the real gap between two deliveries of material.
-     *
-     * <p>Measured in game time instead of counting tick callbacks: the grid tick manager may skip ticks,
-     * and it reports a whole sleep gap on the first call after waking. Counting callbacks quietly
-     * stretches the window in both cases.</p>
-     */
-    private long inputGapTicks() {
-        var level = getLevel();
-        if (level == null) {
-            return 0;
-        }
-        return Math.max(0, level.getGameTime() - lastInputGameTime);
-    }
-
     // ---- worker pool ---------------------------------------------------------
 
     @Override
     public void setRemoved() {
+        // 先交还再销毁节点：super.setRemoved() 会 getMainNode().destroy()，那之后 pushToNetwork 只剩
+        // 「进元件」一条路，装不下的部分会掉进不持久化的回送队列。
         super.setRemoved();
         // The pool outlives ticks but not the block entity: leaking it would strand one thread group per
         // broken or unloaded machine.
@@ -1213,21 +1374,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         return fastBatchMode ? FAST_BATCH_TICKS : STANDARD_BATCH_TICKS;
     }
 
-    /**
-     * The quiet window that actually applies right now. Runs that gathered a batch - and a machine that has
-     * not run yet - serve the window of the selected mode, which is what makes a bulk order accumulate.
-     * Small runs serve a single quiet tick instead, with the full window coming back for one round every
-     * {@link #PROBE_EVERY_RUNS} small runs so a supply that turned into a stream is noticed. Progress and
-     * countdown displays ask this one, so they never promise a wait the machine is not going to serve.
-     */
-    private long effectiveWindowTicks() {
-        if (shortRunStreak > 0 && shortRunStreak % PROBE_EVERY_RUNS == 0) {
-            return batchIdleTicks();
-        }
-        return lastRunJobs > 0 && lastRunJobs < LARGE_BATCH_JOBS
-                ? SHORT_WINDOW_TICKS
-                : batchIdleTicks();
-    }
+    // 窗口口径（整窗、短窗、整窗探针、久停复位）随通道走，见 {@link BatchLane#effectiveWindowTicks(int)}。
 
     public boolean isFastBatchMode() {
         return fastBatchMode;
@@ -1424,7 +1571,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         // correctness does not hinge on that notification surviving future changes.
         terminalView.invalidate();
         upgrades.clear();
-        queue.clear();
+        clearLanes();
         cellBuffer.markDirty();
     }
 }

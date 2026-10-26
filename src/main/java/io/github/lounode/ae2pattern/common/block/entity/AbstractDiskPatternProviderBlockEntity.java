@@ -109,7 +109,7 @@ public abstract class AbstractDiskPatternProviderBlockEntity<L extends PatternDi
     /**
      * 服务端 tick：把供应器攒着的发配批发出去。
      *
-     * <p>攒批的停交判据没有公开信号，只能靠一个每 tick 都会跑的地方兜底：AE2 自己的供应器 tick 里面那两个
+     * <p>发配倍增的停交判据没有公开信号，只能靠一个每 tick 都会跑的地方兜底：AE2 自己的供应器 tick 里面那两个
      * 方法是私有的，外面接管不了；部件形态也没有可用的 tick，只能靠 {@code isBusy} 被询问时先发。
      * 方块形态在这里做，面板形态见 {@code PatternDiskProviderLogic#isBusy()}。</p>
      */
