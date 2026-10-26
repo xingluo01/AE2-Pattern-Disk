@@ -1,6 +1,6 @@
 # 上游 API 请求（AE2 本体 / ECO / ECO Prototype / ExtendedAE Plus）
 
-> 状态：前两份与第四份**已提交**（前两份本地 2026-10-09 02:55 / UTC `2026-10-08T18:55Z`，第四份 UTC `2026-10-25T10:10Z`，均已实现或待处理，见文末「提交记录」）；第三份是 2026-10 发现的兜底缺陷，**尚未提交**；第五份（AE2 本体）是 2026-10-26 读源码时的发现，**仅记录、尚未提交**。下面五份草稿保留原文，便于日后追进或修订时对照。
+> 状态：前两份、第四份与第五份**已提交**（前两份本地 2026-10-09 02:55 / UTC `2026-10-08T18:55Z`，第四份 UTC `2026-10-25T10:10Z`，第五份 UTC `2026-10-26T16:15Z`，见文末「提交记录」）；第三份是 2026-10 发现的兜底缺陷，**尚未提交**。下面五份草稿保留原文，便于日后追进或修订时对照。
 > 提出方：AE2 Pattern Disks（`ae2_pattern_disk`，作者 `xingluo01`）。
 > 用例：前两份是**元件管理终端**——把网络里所有能装存储元件的东西列成一张表，并支持取出/放入元件、调整存储优先级；第三份是**样板磁盘供应器的样板上传**；第四份是**批处理装配室的极大数合成**——单次交接量被 int 容量契约封在 21.4 亿份，而 FastPath 的 long 容量面没有注册表可用；第五份是**AE2 本体的语义缺陷**——`hasComponents()` 的返回值与名字相反，会污染按物品的替换判定缓存。
 
@@ -277,7 +277,7 @@
 
 ---
 
-## 草稿 5 → `AppliedEnergistics/Applied-Energistics-2`（尚未提交）
+## 草稿 5 → `AppliedEnergistics/Applied-Energistics-2`（已提交）
 
 **标题**
 
@@ -302,11 +302,13 @@ hasComponents() 的返回值与名字相反，会污染按物品的替换判定�
 `AECraftingPattern.getTestResult` / `setTestResult`（`AECraftingPattern.java:306-326`）与 `AEStonecuttingPattern.java:206-219`
 用它决定「能不能按 what.getItem() 缓存这个输入的合法性」：
 
-- 本意：只有无组件的纯物品才能共享按 Item 的缓存（不同组件变体的合法性可能不同）。
-- 实际：无组件输入被判「有组件」——永远不缓存，每次实测配方；
-  带组件输入被判「无组件」——结果按 getItem() 写进缓存，另一个组件变体查询时直接命中它。
+- 本意：带附加组件的键不进按 `Item` 的缓存（不同组件变体的合法性可能不同）；1.20.5 之前这里写的是 `what.hasTag()`。
+- 实际：`getComponents()` 返回的是「物品原型组件 + patch」的**完整**集合，对几乎所有物品非空，
+  于是 `hasComponents()` 几乎恒为 `false` —— 判定结果对所有键（含带组件变体）都按 `getItem()` 进出缓存。
 
-后果：同一物品的不同组件变体之间会串用判定结果（错判），而最该命中缓存的纯物品反而拿不到缓存。
+后果：同一物品的不同组件变体之间会串用判定结果（错判）。修复应基于 `getComponentsPatch()`，
+而不是把 `getComponents().isEmpty()` 改写成 `!getComponents().isEmpty()`（后者会让几乎所有键都
+「有组件」，缓存全失效）。
 
 ## 复现
 
@@ -345,6 +347,7 @@ hasComponents() 的返回值与名字相反，会污染按物品的替换判定�
 | `ECOJobAwareCraftingProvider` 在 21.2.10 才有，本地克隆（`ecba648`）里没有 | 上游 `api/me/provider` 目录页 vs 本地目录列举 |
 | **AE2**：`hasComponents()` 的 javadoc 说「true if this key has *any* components attached」，实现却是 `stack.getComponents().isEmpty()` | `AEKey.java:351-354`（javadoc 与抽象声明）、`AEItemKey.java:232`、`AEFluidKey.java:162`（本地克隆 `D:/Temp/Applied-Energistics-2`，`1.21.1` @ `db17504`） |
 | **AE2**：该方法的两个消费点就是 `getTestResult` / `setTestResult`，缓存键只取 `what.getItem()`（不含组件） | `AECraftingPattern.java:306-326`、`AEStonecuttingPattern.java:206-219`（同上） |
+| **AE2**：`ItemStack#getComponents()` 返回「物品原型 + patch」的**完整**组件集合（因此 `isEmpty()` 对几乎所有物品为 `false`）；判「有无附加组件」应看 `getComponentsPatch()` / `isComponentsPatchEmpty()` | `ItemStack.java:228-242`、`PatchedDataComponentMap.java:184-200`（NeoForge 21.1.241 源码 jar，`build/moddev/artifacts/neoforge-21.1.241-sources.jar`） |
 
 ## 提交记录
 
@@ -353,7 +356,7 @@ hasComponents() 的返回值与名字相反，会污染按物品的替换判定�
 | `DancingSnow0517/NeoECOAEExtension` | [#119](https://github.com/DancingSnow0517/NeoECOAEExtension/issues/119) | 2026-10-08T18:55Z（本地 10-09 02:55） | **已实现并已关闭**：ECO **21.2.6**（2026-10-16 发布）含 `api.storage.IECOStoragePriorityHost` 与提到 `api.storage` 的 `ICellHost`；维护者 Yang120231 于 2026-10-09 回「已添加」并标记 completed |
 | `reliqwq/NeoECOPrototype` | [#5](https://github.com/reliqwq/NeoECOPrototype/issues/5) | 2026-10-08T18:55Z（本地 10-09 02:55） | **已实现**（issue 仍 OPEN）：青春版 **1.3.6**（2026-10-16 发布）的 `SimplifyDriveBlockEntity` 已 `implements util.ICellHost` 并补 `setCellStack`；作者 reliqwq 于 2026-10-09 回「随下一个版本发出」 |
 | `DancingSnow0517/NeoECOAEExtension` | [#134](https://github.com/DancingSnow0517/NeoECOAEExtension/issues/134) | 2026-10-25T10:10Z（本地 10-25 18:10） | **待处理**：请 FastPath 补一个与 `ECOParallelCraftingProviders` 同形的 provider 注册面，让第三方能在不硬依赖 ECO 的前提下拿到 `long` 容量。未实现前本模组的批处理装配室停在 ordinary 并行路径 |
-| `AppliedEnergistics/Applied-Energistics-2` | — | — | **尚未提交**：`hasComponents()` 返回值与名字相反，会污染按物品的替换判定缓存（草稿 5）。待整理最小复现后再提 |
+| `AppliedEnergistics/Applied-Energistics-2` | [#9040](https://github.com/AppliedEnergistics/Applied-Energistics-2/pull/9040) | 2026-10-26T16:15Z（本地 10-27 00:15） | **待审**：`hasComponents()` 改成基于 `getComponentsPatch()`（`isComponentsPatchEmpty()`），修掉「带组件变体按 Item 共享判定缓存」与 `AEFluidKey#toString` 的同一错误；附回归测试，未本地构建（本机拿不到 Gradle 8.12 发行包） |
 
 提交账号：`xingluo01`。正文用中文（两个仓库既有 issue 以中文为主，见上方取证清单）。
 
