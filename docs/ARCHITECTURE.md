@@ -357,4 +357,6 @@ node tools/check-chat-message-keys.cjs .
 
 它核**代码里发出的每个消息键是否都在两语 lang 里**（含 `NOTICE + "后缀"` 那种只写后缀的写法）、**每条开关是否配齐三处键**、两语键集是否相等；动态拼接的前缀（`void_mode.`、`disk_refused.`）按「至少有一个键兜底」判定。退出码 0 = 全部对齐，1 = 有键对不上，**2 = 没找到 lang / 源码目录，或语言文件不是合法 JSON，这次没核完——2 不算通过**。它的盲区写在脚本头部：`notice(NOTICE + 变量)` 这种**运行时才拼出的键它看不见**（上一轮踩的 `…notice.null` 正属此类，当时是靠字面痕迹才被拦住）、动态前缀只判「至少一个兜底」而不逐个后缀核、lang 孤儿键与屏幕样式 JSON 里 `"translate"` 引用的 GUI 文案键都不看——**通过只说明字面键对齐，不等于这类 bug 绝迹**。
 
+**改交互提示（tooltip）的键**：编码终端磁盘列表与管理终端磁盘格各有一套手势提示，键名相近但语义不同，不要合并——`ae2_pattern_disk.tooltip.disk.click`（左键写盘）与 `.right_click_mark`（右键打标）属编码终端；`gui.ae2_pattern_disk.management_terminal.tooltip.disk.right_click`（右键选中为写入目标）与 `.shift_right_click`（Shift+右键打标）属管理终端。手势改了就同步改键名，别留“名字还在说旧手势”的键。
+
 **动 API**：`api/package-info.java` 写明这个包是稳定面。改签名等于破坏第三方兼容，改之前先在 `../CHANGELOG_UNRELEASED.md` 记一笔。

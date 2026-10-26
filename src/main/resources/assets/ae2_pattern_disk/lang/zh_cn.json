@@ -55,7 +55,7 @@
   "ae2_pattern_disk.mark.mode.chiseling": "雕凿样板",
   "ae2_pattern_disk.tooltip.capacity": "%s / %s 个样板",
   "ae2_pattern_disk.tooltip.disk.click": "左键将样板写入该样板磁盘",
-  "ae2_pattern_disk.tooltip.disk.shift_right_click": "右键使用搜索栏标记覆写标记",
+  "ae2_pattern_disk.tooltip.disk.right_click_mark": "右键使用搜索栏标记覆写标记",
   "ae2_pattern_disk.tooltip.mark": "标记：%s",
   "ae2_pattern_disk.tooltip.mark.raw": "标记 ID：%s",
   "ae2_pattern_disk.tooltip.type": "类型：%s",

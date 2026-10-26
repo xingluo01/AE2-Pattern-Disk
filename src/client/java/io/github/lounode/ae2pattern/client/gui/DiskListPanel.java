@@ -278,7 +278,7 @@ public class DiskListPanel implements ICompositeWidget {
                 // One line per key combination: the line says both the gesture and what it does to the disk.
                 lines.add(Component.translatable("ae2_pattern_disk.tooltip.disk.click")
                         .withStyle(ChatFormatting.GRAY));
-                lines.add(Component.translatable("ae2_pattern_disk.tooltip.disk.shift_right_click")
+                lines.add(Component.translatable("ae2_pattern_disk.tooltip.disk.right_click_mark")
                         .withStyle(ChatFormatting.GRAY));
                 guiGraphics.renderComponentTooltip(Minecraft.getInstance().font,
                         lines, mouse.getX() + bounds.getX(), mouse.getY() + bounds.getY());
