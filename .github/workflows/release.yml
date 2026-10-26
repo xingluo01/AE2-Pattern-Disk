@@ -15,8 +15,7 @@ name: Release
 #             CURSEFORGE_TOKEN       https://www.curseforge.com/account/api-tokens 生成
 #   Variables MODRINTH_PROJECT_ID    Modrinth 项目 id 或 slug
 #             CURSEFORGE_PROJECT_ID  CurseForge 数字项目 id（不是 slug）
-#             MODDEVMCP_JAR_URL     libs/moddevmcp-0.3.jar 的下载地址（同为本地专属依赖，见下方说明）
-#             EAEPLUS_JAR_URL       libs/extendedae_plus-1.6.2-dev.jar 的下载地址（缺它 fetch 步骤会硬失败，见下方说明）
+#             MODDEVMCP_JAR_URL     libs/moddevmcp-0.3.jar 的下载地址（唯一的本地专属依赖，见下方说明）
 #
 # 两个平台都要求项目先存在：Modrinth 项目要已创建；CurseForge 项目必须人工在站点创建（自动化只能传文件，
 # 建不了项目），且首个文件要过人工审核才对玩家可见。
@@ -59,38 +58,28 @@ jobs:
         with:
           cache-provider: basic
 
-      # NEO ECO 已不需要这一步：2026-10-08 起 build.gradle 直接用 CurseForge 发布件
-      # （curse.maven:neo-eco-ae-extension-1460639:9095600，21.2.1）——那个发布版已带本模组所需的接口。
-      # 剩下两个无公共 maven 的本地件仍由变量提供：
-      # 第二个 jar（ModDevMCP 0.3）未发布到公共 maven，由变量 MODDEVMCP_JAR_URL 提供，
-      # 对应 build.gradle 里的 compileOnly files('libs/moddevmcp-0.3.jar')（那份 0.3 jar 只上编译类路径，
-      # 开发运行期的工具来自 dev.vfyjxf:moddevmcp，src 里不引用它）。
-      # 第三个 jar（ExtendedAE Plus 的本地构建，含其终端兼容层接口 IPatternUploadMenu /
-      # IPatternUploadTerminal；Modrinth 最新发布版 1.6.2 还没有这两个类）由变量 EAEPLUS_JAR_URL 提供，
-      # 对应 build.gradle 里的 compileOnly / clientCompileOnly files('libs/extendedae_plus-<版本>-dev.jar')。
-      # 两者现均托管在 release `deps-v1`（tag 不以 v 开头，不会触发本 workflow）。
-      # 版本号变化时这里的文件名要跟 build.gradle 一起改。
+      # NEO ECO 已不需要这一步：build.gradle 直接用 CurseForge 发布件
+      # （curse.maven:neo-eco-ae-extension-1460639:9317271，21.2.10）——那个发布版已带本模组所需的接口。
+      # ExtendedAE Plus 也不再需要：2026-10-26 起改用 CurseForge 发布件
+      # （curse.maven:extendedae-plus-1337639:8998231，1.6.3），它同时带终端兼容层接口与 JEI 19.56 的修复。
+      # 只剩 ModDevMCP 0.3 一个无公共 maven 的本地件：未发布到任何公共 maven，由变量 MODDEVMCP_JAR_URL
+      # 提供，对应 build.gradle 里的 compileOnly files('libs/moddevmcp-0.3.jar')（那份 0.3 jar 只上编译
+      # 类路径，开发运行期的工具来自 dev.vfyjxf:moddevmcp，src 里不引用它）。它托管在 release `deps-v1`
+      # （tag 不以 v 开头，不会触发本 workflow）。版本号变化时这里的文件名要跟 build.gradle 一起改。
       - name: Fetch local-only dependency jars
         env:
           MCP_JAR_URL: ${{ vars.MODDEVMCP_JAR_URL }}
-          EAEPLUS_JAR_URL: ${{ vars.EAEPLUS_JAR_URL }}
         run: |
           set -euo pipefail
           if [ -z "${MCP_JAR_URL}" ]; then
             echo "::error title=缺少仓库变量::MODDEVMCP_JAR_URL 未设置，compileClasspath 上的 moddevmcp 无法解析，构建必然失败。"
             exit 1
           fi
-          if [ -z "${EAEPLUS_JAR_URL}" ]; then
-            echo "::error title=缺少仓库变量::EAEPLUS_JAR_URL 未设置，EAE+ 终端兼容层接口缺失，编译必然失败。"
-            exit 1
-          fi
           mkdir -p libs
           curl -fL --retry 3 --retry-delay 5 -o libs/moddevmcp-0.3.jar "$MCP_JAR_URL"
-          curl -fL --retry 3 --retry-delay 5 -o libs/extendedae_plus-1.6.2-dev.jar "$EAEPLUS_JAR_URL"
           # 校验下载内容：Gradle 对 files() 里不存在的文件是静默跳过，靠这里把“下错文件”挡在构建前。
-          # 若日后替换 deps-v1 上的同名 jar，必须同步更新下面三条哈希。
+          # 若日后替换 deps-v1 上的同名 jar，必须同步更新下面这条哈希。
           echo "ce22ff7266a8462e1ae7062d17df1fdbdd06bdf29e5501c2f6d6ded6daf33789  libs/moddevmcp-0.3.jar" | sha256sum -c -
-          echo "f789723bde98d709885501184f5335ae06a84a9ad6ad5a4c51366eabb3a2fcd1  libs/extendedae_plus-1.6.2-dev.jar" | sha256sum -c -
           ls -l libs
 
       # gradle.properties 里的 org.gradle.java.home=C:/Java/jdk-21 与 jvmargs 里的 Windows-ROOT 信任库

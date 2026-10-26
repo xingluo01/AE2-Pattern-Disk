@@ -256,9 +256,9 @@ NEO ECO 的类型名与方法名集中在 `NeoECOTypes.java`，改版本时先�
 
 - AE2 / GuideME：在 `gradle/libs.versions.toml` 里声明，`compileOnly`（AE2 另加 `accessCompileOnly` 与 `clientCompileOnly`），运行时由整合包提供。
 - JEI / EMI：`clientCompileOnly`，只是编译期 API。AE2WTLib / Jade / Polymorph / IPN 经 maven 或 CurseForge 自动解析，不需要本地 jar。
-- NEO ECO：`compileOnly` 与开发运行期都用 CurseForge 发布件 `curse.maven:neo-eco-ae-extension-1460639:9095600`（21.2.1，2026-10-08 发布，已带本模组要的那半——并行接收注册表与报告式上传）。不再需要本地 jar；`21.2.1` 同时是运行期 `Neo ECO Prototype` 声明的版本地板。
-- ExtendedAE Plus：需要 `libs/extendedae_plus-1.6.2-dev.jar`（用 `-PeaePlusJar=<路径>` 可换别的构建）。缺它时构建会回退到商店上的发布件，而那个版本与 JEI 19.56 不兼容、进世界会崩——做 EAE+ 相关的事之前先确认手上是本地 dev jar。
-- AECS：放到 `libs/ae2cs-1.21.1-1.3.0.jar`，只作运行时。
+- NEO ECO：`compileOnly` / `clientCompileOnly` 与开发运行期都用 CurseForge 发布件 `curse.maven:neo-eco-ae-extension-1460639:9317271`（21.2.10，2026-10-25）。不再需要本地 jar。本模组在 `mods.toml` 里对它的地板是 `[21.2.1,)`（旧 ECO 上存储优先级那格退化回只读）；运行期 `Neo ECO Prototype` 反过来要求 `[21.2.10,)`，所以这两条坐标必须同批升。
+- ExtendedAE Plus：`compileOnly` / `clientCompileOnly` / 开发运行期都用 CurseForge 发布件 `curse.maven:extendedae-plus-1337639:8998231`（1.6.3，2026-09-28）。这个版本同时解决了两件事：带本模组要的终端兼容层接口（`IPatternUploadMenu` / `IPatternUploadTerminal`，1.6.2 没有），且修掉了 1.6.2 与 JEI 19.56 的不兼容（它的 `BookmarkOverlayMixin` 改引用 `mezz.jei.common.input.handlers`）。不再需要本地 jar；`-PeaePlusJar=<路径>` 保留为应急覆盖。
+- AECS：放到 `libs/ae2cs-1.21.1-1.3.0.jar`，只作运行时。**这份仍是本地件**：CurseForge 与 Modrinth 上最新的 1.21.1 发布版都停在 1.2.1（2026-07-24），1.3.0 只存在于上游 `1.21.1-main` 分支，未发版。
 
 ---
 

@@ -205,12 +205,18 @@ dependencies {
     // ECOStorageSystemBlockEntity 实现（21.2.1 里那个 setter 是私有且带 Player 参数，第三方只能读）。集成侧
     // 据此把优先级读写改成接口优先、反射兜底（见 integration/neoecoae/NeoECOStoragePriority）。
     //
+    // 2026-10-26 升到 21.2.10（构件 9317271）：本模组绑定的 8 个 ECO 类型——ECOPatternInsertionResult /
+    // ECOPreparedPattern / IECOPatternStorageService / api.integration.Integration /
+    // ECOParallelCraftingProvider(s) / IECOStoragePriorityHost / gui.widget.UploadButton——公开签名与 21.2.6
+    // 逐字相同（javap -public 逐类 diff），集成层不用改。它的必需地板仍是 ae2 [19.2.17,) 与
+    // ldlib2 [2.2.40,)，本环境分别是 19.2.18 与 2.2.40，都在区间内。
+    //
     // 注意：**这条地板不能抬**。FML 对「已安装的」可选依赖同样做版本检查，写成 [21.2.6,) 会让装了
     // 21.2.1–21.2.5 的包**整个模组不加载**（与下文 ae2jeiintegration 那条同一种失败形状）。所以维持
     // [21.2.1,)：旧 ECO 上优先级那格退化回只读，其余集成不受影响。集成层已按此做「接口优先、反射兜底」
     // + 存在性守卫（见 NeoECOStoragePriority#register）：缺接口时连桥都不注册，不会走到链接失败。
-    compileOnly 'curse.maven:neo-eco-ae-extension-1460639:9204890'
-    clientCompileOnly 'curse.maven:neo-eco-ae-extension-1460639:9204890'
+    compileOnly 'curse.maven:neo-eco-ae-extension-1460639:9317271'
+    clientCompileOnly 'curse.maven:neo-eco-ae-extension-1460639:9317271'
 
     // Client source set: explicit client-side API access.
     clientCompileOnly(libs.ae2)
@@ -298,29 +304,29 @@ dependencies {
     // ExtendedAE Plus (EAE+) dev reference. Its "upload pattern to a provider" button is the feature the
     // pattern disk provider has to serve, so it belongs in the dev runtime to exercise that path.
     //
-    // 已发布的 1.6.2（Modrinth o8U8Ekro，2026-08-28）是对着旧版 JEI 编的：它的 jei.BookmarkOverlayMixin 调用
-    // mezz.jei.gui.input.handlers.CombinedInputHandler，而 JEI 19.56 把这个类挪到了 mezz.jei.common.input.handlers，
-    // 于是 JEI 一启动就 ClassNotFoundException，客户端进世界即崩。EAE+ 侧已修（本地提交 389c8e44 / 85a50ea5，
-    // mods.toml 声明 jei 为可选依赖 [19.56.0,)）但尚未发版，所以这里优先用放到 libs/ 的本地构建产物
-    // （与上面的 AECS、NEO ECO 同法，libs/*.jar 不入库）。换别的构建用 -PeaePlusJar=<jar 路径>；
-    // 没有本地件时回退到 Modrinth 发布件，但那个版本与 JEI 19.56 不兼容，进入世界会崩溃。
-    def eaePlusJar = providers.gradleProperty('eaePlusJar')
-            .map { file(it) }
-            .getOrElse(file('libs/extendedae_plus-1.6.2-dev.jar'))
-    if (eaePlusJar.exists()) {
+    // 1.6.3（2026-09-28 发布，CurseForge 构件 8998231 / Modrinth AtuOmKkV，两者字节数一致）是第一个同时
+    // 满足两件事的发布版，此前卡着的两个问题一起解决：
+    //
+    // ① 终端兼容层接口：IPatternUploadMenu / IPatternUploadTerminal 从 1.6.2 起就没有发布过，所以编译期
+    //    一直靠本地构建产物。1.6.3 的 com/extendedae_plus/api/upload/ 下两个接口都在，方法签名与本地
+    //    1.6.2-dev 逐字相同（getEncodedPatternSlot / getUploadAnchor / getUploadScale），ABI 兼容。
+    // ② JEI 19.56 兼容：1.6.2 的 jei.BookmarkOverlayMixin 引用 mezz.jei.gui.input.handlers.CombinedInputHandler，
+    //    而 JEI 19.56 把该类挪到了 mezz.jei.common.input.handlers，于是 JEI 一启动就 ClassNotFoundException、
+    //    客户端进世界即崩。1.6.3 的同一个类现在引用的是新包路径，与本地 dev 构建一致。
+    //
+    // 所以 libs/ 那份 dev 构建不再需要，改走 CurseForge 发布坐标。
+    // 仍保留 -PeaePlusJar=<jar 路径> 作为应急覆盖：上游再出兼容问题时可换构建，不必等发版。
+    def eaePlusJar = providers.gradleProperty('eaePlusJar').map { file(it) }.getOrNull()
+    if (eaePlusJar != null) {
         localRuntime files(eaePlusJar)
+        compileOnly files(eaePlusJar)
+        clientCompileOnly files(eaePlusJar)
     } else {
-        logger.warn("EAE+ 本地构建产物不存在（{}），回退到 Modrinth 发布件 1.6.2 —— 该版本与 JEI 19.56 不兼容，" +
-                "进入世界会崩；修复办法见本行上方注释。", eaePlusJar)
-        localRuntime 'maven.modrinth:extendedae-plus:o8U8Ekro'
+        localRuntime 'curse.maven:extendedae-plus-1337639:8998231'
+        compileOnly 'curse.maven:extendedae-plus-1337639:8998231'
+        clientCompileOnly 'curse.maven:extendedae-plus-1337639:8998231'
     }
 
-    // EAE+ 的终端兼容层接口（IPatternUploadMenu / IPatternUploadTerminal）目前只存在于它的 1.21.1 分支，
-    // Modrinth 最新发布版（1.6.2，2026-08-28）还没有这两个类，所以编译期也用 libs/ 里这份构建产物。
-    // EAE+ 发版后把这里与上面的 localRuntime 一起换成 maven.modrinth 坐标；release.yml 里对应的
-    // 下载步骤（EAEPLUS_JAR_URL）也要一并删掉。
-    compileOnly files(eaePlusJar)
-    clientCompileOnly files(eaePlusJar)
     // Curios and Kotlin for Forge are runtime references of EAE+'s own integrations.
     localRuntime 'curse.maven:curios-309927:6529130'
     localRuntime 'curse.maven:kotlin-for-forge-351264:7471280'
@@ -466,18 +472,18 @@ dependencies {
     // Pattern-Disk <-> FD Smart Pattern Bus integration.
     // Runtime uses the same dev jar as compile: runClient is how the integration is exercised, and a
     // published artifact may lag the version this mod was developed against.
-    localRuntime 'curse.maven:neo-eco-ae-extension-1460639:9204890'
+    localRuntime 'curse.maven:neo-eco-ae-extension-1460639:9317271'
     // Neo ECO Prototype: the unofficial L1 add-on for NEO ECO (drives, energy cells, bulk matrices,
     // interfaces and a pattern provider below ECO's L4 tier). Dev-only like every other optional
     // compatibility target - it is not a published dependency of this mod, and nothing in src/ names
     // its types: the cell management terminal reaches the storage side through ECO's own classes, and
     // this add-on's L1 drive is an ECO storage host like any other. It is loaded so that enumeration
     // can be exercised against it.
-    // Hard gate: 它 1.3.6 的 mods.toml 声明 neoecoae [21.2.2,)，所以本行与上面那条 ECO 必须同批升
-    // （21.2.1 满足不了这条地板）。1.3.6 另有一项与本模组直接相关：SimplifyDriveBlockEntity 现在
+    // Hard gate: 它 1.4.1 的 mods.toml 声明 neoecoae [21.2.10,)，与上面那条 ECO 精确配对——升 ECO 就必须
+    // 同批升它，否则 FML 在预加载阶段按地板拦下。1.3.6 起另有一项与本模组直接相关：SimplifyDriveBlockEntity
     // implements util.ICellHost 并补上 setCellStack(ItemStack)（我们在 issue #5 提的）。注意它的语义与
     // ECO 一致：清格传 null（EMPTY 会被 isItemValid 那道闸拒），占用时是替换而非拒绝。
-    localRuntime 'curse.maven:neo-eco-prototype-1695260:9204257'   // 1.3.6（2026-10-16；旧件 9098136 是 1.3.1）
+    localRuntime 'curse.maven:neo-eco-prototype-1695260:9321737'   // 1.4.1（2026-10-25；旧件 9204257 是 1.3.6）
     // MEGA Cells: ECO 的联动清单要求 4.11.0+（大宗盘与小型大宗矩阵），Neo ECO Prototype 也把它列为可选前置。
     // 只进开发环境。Modrinth 把该项目放在 id jjuIRIVr 下（slug 也是 megacells），RPG4EriK = 4.11.0 for
     // 1.21.1 neoforge；用 id + version id 而非版本号，免得跨 loader 解析到别的构建。

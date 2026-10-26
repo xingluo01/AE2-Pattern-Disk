@@ -38,12 +38,31 @@ function findAe2Jar(root) {
     if (hit) return hit;
   }
   const roots = [process.env.GRADLE_USER_HOME, path.join(os.homedir(), '.gradle')].filter(Boolean);
+  // AE2 的坐标换过来源：早期是 maven.modrinth:ae2（文件名 ae2-<版本>.jar），现在是 CurseForge 的
+  // curse.maven:applied-energistics-2-223794（文件名 <group>-<fileId>.jar）。后者一个版本目录下会并排
+  // 躺着多个 fileId 的构建，所以按 fileId 取最大的那个，免得读到缓存里更旧的 jar。
   for (const root of roots) {
-    const dir = path.join(root, 'caches/modules-2/files-2.1/maven.modrinth/ae2');
-    if (!fs.existsSync(dir)) continue;
-    for (const ver of fs.readdirSync(dir)) {
-      for (const hash of fs.readdirSync(path.join(dir, ver))) {
-        const hdir = path.join(dir, ver, hash);
+    const curseDir = path.join(root, 'caches/modules-2/files-2.1/curse.maven/applied-energistics-2-223794');
+    if (fs.existsSync(curseDir)) {
+      let best = null;
+      for (const ver of fs.readdirSync(curseDir)) {
+        for (const hash of fs.readdirSync(path.join(curseDir, ver))) {
+          const hdir = path.join(curseDir, ver, hash);
+          for (const f of fs.readdirSync(hdir)) {
+            const m = /^applied-energistics-2-223794-(\d+)\.jar$/.exec(f);
+            if (m && (!best || Number(m[1]) > best.id)) {
+              best = { file: path.join(hdir, f), id: Number(m[1]) };
+            }
+          }
+        }
+      }
+      if (best) return best.file;
+    }
+    const modrinthDir = path.join(root, 'caches/modules-2/files-2.1/maven.modrinth/ae2');
+    if (!fs.existsSync(modrinthDir)) continue;
+    for (const ver of fs.readdirSync(modrinthDir)) {
+      for (const hash of fs.readdirSync(path.join(modrinthDir, ver))) {
+        const hdir = path.join(modrinthDir, ver, hash);
         for (const f of fs.readdirSync(hdir)) {
           if (/^ae2-\d.*\.jar$/.test(f)) return path.join(hdir, f);
         }
