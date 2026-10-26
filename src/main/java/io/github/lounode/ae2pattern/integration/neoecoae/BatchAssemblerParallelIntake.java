@@ -56,6 +56,7 @@ final class BatchAssemblerParallelIntake implements ECOParallelCraftingProvider,
         this.machine = machine;
     }
 
+    // 上游 int 契约通道：空机器首次发配报 0（还没有当前派发样板可估），首批之后才回到批量，属已知行为。
     @Override
     public int eco$getAvailableParallelSlots() {
         return machine.availableParallelSlots();

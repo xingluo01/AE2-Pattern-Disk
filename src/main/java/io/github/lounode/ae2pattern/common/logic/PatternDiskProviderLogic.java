@@ -907,6 +907,10 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
      * every write path in the mod clamps to a tier capacity. A component edited out of band to claim more
      * than the largest tier would not be covered; covering that would mean deriving the bound from the
      * disks at runtime, and this constructor runs before the disks can be read.</p>
+     *
+     * <p>Truncation is unreachable on the normal path: one disk holds at most the largest tier's capacity,
+     * so the sum never exceeds this bound. If a future tier or an out-of-band write path breaks that,
+     * {@code refreshPatternsFromDisks} degrades to a silent truncation - no log, no status report.</p>
      */
     private static int mirrorCapacity(int diskSlots) {
         int perDisk = 0;

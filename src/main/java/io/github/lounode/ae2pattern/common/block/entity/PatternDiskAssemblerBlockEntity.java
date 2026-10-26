@@ -404,6 +404,7 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
                 // 样板自己的空占位：不参与可用性判断。
                 continue;
             }
+            // 预判只取 multiplier、不看候选的 amount()：流体替代样板下预判与实际装填量可能不一致（未实测）。
             long need = Math.max(1, input.getMultiplier());
             AEItemKey first = null;
             for (var possible : input.getPossibleInputs()) {

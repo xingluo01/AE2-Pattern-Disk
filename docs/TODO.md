@@ -1,37 +1,13 @@
 # AE2-Pattern-Disk 需求待办表
 
-> 状态图例：⬜ 未开始 | 🔄 进行中 | ⏸ 暂缓
+> 状态图例：⬜ 未开始 | ⏸ 暂缓
 > 优先级：P1 最高 | P2 | P3
 >
 > 本表只放**还没做完的事**。已完成条目不留档（看 `CHANGELOG.md` 与 git 历史）；已放弃与有意不做的取舍去找对应的提交与代码注释，
 > 本表不再列；发版流程见 `RELEASE.md`；工程约束（版本基线、只用公共 API、美术资源约定）见 `ARCHITECTURE.md`；
 > 上游请求见 `UPSTREAM_API_REQUESTS.md`。
-> 「二、待实机验证」一节的条目默认都在等实机，不再逐个标状态。
 
-## 一、进行中
-
-### E. ME样板磁盘供应器面板变体（`cable_pattern_disk_provider`）— 🔄
-- 现状：Part 形态已实现，与方块共享 `PatternDiskProviderLogic` / `PatternDiskProviderMenu`（host 接口 `PatternDiskProviderHost`）；模型与纹理用 AE2 `cable_pattern_provider` 的本地副本。
-- 剩余：
-  - 面板变体无独立合成配方，只与方块形态 1:1 无序互转（`recipe/pattern_disk_provider_to_cable.json` / `recipe/cable_pattern_disk_provider_to_block.json`）。
-  - 待实机：编码终端 / 样板管理终端对 Part 形态的收录（AE2 源码表明按 owner 具体类登记，Part 的 owner 即 Part 本身）。
-  - 待实机：面板返还栏的 `GENERIC_INTERNAL_INV`（已注册）在装配室回送时是否正常。
-
-## 二、待实机验证
-
-### V1. 万象构序（OmniSequence）批量发配
-- 待核：
-  1. 带万象构序 CPU 的大订单是否真的走整批交付（看 CPU `waitingFor` 是否不再堆、单 tick 是否不再无预算）。
-  2. backpressure 取的是 `RECHECK_NEXT_TICK`（理由：插材料不触发 `parallelSlots.invalidate()`，同 tick 重问会读回插入前的数字）。实机看「同一样板每 tick 只吃一批」是否成瓶颈；若成了，正解是给 `invalidate()` 补「缓冲写入即失效」的调用点。
-  3. 记账后补送是否解掉「产物在队列里、CPU 已把等待量算成已送达」的停顿。
-  4. 与 NEO ECO 同时装时两条批量路径不互斥。
-- 已知未修：**NEO ECO 的 int 契约通道**首发迟滞——`BatchAssemblerParallelIntake` 调无参 `availableParallelSlots()`，空机器首次发配报 0。FastPath / exact 与 Omni 通道已改按样板估算（`availableParallelSlotsFor`），只剩这一条通道受上游 int 签名所限。
-
-### V2. 自装配样板磁盘供应器面板变体（`cable_meteorite_pattern_provider`）
-- 待核：① 处理样板（不可自完成）能否推给相邻机器；② 相邻机器回送到返回仓的产物能否自动清空；③「锁定到结果」能否解锁；④ 网络塞满时的滞留产物能否最终送回；⑤ 面板在样板访问终端里的收录与图标。
-- 已知取舍（不是缺陷）：产物回送走服务端世界 tick 事件——不能占 `IGridTickable` 服务槽，那个槽归 AE2 的 `PatternProviderLogic`；模型仍有 4 处引用 `ae2cs:` 贴图（back / front / particle / back），缺 AE2CS 时不渲染、不出日志。
-
-## 三、未开始
+## 一、未开始
 
 ### G. 批处理装配室：multiplier 由多个变体拼够（对齐 AE2）— P3 ⬜
 - 现状：`resolveVariant` 要求**单个 key 覆盖整个 multiplier**（同物品的已磨损变体有一条回退，但仍是一槽一变体）；缓冲不足直接判 `INPUTS_UNAVAILABLE`、样板留队列。
@@ -45,10 +21,6 @@
 - 消费点：`AECraftingPattern.getTestResult` 用它决定是否走「按物品」的替换缓存（键为 `what.getItem()`）⇒ 带组件的输入反而可能命中按物品的缓存。
 - 待办：整理最小复现（带组件输入 + 可替换配方）后报 AE2 上游。
 - 约束：本模组**不要**用这个方法判组件，需要时直接用 `!stack.getComponents().isEmpty()`。
-
-### K. 镜像栏截断不可见 — P2 ⬜
-- 镜像栏容量是「磁盘槽数 × 最大档位」（9 × 1024 = 9216，`mirrorCapacity`），超出时 `refreshPatternsFromDisks` 静默截断（多余样板不提供给合成系统，不报错不提示）。
-- 关联：`PatternDiskProviderLogic` 与批处理装配室共用同一套磁盘内容 API（`DiskHostSupport` 的镜像与终端视图；攒批合并层只有供应器有，见 `ARCHITECTURE.md` §9）；玩家文档侧的补齐见 F1。
 
 ### L. 高级档没有专属标记 — P3 ⬜（已知行为，非缺陷；审查时不要再当 bug 报）
 - 现状：高级档不在 AE2 的 `EncodingMode` 枚举里，切进去时**不改 `mode`**（只 `setAdvancedMode(true)`），而绑盘读的正是 `menu.mode` ⇒ 高级档写出的标记是「进入高级档之前那个常规档」的标记。
@@ -65,20 +37,6 @@
 - ⬜ 提取原因：本模组已有自己的 `ExtractResult`（4 值 `OK` / `EMPTY` / `LOCKED` / `REFUSED`，后两者出声、`EMPTY` 静默）；剩下的是「改用上游枚举给出更细的原因」。
 - 维护：`UPSTREAM_API_REQUESTS.md` 的提交记录表随进展更新（UTC 时间戳）。
 
-### U. 批处理装配室：模板量与流体替代的后续口径 — P3 ⬜
-- ⬜ 畸形槽无日志：`BatchSynthesisEngine.consumeInputs` 把 `neededFor == 0`（模板量不可用/溢出）与「真的缺料」共用 `INPUTS_UNAVAILABLE`，每 tick 重试且不出日志。仿 `noteWarned` 加一次性 debug。
-- ⬜ 同族口径：`PatternDiskAssemblerBlockEntity` 的可用性预判仍按 `getMultiplier()` 判「每格 1 件」，对流体替代样板只会静默填不出格（不扣料不丢件）；与该机器的格子语义一并审视。
-
-### Q2. 样板磁盘管理终端的离线守卫 — P3 ⬜
-- `insertDisk` / `storeInventoryDisk` 用的是缓存 `hostsByName`，动作内**没有在线判据** ⇒ 离线时仍能对旧宿主下手。
-- 本仓两个终端的在线判据不统一：编码/管理终端用 `node.isActive()`（覆盖断电，不覆盖无线电量），元件管理终端用 `canInteractWithGrid()`（两者都覆盖）。要不要统一到后者，等排期。
-
-### F1. 截断行为补进玩家文档 — P3 ⬜
-- 镜像栏的真实上限是 9216（见 K），超出时静默截断。要把「上限与截断行为」补进 README 与游戏内指南，让玩家能察觉。
-
-### F2. 高效分子装配室的回送方向不持久化 — P3 ⬜
-- `CraftUnit.pushDirection` 不进 NBT（save/load 只存网格、样板与进度），重载后一个尚未收工的派发页退化成「只回网络」。产物不会丢，只是绕过相邻返回节点，与 AE2 契约有偏差。
-
 ### F3. ModDevMCP 的供给方式清理 — P3 ⬜
 - `build.gradle` 的 `localRuntime 'dev.vfyjxf:moddevmcp:0.1.6'` 仍在，而本机 mavenLocal 并无该版本（靠 composite-build 替换），它与 `compileOnly files('libs/moddevmcp-0.3.jar')` 并存，可能让 dev 运行时出现两份副本。单独一轮处理，并在本地跑一次 `runClient` 确认无重复 mod 载入。
 
@@ -88,7 +46,7 @@
 ### F5. 配置界面补节 `.button` 键 — P3 ⬜
 - 11 条配置节缺 `.button` 键（NeoForge 配置屏不补则回退平台自带的「编辑 / Edit」字样），`ae2_pattern_disk.configuration.title` 同理。键形态的坑见 `ARCHITECTURE.md` §10 的「加一个配置项」。
 
-## 四、暂缓
+## 二、暂缓
 
 ### J. 极大数（远超 2.1G）兼容性优化 — P2 ⏸
 - 现象：极大订单导致世界线程阻塞、autosave 无法写入。
@@ -103,7 +61,7 @@
 ### 9. 完整紧凑编码（改 `PatternDiskContents` 数据格式）— ⏸ 高风险
 - 破坏存档兼容，保留后续专轮 + 迁移。
 
-## 五、归档索引
+## 三、归档索引
 - 已完成条目与实现细节：`CHANGELOG.md`、git 历史、`ARCHITECTURE.md` 的模块说明。
 - 上游请求与状态（ECO / 青春版 / EAE+）：`UPSTREAM_API_REQUESTS.md`。
 - 发版流程与踩坑：`RELEASE.md`。
