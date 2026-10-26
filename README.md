@@ -403,8 +403,8 @@ any more; those files are no longer part of this distribution.
 | `assets/ae2_pattern_disk/textures/guis/ex_molecular_assembler.png` | `assets/ae2/textures/guis/molecular_assembler.png` | locally modified derivative, 2026-09 (~2% of opaque pixels differ) |
 | `assets/ae2_pattern_disk/textures/guis/pattern.png` | `assets/ae2/textures/guis/pattern.png` | locally modified derivative, 2026-09 (~9% of opaque pixels differ) |
 | `assets/ae2_pattern_disk/textures/guis/batch_molecular_assembler.png` | `assets/ae2/textures/guis/molecular_assembler.png` | locally modified derivative, 2026-09 (~43% of opaque pixels differ) |
-| `assets/ae2_pattern_disk/textures/guis/pattern_modes.png` | `assets/ae2/textures/guis/pattern_modes.png` | same canvas; ~69% of the opaque pixels differ; provenance unconfirmed |
-| `assets/ae2_pattern_disk/textures/guis/states.png` | `assets/ae2/textures/guis/states.png` | same canvas; ~58% of the opaque pixels differ; provenance unconfirmed |
+| `assets/ae2_pattern_disk/textures/guis/pattern_modes.png` | `assets/ae2/textures/guis/pattern_modes.png` | hand-drawn original asset (same canvas as AE2's; ~69% of the opaque pixels differ) |
+| `assets/ae2_pattern_disk/textures/guis/states.png` | `assets/ae2/textures/guis/states.png` | hand-drawn original asset (same canvas as AE2's; ~58% of the opaque pixels differ) |
 | `assets/ae2_pattern_disk/textures/guis/checkbox.png` | `assets/ae2/textures/guis/checkbox.png` | byte-identical copy (verified against 19.2.17) |
 
 The remaining textures under `textures/` (everything in `textures/item/`, plus

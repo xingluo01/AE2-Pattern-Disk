@@ -20,7 +20,7 @@ import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
  * 原版铁砧一致。</p>
  *
  * <p><b>已知行为（不是缺陷）</b>：{@code #mode:} 这一支只覆盖 AE2 的四个常规档与雕凿（雕凿的常量直接写在这里）；
- * <b>高级档没有专属标记</b>，它继承「进入高级档之前那个常规档」的标记。已记在 {@code docs/TODO.md} 的 L 条里，
+ * <b>高级档没有专属标记</b>，它继承「进入高级档之前那个常规档」的标记。这是已知行为，
  * 后续审查不必当新问题报。</p>
  */
 public final class DiskMarkRules {

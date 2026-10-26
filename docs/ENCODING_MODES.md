@@ -117,7 +117,7 @@ PatternDiskManagementTermMenu  →  PatternDiskEncodingTermMenu  →  MEStorageM
 `InventoryActionPacket(InventoryAction.SET_FILTER, slot.index, stack)`。
 
 **额外档没有专属映射标记。** 这是指**写盘侧**：绑盘盖什么标记，读的是 `menu.mode`，而额外档不改 `mode`，
-于是盖出来的就是「进入该档之前那个常规档」的标记（见 `docs/TODO.md` 的 L 条；那条只点名了高级档，过载档同理）。
+于是盖出来的就是「进入该档之前那个常规档」的标记（高级档与过载档同理；这是已知行为，不是缺陷）。
 这不是缺陷，也不要在写盘侧新造标记。
 
 但**选盘侧不一样**：选盘的锚点是**样板类型**，标记只是它的另一种写法。认得出的标记优先，认不出就退回类型锁——所以那个「继承来的常规档标记」反查出来是常规档类型，与高级/过载档编出的类型不同，自然不匹配，不需要另写一条特例规则。见 §七。
@@ -292,7 +292,7 @@ private    String  tierTypeOf(DiskEntry)            // 标记反查优先，没�
 - `PatternDiskMarks.displayName` 的识别分支必须落在 `parseMode` 返回 null **之后**、`literal` 回落**之前**。
 - `matchesCurrentType` 的分支必须在 `categoryForMode` 早退**之前**，否则从处理档进入时 `category == null` 会先 return false，分支成死代码。
 - `PatternDiskMarks` 直接引用 `DiskMarkRules` 的常量，不要再抄一份字面量。
-- 代价：`uploadMark()` 是「先短路再回退 `deriveMarkId()`」，固定标记会顶掉「导入过配方就写 `#<配方类别>`」那一支。要不要保留类别信息，先定这个取舍（高级档至今未定，见 `TODO.md` 的 L 条）。
+- 代价：`uploadMark()` 是「先短路再回退 `deriveMarkId()`」，固定标记会顶掉「导入过配方就写 `#<配方类别>`」那一支。要不要保留类别信息，先定这个取舍（高级档与过载档至今未定）。
 
 ## 八、档位跟随样板输出栏
 

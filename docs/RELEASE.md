@@ -18,7 +18,7 @@ CI 未就绪时的本地后备路径：`MODRINTH_TOKEN=... MODRINTH_PROJECT_ID=a
 
 | 类型 | 名称 |
 |---|---|
-| vars | `MODRINTH_PROJECT_ID`、`CURSEFORGE_PROJECT_ID`、`MODDEVMCP_JAR_URL`、`EAEPLUS_JAR_URL` |
+| vars | `MODRINTH_PROJECT_ID`、`CURSEFORGE_PROJECT_ID` |
 | secrets | `MODRINTH_TOKEN`（PAT，勾 `VERSION_CREATE` + `VERSION_WRITE` + `PROJECT_WRITE`）、`CURSEFORGE_TOKEN` |
 
 ## 三、Modrinth
@@ -46,18 +46,15 @@ CI 未就绪时的本地后备路径：`MODRINTH_TOKEN=... MODRINTH_PROJECT_ID=a
 - Modrinth `GET /v2/version/{id}` 的 `dependencies` 里应有 `pNabrMMw` + `required`；CF 文件页 Relations 应出现两条前置。
 - 网页侧人工项（API 改不了）：Client/Server 环境标记（现为 unknown）、gallery 截图、项目正文里的授权表述。（Dependencies 已由 `relations:` 自动声明，不在此列。）
 
-## 六、私有 jar 供给
+## 六、依赖供给（已无私有 jar）
 
-两个构建需要的 jar 不在公共 maven 上，托管在本仓库 release `deps-v1`，由 CI 按仓库变量下载（`libs/*.jar` 被 gitignore）：
+2026-10-26 起构建不再需要任何私有 jar：`release.yml` 的 fetch 步骤与 `MODDEVMCP_JAR_URL` / `EAEPLUS_JAR_URL` 两个仓库变量都已停用。
 
-- `moddevmcp-0.3.jar`——`dev.vfyjxf:moddevmcp:0.3` 只在本地可解析（composite-build / mavenLocal），Central、NeoForged、modmaven、BlameJared 都没有；直接声明依赖会让 CI 的 `compileJava` 必然失败，所以 `build.gradle` 用 `compileOnly files('libs/moddevmcp-0.3.jar')`。
-- `extendedae_plus-1.6.2-dev.jar`——EAE+ 的本地构建，含它尚未发布的 `IPatternUploadMenu` / `IPatternUploadTerminal`（Modrinth 上的最新发布版 1.6.2 还没有这两个类）。缺它时构建会回退到商店版，而那个版本与 JEI 19.56 不兼容、进世界会崩。
+- `dev.vfyjxf:moddevmcp` 已从构建移除：`localRuntime`、`compileOnly files('libs/moddevmcp-0.3.jar')` 与 `settings.gradle` 的 composite-build 替换一并删掉。
+- ExtendedAE Plus 改用 CurseForge 发布件（`curse.maven:extendedae-plus-1337639:8998231`，1.6.3），已带终端兼容层接口。
+- NEO ECO 自 2026-10-08 起走 CurseForge 发布件（`curse.maven:neo-eco-ae-extension-1460639`），不再走这条供给。
 
-`release.yml` 对这两份各有 sha256 校验；替换 release 上的同名 jar 时必须同步更新那两行。
-
-仓库变量缺任意一个，fetch 步骤会硬失败（脚本里有显式检查）：少 `MODDEVMCP_JAR_URL` 是 compileClasspath 解析不了，少 `EAEPLUS_JAR_URL` 是终端兼容层接口缺失。
-
-NEO ECO 自 2026-10-08 起直接用 CurseForge 发布件（`curse.maven:neo-eco-ae-extension-1460639:9095600`），不再走这条供给。
+`libs/` 下的 jar 现在只服务本地开发运行期：AECS 用 `localRuntime files('libs/ae2cs-<version>.jar')` 装进 dev 客户端（仅运行期；`files()` 对缺失文件静默跳过，CI 的 `compileJava` 不读它）。release `deps-v1` 上的旧件仅作历史留档，不再被任何步骤下载。
 
 该 release 的 tag 落在 `v0.2.1^` 上，所以 changelog 步骤用 `--match 'v[0-9]*'` 避开它被 `git describe` 当成上一个版本、把发布说明截成一行。
 

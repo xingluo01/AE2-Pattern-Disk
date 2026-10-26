@@ -90,7 +90,7 @@
 物品自身的 tooltip 那行由 `client/gui/PatternDiskMarkTooltip.java` 挂在客户端的 `ItemTooltipEvent` 上拼——可读名要靠 EMI/JEI 的配方类别名，写进 `PatternDiskItem.appendHoverText` 会让主源集反向依赖客户端源集。
 
 **已知行为**：雕凿档有专属标记 `#mode:chiseling`（它不在 AE2 的 `EncodingMode` 里、也没有配方类别，标记由上传路径直给）；
-而**高级档没有专属标记**，写盘时它盖的是「进入高级档之前那个常规档」的标记——这是已记录项，不是缺陷，详见 `TODO.md` 的 L 条。
+而**高级档没有专属标记**，写盘时它盖的是「进入高级档之前那个常规档」的标记——这是已知行为，不是缺陷。
 
 **但这里要分清两侧**（同一句话在两侧的结论相反，合写必然误导）：
 
@@ -337,7 +337,7 @@ NEO ECO 的类型名与方法名集中在 `NeoECOTypes.java`，改版本时先�
 
 **加一个磁盘容量档**：`PatternDiskTier` → 物品注册 → lang 两份 → `../README.md` 的容量表 →（若档位参与排序）`client/sort/SortTiers` 的配置。
 
-**加一个配置项（含聊天栏开关）**：配置类 → 两份 lang 各补标签与 tooltip → 若属于聊天栏开关，还要进 `ChatMessageSwitches` 的表。**NeoForge 配置屏的兜底键形态要记住**：兜底键是「模组 id + `.configuration.` + **本节内的局部名**」，不是全路径 ⇒ 值键必须在 `define` 前用 `builder.translation(...)` 显式登记；节键要 `builder.translation(全路径)` **后紧跟** `builder.push(同路径)`（顺序不能反：先 `push` 的话，后设的键会被下一个 `define` 当成值键吃掉，节上反而没有键）；且 `section()` 必须排在所有 `comment()` **之前**（`push` 会把当时悬着的注释当成该节的注释收走）。收在 `ChatMessageSwitches.define` / `.section`。漏登记就表现为界面直接显示原始键名；节缺 `.button` 键则回退平台自带的「编辑 / Edit」。
+**加一个配置项（含聊天栏开关）**：配置类 → 两份 lang 各补标签与 tooltip → 若属于聊天栏开关，还要进 `ChatMessageSwitches` 的表。**NeoForge 配置屏的兜底键形态要记住**：兜底键是「模组 id + `.configuration.` + **本节内的局部名**」，不是全路径 ⇒ 值键必须在 `define` 前用 `builder.translation(...)` 显式登记；节键要 `builder.translation(全路径)` **后紧跟** `builder.push(同路径)`（顺序不能反：先 `push` 的话，后设的键会被下一个 `define` 当成值键吃掉，节上反而没有键）；且 `section()` 必须排在所有 `comment()` **之前**（`push` 会把当时悬着的注释当成该节的注释收走）。收在 `ChatMessageSwitches.define` / `.section`。漏登记就表现为界面直接显示原始键名；节缺 `.button` 键则回退平台自带的「编辑 / Edit」。所以每个**有子节**的节都要在两语 lang 里补一条 `ae2_pattern_disk.configuration.<节路径>.button`（只有有子节的节才画按钮，叶子节不需要）；配置屏标题键 `ae2_pattern_disk.configuration.title` 带一个 `%s`（模组显示名）。
 
 **改终端布局**：`assets/ae2/screens/ae2_pattern_disk/*.json` 是唯一布局源，屏幕代码只按它给的位置摆放。能进文档的不止坐标：控件尺寸（`widgets.*` 的 width/height，面板的 `getBounds` 读它）、贴图切片（`images`，管理终端的表头带/六条行带/尾饰带/空槽格都在那里）、文字颜色（`palette`，`style.getColor(PaletteColor.X)`）都归文档。管理终端的行高、表头高、尾饰高与格距是从 `images` 切片的 srcRect 反推的，不再抄写常量——但同一份文档里 `terminalStyle` 的 header/row/bottom 与 `images` 的对应带高必须一致（前者算面板总高，后者反推行数）。控件在代码里必须按 id 注册（`widgets.add`）：文档有键而代码没注册，那块永远不出现；代码注册而文档没键，开屏即抛 `IllegalStateException`。
 
