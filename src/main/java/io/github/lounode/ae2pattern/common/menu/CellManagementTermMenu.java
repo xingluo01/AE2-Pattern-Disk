@@ -41,6 +41,7 @@ import org.jetbrains.annotations.Nullable;
 
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 import io.github.lounode.ae2pattern.config.AEPDCommonConfig;
+import io.github.lounode.ae2pattern.common.menu.slot.StorageCellSlot;
 import io.github.lounode.ae2pattern.common.part.CellManagementTerminalPart;
 import io.github.lounode.ae2pattern.integration.extendedae.VoidCellCompat;
 import io.github.lounode.ae2pattern.integration.megacells.MegaCellsCompat;
@@ -120,8 +121,9 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         registerClientAction(ACTION_CYCLE_VOID_MODE, Boolean.class, this::cycleVoidMode);
         this.encodeCellUpgrades = new EncodeCellUpgrades(host);
 
-        // 元件编码槽：一格，正在被编辑的那个元件。标记区改的就是它的分区。
-        this.addSlot(new AppEngSlot(host.getEncodeCellInventory(), 0), AEPatternRegistries.CELL_ENCODE);
+        // 元件编码槽：一格，正在被编辑的那个元件。标记区改的就是它的分区。只收存储元件与存储矩阵，
+        // 其余物品（木棍、计算元件……）一律挡在槽外，免得界面全亮却点不动。
+        this.addSlot(new StorageCellSlot(host.getEncodeCellInventory(), 0), AEPatternRegistries.CELL_ENCODE);
 
         // 元件升级槽：跟着编码槽里那张元件走，用元件自己的 getUpgrades 实现，终端物品上不登记任何卡种。
         for (int i = 0; i < EncodeCellUpgrades.SIZE; i++) {
@@ -327,9 +329,9 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
     /**
      * 编码槽里那张物品是不是元件工作台元件：不是的话标记格与升级格都不接受操作（同 AE2 元件工作台）。
      *
-     * <p>编码槽本身没有类型限制，木棍也放得进去；这一层判据必须跟服务端 {@code EncodeCellUpgrades}、
-     * {@code EncodeCellPartitions} 一致（它们要的就是 {@link ICellWorkbenchItem}），否则会出现「界面全亮、
-     * 点下去什么也没发生」。</p>
+     * <p>编码槽已经由 {@code StorageCellSlot} 收口到「存储元件 / 存储矩阵」；但存储元件不全是元件工作台
+     * 元件，所以这一层判据仍要跟服务端 {@code EncodeCellUpgrades}、{@code EncodeCellPartitions} 一致
+     * （它们要的就是 {@link ICellWorkbenchItem}），否则会出现「界面全亮、点下去什么也没发生」。</p>
      */
     public boolean hasWorkbenchCell() {
         ItemStack cell = host.getEncodeCellInventory().getStackInSlot(0);

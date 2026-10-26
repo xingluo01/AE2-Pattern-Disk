@@ -42,11 +42,11 @@ A panel that mounts on an ME cable and ties pattern encoding to pattern disks. I
 
 **Encoding modes.** The mode button opens a drop-down list of tiers rather than cycling through them. Crafting, processing, smithing and stonecutting are always listed; the encoding terminal adds advanced encoding (with AdvancedAE installed and its encoder in the upgrade slot), chiseling (with Rechiseled: Applied Energistics) and overloaded encoding (with AE2 Lightning Tech and its overloaded pattern encoder installed). Clicking a tier swaps the recipe grid, the output area and the tools on offer. Processing mode adds output rotation (Shift+click rotates the input order instead; that order only matters to machines that care about the order inputs are pushed in), multiply/divide (click ×2, Shift ×3, Ctrl ×5, Alt ×10 — divide does nothing unless inputs and outputs both divide evenly) and same-item merging. Stonecutting shows twelve candidates at a time over three rows, with a scrollbar when there are more.
 
-**Blank patterns** live in a real slot: one stack of up to 64, refilled from the ME network, and spent before the network when you encode or pull a pattern off a disk — the network is only that slot's source. You can also drop blank patterns in yourself, or take the stack out. Blank patterns handed back (after a write, an upload, or a cleared output) go into this slot first and only overflow to the network once it is full.
+**Blank patterns** live in a real slot: up to 4 of them, refilled from the ME network, and spent before the network when you encode or pull a pattern off a disk — the network is only that slot's source. You can also drop blank patterns in yourself, or take them out. Blank patterns handed back (after a write, an upload, or a cleared output) go into this slot first and only overflow to the network once it is full.
 
 **Disk list.** With nothing in the search bar every disk is listed; while searching, the list is filtered by what you typed — by name (unmarked disks take part like any other), or by mark when prefixed with `#` (unmarked disks have no mark to match). The toggle next to the search bar keeps unmarked disks in regardless of the search. The search bar matches a disk's name, or — prefixed with `#` — its mark. Crafting, smithing and stonecutting mode marks fold onto their category name, so a hand-encoded disk and one written from an imported recipe of the same kind answer the same search; processing has no single category (each machine has its own) and keeps the name "Processing pattern".
 
-**Mouse controls.** Left click writes the currently encoded pattern to the disk; right click with a work block picked up on the cursor overwrites the disk's mark with that work block's recipe type (holding it in your hand does not count); Shift + right click writes the search bar's text as the mark, and an empty search bar clears it; middle click renames the disk after the machine its mark stands for.
+**Mouse controls.** Left click writes the currently encoded pattern to the disk; Shift + right click writes the search bar's text as the mark, and an empty search bar clears it.
 
 **Filter slots.** In processing mode the input and output slots are filters rather than real slots. Right
 click with a stack marks that stack and its count into the slot, replacing whatever the slot held rather
@@ -76,7 +76,7 @@ when EAE+ is present, so an install without it loads neither the interfaces nor 
 
 ### ME Pattern Disk Management Terminal
 
-The other half of the pair. It lists the disks held by every pattern disk provider on the network, grouped by host machine, so you can review and shuffle them without walking to each provider. Disks behave as they do in the encoding terminal: left click takes one onto the cursor, Shift + left click sends it to your inventory, right click selects it as the target the Encode button writes to (with a work block in hand it marks the disk instead), middle click renames it after the machine its mark stands for. A pattern disk on the cursor can be dropped into a provider's free disk slot, and Shift + left clicking one in your inventory sends it to the container of the selected disk. Empty disk slots can be folded into a single cell to keep the list short. The sort controls are the same ones the encoding terminal has, including the additional sort, and there is a search for what is inside the patterns rather than for disk names; with a Just Enough Characters install, Chinese disk names also match by pinyin or initials.
+The other half of the pair. It lists the disks held by every pattern disk provider on the network, grouped by host machine, so you can review and shuffle them without walking to each provider. Disks behave as they do in the encoding terminal: left click takes one onto the cursor, Shift + left click sends it to your inventory, right click selects it as the target the Encode button writes to, and Shift + right click writes the search bar's text as the mark. A pattern disk on the cursor can be dropped into a provider's free disk slot, and Shift + left clicking one in your inventory sends it to the container of the selected disk. Empty disk slots can be folded into a single cell to keep the list short. The sort controls are the same ones the encoding terminal has, including the additional sort, and there is a search for what is inside the patterns rather than for disk names; with a Just Enough Characters install, Chinese disk names also match by pinyin or initials.
 
 ### Efficient Molecular Assembler
 A parallel molecular assembler with **eight independent execution threads**. It accepts crafting jobs pushed by AE2 pattern providers and runs them concurrently. Each thread owns a 3×3 molecular assembler grid, an output slot, and independent progress. Like AE2's own molecular assembler it takes **no channel**; it still draws power from the grid.
@@ -288,16 +288,15 @@ Manual check list with JEI loaded and EMI absent:
 
 1. Open the ME Pattern Disk Encoding Terminal, open a recipe page in JEI and press "+". The pattern must
    be encoded as before.
-2. Right-click a disk in the disk list: its mark becomes that recipe's category, and hovering the disk
-   must show a readable category name (for example "Smoking") instead of the raw id.
-3. Middle-click a disk: it is renamed after the machine of its mark (for example "Smoker").
-4. Type `#` plus that name into the disk search bar: the disk must stay listed.
-5. Shift + right-click a disk and the search bar text still writes/clears marks by hand, with no viewer
+2. Hover a disk in the disk list: a mark written from an imported recipe must show a readable category
+   name (for example "Smoking") instead of the raw id.
+3. Type `#` plus that name into the disk search bar: the disk must stay listed.
+4. Shift + right-click a disk and the search bar text still writes/clears marks by hand, with no viewer
    involved.
-6. With JEI absent the mod must still load and encode; the seven vanilla work blocks are still identified,
-   and a right click with no work block on the cursor and no imported recipe writes no mark (it says so in chat).
+5. With JEI absent the mod must still load and encode; a category mark then falls back to its raw id, and
+   Shift + right-click still writes the search bar's text.
 
-With `-Pemi` the same list applies with EMI loaded and JEI absent; the names in steps 2 and 3 then come
+With `-Pemi` the same list applies with EMI loaded and JEI absent; the names in step 2 then come
 from EMI's recipe categories instead.
 
 ### Development dependency: Neo ECO AE Extension

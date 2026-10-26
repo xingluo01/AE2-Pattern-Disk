@@ -83,8 +83,6 @@ public class PatternDiskJeiPlugin implements IModPlugin {
     public void onRuntimeAvailable(IJeiRuntime jeiRuntime) {
         // 标记的显示名与机器名要按类别 id 反查，运行时对象是唯一入口（见 JeiMarkNames）。
         JeiMarkNames.setRuntime(jeiRuntime);
-        // 换了一个运行时对象就说明配方树重建了（重载资源也会走到这里），机器→类别索引必须跟着重建。
-        MachineRecipeTypes.invalidate();
     }
 
     @Override

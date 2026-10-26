@@ -79,7 +79,11 @@ public class DiskEncodingLogic implements InternalInventoryHost {
     private boolean substitute = false;
     private boolean substituteFluids = true;
     private boolean mergeSameItems = true;
-    private boolean showUnmarkedDisks = false;
+    /**
+     * 打开终端时的初始状态：开。它只决定那个按钮一开始亮不亮，过滤口径没有跟着变——没有搜索条件时本来就
+     * 什么都不剔除，这个开关只在 {@code #} 标记搜索时决定无标记的盘留不留下（见 {@code DiskEntryFilter#keep}）。
+     */
+    private boolean showUnmarkedDisks = true;
     /** 管理终端：隐藏没有内容的样板供应器槽位（屏幕左侧列表的显示开关）。面板与无线共用这一份状态。 */
     private boolean hideEmptySlots = true;
     /** 管理终端：列表里被选中的样板磁盘序列号，0 表示未选中。跟着终端走，关屏重开不丢。 */
@@ -202,8 +206,9 @@ public class DiskEncodingLogic implements InternalInventoryHost {
     public void setMergeSameItems(boolean v) { this.mergeSameItems = v; saveChanges(); }
 
     /**
-     * 「强制列出无标记的样板磁盘」。本身只是客户端的过滤口径，但同样存进宿主 NBT——玩家的诉求是“别每次开
-     * 终端重调”，按终端记住即可。
+     * 「强制列出无标记的样板磁盘」，默认开。它决定的是 {@code #} 标记搜索时无标记的盘留不留下，不是常态
+     * 显示——没有搜索条件时本来就不剔除任何盘。状态存进宿主 NBT：玩家的诉求是“别每次开终端重调”，按终端
+     * 记住即可；所以已存过状态的终端保持玩家上次的选择，不受这个默认值影响。
      */
     public boolean isShowUnmarkedDisks() { return showUnmarkedDisks; }
     public void setShowUnmarkedDisks(boolean v) { this.showUnmarkedDisks = v; saveChanges(); }
@@ -252,10 +257,10 @@ public class DiskEncodingLogic implements InternalInventoryHost {
             this.overloadedMatchModes = data.contains("overloadedMatchModes") ? data.getString("overloadedMatchModes") : "";
             this.substitute = data.getBoolean("substitute");
             this.substituteFluids = data.getBoolean("substituteFluids");
-            // 这两个键是后加的：旧存档里没有。缺键时必须落到各自的默认值（合并默认开、无标记默认不列），
+            // 这两个键是后加的：旧存档里没有。缺键时必须落到各自的默认值（合并与无标记列表都默认开），
             // 不能直接 getBoolean——那会把缺失读成 false，把开关反过来。
             this.mergeSameItems = !data.contains("mergeSameItems") || data.getBoolean("mergeSameItems");
-            this.showUnmarkedDisks = data.contains("showUnmarkedDisks") && data.getBoolean("showUnmarkedDisks");
+            this.showUnmarkedDisks = !data.contains("showUnmarkedDisks") || data.getBoolean("showUnmarkedDisks");
             // 同上：缺键要落到默认值（默认隐藏空槽），不能直接 getBoolean 把开关反过来。
             this.hideEmptySlots = !data.contains("hideEmptySlots") || data.getBoolean("hideEmptySlots");
             this.selectedSerial = data.getLong("selectedSerial");

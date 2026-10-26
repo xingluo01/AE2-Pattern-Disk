@@ -198,7 +198,7 @@ PatternDiskManagementTermMenu  →  PatternDiskEncodingTermMenu  →  MEStorageM
 
 | | 标记（`DISK_PREFIX`） | 类型锁（`PatternDiskContents.type`） |
 |---|---|---|
-| 谁写的 | **玩家**：右键拿工作方块打标 / Shift+右键拿搜索栏文本 / Shift+右键（空搜索栏）清掉 | **写盘路径自动**：第一枚样板入盘时锁死，清空归 null |
+| 谁写的 | **玩家**：Shift+右键拿搜索栏文本 / Shift+右键（空搜索栏）清掉 | **写盘路径自动**：第一枚样板入盘时锁死，清空归 null |
 | 性质 | 玩家的**组织意图**，可改、可空、可与内容无关 | 数据的**客观事实**，玩家改不了 |
 | 管什么 | **该写哪张盘**（分组 / 筛选） | **能不能写进这张盘**（准入） |
 | 实现落点 | 搜索栏 `#` 筛选、`bindPrefix`、`tierTypeOf` | `PatternDiskContents.acceptsType`、`tryInsert` |

@@ -159,7 +159,6 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         }
     }
     private static final String ACTION_BIND_PREFIX = "bindPrefix";
-    private static final String ACTION_RENAME_DISK = "renameDisk";
     private static final String ACTION_UPLOAD_PATTERN = "neoecoae:uploadPattern";
 
     /** Set by NeoECOIntegration when neoecoae is present. Null when absent. */
@@ -471,11 +470,9 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         registerClientAction(ACTION_BIND_PREFIX, Long.class, this::bindPrefix);
         registerClientAction("setPendingRecipeCategory", String.class, this::setPendingRecipeCategory);
         registerClientAction("setPendingAutoDisks", long[].class, this::setPendingAutoDisks);
-        registerClientAction("setPendingDiskName", String.class, this::setPendingDiskName);
         registerClientAction("setPendingMarkText", String.class, this::setPendingMarkText);
         registerClientAction("bindSearchMark", Long.class, this::bindSearchMark);
         registerClientAction("refreshDiskList", this::refreshDiskList);
-        registerClientAction(ACTION_RENAME_DISK, Long.class, this::renameDisk);
         registerClientAction("setMergeSameItems", Boolean.class, this::setMergeSameItems);
         registerClientAction("setShowUnmarkedDisks", Boolean.class, this::setShowUnmarkedDisks);
         registerClientAction(ACTION_UPLOAD_PATTERN, this::uploadPattern);
@@ -1084,17 +1081,12 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
 
 
     /**
-     * Binds the current recipe type to the disk identified by serial, as a mark in the disk's
-     * {@code DISK_PREFIX} component. The disk's own name is left alone: the mark shows up in the disk's
-     * tooltip instead of renaming the item, which used to make every disk of a kind look identical.
-     * Renaming is a separate interaction (see {@link #renameDisk(long)}).
-     */
-    /**
      * 自动写盘成功后顺手把标记绑成当前工作方块——**只在盘上还没有标记时**。
      *
      * <p>这两条（编码后写盘、拿编码槽里现成的样板写盘）是系统替玩家办的事，不该顺手改掉玩家的组织意图，
      * 所以盘上已有的标记一律保留：无论是导入配方留下的 {@code #<类别>}，还是玩家自己写的文本。
-     * 手动右键（{@link #bindPrefix(long)}）是玩家明确要改那张盘的标记，那才覆盖。</p>
+     * 手动打标（{@link #bindPrefix(long)} / {@link #bindSearchMark(long)}）是玩家明确要改那张盘的标记，
+     * 那才覆盖。</p>
      */
     private void bindMarkIfUnmarked(long serial) {
         var ref = diskIndex.refOf(serial);
@@ -1197,9 +1189,8 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
      * 从磁盘编码上传（顺位写盘）时该绑的标记：雕凿档用固定的模式标记——它的样板记的是「把谁雕成谁」，
      * 与导入的类别无关；其它档沿用 {@link #deriveMarkId()}。
      *
-     * <p>这个雕凿分支只在**上传路径**上生效，没有写进 {@code deriveMarkId()}：右键打标是一条独立手势，
-     * 它承诺「以光标上那个工作方块的配方类型覆写」（见 {@code tooltip.disk.right_click}），雕凿档下
-     * 也该照办。</p>
+     * <p>这个雕凿分支只在**上传路径**上生效，没有写进 {@code deriveMarkId()}：标记的常规来源是
+     * 「导入配方」与「Shift+右键的搜索栏文本」两条，它们各按各的口径走，不经过这里。</p>
      *
      * <p>只给雕凿开分支，是因为它的样板语义与常规档不同（记的是「把谁雕成谁」，与导入的配方类别无关）。
      * <b>高级档没有专属标记</b>——它继承进入本档之前那个常规档的，属已记录项（见 {@code docs/TODO.md}）；
@@ -1278,9 +1269,6 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         this.pendingAutoDisks = serials == null ? NO_DISKS : serials;
     }
 
-    /** The name the client wants to give a disk, for {@link #renameDisk(long)}. */
-    private String pendingDiskName;
-
     /** 客户端要打到磁盘上的标记文本（Shift+右键），与 {@link #bindSearchMark(long)} 成对使用。 */
     private String pendingMarkText;
 
@@ -1301,7 +1289,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
             return;
         }
 
-        // 一次操作一个值，理由同 pendingDiskName。
+        // 一次操作一个值：留着会让下一次只发 bindSearchMark、没发 setPendingMarkText 的调用沿用旧文本。
         var text = pendingMarkText;
         pendingMarkText = null;
         // null 表示客户端根本没设过值（误用），空串表示要清标记，两者不能混。
@@ -1333,44 +1321,6 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         } else {
             updated.set(AEPatternRegistries.DISK_PREFIX, mark);
         }
-        writeDiskSlot(inv, ref.slot(), updated);
-    }
-
-    /** Remembers the name the client resolved for the hovered disk, for {@link #renameDisk(long)}. */
-    public void setPendingDiskName(@Nullable String name) {
-        this.pendingDiskName = name;
-    }
-
-    /**
-     * Renames the disk identified by serial to the name the client resolved. It travels as its own action
-     * just ahead of the rename, the same way {@link #bindPrefix(long)} carries the recipe category: the name
-     * comes from the mark's recipe category, which only the client can look up.
-     */
-    public void renameDisk(long serial) {
-        if (isClientSide()) {
-            sendClientAction("setPendingDiskName", pendingDiskName == null ? "" : pendingDiskName);
-            sendClientAction(ACTION_RENAME_DISK, serial);
-            return;
-        }
-
-        // 一次操作一个名字。留着会让下一个只发 rename、没发 setPendingDiskName 的调用沿用旧名。
-        var name = pendingDiskName;
-        pendingDiskName = null;
-        if (name == null || name.isEmpty()) return;
-
-        // 名字来自客户端，所以服务端要自己收紧一遍：改包客户端可以送任意长的串或不含格式字符的串。
-        name = DiskMarkRules.sanitizeName(name);
-        if (name.isEmpty()) return;
-
-        var ref = diskIndex.refOf(serial);
-        if (ref == null) return;
-
-        var inv = ref.host().getDiskInventory();
-        var stack = inv.getStackInSlot(ref.slot());
-        if (stack.isEmpty() || !(stack.getItem() instanceof PatternDiskItem)) return;
-
-        var updated = stack.copy();
-        updated.set(DataComponents.CUSTOM_NAME, Component.literal(name));
         writeDiskSlot(inv, ref.slot(), updated);
     }
 

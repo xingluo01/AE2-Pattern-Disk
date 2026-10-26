@@ -49,7 +49,6 @@ import appeng.menu.SlotSemantics;
 import appeng.parts.encoding.EncodingMode;
 
 import io.github.lounode.ae2pattern.AEPatternRegistries;
-import io.github.lounode.ae2pattern.client.integration.MachineRecipeTypes;
 import io.github.lounode.ae2pattern.client.sort.NaturalSort;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
 import io.github.lounode.ae2pattern.common.menu.DiskMarkRules;
@@ -182,24 +181,11 @@ public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen
     /** 当前磁盘条目列表（含 serial，用于回调映射）。 */
     private final List<DiskEntry> diskEntries = new ArrayList<>();
 
-    /** 等刷新到的上限：超过这么久还没收到新列表就不再改了。 */
-    private static final long RENAME_REFRESH_TIMEOUT_MS = 2000;
-
     /** 已经填过的那次导入（菜单里的导入修订号）：搜索栏只在导入发生时填，见 updateBeforeRender。 */
     private int seenImportRevision;
 
     /** 无标记磁盘的显示开关；每帧回写状态，否则点下去图标不会变。状态本体在菜单字段（服务端从宿主 logic 回读）。 */
     private StatesToggleButton showUnmarkedButton;
-
-    /** 中键待改名的磁盘。serial 从 Long.MIN_VALUE 起自增、恒为负，所以不能拿它当“无待办”的哨兵。 */
-    private boolean pendingRename;
-    private long pendingRenameSerial;
-
-    /** 中键时看到的列表修订号：只有收到更新的那一份才开始改名，否则读到的还是旧标记。 */
-    private long pendingRenameRevision;
-
-    /** 等刷新的截止时刻。超了这次中键就作罢；用时间而非帧数，免得帧率越高容忍越短。 */
-    private long pendingRenameDeadline;
 
     public PatternDiskEncodingTermScreen(PatternDiskEncodingTermMenu menu, Inventory playerInventory, Component title,
             ScreenStyle style) {
@@ -279,11 +265,10 @@ public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen
             widgets.add("diskList", this.diskListPanel);
         }
 
-        // 磁盘列表点击回调
+        // 磁盘列表点击回调：左键写盘、Shift+右键用搜索栏内容打标。右键与中键不再挂交互——
+        // 「手持工作方块覆写标记」与「按标记重命名」已按需求删除（见 issue #4 第 3 条）。
         this.diskListPanel.setOnClick(this::onDiskClick);
-        this.diskListPanel.setOnRightClick(this::onDiskRightClick);
-        this.diskListPanel.setOnShiftRightClick(this::onDiskShiftRightClick);
-        this.diskListPanel.setOnMiddleClick(this::onDiskMiddleClick);
+        this.diskListPanel.setOnRightClick(this::overwriteMarkFromSearch);
 
         // 迷你搜索栏（磁盘列表内独立组件，与终端顶部主搜索栏分开）
         this.miniSearchField = widgets.addTextField("miniSearch");
@@ -773,17 +758,6 @@ public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen
             autoDisks = tierGroupByUsage();
         }
         menu.setClientAutoDisks(autoDisks);
-
-        // 中键的结算：要等到刷新回来的那一份列表，否则读到的还是旧标记。等不到就作罢，而不是拿旧标记
-        // 改名——那样只会把上一次的机器名写上去。
-        if (pendingRename) {
-            if (menu.getDiskListRevision() != pendingRenameRevision) {
-                pendingRename = false;
-                renameDiskBySerial(pendingRenameSerial);
-            } else if (Util.getMillis() > pendingRenameDeadline) {
-                pendingRename = false;
-            }
-        }
     }
 
     /**
@@ -892,23 +866,6 @@ public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen
         return capCandidates(serials);
     }
 
-    /** Renames the disk {@code serial} after the machine its mark stands for. */
-    private void renameDiskBySerial(long serial) {
-        // 从菜单的完整列表里找，而不是已经过搜索过滤的 diskEntries：改名不该受搜索框影响。
-        for (var entry : menu.getDiskList()) {
-            if (entry.serial() != serial) {
-                continue;
-            }
-            var mark = entry.stack().get(AEPatternRegistries.DISK_PREFIX.get());
-            var name = PatternDiskMarks.machineName(mark);
-            if (name != null && !name.isEmpty()) {
-                menu.setPendingDiskName(name);
-                menu.renameDisk(serial);
-            }
-            return;
-        }
-    }
-
     // ---- 磁盘列表交互 --------------------------------------------------------
 
     /** 子类（管理终端）用：把「磁盘序列号」映射到本屏幕列表里的下标，好复用下面的点击交互。 */
@@ -965,105 +922,12 @@ public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen
     }
 
     /**
-     * 右键：用当前配方类型覆写该磁盘的标记（覆盖旧的，不动磁盘名）。
+     * 用搜索栏里写的那个标记覆写这张盘的标记。它不依赖“当前导入的配方类型”，所以玩家可以先搜出某类
+     * 磁盘，再把同一个标记标到别的盘上。搜索栏为空时反过来清掉这张盘的标记。
      *
-     * <p>「当前配方类型」优先看**鼠标上拿着**的那个工作方块：拿起工作方块右键，写的就是它所属的类别，任何
-     * 时机都成立——不取决于有没有导入过配方，也不取决于中间切没切过模式（这两件事都会把导入时记下的类别
-     * 清掉）。光标上那件认不出类别时退回刚导入的配方类别；两样都没有就干脆不写——写下去只会是模式标记，而
-     * 清空/改写标记是 Shift+右键的活。写没写成由服务端在聊天栏回执（见 Menu#bindPrefix）。</p>
+     * <p>手势：编码终端的磁盘列表右键；管理终端磁盘格 Shift+右键。</p>
      */
-    protected void onDiskRightClick(int index) {
-        var entry = getDiskEntryAt(index);
-        if (entry == null) {
-            return;
-        }
-        applyHeldMachineMark();
-        menu.bindPrefix(entry.serial());
-        // 写没写成由服务端在聊天栏里回执（与上传链路同一路），客户端不抢着报结果，也不必再管搜索栏：
-        // 填充只认「导入配方」一个入口。
-    }
-
-    private static final Logger LOGGER = LoggerFactory.getLogger("ae2_pattern_disk.mark");
-
-    /**
-     * 把标记的类别换成鼠标上拿着的工作方块所属的那一个；认不出就不动标记（玩家侧的回执由服务端发，见
-     * {@code Menu#bindPrefix}）。
-     *
-     * <p>「持有」只认**光标上拿着的那一件**，主手/副手不参与：在终端里整理磁盘时，工作方块正是这么被拿起来的，
-     * 而手边顺带放着的东西不该决定这张盘的标记。</p>
-     *
-     * <p>「认不出来」这件事必须记下来：否则玩家只看到这次右键没写入，会以为是功能坏了，而实际上是拿着的方块
-     * 不在配方查看器的机器表里（EMI：类别图标或工作站；JEI：催化剂）。</p>
-     */
-    private void applyHeldMachineMark() {
-        var player = Minecraft.getInstance().player;
-        if (player == null) {
-            return;
-        }
-        // 「持有」只认鼠标上拿着的那一件：终端里整理磁盘时，工作方块正是这么被拿起来的。主手/副手不参与——
-        // 它们往往只是顺带放着的东西，拿它们去决定这张盘的标记只会让人莫名其妙。
-        var held = menu.getCarried();
-        String category = null;
-        try {
-            var imported = menu.getPendingRecipeCategory();
-            category = MachineRecipeTypes.forHeldMachine(held, imported);
-        } catch (Throwable failed) {
-            // 配方查看器还没就绪、或者它换了 API，都不该让右键失效：退回原有行为即可。
-            LOGGER.warn("Work-block mark lookup failed for {}", held, failed);
-        }
-        if (category != null) {
-            // 提到 info：一次右键一行，而排查「识别成功却没写出标记」时正是靠它与服务端的
-            // "Binding mark ..." 成对出现——只有客户端有日志的话，就没法区分「没识别」与「没送达」。
-            LOGGER.info("Mark taken from work block on the cursor {}: {}", held, category);
-            menu.setPendingRecipeCategory(category);
-            return;
-        }
-        if (!held.isEmpty()) {
-            // 认不出来时把反查链路的现场一起说出来：只有「认不出」一句的话，看的人只能猜是光标上那件不对、
-            // 查看器没就绪、还是索引里根本没有它。诊断本身会遍历建表，可能被第三方查看器数据噎住，所以
-            // 夹住它——诊断失败不该让右键也跟着失败。
-            String scene;
-            try {
-                scene = MachineRecipeTypes.diagnose(held);
-            } catch (Throwable failed) {
-                scene = "诊断本身失败（不影响标记回退）：" + failed;
-                LOGGER.warn("Work-block diagnose failed for {}", held, failed);
-            }
-            LOGGER.info("Held {} is no recipe category's work block; there is no work-block category to bind. {}",
-                    held, scene);
-            // 玩家侧不再由客户端发话：写没写成、为什么没写成，统一由服务端在聊天栏里回执。
-        } else {
-            // 光标上什么都没有：没什么可识别。写不写由服务端定（见 Menu#bindPrefix），顺便记下当时选中的
-            // 快捷栏格号，省得下次还要猜玩家周围到底放了什么。
-            LOGGER.info("Nothing on the cursor; no work-block category to take (selected hotbar slot={})",
-                    player.getInventory().selected);
-        }
-    }
-
-    /**
-     * 光标上那一件是不是某个配方类别的工作方块。
-     *
-     * <p>管理终端用它决定右键是「打标」还是「选中」：打标需要手里拿着工作方块，
-     * 空手（或拿着别的）才把右键让给选中。</p>
-     */
-    protected boolean isHoldingWorkBlock() {
-        var held = menu.getCarried();
-        if (held.isEmpty()) {
-            return false;
-        }
-        try {
-            return MachineRecipeTypes.forHeldMachine(held, menu.getPendingRecipeCategory()) != null;
-        } catch (Throwable failed) {
-            // 配方查看器还没就绪时按「不是工作方块」处理：右键退回选中，而不是打一个写不出去的标记。
-            return false;
-        }
-    }
-
-    /**
-     * Shift+右键：把搜索栏里写的那个标记打到这张盘上。它不依赖“当前导入的配方类型”，所以玩家可以先搜出
-     * 某类磁盘，再把同一个标记标到别的盘上。搜索栏为空时反过来清掉这张盘的标记。
-     */
-    protected void onDiskShiftRightClick(int index) {
+    protected void overwriteMarkFromSearch(int index) {
         var entry = getDiskEntryAt(index);
         if (entry == null) {
             return;
@@ -1073,23 +937,6 @@ public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen
         var search = DiskEntryFilter.stripModifiers(diskListPanel.getSearchText());
         menu.setPendingMarkText(search);
         menu.bindSearchMark(entry.serial());
-    }
-
-    /**
-     * 中键：把磁盘重命名为其标记所属机器的名称。标记可能刚被右键覆写过而客户端还没收到，所以先要一次
-     * 权威列表，等它回来后用磁盘上真正的标记算名字（见 {@link #renameDiskBySerial(long)}）。
-     */
-    protected void onDiskMiddleClick(int index) {
-        var entry = getDiskEntryAt(index);
-        if (entry == null) {
-            return;
-        }
-        // 先写三个字段再把标志立起来：标志一为真就代表它们是一套完整值。
-        pendingRenameSerial = entry.serial();
-        pendingRenameRevision = menu.getDiskListRevision();
-        pendingRenameDeadline = Util.getMillis() + RENAME_REFRESH_TIMEOUT_MS;
-        pendingRename = true;
-        menu.refreshDiskList();
     }
 
     @Nullable

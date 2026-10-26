@@ -1018,12 +1018,8 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
                     "gui.ae2_pattern_disk.cell_management_terminal.drive_tooltip.cell_count",
                     filledSlotsOf(group, entry.leaderKey())));
         }
-        if (entry.leaderKey().equals(selectedLeaderKey)) {
-            lines.add(hint("gui.ae2_pattern_disk.cell_management_terminal.drive_tooltip.selected"));
-        }
-        if (isPinned(entry.leaderKey())) {
-            lines.add(hint("gui.ae2_pattern_disk.cell_management_terminal.drive_tooltip.pinned"));
-        }
+        // 选中与钉住的状态不另写一行：行上的高亮、世界里的方框与连线已经把它们说清楚了，tooltip 再复述
+        // 一遍只是噪音。手势行下面照旧。
         lines.add(hint("gui.ae2_pattern_disk.cell_management_terminal.drive_tooltip.left"));
         lines.add(hint("gui.ae2_pattern_disk.cell_management_terminal.drive_tooltip.right"));
         lines.add(hint("gui.ae2_pattern_disk.cell_management_terminal.drive_tooltip.mid"));
@@ -1047,15 +1043,15 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
     }
 
     /**
-     * 元件格的提示：物品自己的提示照旧在前（含 AE2 给存储元件加的自定义组件），本格的四种手势接在后。
+     * 元件格的提示：物品自己的提示在前（含 AE2 给存储元件加的自定义组件），后面只补一条不是常识的手势。
+     *
+     * <p>取到光标、放进这一格、Shift 收背包都不写：容器里最基础的操作，玩家不需要有人告诉他左键是拿、
+     * Shift 是整组搬。只有「右键会移到选中的驱动器，没有选中时进编码槽」这条不是常识，才值得占一行。</p>
      *
      * <p>用 {@code getTooltipFromItem} 取物品提示而不是自己拼名字：元件的信息比一个名字多得多。</p>
      */
     private List<Component> cellTooltip(ItemStack stack) {
         var lines = new ArrayList<Component>(Screen.getTooltipFromItem(Minecraft.getInstance(), stack));
-        lines.add(hint("gui.ae2_pattern_disk.cell_management_terminal.cell_tooltip.take"));
-        lines.add(hint("gui.ae2_pattern_disk.cell_management_terminal.cell_tooltip.put"));
-        lines.add(hint("gui.ae2_pattern_disk.cell_management_terminal.cell_tooltip.quick_move"));
         lines.add(hint("gui.ae2_pattern_disk.cell_management_terminal.cell_tooltip.to_encode"));
         return lines;
     }

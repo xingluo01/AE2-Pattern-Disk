@@ -836,16 +836,11 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
             } else if (btn == 0) {
                 getMenu().extractDisk(disk.serial(), PatternDiskEncodingTermMenu.ExtractTarget.CURSOR);
             } else if (btn == 1 && hasShiftDown()) {
-                onDiskShiftRightClick(index);
-            } else if (btn == 1 && isHoldingWorkBlock()) {
-                // 手里拿着工作方块右键仍是既有的「以该方块打标」；空手或拿着别的东西才轮到选中。
-                onDiskRightClick(index);
+                overwriteMarkFromSearch(index);
             } else if (btn == 1) {
                 this.selectedSerial = this.selectedSerial == disk.serial() ? 0 : disk.serial();
         getMenu().sendViewStateToServer(this.hideEmptySlots, this.selectedSerial, this.searchScope,
                 naturalSortEnabled(), getMenu().shownProviders());
-            } else if (btn == 2) {
-                onDiskMiddleClick(index);
             }
             return true;
         }
@@ -923,14 +918,9 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
         int rowIndex = rowIndexAt(x, y);
         if (rowIndex >= 0) {
             var row = rows.get(rowIndex);
-            // 空磁盘槽格：两条存入手势写在这里（这格本来什么都不做，提示与手势一一对应）。
+            // 空磁盘槽格不画提示：左键把光标上的盘放进去、Shift+左键把背包里的盘存进选中盘所在的容器，都是
+            // 容器里最基础的取放，不需要额外注释。这一格仍要吃掉 hover，免得落到下面按物品名取提示的分支。
             if (row instanceof FreeSlotsRow) {
-                guiGraphics.renderComponentTooltip(font, List.of(
-                        Component.translatable("gui.ae2_pattern_disk.management_terminal.tooltip.free_slot.click")
-                                .withStyle(ChatFormatting.WHITE),
-                        Component.translatable("gui.ae2_pattern_disk.management_terminal.tooltip.free_slot.inventory")
-                                .withStyle(ChatFormatting.GRAY)),
-                        x, y);
                 return;
             }
             // 磁盘格（首行第 0 格）：给与编码终端磁盘列表同一套信息（容量、标记、手势），而不是只报物品名。
@@ -948,9 +938,11 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     }
 
     /**
-     * 磁盘格的信息：名字、已用/容量、标记（原版高级信息下多一行原始 id），以及这一格上的四种手势。
+     * 磁盘格的信息：名字、已用/容量、标记（原版高级信息下多一行原始 id），以及这一格上不靠常识就能猜到的
+     * 那几条手势。
      *
      * <p>与编码终端磁盘列表用同一套用词与语言键（它们说的是同一张盘），只把手势换成管理终端自己的。
+     * 左键取盘、Shift+左键进背包不列：那是所有容器都一样的取放，列出来只是噪音。</p>
      */
     private void renderDiskTooltip(GuiGraphics guiGraphics, DiskRow row, int x, int y) {
         var stack = row.disk();
@@ -974,16 +966,12 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
             }
         }
 
-        lines.add(Component.translatable("gui.ae2_pattern_disk.management_terminal.tooltip.disk.click")
-                .withStyle(ChatFormatting.GRAY));
-        lines.add(Component.translatable("gui.ae2_pattern_disk.management_terminal.tooltip.disk.shift_click")
-                .withStyle(ChatFormatting.GRAY));
+        // 左键取盘、Shift+左键进背包不写：容器里最基础的取放，不需要额外注释。
         lines.add(Component.translatable("gui.ae2_pattern_disk.management_terminal.tooltip.disk.right_click")
                 .withStyle(ChatFormatting.GRAY));
-        // Shift+右键 这条直接复用编码终端磁盘列表那句话：两个终端上它是同一件事（拿搜索框里的内容打标）。
-        lines.add(Component.translatable("ae2_pattern_disk.tooltip.disk.shift_right_click")
-                .withStyle(ChatFormatting.GRAY));
-        lines.add(Component.translatable("gui.ae2_pattern_disk.management_terminal.tooltip.disk.middle_click")
+        // Shift+右键 打标：管理终端这里确实是 Shift+右键，编码终端却是普通右键，所以用自己这条 key。
+        // 别再复用编码终端那条——两终端手势不同，共用一条文案必有一条是错的。
+        lines.add(Component.translatable("gui.ae2_pattern_disk.management_terminal.tooltip.disk.shift_right_click")
                 .withStyle(ChatFormatting.GRAY));
 
         guiGraphics.renderComponentTooltip(font, lines, x, y);

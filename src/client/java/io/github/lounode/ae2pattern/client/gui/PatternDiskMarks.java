@@ -108,50 +108,6 @@ public final class PatternDiskMarks {
         }
     }
 
-    /**
-     * The name to give a disk carrying {@code mark} when renaming it after its machine ("烟熏炉"). Marks
-     * that stand for an encoding mode, and categories whose machine is unknown, fall back to the mark's own
-     * readable name - the disk still ends up with a meaningful name rather than none. Without a recipe
-     * viewer a category mark has no readable name at all, so what comes back is the identifier itself.
-     */
-    @Nullable
-    public static String machineName(@Nullable String mark) {
-        var label = displayName(mark);
-        if (label == null || mark == null) {
-            return null;
-        }
-        if (mark.startsWith(ID_PREFIX) && !mark.startsWith(MODE_PREFIX)) {
-            var machine = categoryMachineName(mark.substring(ID_PREFIX.length()));
-            if (machine != null && !machine.isEmpty()) {
-                return machine;
-            }
-        }
-        return label.getString();
-    }
-
-    /** 装了哪个配方查看器就问哪个；两个都没有（或都没这台机器）时返回 null。 */
-    @Nullable
-    private static String categoryMachineName(String id) {
-        if (ModList.get().isLoaded("emi")) {
-            try {
-                var machine = EmiMarkNames.machineName(id);
-                if (machine != null) {
-                    return machine;
-                }
-            } catch (Throwable ignored) {
-                // Fall through to the readable name.
-            }
-        }
-        if (ModList.get().isLoaded("jei")) {
-            try {
-                return JeiMarkNames.machineName(id);
-            } catch (Throwable ignored) {
-                // Fall through to the readable name.
-            }
-        }
-        return null;
-    }
-
     /** 配方查看器都是可选的，所以它们的类型各自留在自己的分支里（见 {@link EmiMarkNames}、{@link JeiMarkNames}）。 */
     @Nullable
     private static Component findCategoryName(String id) {

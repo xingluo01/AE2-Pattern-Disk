@@ -5,7 +5,6 @@ import java.util.function.Consumer;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
@@ -84,8 +83,6 @@ public class DiskListPanel implements ICompositeWidget {
 
     private Consumer<Integer> onClick;
     private Consumer<Integer> onRightClick;
-    private Consumer<Integer> onShiftRightClick;
-    private Consumer<Integer> onMiddleClick;
 
     public void setOnClick(Consumer<Integer> callback) {
         this.onClick = callback;
@@ -93,14 +90,6 @@ public class DiskListPanel implements ICompositeWidget {
 
     public void setOnRightClick(Consumer<Integer> callback) {
         this.onRightClick = callback;
-    }
-
-    public void setOnShiftRightClick(Consumer<Integer> callback) {
-        this.onShiftRightClick = callback;
-    }
-
-    public void setOnMiddleClick(Consumer<Integer> callback) {
-        this.onMiddleClick = callback;
     }
 
     // ---- 布局常量 ------------------------------------------------------------
@@ -290,10 +279,6 @@ public class DiskListPanel implements ICompositeWidget {
                         .withStyle(ChatFormatting.GRAY));
                 lines.add(Component.translatable("ae2_pattern_disk.tooltip.disk.shift_right_click")
                         .withStyle(ChatFormatting.GRAY));
-                lines.add(Component.translatable("ae2_pattern_disk.tooltip.disk.right_click")
-                        .withStyle(ChatFormatting.GRAY));
-                lines.add(Component.translatable("ae2_pattern_disk.tooltip.disk.middle_click")
-                        .withStyle(ChatFormatting.GRAY));
                 guiGraphics.renderComponentTooltip(Minecraft.getInstance().font,
                         lines, mouse.getX() + bounds.getX(), mouse.getY() + bounds.getY());
             }
@@ -317,14 +302,14 @@ public class DiskListPanel implements ICompositeWidget {
                 if (onClick != null) onClick.accept(globalIdx);
                 return true;
             } else if (button == 1) {
-                // 右键：用当前配方类型覆写该磁盘的标记；按住 Shift 则用搜索栏里写的那条标记，搜索栏为空
-                // 时反过来清掉标记。
-                var callback = Screen.hasShiftDown() ? onShiftRightClick : onRightClick;
-                if (callback != null) callback.accept(globalIdx);
+                // 右键：用搜索栏里写的那条标记覆写该盘标记，搜索栏为空时反过来清掉标记。
+                // 不要求按 Shift——「手持工作方块覆写标记」已按需求删除，右键的空档正好留给它。
+                if (onRightClick != null) {
+                    onRightClick.accept(globalIdx);
+                }
                 return true;
             } else if (button == 2) {
-                // 中键
-                if (onMiddleClick != null) onMiddleClick.accept(globalIdx);
+                // 中键不挂交互——「按标记重命名」已按需求删除。仍然吃掉这一下，别漏给底下的控件。
                 return true;
             }
         }
