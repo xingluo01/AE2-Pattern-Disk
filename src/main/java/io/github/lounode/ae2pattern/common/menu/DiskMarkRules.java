@@ -70,7 +70,7 @@ public final class DiskMarkRules {
     }
 
     /**
-     * 反查：这个磁盘标记属于哪一类样板；不是档位标记（玩家 Shift+右键写的任意文本）返回 null。
+     * 反查：这个磁盘标记属于哪一类样板；不是档位标记（玩家手动打标写的任意文本：编码终端右键、管理终端 Shift+右键）返回 null。
      *
      * <p><b>标记与样板类型是同一件事的两种写法</b>，互转规则收在这里：{@code #mode:<模式>} 与
      * {@code #<配方类别>} 都归一到该档位编出的样板类型 id（见 {@link #patternTypeForMode}），

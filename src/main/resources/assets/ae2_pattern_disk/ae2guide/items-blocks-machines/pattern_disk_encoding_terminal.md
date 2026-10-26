@@ -34,7 +34,7 @@ The lower part of the interface lists the network's pattern disks, every one of 
 The search bar filters in two ways:
 
 - **Plain text**: matches the disk's name (with JECH installed, Chinese names also match by pinyin and initials).
-- **Text starting with `#`**: matches the disk's mark. A mark records which machine or recipe category a disk belongs to, and is written from the disk list by Shift + right click with that text in the search bar. Crafting, smithing and stonecutting marks fold onto their category name, so a hand-encoded disk and one written from an imported recipe of the same kind answer the same search; processing has no single category, so a hand-encoded processing disk keeps the name "Processing pattern".
+- **Text starting with `#`**: matches the disk's mark. A mark records which machine or recipe category a disk belongs to, and is written from the disk list by right click (Shift + right click in the management terminal) with that text in the search bar. Crafting, smithing and stonecutting marks fold onto their category name, so a hand-encoded disk and one written from an imported recipe of the same kind answer the same search; processing has no single category, so a hand-encoded processing disk keeps the name "Processing pattern".
 
 The toggle beside the search bar decides whether unmarked disks appear: off filters by the typed text, so a `#` search leaves unmarked disks out; on keeps them listed regardless of the search.
 

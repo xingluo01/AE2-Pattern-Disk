@@ -96,8 +96,8 @@ import io.github.lounode.ae2pattern.network.DiskListPayload;
  * <p>Core encoding workflow mirrors AE2's {@code PatternEncodingTermMenu}: a mode-adaptive encoding
  * grid (crafting 3x3 / processing in-out / smithing / stonecutting), blank + encoded pattern slots,
  * and encode/clear client actions. On top of that, this terminal exposes the network pattern disk
- * list: click a disk to write the currently encoded pattern into it, shift-right-click to bind the
- * pattern's prefix to the disk (renaming it), middle-click to rename, and a mini search bar.</p>
+ * list: click a disk to write the currently encoded pattern into it, right-click to bind the mini
+ * search box text as that disk's mark ({@link #bindSearchMark(long)}), and a mini search bar.</p>
  */
 public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu implements IPatternEncodingHost {
 
@@ -1169,7 +1169,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
      * <p>{@code #mode:} 那一支在绑盘链路上通常出不来：{@link #bindPrefix(long)} 会先判掉空的类别。例外是
      * 编码上传路径（{@link #uploadMark()}）——雕凿不在 {@link EncodingMode} 里、也没有配方类别，它带着
      * 一个固定标记进 {@link #bindPrefix(long, String)}，绕过了那个判断。要刻意给磁盘打模式标记
-     * 还可以走 Shift+右键（{@link #bindSearchMark(long)}，它把搜索栏文本原样存下）。</p>
+     * 还可以走右键打标（管理终端为 Shift+右键；{@link #bindSearchMark(long)}，它把搜索栏文本原样存下）。</p>
      *
      * <p>两套写法看起来是两种标记，但显示与搜索会把模式标记归一成对应的类别（见
      * {@link DiskMarkRules#categoryForMode}），所以玩家看到的、搜到的名字是一致的。</p>
@@ -1190,7 +1190,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
      * 与导入的类别无关；其它档沿用 {@link #deriveMarkId()}。
      *
      * <p>这个雕凿分支只在**上传路径**上生效，没有写进 {@code deriveMarkId()}：标记的常规来源是
-     * 「导入配方」与「Shift+右键的搜索栏文本」两条，它们各按各的口径走，不经过这里。</p>
+     * 「导入配方」与「右键打标的搜索栏文本」两条，它们各按各的口径走，不经过这里。</p>
      *
      * <p>只给雕凿开分支，是因为它的样板语义与常规档不同（记的是「把谁雕成谁」，与导入的配方类别无关）。
      * <b>高级档没有专属标记</b>——它继承进入本档之前那个常规档的，属已记录项（见 {@code docs/TODO.md}）；
@@ -1269,7 +1269,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         this.pendingAutoDisks = serials == null ? NO_DISKS : serials;
     }
 
-    /** 客户端要打到磁盘上的标记文本（Shift+右键），与 {@link #bindSearchMark(long)} 成对使用。 */
+    /** 客户端要打到磁盘上的标记文本（右键打标，管理终端为 Shift+右键），与 {@link #bindSearchMark(long)} 成对使用。 */
     private String pendingMarkText;
 
     /** Remembers the mark text the client resolved, for {@link #bindSearchMark(long)}. */
@@ -1278,7 +1278,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
     }
 
     /**
-     * 把搜索栏里写的标记打到磁盘上（Shift+右键）；文本为空则清掉这张盘的标记。文本带不带 # 前缀
+     * 把搜索栏里写的标记打到磁盘上（右键打标，管理终端为 Shift+右键）；文本为空则清掉这张盘的标记。文本带不带 # 前缀
      * 都行，统一按标记存。与 {@link #bindPrefix(long)} 不同，这条标记不来自导入的配方，而是玩家自己
      * 写/搜出来的，所以它能把任意一类标记标到任意一张盘上。
      */
@@ -1312,7 +1312,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         var stack = inv.getStackInSlot(ref.slot());
         if (stack.isEmpty() || !(stack.getItem() instanceof PatternDiskItem)) return;
 
-        // 没什么可清的就别写：对无标记的盘重复 Shift+右键会白白重发一次列表。
+        // 没什么可清的就别写：对无标记的盘重复打标会白白重发一次列表。
         if (mark == null && stack.get(AEPatternRegistries.DISK_PREFIX.get()) == null) return;
 
         var updated = stack.copy();

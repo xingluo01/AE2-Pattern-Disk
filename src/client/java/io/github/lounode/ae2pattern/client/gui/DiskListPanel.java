@@ -16,7 +16,8 @@ import appeng.client.gui.ICompositeWidget;
 import appeng.client.gui.style.Blitter;
 
 /**
- * 磁盘列表面板：从 ME 网络存储中显示样板磁盘列表，支持 3 槽滚动、左键写入样板、右键覆写标记、中键按机器名重命名。
+ * 磁盘列表面板：从 ME 网络存储中显示样板磁盘列表，支持 3 槽滚动、左键写入样板、右键用迷你搜索栏内容覆写标记。
+ * 中键不挂交互（「按标记重命名」已按需求删除，见 issue #4 第 3 条）。
  * <p>
  * GUI 位置：(8,86) 24×66，对应 pattern_modes.png 磁盘覆盖层 (0,144) 24×66。
  */

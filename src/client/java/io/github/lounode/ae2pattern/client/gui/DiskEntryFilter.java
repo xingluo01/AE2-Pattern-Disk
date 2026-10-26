@@ -74,7 +74,7 @@ public final class DiskEntryFilter {
     /**
      * 剥掉末尾的修饰词后剩下的搜索原文。
      *
-     * <p>打标组合技也要用它（Shift+右键把搜索栏文本写进磁盘标记）：修饰词是写入策略，
+     * <p>打标组合技也要用它（右键把搜索栏文本写进磁盘标记，管理终端为 Shift+右键）：修饰词是写入策略，
      * 不该被写进标记里。</p>
      */
     public static String stripModifiers(@Nullable String raw) {

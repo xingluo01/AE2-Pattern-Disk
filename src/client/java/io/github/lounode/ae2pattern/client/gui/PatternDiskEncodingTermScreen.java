@@ -265,7 +265,7 @@ public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen
             widgets.add("diskList", this.diskListPanel);
         }
 
-        // 磁盘列表点击回调：左键写盘、Shift+右键用搜索栏内容打标。右键与中键不再挂交互——
+        // 磁盘列表点击回调：左键写盘；右键用迷你搜索栏的文本覆写该盘标记；中键不挂交互。
         // 「手持工作方块覆写标记」与「按标记重命名」已按需求删除（见 issue #4 第 3 条）。
         this.diskListPanel.setOnClick(this::onDiskClick);
         this.diskListPanel.setOnRightClick(this::overwriteMarkFromSearch);
@@ -772,7 +772,7 @@ public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen
      *
      * <p><b>为什么锚点是样板类型而不是标记字面量</b>：标记是类型的一种写法（{@code #minecraft:crafting}
      * 或 {@code #mode:crafting} 都是「合成类」），两者在 {@code DiskMarkRules} 里已经可互转。拿标记字面量
-     * 当锚点会掉进两个坑：玩家 Shift+右键写的任意文本没有对应类型（得判无效），而高级/过载档没有专属标记
+     * 当锚点会掉进两个坑：玩家右键打标写的任意文本没有对应类型（得判无效），而高级/过载档没有专属标记
      * （于是锁了这两类类型、却没打过标记的盘就被排除——写盘侧它们盖的只是继承来的常规档标记）。以类型为锚点，
      * 两边都自然对上。</p>
      *

@@ -198,7 +198,7 @@ PatternDiskManagementTermMenu  →  PatternDiskEncodingTermMenu  →  MEStorageM
 
 | | 标记（`DISK_PREFIX`） | 类型锁（`PatternDiskContents.type`） |
 |---|---|---|
-| 谁写的 | **玩家**：Shift+右键拿搜索栏文本 / Shift+右键（空搜索栏）清掉 | **写盘路径自动**：第一枚样板入盘时锁死，清空归 null |
+| 谁写的 | **玩家**：右键拿搜索栏文本 / 右键（空搜索栏）清掉（管理终端为 Shift+右键） | **写盘路径自动**：第一枚样板入盘时锁死，清空归 null |
 | 性质 | 玩家的**组织意图**，可改、可空、可与内容无关 | 数据的**客观事实**，玩家改不了 |
 | 管什么 | **该写哪张盘**（分组 / 筛选） | **能不能写进这张盘**（准入） |
 | 实现落点 | 搜索栏 `#` 筛选、`bindPrefix`、`tierTypeOf` | `PatternDiskContents.acceptsType`、`tryInsert` |
@@ -271,7 +271,7 @@ private    String  tierTypeOf(DiskEntry)            // 标记反查优先，没�
   基类算出的值对它无效。`tierGroupByUsage` 在基类，两侧共用；改口径时请确认两条路都走到。
 - **搜索栏只筛盘、不再选策略**：`DiskEntryFilter.Query.preferOrder` 是写入策略，`isActive()` 不看它。
   导入配方（JEI/EMI 点「+」）会把搜索栏自动填上 `#<配方类别>`，这不是副作用，而是**组合技的起手**——
-  紧接着 Shift+右键一张盘，就用搜索栏里的文本给它打标（{@code onDiskShiftRightClick} → {@code bindSearchMark}），
+  紧接着右键一张盘（管理终端为 Shift+右键），就用搜索栏里的文本给它打标（{@code overwriteMarkFromSearch} → {@code bindSearchMark}），
   一步把新拿到的、还没标记的盘归到刚导入的那个类别下。
   **不要**把「自动填搜索栏」当成缺陷去拆：拆了组合技就断了。填空之后写盘依旧按剩余空间挑
   （筛出哪几张 → 在这几张里挑还剩得多的），两个行为互不干涉。
@@ -280,7 +280,7 @@ private    String  tierTypeOf(DiskEntry)            // 标记反查优先，没�
   筛出空盘也没用：空盘不属于任何一组，想写它就直接点它。
 - 〔已知缺口〕**雕凿的配方类别文本不是一个被认得的标记**：雕凿自己写的是 `#mode:chiseling`（识），
   但 Rechiseled 在 JEI 里的类别 id 是 `rechiseled:chiseling`——它会被导入自动填进搜索栏，玩家若此时
-  Shift+右键拿它打标，存的标记反查不出类型（四常规档的类别里没这一条）。补它得把上游那个类别 id 写进这里
+  右键拿它打标，存的标记反查不出类型（四常规档的类别里没这一条）。补它得把上游那个类别 id 写进这里
   （可选模组的耦合），而后果只在一小段路径上（搜索栏清空后、且那张盘只带这个标记），所以暂不补。
 
 ### 给某个档补一个专属标记

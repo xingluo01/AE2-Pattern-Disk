@@ -56,7 +56,7 @@ The table below shows every combination of type and capacity: rows are pattern t
 
 A mark records which machine or recipe category a disk belongs to. It shows up in the disk list of the [ME Pattern Disk Encoding Terminal](pattern_disk_encoding_terminal.md): hovering a disk adds a "Mark: ..." line, and with F3+H another line with the raw mark ID. Writing a mark never changes the disk's name.
 
-Marks are written from that disk list: **Shift + right click** records the search bar's text as the mark, and an empty search bar clears it. This does not depend on the imported recipe, so the same mark can be put on any disk.
+Marks are written from that disk list: **right click** (Shift + right click in the management terminal) records the search bar's text as the mark, and an empty search bar clears it. This does not depend on the imported recipe, so the same mark can be put on any disk.
 
 The encoding terminal folds crafting, smithing and stonecutting marks onto their category name, so a hand-encoded stonecutting disk and one written from an imported stonecutting recipe show the same name and answer the same search. Processing has no single category, so a hand-encoded processing disk keeps the name "Processing pattern".
 
