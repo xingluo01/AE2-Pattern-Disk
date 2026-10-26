@@ -9,18 +9,12 @@
 
 ## 一、未开始
 
-### H. `AEItemKey.hasComponents()` 语义与命名相反 — P3 ⬜（待报上游）
-- 现象：AE2 19.2.17 里实现为 `return stack.getComponents().isEmpty();`——组件为空时返回 `true`，与名字相反。
-- 消费点：`AECraftingPattern.getTestResult` 用它决定是否走「按物品」的替换缓存（键为 `what.getItem()`）⇒ 带组件的输入反而可能命中按物品的缓存。
-- 待办：整理最小复现（带组件输入 + 可替换配方）后报 AE2 上游。
-- 约束：本模组**不要**用这个方法判组件，需要时直接用 `!stack.getComponents().isEmpty()`。
-
 ### N. 上游 API 接入的剩余项 — P3 ⬜
 - 背景：已接入 ECO `21.2.6` 的 `api.storage.IECOStoragePriorityHost` 与青春版 `1.3.6` 的 `setCellStack`，本模组侧走「接口优先、反射兜底」（`integration/neoecoae/NeoECOStoragePriority.java`）。
 - ⬜ `ICellHost` 的类型化适配：上游已把 `ICellHost` 提到 `api.storage`，可新增 `integration/neoecoae/NeoECOCellHosts.java` 做编译期类型化，让 `CellDriveScanner` 只调中立 SPI、不再按名字探；`setCellStack(null)` / `EMPTY` / `removeCell()` 三路试探可收敛成一次文档化调用。
   - **硬约束**：SPI 的实现注册必须在「ECO 在场」的类里（`NeoECOIntegration`）。`CellDriveScanner` 是无条件加载的 common 代码，它若直接 `instanceof` 上游接口，缺 ECO 时会 `NoClassDefFoundError`。
   - 青春版只能走 SPI（纯运行时可选，连 compileOnly 都没有）。
-- ⬜ 提取原因：本模组已有自己的 `ExtractResult`（4 值 `OK` / `EMPTY` / `LOCKED` / `REFUSED`，后两者出声、`EMPTY` 静默）；剩下的是「改用上游枚举给出更细的原因」。
+- ⬜ 提取原因：本模组已有自己的 `ExtractResult`（4 值 `OK` / `EMPTY` / `LOCKED` / `REFUSED`，后两者出声、`EMPTY` 静默）；剩下的是「改用上游枚举给出更细的原因」（上游侧条件已由 ECO #119 满足，见 `UPSTREAM_API_REQUESTS.md` 的提交记录）。
 - 维护：`UPSTREAM_API_REQUESTS.md` 的提交记录表随进展更新（UTC 时间戳）。
 
 ## 二、暂缓

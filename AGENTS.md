@@ -22,7 +22,7 @@ AE2（应用能源 2）的附属模组 `ae2_pattern_disk`：样板磁盘、磁�
 | `docs/RELEASE.md` | 打 tag 发版前：流程、变量与密钥、CF 双 API、Action 版本、已踩过的坑 |
 | `CHANGELOG_UNRELEASED.md` | **待发改动写这里**：未发布的累计调整，发版时整段并入 `CHANGELOG.md` |
 | `CHANGELOG.md` | 已发布内容的留档（版本段会被 CI 取为发布文案）；**改格式前先读 `docs/CHANGELOG_STYLE.md`** |
-| `docs/UPSTREAM_API_REQUESTS.md` | 要向上游（NEO ECO / ECO Prototype）提请求或跟进时 |
+| `docs/UPSTREAM_API_REQUESTS.md` | 要向上游（AE2 本体 / NEO ECO / ECO Prototype / EAE+）提请求或跟进时 |
 | `README.md` | 玩法自述（英文，商店页与 GitHub 首页） |
 | `docs/PLATFORM.md` · `docs/PLATFORM_MCMOD.md` | 对外平台说明（英文 / MCMOD 中文） |
 

@@ -1,8 +1,8 @@
-# 上游 API 请求（ECO / ECO Prototype / ExtendedAE Plus）
+# 上游 API 请求（AE2 本体 / ECO / ECO Prototype / ExtendedAE Plus）
 
-> 状态：前两份与第四份**已提交**（前两份本地 2026-10-09 02:55 / UTC `2026-10-08T18:55Z`，第四份 UTC `2026-10-25T10:10Z`，均已实现或待处理，见文末「提交记录」）；第三份是 2026-10 发现的兜底缺陷，**尚未提交**。下面四份草稿保留原文，便于日后追进或修订时对照。
+> 状态：前两份与第四份**已提交**（前两份本地 2026-10-09 02:55 / UTC `2026-10-08T18:55Z`，第四份 UTC `2026-10-25T10:10Z`，均已实现或待处理，见文末「提交记录」）；第三份是 2026-10 发现的兜底缺陷，**尚未提交**；第五份（AE2 本体）是 2026-10-26 读源码时的发现，**仅记录、尚未提交**。下面五份草稿保留原文，便于日后追进或修订时对照。
 > 提出方：AE2 Pattern Disks（`ae2_pattern_disk`，作者 `xingluo01`）。
-> 用例：前两份是**元件管理终端**——把网络里所有能装存储元件的东西列成一张表，并支持取出/放入元件、调整存储优先级；第三份是**样板磁盘供应器的样板上传**；第四份是**批处理装配室的极大数合成**——单次交接量被 int 容量契约封在 21.4 亿份，而 FastPath 的 long 容量面没有注册表可用。
+> 用例：前两份是**元件管理终端**——把网络里所有能装存储元件的东西列成一张表，并支持取出/放入元件、调整存储优先级；第三份是**样板磁盘供应器的样板上传**；第四份是**批处理装配室的极大数合成**——单次交接量被 int 容量契约封在 21.4 亿份，而 FastPath 的 long 容量面没有注册表可用；第五份是**AE2 本体的语义缺陷**——`hasComponents()` 的返回值与名字相反，会污染按物品的替换判定缓存。
 
 ## 为什么会有这些请求
 
@@ -277,9 +277,53 @@
 
 ---
 
+## 草稿 5 → `AppliedEnergistics/Applied-Energistics-2`（尚未提交）
+
+**标题**
+
+```text
+hasComponents() 的返回值与名字相反，会污染按物品的替换判定缓存
+```
+
+**正文**
+
+````text
+## 现象
+
+`AEKey#hasComponents()` 的 javadoc 是「true if this key has *any* components attached」，但两个实现都写反了：
+
+- `AEItemKey.java:232`：`return stack.getComponents().isEmpty();`
+- `AEFluidKey.java:162`：同上
+
+于是「没有组件」的 key 返回 true，「带组件」的返回 false。
+
+## 影响
+
+`AECraftingPattern.getTestResult` / `setTestResult`（`AECraftingPattern.java:306-326`）与 `AEStonecuttingPattern.java:206-219`
+用它决定「能不能按 what.getItem() 缓存这个输入的合法性」：
+
+- 本意：只有无组件的纯物品才能共享按 Item 的缓存（不同组件变体的合法性可能不同）。
+- 实际：无组件输入被判「有组件」——永远不缓存，每次实测配方；
+  带组件输入被判「无组件」——结果按 getItem() 写进缓存，另一个组件变体查询时直接命中它。
+
+后果：同一物品的不同组件变体之间会串用判定结果（错判），而最该命中缓存的纯物品反而拿不到缓存。
+
+## 复现
+
+1. 一个 `canSubstitute` 的配方，某个槽位接受物品 A；
+2. 用 A 的两个不同组件变体 A1 / A2（如不同附魔程度），其中一个对该槽位合法、另一个不合法；
+3. 先判合法那个、再判不合法那个，看第二次是否直接复用第一次的结果（缓存键只有 `Items.A`，不含组件）。
+
+如果你们认为缓存本来就该按 Item 共享（即 javadoc 才是写错的），那也只需把注释改成「返回 true 表示没有组件」——两个入口至少得对齐一处。
+
+## 取证方式
+
+以上行号读自本地克隆 `D:/Temp/Applied-Energistics-2` 的 `1.21.1` 分支 @ `db17504`（该克隆没有 `main`）；javadoc 与实现的分歧以该提交为准。
+````
+
 ## 取证清单
 
-前三份的签名来自实际 jar 的 `javap`；第四份读的是上游 `main` 分支源码（本地克隆 `D:/Temp/NeoECOAEExtension`，`api/me/provider` 的七个文件与 21.2.10 逐个比对一致；未联网核对 blob sha）。两类的区别在表内分别标出。
+前三份的签名来自实际 jar 的 `javap`；第四份读的是上游 `main` 分支源码（本地克隆 `D:/Temp/NeoECOAEExtension`，`api/me/provider` 的七个文件与 21.2.10 逐个比对一致；未联网核对 blob sha）；第五份读的是 AE2 本地克隆（`D:/Temp/Applied-Energistics-2`，`1.21.1` @ `db17504`）。三类来源的区别在表内分别标出。
 
 | 事实 | 来源 |
 |---|---|
@@ -294,11 +338,13 @@
 | 上游**没有**现成的等价 API（已逐项找过） | ① ECO 全仓 `IPriorityHost` 0 命中；`command/` 无 priority；`api/`（含 `api/storage/`、`api/integration/`）无 `Priority` / `CellHost` 类型。② 唯一能写优先级的是 `private void setStoragePriority(Player,int)`，且只被自家 LDLib 的 `StorageHostActionUI.Config` lambda 驱动。③ 青春版无 `setCellStack` |
 | ECO 仓库地址取自其 `mods.toml` 的 `issueTrackerURL`；青春版 `mods.toml` **未**声明 tracker，仓库为 `reliqwq/NeoECOPrototype` | 两个 jar 的 `META-INF/neoforge.mods.toml` + GitHub 检索 |
 | 上游 `21.2.1` **确实**编译期依赖本模组的 `PatternDiskApi`（与 `NeoECOIntegration` 的 javadoc 一致） | 该 jar 里有 `cn/dancingsnow/neoecoae/integration/ae2pattern/`（`AepdPatternDiskBackend` 等）；`mods.toml` 把 `ae2_pattern_disk` 列为可选依赖 |
-| `ECOFastPathFacade.supports` 只认 `instanceof` + 两个硬编码桥，无注册表 | `ECOFastPathFacade.java:37-41`（`main`）；`resolveProvider` 在 `:44-48`；`prepareAllocated` 在 `:103-105` 也硬测该接口；`ECOBatchCapacityProvider.java` 是它的 `@Deprecated` 旧名 |
 | `ECOParallelCraftingProviders.Adapter` 的返回类型被写死为 `ECOParallelCraftingProvider` | `ECOParallelCraftingProviders.java:43-49`（`main`） |
+| `ECOFastPathFacade.supports` 只认 `instanceof` + 两个硬编码桥，无注册表 | `ECOFastPathFacade.java:37-41`（`main`）；`resolveProvider` 在 `:44-48`；`prepareAllocated` 在 `:103-105` 也硬测该接口；`ECOBatchCapacityProvider.java` 是它的 `@Deprecated` 旧名 |
 | FastPath 容量是 `long`，ordinary 容量是 `int`，且非正容量在构造器就抛 | `ECOFastPathDispatchProvider.java:43` / `:54-57`；`ECOParallelCraftingProvider.java:10`（`main`） |
 | `ECOVerifiedFastPathRecipe.trusted` 是包私有，第三方无法构造 `ECOStatefulBatchCalculator` | `crafting/execution/fastpath/ECOVerifiedFastPathRecipe.java:54`（`main`） |
 | `ECOJobAwareCraftingProvider` 在 21.2.10 才有，本地克隆（`ecba648`）里没有 | 上游 `api/me/provider` 目录页 vs 本地目录列举 |
+| **AE2**：`hasComponents()` 的 javadoc 说「true if this key has *any* components attached」，实现却是 `stack.getComponents().isEmpty()` | `AEKey.java:351-354`（javadoc 与抽象声明）、`AEItemKey.java:232`、`AEFluidKey.java:162`（本地克隆 `D:/Temp/Applied-Energistics-2`，`1.21.1` @ `db17504`） |
+| **AE2**：该方法的两个消费点就是 `getTestResult` / `setTestResult`，缓存键只取 `what.getItem()`（不含组件） | `AECraftingPattern.java:306-326`、`AEStonecuttingPattern.java:206-219`（同上） |
 
 ## 提交记录
 
@@ -307,6 +353,7 @@
 | `DancingSnow0517/NeoECOAEExtension` | [#119](https://github.com/DancingSnow0517/NeoECOAEExtension/issues/119) | 2026-10-08T18:55Z（本地 10-09 02:55） | **已实现并已关闭**：ECO **21.2.6**（2026-10-16 发布）含 `api.storage.IECOStoragePriorityHost` 与提到 `api.storage` 的 `ICellHost`；维护者 Yang120231 于 2026-10-09 回「已添加」并标记 completed |
 | `reliqwq/NeoECOPrototype` | [#5](https://github.com/reliqwq/NeoECOPrototype/issues/5) | 2026-10-08T18:55Z（本地 10-09 02:55） | **已实现**（issue 仍 OPEN）：青春版 **1.3.6**（2026-10-16 发布）的 `SimplifyDriveBlockEntity` 已 `implements util.ICellHost` 并补 `setCellStack`；作者 reliqwq 于 2026-10-09 回「随下一个版本发出」 |
 | `DancingSnow0517/NeoECOAEExtension` | [#134](https://github.com/DancingSnow0517/NeoECOAEExtension/issues/134) | 2026-10-25T10:10Z（本地 10-25 18:10） | **待处理**：请 FastPath 补一个与 `ECOParallelCraftingProviders` 同形的 provider 注册面，让第三方能在不硬依赖 ECO 的前提下拿到 `long` 容量。未实现前本模组的批处理装配室停在 ordinary 并行路径 |
+| `AppliedEnergistics/Applied-Energistics-2` | — | — | **尚未提交**：`hasComponents()` 返回值与名字相反，会污染按物品的替换判定缓存（草稿 5）。待整理最小复现后再提 |
 
 提交账号：`xingluo01`。正文用中文（两个仓库既有 issue 以中文为主，见上方取证清单）。
 
