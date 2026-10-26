@@ -23,7 +23,7 @@ logs/
 *.bak
 
 # Local development dependency jars.
-# libs/ holds the dev jars build.gradle reaches for (AECS, ModDevMCP, EAE+). Each one is a build
+# libs/ holds the dev jars build.gradle reaches for (AECS). Each one is a build
 # artifact of its own repository, copied in by hand; the comments beside each dependency say which.
 libs/*.jar
 

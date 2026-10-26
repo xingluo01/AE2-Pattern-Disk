@@ -15,7 +15,6 @@ name: Release
 #             CURSEFORGE_TOKEN       https://www.curseforge.com/account/api-tokens 生成
 #   Variables MODRINTH_PROJECT_ID    Modrinth 项目 id 或 slug
 #             CURSEFORGE_PROJECT_ID  CurseForge 数字项目 id（不是 slug）
-#             MODDEVMCP_JAR_URL     libs/moddevmcp-0.3.jar 的下载地址（唯一的本地专属依赖，见下方说明）
 #
 # 两个平台都要求项目先存在：Modrinth 项目要已创建；CurseForge 项目必须人工在站点创建（自动化只能传文件，
 # 建不了项目），且首个文件要过人工审核才对玩家可见。
@@ -57,30 +56,6 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
         with:
           cache-provider: basic
-
-      # NEO ECO 已不需要这一步：build.gradle 直接用 CurseForge 发布件
-      # （curse.maven:neo-eco-ae-extension-1460639:9317271，21.2.10）——那个发布版已带本模组所需的接口。
-      # ExtendedAE Plus 也不再需要：2026-10-26 起改用 CurseForge 发布件
-      # （curse.maven:extendedae-plus-1337639:8998231，1.6.3），它同时带终端兼容层接口与 JEI 19.56 的修复。
-      # 只剩 ModDevMCP 0.3 一个无公共 maven 的本地件：未发布到任何公共 maven，由变量 MODDEVMCP_JAR_URL
-      # 提供，对应 build.gradle 里的 compileOnly files('libs/moddevmcp-0.3.jar')（那份 0.3 jar 只上编译
-      # 类路径，开发运行期的工具来自 dev.vfyjxf:moddevmcp，src 里不引用它）。它托管在 release `deps-v1`
-      # （tag 不以 v 开头，不会触发本 workflow）。版本号变化时这里的文件名要跟 build.gradle 一起改。
-      - name: Fetch local-only dependency jars
-        env:
-          MCP_JAR_URL: ${{ vars.MODDEVMCP_JAR_URL }}
-        run: |
-          set -euo pipefail
-          if [ -z "${MCP_JAR_URL}" ]; then
-            echo "::error title=缺少仓库变量::MODDEVMCP_JAR_URL 未设置，compileClasspath 上的 moddevmcp 无法解析，构建必然失败。"
-            exit 1
-          fi
-          mkdir -p libs
-          curl -fL --retry 3 --retry-delay 5 -o libs/moddevmcp-0.3.jar "$MCP_JAR_URL"
-          # 校验下载内容：Gradle 对 files() 里不存在的文件是静默跳过，靠这里把“下错文件”挡在构建前。
-          # 若日后替换 deps-v1 上的同名 jar，必须同步更新下面这条哈希。
-          echo "ce22ff7266a8462e1ae7062d17df1fdbdd06bdf29e5501c2f6d6ded6daf33789  libs/moddevmcp-0.3.jar" | sha256sum -c -
-          ls -l libs
 
       # gradle.properties 里的 org.gradle.java.home=C:/Java/jdk-21 与 jvmargs 里的 Windows-ROOT 信任库
       # 都只在 Windows 本地成立（Linux runner 上没有 Windows-ROOT 这种 keystore 类型）。前者用
