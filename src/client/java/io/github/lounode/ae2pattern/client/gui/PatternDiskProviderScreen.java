@@ -25,6 +25,7 @@ import appeng.client.gui.widgets.AETextField;
 import appeng.client.gui.widgets.ServerSettingToggleButton;
 import appeng.client.gui.widgets.SettingToggleButton;
 import appeng.client.gui.widgets.ToggleButton;
+import appeng.client.gui.widgets.ToolboxPanel;
 import appeng.client.gui.widgets.UpgradesPanel;
 import appeng.core.localization.GuiText;
 import appeng.core.network.ServerboundPacket;
@@ -119,6 +120,11 @@ public class PatternDiskProviderScreen extends AEBaseScreen<PatternDiskProviderM
             ScreenStyle style, boolean selfAssembling) {
         super(menu, playerInventory, title, style);
         this.selfAssembling = selfAssembling;
+
+        // 网络工具面板：玩家背包里带着网络工具时才出现，位置由样式文档的 toolbox 控件给出。
+        if (menu.getToolbox().isPresent()) {
+            this.widgets.add("toolbox", new ToolboxPanel(style, menu.getToolbox().getName()));
+        }
 
         this.blockingModeButton = new StatesIconButton(() -> switch (this.menu.getBlockingMode()) {
             case DEFAULT -> Icon.BLOCKING_MODE_NO.getBlitter();

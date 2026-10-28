@@ -479,13 +479,11 @@ dependencies {
     // Bigger AE2 21.2.3：满足 ECO 的 bigger_ae2 [21.2.3,)；必需前置只有 ae2 [19.0.26,)，本环境已满足。
     localRuntime 'maven.modrinth:tHmKhHkk:RjWjkDsE'
 
-    // 整理模组（Inventory Profiles Next + 它的库 libIPN）：开发环境装上用于验证「整理」不会把终端里
-    // 非玩家槽（升级槽、样板输出槽）的物品移到光标。两个都是 mod，都只能进开发环境。
-    localRuntime 'curse.maven:inventory-profiles-next-495267:7810574'
-    localRuntime 'curse.maven:libipn-679177:7810552'
-    // 四个终端屏上打了 @IPNPlayerSideOnly（整理模组给模组作者留的官方注解），编译需要它的注解类；运行时
-    // 由上面那条 localRuntime 提供。用得到的只有客户端的屏，所以走 clientCompileOnly。compileOnly 不进
-    // 产物，没装整理模组时这些注解只是类文件里的元数据，没人读也就没有影响。
+    // 整理模组（Inventory Profiles Next）：开发环境不再加载，它的库 libIPN 一并去掉。终端槽不被整理的行为
+    // 由 @IPNPlayerSideOnly 与 InventoryProfilesIntegration 的反射登记共同保证；要验证得在装了 IPN 的整合包里做。
+    // 四个终端屏上打了 @IPNPlayerSideOnly（整理模组给模组作者留的官方注解），编译仍需要它的注解类；用得到的
+    // 只有客户端的屏，所以走 clientCompileOnly。compileOnly 不进产物，没装整理模组时这些注解只是类文件里的
+    // 元数据，没人读也就没有影响。
     clientCompileOnly 'curse.maven:inventory-profiles-next-495267:7810574'
     // Neo ECO AE Extension: separates crafting/storage/computation into multiblock structures whose
     // computation cluster supplies a huge crafting-dispatch budget (thousands of parallel ops) through

@@ -16,8 +16,8 @@
   },
   "slots": {
     "TOOLBOX": {
-      "bottom": 24,
-      "right": -66,
+      "bottom": 60,
+      "right": 1,
       "grid": "BREAK_AFTER_3COLS"
     },
     "ae2_pattern_disk:transfer_input": {
@@ -45,15 +45,12 @@
         "top": 6
       }
     }
-  },
+  }
+,
   "widgets": {
-    "upgrades": {
-      "right": -76,
-      "top": 0
-    },
     "toolbox": {
-      "right": -69,
-      "bottom": 30,
+      "right": 2,
+      "bottom": 66,
       "width": 59,
       "height": 66
     }

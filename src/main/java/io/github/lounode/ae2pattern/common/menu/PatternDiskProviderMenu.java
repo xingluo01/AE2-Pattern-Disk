@@ -16,7 +16,8 @@ import appeng.api.upgrades.IUpgradeInventory;
 import appeng.helpers.externalstorage.GenericStackInv;
 import appeng.helpers.patternprovider.PatternProviderReturnInventory;
 import appeng.menu.AEBaseMenu;
-import appeng.menu.SlotSemantics;
+import appeng.menu.SlotSemantics;
+import appeng.menu.ToolboxMenu;
 import appeng.menu.guisync.GuiSync;
 import appeng.menu.implementations.MenuTypeBuilder;
 import appeng.menu.slot.AppEngSlot;
@@ -48,7 +49,8 @@ public class PatternDiskProviderMenu extends AEBaseMenu {
             .buildUnregistered(
                     net.minecraft.resources.ResourceLocation.parse("ae2_pattern_disk:pattern_disk_provider"));
 
-    private final PatternDiskProviderHost host;
+    private final PatternDiskProviderHost host;
+    private final ToolboxMenu toolboxMenu;
 
     @GuiSync(3)
     public ProviderBlockingMode blockingMode = ProviderBlockingMode.DEFAULT;
@@ -79,6 +81,7 @@ public class PatternDiskProviderMenu extends AEBaseMenu {
                                       Inventory playerInv, PatternDiskProviderHost host) {
         super(menuType, id, playerInv, host);
         this.host = host;
+        this.toolboxMenu = new ToolboxMenu(this);
 
         var logic = host.getLogic();
 
@@ -107,6 +110,10 @@ public class PatternDiskProviderMenu extends AEBaseMenu {
         registerClientAction("cycleProviderExtraction", this::cycleProviderExtraction);
     }
 
+    public ToolboxMenu getToolbox() {
+        return toolboxMenu;
+    }
+
     private void cycleProviderBlocking() {
         providerLogic().cycleBlockingMode();
     }
@@ -152,6 +159,7 @@ public class PatternDiskProviderMenu extends AEBaseMenu {
             var logic = host.getLogic();
             blockingsModeFromLogic(logic);
         }
+        toolboxMenu.tick();
         super.broadcastChanges();
     }
 

@@ -3,15 +3,5 @@
   "includes": [
     "pattern_disk_encoding_terminal.json",
     "../wtlib/universal_terminal.json"
-  ],
-  "widgets": {
-    "scrollingUpgrades": {
-      "right": -76,
-      "top": 0
-    },
-    "upgradeScrollbar": {
-      "right": -95,
-      "top": 6
-    }
-  }
+  ]
 }

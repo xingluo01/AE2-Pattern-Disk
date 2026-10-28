@@ -14,16 +14,16 @@
    "textureHeight": 512
   },
   "tableFooter": {
-   "$comment": "尾饰带 96 高：贴图的非透明内容画到 y=220 为止，那最后一行是面板底部的外框线（切到 95 会把整条底框裁掉）。高度与下面 terminalStyle 的 bottom 必须同值，面板总高才是 221 = 表头 17 + 6 行×18 + 尾饰 96。",
+   "$comment": "尾饰带 98 高：贴图的非透明内容画到 y=222 为止，那最后一行是面板底部的外框线（切到 97 会把整条底框裁掉）。高度与下面 terminalStyle 的 bottom 必须同值，面板总高才是 223 = 表头 17 + 6 行×18 + 尾饰 98。",
    "texture": "ae2_pattern_disk:textures/guis/pattern_disk_management_terminal.png",
-   "srcRect": [0, 125, 340, 96],
+   "srcRect": [0, 125, 340, 98],
    "textureWidth": 512,
    "textureHeight": 512
   },
   "blankCell": {
    "$comment": "空槽格（18×18 槽框）：它的宽同时是表格的格距，代码的列命中测试用它算。",
    "texture": "ae2_pattern_disk:textures/guis/pattern_disk_management_terminal.png",
-   "srcRect": [304, 144, 18, 18],
+   "srcRect": [304, 146, 18, 18],
    "textureWidth": 512,
    "textureHeight": 512
   },
@@ -118,28 +118,28 @@
     0,
     125,
     340,
-    96
+    98
    ],
    "textureWidth": 512,
    "textureHeight": 512
   }
  },
  "background": {
-  "$comment": "整图的声明尺寸：贴图实际画到 (338, 220)，故高 221（与 terminalStyle 那条链算出的面板总高同值）。",
+  "$comment": "整图的声明尺寸：贴图实际画到 (338, 222)，故高 223（与 terminalStyle 那条链算出的面板总高同值）。",
   "texture": "ae2_pattern_disk:textures/guis/pattern_disk_management_terminal.png",
   "srcRect": [
    0,
    0,
    340,
-   221
+   223
   ],
   "textureWidth": 512,
   "textureHeight": 512
  },
  "slots": {
   "TOOLBOX": {
-    "bottom": 84,
-    "right": -66,
+    "bottom": 83,
+    "right": 9,
     "grid": "BREAK_AFTER_3COLS"
   },
   "CRAFTING_GRID": {
@@ -297,15 +297,11 @@
  },
  "widgets": {
   "toolbox": {
-    "right": -69,
-    "bottom": 90,
+    "right": 10,
+    "bottom": 89,
     "width": 59,
     "height": 66
-  },
-  "upgrades": {
-    "right": -76,
-    "top": 0
-  },
+  },
   "uploadColumn": {"left": 0, "top": 0, "width": 0, "height": 0},
   "modePanel0": {
    "left": 175,

@@ -2,7 +2,8 @@
   "$schema": "../schema.json",
   "includes": [
     "../common/common.json",
-    "../common/player_inventory.json"
+    "../common/player_inventory.json",
+    "../common/toolbox.json"
   ],
   "background": {
     "texture": "ae2_pattern_disk:textures/guis/pattern_provider.png",
@@ -14,6 +15,11 @@
     ]
   },
   "slots": {
+    "TOOLBOX": {
+      "bottom": 60,
+      "right": 1,
+      "grid": "BREAK_AFTER_3COLS"
+    },
     "ae2_pattern_disk:provider_disk": {
       "left": 8,
       "top": 45,
@@ -46,6 +52,12 @@
     }
   },
   "widgets": {
+    "toolbox": {
+      "right": 2,
+      "bottom": 66,
+      "width": 59,
+      "height": 66
+    },
     "openPriority": {
       "left": 152,
       "top": -5,
