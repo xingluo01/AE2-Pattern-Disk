@@ -39,6 +39,21 @@ The marker area edits the partitions of **the cell in the encode slot** - take a
 up here, put it back. Drag items in from JEI or EMI, or move through the partitions with the marker
 scrollbar.
 
+## ECO bulk cells
+
+With an ECO bulk cell in the encode slot, three buttons join the toolbar. They stay hidden for any other
+cell, for a bulk cell without compression markers, and on older NEO ECO builds.
+
+- **Compression cutoff** draws the marker itself: left click steps one tier down the chain, right click
+  one tier up, wrapping at either end, and the new tier is written back to that marker slot. A chain
+  with a single tier ignores both clicks.
+- **Switch selection** moves the selection between markers: left click goes to the previous one, right
+  click to the next, wrapping around.
+- **Consolidate** merges duplicate markers across every bulk cell on the network. A chain that a matrix
+  actually holds stays on that matrix; a chain with no stock anywhere moves to the cell in the encode
+  slot while it has room, and one that does not fit falls back to the first matrix that listed it. Chat
+  reports how many duplicates were removed.
+
 ## Cell upgrades
 
 The six upgrade slots belong to that same cell: the cards go with the cell, not with the terminal.

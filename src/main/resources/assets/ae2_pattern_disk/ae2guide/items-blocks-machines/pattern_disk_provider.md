@@ -45,7 +45,7 @@ Storing a pattern on a disk returns the blank pattern it freed to the ME network
 
 ## Blocking and dispatch boost
 
-The left toolbar carries two provider-specific buttons.
+The left toolbar carries three provider-specific buttons.
 
 **Blocking mode** cycles through three states:
 
@@ -53,9 +53,22 @@ The left toolbar carries two provider-specific buttons.
 - **Blocking** - AE2's blocking mode: do not push crafting ingredients if the target inventory contains a pattern input.
 - **Smart blocking** - do not push crafting ingredients if the target inventory contains anything other than this pattern's inputs. A target made up only of this pattern's inputs, or an empty one, stays usable.
 
-**Dispatch boost** has two states, standard dispatch and smart boost. In smart boost the block form holds the copies the crafting CPU hands over during the same tick and merges them into a single delivery once the CPU has stopped handing over. The field to the left of the button caps the copies per batch; `0` means unlimited. Targets that only accept the usual single-pattern push are unaffected: the copies fall back to one delivery each. The panel form accumulates the same way; its flush is driven by a server level tick.
+**Dispatch boost** has two states:
 
-Both states take over the provider's own dispatch path, which means the **crafting lock is not re-armed** while either of them is on (the lock is merely cleared) - AE2 only re-arms it inside its private push handler.
+- **Standard dispatch**: use AE2's standard dispatch.
+- **Smart boost**: hold the copies the crafting CPU hands over during the same tick and merge them into a
+  single delivery once the CPU has stopped handing over.
+
+The field to the left of the button caps the copies per batch; `0` means unlimited. With no cap, do not
+leave the sender handing over for long: the copies pile up in the machine (up to 512 are saved with the
+block, the rest live in memory only), so a large order is better off with a number in that field. Targets that only accept the usual
+single-pattern push are unaffected: the copies fall back to one delivery each.
+
+Two known boundaries:
+
+- The panel form accumulates the same way; its flush is driven by a server level tick.
+- With either state on, dispatch takes over the provider's own path, so the **crafting lock is not
+  re-armed** while it is on (the lock is merely cleared) - AE2 only re-arms it inside its private push handler.
 
 **Output extraction** cycles through three states:
 

@@ -2,16 +2,16 @@
 
 给接手这套代码的人：这页讲**代码怎么组织、东西放在哪、改哪里**。
 
-玩法说明在 `../README.md`（英文，商店页与 GitHub 首页用），平台差异在 `PLATFORM.md`（MCMOD 版在 `PLATFORM_MCMOD.md`），未完成与已知欠账在 `TODO.md`，待发改动在 `../CHANGELOG_UNRELEASED.md`、已发布留档在 `../CHANGELOG.md`，发版流程与踩坑在 `RELEASE.md`，本地依赖怎么凑齐在 `LOCAL_DEPS.md`。本手册不重复它们。
+玩法说明在 `PLATFORM.md`（英文，商店页用；MCMOD 版在 `PLATFORM_MCMOD.md`），API 用法在 `../README.md`，未完成与已知欠账在 `TODO.md`，待发改动在 `../CHANGELOG_UNRELEASED.md`、已发布留档在 `../CHANGELOG.md`，发版流程与踩坑在 `RELEASE.md`，本地依赖怎么凑齐在 `LOCAL_DEPS.md`。本手册不重复它们。
 
-（本目录 `docs/` 只放文档：本手册、平台说明两份、待办、上游 API 请求、发版手册 `RELEASE.md`、编码模式注册规范 `ENCODING_MODES.md`，以及两份**本机本地**信息——`LOCAL_DEPS.md`（路径索引）与 `LOCAL_CLONES.md`（上游镜像基线），后两份已列入 `.gitignore`，不随仓库分发。仓库根只留 `README.md`、`CHANGELOG.md`、`CHANGELOG_UNRELEASED.md` 这三个按惯例必须在根的文件，外加给 AI 代理的入口 `AGENTS.md`。）
+（本目录 `docs/` 只放文档：本手册、平台说明两份、待办、上游 API 请求、发版手册 `RELEASE.md`、编码模式注册规范 `ENCODING_MODES.md`、资产授权清单 `ASSET_LICENSES.md`，以及两份**本机本地**信息——`LOCAL_DEPS.md`（路径索引）与 `LOCAL_CLONES.md`（上游镜像基线），后两份已列入 `.gitignore`，不随仓库分发。仓库根只留 `README.md`、`CHANGELOG.md`、`CHANGELOG_UNRELEASED.md` 这三个按惯例必须在根的文件，外加给 AI 代理的入口 `AGENTS.md`。）
 
 版本基线：NeoForge 21.1.241 / MC 1.21.1 / AE2 19.2.18 / Java 21。取数口径是 `gradle/libs.versions.toml` 的 `ae2`（`build.gradle` 走 `libs.ae2`）；`gradle.properties` 里的 `ae2_version` 是未使用的历史键，不要把它当真相。
 
 三条工程约束：
 
 - **只用 AE2 公共 API**：不反射内部类当 API，也不 mixin AE2 核心。现存唯一例外是客户端混入 `KeySortersMixin`（`@Mixin(targets = "appeng.client.gui.me.common.KeySorters")`，把终端「按 mod」排序的组内顺序换成数值序，`require = 0` + `required: false`，AE2 改签名时只是静默失效；见 §7）。新增例外必须有明确理由，并记进 `UPSTREAM_API_REQUESTS.md`（属上游行为时）或该例外旁的代码注释。
-- **美术资源归本项目**：机器资源统一放 `assets/ae2_pattern_disk/textures/`，不直接引用 `ae2:` 纹理。借用的复制件清单与授权分档见 `README.md` 的授权表；零件/物品显示模型仍继承 `ae2:item/display_base`、`ae2:part/display_off`、`ae2:item/cable_interface`，这算模型继承而不是贴图借用。
+- **美术资源归本项目**：机器资源统一放 `assets/ae2_pattern_disk/textures/`，不直接引用 `ae2:` 纹理。借用的复制件清单与授权分档见 `docs/ASSET_LICENSES.md`；零件/物品显示模型仍继承 `ae2:item/display_base`、`ae2:part/display_off`、`ae2:item/cable_interface`，这算模型继承而不是贴图借用。
 
 ---
 
@@ -44,7 +44,7 @@
 | `common/part` | 6 | 线缆面板形态的部件（含面板基类） |
 | `common/pattern` | 5 | 磁盘内容的数据结构、库存适配、容量档、内容版本快照 |
 | `common/item` | 2 | 磁盘物品与升级卡包装 |
-| `common/recipe` | 1 | 洗掉磁盘标记的合成 `ClearDiskMarkRecipe`（见 README「Clearing a disk's mark」） |
+| `common/recipe` | 1 | 洗掉磁盘标记的合成 `ClearDiskMarkRecipe`（见游戏内指南的 pattern disk 页） |
 | `common/util` | 2 | NBT 与掉落物小工具 |
 | `network` | 10 | 数据包（客户端与服务端各半） |
 | `integration/…` | 29 | 邻居模组适配，一个包一个邻居（13 个子包 + `package-info`） |
@@ -335,7 +335,7 @@ NEO ECO 的类型名与方法名集中在 `integration/neoecoae`：`NeoECOIntegr
 
 **加一个邻居适配**：新建 `integration/<邻居>`，客户端侧放 `client/integration/<邻居>`；门禁写在独立的小类里（照 `AecsSoftDep` 或 `ClientExtendedAEPlusCompat` 的写法），不要让编译期可选类型的名字漏进总是加载的类。
 
-**加一个磁盘容量档**：`PatternDiskTier` → 物品注册 → lang 两份 → `../README.md` 的容量表 →（若档位参与排序）`client/sort/SortTiers` 的配置。
+**加一个磁盘容量档**：`PatternDiskTier` → 物品注册 → lang 两份 →（若档位参与排序）`client/sort/SortTiers` 的配置。
 
 **加一个配置项（含聊天栏开关）**：配置类 → 两份 lang 各补标签与 tooltip → 若属于聊天栏开关，还要进 `ChatMessageSwitches` 的表。**NeoForge 配置屏的兜底键形态要记住**：兜底键是「模组 id + `.configuration.` + **本节内的局部名**」，不是全路径 ⇒ 值键必须在 `define` 前用 `builder.translation(...)` 显式登记；节键要 `builder.translation(全路径)` **后紧跟** `builder.push(同路径)`（顺序不能反：先 `push` 的话，后设的键会被下一个 `define` 当成值键吃掉，节上反而没有键）；且 `section()` 必须排在所有 `comment()` **之前**（`push` 会把当时悬着的注释当成该节的注释收走）。收在 `ChatMessageSwitches.define` / `.section`。漏登记就表现为界面直接显示原始键名；节缺 `.button` 键则回退平台自带的「编辑 / Edit」。所以每个**有子节**的节都要在两语 lang 里补一条 `ae2_pattern_disk.configuration.<节路径>.button`（只有有子节的节才画按钮，叶子节不需要）；配置屏标题键 `ae2_pattern_disk.configuration.title` 带一个 `%s`（模组显示名）。
 

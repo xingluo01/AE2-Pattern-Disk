@@ -40,7 +40,9 @@ Patterns can be written with the [ME Pattern Transferer](pattern_transferer.md),
 
 A disk accepts one pattern type only. Crafting, processing, smithing and stonecutting patterns each lock the disk to a matching type; with AdvancedAE installed, its advanced processing pattern locks the disk to a type of its own as well. Rechiseled: Applied Energistics' chiseling pattern does the same - it is neither a crafting nor a processing pattern, so it gets a type of its own too.
 
-The table below shows every combination of type and capacity: rows are pattern types and where they come from, columns are disk capacities. The base layer is the same for every tier; the capacity layer changes with the capacity, and the corner mark changes with the type, so the mark tells you which kind of pattern a disk holds.
+The table below shows the main combinations of type and capacity: rows are pattern types and where they
+come from, columns are disk capacities. AE2 Lightning Tech's overloaded patterns are not shown (no preview
+image); the encoding terminal's type table lists that type. The base layer is the same for every tier; the capacity layer changes with the capacity, and the corner mark changes with the type, so the mark tells you which kind of pattern a disk holds.
 
 | Type | From | 1k | 4k | 16k | 64k | 256k |
 | --- | --- | :-: | :-: | :-: | :-: | :-: |
@@ -58,9 +60,13 @@ A mark records which machine or recipe category a disk belongs to. It shows up i
 
 Marks are written from that disk list: **right click** (Shift + right click in the management terminal) records the search bar's text as the mark, and an empty search bar clears it. This does not depend on the imported recipe, so the same mark can be put on any disk.
 
-The encoding terminal folds crafting, smithing and stonecutting marks onto their category name, so a hand-encoded stonecutting disk and one written from an imported stonecutting recipe show the same name and answer the same search. Processing has no single category, so a hand-encoded processing disk keeps the name "Processing pattern".
+The encoding terminal folds crafting, smithing and stonecutting marks onto their category name, so a hand-encoded stonecutting disk and one written from an imported stonecutting recipe show the same name and answer the same search. Processing has no single category - each machine has its own - so a hand-encoded processing disk keeps the
+name "Processing pattern".
 
 The mark is also what the `#` search in the encoding terminal's disk list filters on.
+
+To clear a mark, put that disk in a crafting grid on its own: the mark is washed off. A disk that still
+holds patterns does not match.
 
 ## Compatibility
 

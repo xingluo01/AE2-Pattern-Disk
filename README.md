@@ -7,200 +7,33 @@ An addon for [Applied Energistics 2](https://github.com/AppliedEnergistics/Appli
 - **AE2**: 19 or newer (built against 19.2.18)
 - **Java**: 21
 
-## Features
+## API
 
-### Pattern Disks
-Store encoded AE2 patterns in a single disk. A disk is untyped while empty; the first inserted pattern determines its pattern type. A disk accepts one pattern type at a time.
+Addons that carry pattern disks or serve the patterns stored on them compile against
+`io.github.lounode.ae2pattern.api` alone; the package depends on nothing else in this mod. Everything
+reachable from `PatternDiskApi` is versioned surface, so assert the version once during setup:
 
-| Disk | Pattern capacity |
-| --- | ---: |
-| 1k | 4 |
-| 4k | 16 |
-| 16k | 64 |
-| 64k | 256 |
-| 256k | 1024 |
+```java
+if (PatternDiskApi.API_VERSION < 9) {
+    throw new IllegalStateException("AE2 Pattern Disk API 9 is required");
+}
+```
 
-A disk can also carry a **mark**, recording which machine or recipe type it belongs to. Marks show up in the disk list of the encoding terminal (hovering a disk adds a `Mark: ...` line, plus the raw mark ID with F3+H), never rename the disk itself, and can be searched for with a `#` prefix in the disk list. See [ME Pattern Disk Encoding Terminal](#me-pattern-disk-encoding-terminal).
+The facade covers what an addon usually needs:
 
-### ME Pattern Disk Provider
-A pattern provider backed by physical pattern disks. Insert disks into its slots and it exposes their encoded patterns to the ME autocrafting system. It is a task source (it does not craft itself) and accepts returned products through its return inventory.
+- `isPatternDisk` / `contents` — inspect a disk without naming its item class.
+- `canAccept` / `insert` / `removeAt` — check, write and remove a pattern. `insert` answers
+  `ItemStack.EMPTY` on success. Pass a `BlankPatternSink` to hand the blank pattern a write frees back
+  to the ME network, or `null` when there is no network.
+- `decodePattern` / `decodePatterns` / `patternType` — turn an encoded pattern into its inputs, outputs
+  and kind. The plural form memoizes per contents snapshot; use it when walking a disk repeatedly.
+- `terminalView` — expose slots holding disks as an inventory whose rows are the patterns on those
+  disks, the shape AE2's pattern access terminal reads. Server side only.
+- `diskHosts` / `maxPatterns` — list the disk hosts on a grid, or measure a host's capacity from the
+  disks it actually holds.
+- `registerDiskHost` — add a machine from another mod to the encoding terminal's disk list.
 
-It comes in two forms sharing one implementation: the in-world **block**, and a **panel part**
-(`cable_pattern_disk_provider`) that attaches to a cable like AE2's own cable pattern provider. The panel
-form keeps the same nine disk slots and the same return inventory, just in a thinner footprint.
-
-With ExtendedAE Plus installed, its "upload pattern to a provider" button works here too: the provider has no pattern slots of its own, so the uploaded pattern lands in a free space on one of the disks it holds.
-
-An open pattern access terminal keeps the rows it showed when it was opened. Changing the disks (inserting, removing, or encoding a new pattern) does not renumber the rows you are looking at; close and reopen the terminal to see the current layout. This is deliberate: AE2's pattern access terminal does not tolerate a provider whose row count changes mid-session.
-
-### ME Pattern Transferer
-Moves encoded patterns between AE2 blank patterns and pattern disks. It has two modes. **Store** extracts encoded patterns into pattern disks, and also moves patterns from one disk to another, emptying the source disk. **Copy** duplicates a populated disk onto another one and leaves the source alone. Input slots accept encoded patterns or populated disks; destination slots hold the target disks. Blank patterns produced by extraction are returned to the connected ME network. Supports speed cards.
-
-### ME Pattern Disk Encoding Terminal
-
-A panel that mounts on an ME cable and ties pattern encoding to pattern disks. It scans the whole ME network for pattern disks; pick one and you can write the pattern you just encoded onto it, or review and tidy the patterns it already holds.
-
-**Encoding modes.** The mode button opens a drop-down list of tiers rather than cycling through them. Crafting, processing, smithing and stonecutting are always listed; the encoding terminal adds advanced encoding (with AdvancedAE installed and its encoder in the upgrade slot), chiseling (with Rechiseled: Applied Energistics) and overloaded encoding (with AE2 Lightning Tech and its overloaded pattern encoder installed). Clicking a tier swaps the recipe grid, the output area and the tools on offer. Processing mode adds output rotation (Shift+click rotates the input order instead; that order only matters to machines that care about the order inputs are pushed in), multiply/divide (click ×2, Shift ×3, Ctrl ×5, Alt ×10 — divide does nothing unless inputs and outputs both divide evenly) and same-item merging. Stonecutting shows twelve candidates at a time over three rows, with a scrollbar when there are more.
-
-**Blank patterns** live in a real slot: up to 4 of them, refilled from the ME network, and spent before the network when you encode or pull a pattern off a disk — the network is only that slot's source. You can also drop blank patterns in yourself, or take them out. Blank patterns handed back (after a write, an upload, or a cleared output) go into this slot first and only overflow to the network once it is full.
-
-**Disk list.** With nothing in the search bar every disk is listed; while searching, the list is filtered by what you typed — by name (unmarked disks take part like any other), or by mark when prefixed with `#` (unmarked disks have no mark to match). The toggle next to the search bar keeps unmarked disks in regardless of the search. The search bar matches a disk's name, or — prefixed with `#` — its mark. Crafting, smithing and stonecutting mode marks fold onto their category name, so a hand-encoded disk and one written from an imported recipe of the same kind answer the same search; processing has no single category (each machine has its own) and keeps the name "Processing pattern".
-
-**Mouse controls.** Left click writes the currently encoded pattern to the disk; Shift + right click writes the search bar's text as the mark, and an empty search bar clears it.
-
-**Filter slots.** In processing mode the input and output slots are filters rather than real slots. Right
-click with a stack marks that stack and its count into the slot, replacing whatever the slot held rather
-than adding to it; left click clears the slot; middle click on a filled slot opens the same amount dialog
-AE2's pattern encoding terminal uses. Empty-hand right click keeps AE2's behaviour of lowering the count by
-one, and Shift click, dragging and double clicking keep AE2's own handling (add/subtract, and emptying for
-drainable containers). Right click marks the held stack, except for containers that can be emptied: a
-bucket or bottle right-clicked onto a filter sets the filter to its contents — water, lava and so on — at
-the container's full content amount, instead of the container itself, as in AE2; to mark the container as
-an item instead, drag it over the slot or import a recipe with `+`. Clearing a
-filter and then pressing Encode drops a pattern that was never written back to a blank pattern rather than
-losing it.
-
-**Where a write lands.** Disks in the same group are ordered by remaining space, and Encode writes to the one with the most room left; a large disk keeps being picked until it stops being the emptiest, then the next one gets its turn. What counts as the same group is what the disk's mark says: a disk belongs to the group of the mark it carries (a mark that cannot be resolved, such as text you typed in yourself, does not count and the disk falls back to its type lock), unmarked disks are grouped by the pattern type they are locked to, and an empty disk belongs to no group and is never written automatically. If the disk with the most room cannot take the pattern, the next one in that order is tried. The search bar only narrows which disks are in the list, never which one wins. To fill disks in list order instead, end the search text with `@order` (or `@顺位`), for example `#crafting @order`; to write to one specific disk, click it.
-
-**Write feedback.** Every write reports back in chat: which disk the pattern went to, or why it was refused — the disk is full, locked to another pattern type, already holds a recipe with the same output, the pattern's type cannot be resolved, or the target is no longer listed. When the list is narrowed to a single disk that belongs to the group being encoded, pressing Encode writes the pattern straight to it rather than leaving it in the encoded slot.
-
-**NEO ECO integration.** With NEO ECO AE Extension installed, an upload button appears that sends the encoded pattern to its computation cluster and returns a blank pattern in the order network → inventory → encoded slot.
-
-**ExtendedAE Plus integration.** With ExtendedAE Plus installed, its "upload pattern to a provider" button is placed
-directly below the NEO ECO button with no gap when NEO ECO is installed; without NEO ECO it falls back to ExtendedAE
-Plus' own spot beside the encode button. The button reads this terminal's encoded slot, and a successful upload clears
-that slot without returning a blank pattern, exactly as in AE2's own terminal. ExtendedAE Plus' automatic uploads
-(Shift + Encode, and pushing straight to an assembler matrix after encoding) hang off AE2's terminal classes, so they
-do not apply here — use the button. The slot and the terminal are handed over through a subclass that is only loaded
-when EAE+ is present, so an install without it loads neither the interfaces nor the button.
-
-### ME Pattern Disk Management Terminal
-
-The other half of the pair. It lists the disks held by every pattern disk provider on the network, grouped by host machine, so you can review and shuffle them without walking to each provider. Disks behave as they do in the encoding terminal: left click takes one onto the cursor, Shift + left click sends it to your inventory, right click selects it as the target the Encode button writes to, and Shift + right click writes the search bar's text as the mark. A pattern disk on the cursor can be dropped into a provider's free disk slot, and Shift + left clicking one in your inventory sends it to the container of the selected disk. Empty disk slots can be folded into a single cell to keep the list short. The sort controls are the same ones the encoding terminal has, including the additional sort, and there is a search for what is inside the patterns rather than for disk names; with a Just Enough Characters install, Chinese disk names also match by pinyin or initials.
-
-### Efficient Molecular Assembler
-A parallel molecular assembler with **eight independent execution threads**. It accepts crafting jobs pushed by AE2 pattern providers and runs them concurrently. Each thread owns a 3×3 molecular assembler grid, an output slot, and independent progress. Like AE2's own molecular assembler it takes **no channel**; it still draws power from the grid.
-
-The GUI exposes one page per thread (mirroring ExtendedAE's (EAE) extension molecular assembler) with vertical progress only for the selected page. Accepts up to **five AE2 Speed Cards** with multipliers `1.0x / 1.3x / 1.7x / 2.0x / 2.5x / 5.0x`. The whole ladder runs at twice AE2's molecular assembler speed - five ticks per craft without cards down to one tick with five - the same rates as EAE's extended molecular assembler, and each tick draws AE in proportion to the progress it makes.
-
-Each page also has an optional pattern slot. Inserting an encoded crafting pattern there turns that page into a self-executing unit: it pulls its own inputs from the ME network, crafts continuously while materials last, and hands products plus container remainders straight back to the ME network - a self-executing page never pushes into adjacent containers. A page running a manual pattern does not accept provider-pushed jobs, so the machine only takes pushed jobs while at least one page is idle.
-
-### Batch Assembler
-
-Buffers the jobs pushed by AE2 crafting CPUs inside nine private storage cell slots and executes them once the input material has actually stopped arriving. It takes **one channel**, because it exposes its patterns to autocrafting, and draws power from the grid.
-
-#### Batch Window
-
-The window is measured in game time since the last accepted push (two modes: standard 40 ticks, fast 10 ticks), so material that keeps coming simply keeps the batch waiting; the buffer adds no limit of its own beyond the capacity of the inserted cells (plan analysis keeps its own separate 1024-entry cache), and a started batch runs to the end of the queue without a per-tick ceiling. Supports crafting-table, smithing-table and stonecutting recipes.
-
-A batch that comes out small - fewer than eight jobs - means the window gathered next to nothing, so the machine starts the next one after a single quiet tick instead of serving another full window. Every 32 such runs it serves the full window once more, which is how a supply that has turned into a steady stream gets noticed rather than run push by push forever; the same reset happens after eight windows of silence, so a small run cannot follow orders around forever. Runs that do gather a batch, and a machine that has not run yet, always serve the full window - that is what keeps a bulk order accumulating the way it always did. The window state is runtime only, like the job queue: after a reload the machine starts on the full window again.
-
-#### Output Queue
-
-Produced outputs (including container remainders) enter a smooth-return queue and reach the network over ~20 ticks at ~5% of the accumulated total per tick; when the network cannot take them they stay queued and are retried, and the inputs are not rolled back for that reason - inputs roll back only when the cells cannot hold a push, when material is missing, or when the grid is out of power. Keys the network is waiting for right now - the crafting CPU books them, or a queued job consumes them, which is what a recycled container does - skip that trickle and go back at once: at least 512 items per tick (all of it when that is less), and never less than the smooth rate, so the ceiling for a large batch stays where it was while a catalyst-sized amount arrives the same tick.
-
-#### Cell Slots
-
-Storage cells inserted here are private to the machine (never exposed to the ME network) and are locked while work is buffered; breaking the block or pressing cancel returns the buffer to the network. Leftovers do not stay locked up either: once the machine has been idle - nothing queued and nothing left to return - for ten ticks, whatever the cells still hold goes back to the network, and what the network refuses stays in the cells until the machine has something to do again.
-
-Queued jobs live in memory only. After a reload the machine holds none of them, and the material they brought in is returned to the network by the idle flush above; a crafting CPU job that was waiting on that work has to be cancelled by hand.
-
-#### Speed Cards
-
-Up to **four AE2 Speed Cards** add worker threads (2 / 4 / 8 / 16): those threads analyse newly queued patterns in parallel, while every cell and network access stays on the server thread because AE2 storage is not thread-safe. Total output always matches the ordered amount.
-
-## Blocks & Items
-
-| ID | Display Name | Type |
-| --- | --- | --- |
-| `ae2_pattern_disk:pattern_disk_1k` | 1k Pattern Disk | Item |
-| `ae2_pattern_disk:pattern_disk_4k` | 4k Pattern Disk | Item |
-| `ae2_pattern_disk:pattern_disk_16k` | 16k Pattern Disk | Item |
-| `ae2_pattern_disk:pattern_disk_64k` | 64k Pattern Disk | Item |
-| `ae2_pattern_disk:pattern_disk_256k` | 256k Pattern Disk | Item |
-| `ae2_pattern_disk:pattern_disk_encoding_terminal` | ME Pattern Disk Encoding Terminal | Item (part) |
-| `ae2_pattern_disk:pattern_disk_management_terminal` | ME Pattern Disk Management Terminal | Item (part) |
-| `ae2_pattern_disk:wireless_pattern_disk_encoding_terminal` | Wireless Pattern Disk Encoding Terminal | Item |
-| `ae2_pattern_disk:wireless_pattern_disk_management_terminal` | Wireless Pattern Disk Management Terminal | Item |
-| `ae2_pattern_disk:pattern_transferer` | ME Pattern Transferer | Block |
-| `ae2_pattern_disk:pattern_disk_provider` | ME Pattern Disk Provider | Block |
-| `ae2_pattern_disk:cable_pattern_disk_provider` | ME Pattern Disk Provider | Item (part) |
-| `ae2_pattern_disk:pattern_disk_assembler` | Efficient Molecular Assembler | Block |
-| `ae2_pattern_disk:batch_molecular_assembler` | Batch Assembler | Block |
-| `ae2_pattern_disk:meteorite_pattern_provider` | Meteorite Pattern Disk Provider | Block (only with AE2 Crystal Science) |
-| `ae2_pattern_disk:cable_meteorite_pattern_provider` | Meteorite Pattern Disk Provider | Item (part, only with AE2 Crystal Science) |
-
-All items are available in the dedicated creative tab **AE2 Pattern Disk**.
-
-## Recipes
-
-- **Pattern Disk 1k**
-  - Shapeless: `ae2:blank_pattern` + `ae2:item_cell_housing`
-  - Shaped (AE2-style, center = blank pattern):
-    ```text
-    A B A
-    B C B
-    D E D
-    ```
-    `A=ae2:quartz_glass` `B=minecraft:redstone` `C=ae2:blank_pattern` `D=minecraft:iron_ingot` `E=minecraft:copper_ingot`
-- **Pattern Disk 4k / 16k / 64k / 256k**
-  - Shaped:
-    ```text
-    A B A
-    C D C
-    A C A
-    ```
-    `B=ae2:calculation_processor` `C=lower-tier disk` `D=ae2:quartz_glass`
-    `A=minecraft:redstone` (4k) / `minecraft:glowstone_dust` (16k, 64k) / `ae2:sky_dust` (256k)
-- **ME Pattern Disk Provider**
-  - Shapeless: `ae2:pattern_provider` + `ae2:capacity_card`
-  - Panel form (`ae2_pattern_disk:cable_pattern_disk_provider`): shapeless 1:1 conversion with the block
-    form in both directions, no extra material
-- **Efficient Molecular Assembler**
-  - Shaped:
-    ```text
-    A A A
-    A B A
-    A A A
-    ```
-    `A=ae2:molecular_assembler` `B=ae2:capacity_card`
-- **ME Pattern Transferer**
-  - Shaped:
-    ```text
-    A B A
-    D C D
-    A E A
-    ```
-    `A=ae2:quartz_glass` `B=ae2_pattern_disk:pattern_disk_1k` `C=ae2:item_cell_housing` `D=ae2:logic_processor` `E=ae2:engineering_processor`
-- **Batch Assembler**
-  - Shaped:
-    ```text
-    A B A
-    D C D
-    A B A
-    ```
-    `A=ae2:quartz_glass` `B=ae2:calculation_processor` `C=ae2_pattern_disk:pattern_disk_assembler` `D=ae2_pattern_disk:pattern_disk_64k`
-- **Pattern Disk Encoding Terminal**
-  - Shapeless: `ae2:pattern_encoding_terminal` + `ae2_pattern_disk:pattern_disk_1k`
-- **Pattern Disk Management Terminal**
-  - Shapeless: `ae2:pattern_access_terminal` + `ae2_pattern_disk:pattern_disk_1k`
-- **Wireless Pattern Disk Encoding / Management Terminal**
-  - Shaped, a single column of three:
-    ```text
-    A
-    B
-    C
-    ```
-    `A=ae2:wireless_receiver` `B=the matching panel terminal` (`ae2_pattern_disk:pattern_disk_encoding_terminal`
-    or `ae2_pattern_disk:pattern_disk_management_terminal`) `C=ae2:dense_energy_cell`. The two combine into
-    AE2WTLib's universal wireless terminal the usual way.
-- **Meteorite Pattern Disk Provider** (only when AE2 Crystal Science is installed)
-  - Shapeless: `ae2cs:meteorite_pattern_provider` + `ae2_pattern_disk:pattern_disk_16k`
-  - Panel form (`ae2_pattern_disk:cable_meteorite_pattern_provider`): shapeless 1:1 conversion with the
-    block form in both directions, no extra material
-- **Clearing a disk's mark**
-  - Put a single pattern disk that is empty but carries a mark in a crafting grid on its own: the mark is
-    washed off. A disk that still holds patterns does not match.
+`ExternalUploadPolicy` and members marked `@ApiStatus.Internal` are this mod's own wiring, not surface.
 
 ## Guide
 
@@ -322,120 +155,7 @@ required range, rather than starting with a few features quietly missing.
 This project is licensed under the **GNU Lesser General Public License v3.0 (LGPL-3.0)**.
 See the [LICENSE](LICENSE) file for the full license text. Source: [github.com/xingluo01/AE2-Pattern-Disk](https://github.com/xingluo01/AE2-Pattern-Disk).
 
-Assets marked ARR are the author's own works and are **not** covered by this LGPL-3.0 grant — currently
-the batch assembler block textures and its glow-shell model (see the batch assembler entry under Upstream
-Attribution below).
-
-### Upstream Attribution
-
-This mod is an addon for **[Applied Energistics 2](https://github.com/AppliedEnergistics/Applied-Energistics-2)** (AE2), which is also licensed under LGPL-3.0.
-
-**The following assets are sourced from AE2 (LGPL-3.0):**
-
-| File | AE2 Source |
-|------|-----------|
-| `assets/ae2_pattern_disk/textures/part/pattern_disk_encoding_terminal_bright.png` | `assets/ae2/textures/part/pattern_encoding_terminal_bright.png` |
-| `assets/ae2_pattern_disk/textures/part/pattern_disk_encoding_terminal_medium.png` | `assets/ae2/textures/part/pattern_encoding_terminal_medium.png` |
-| `assets/ae2_pattern_disk/textures/part/pattern_disk_encoding_terminal_dark.png` | `assets/ae2/textures/part/pattern_encoding_terminal_dark.png` |
-| `assets/ae2_pattern_disk/textures/part/pattern_disk_management_terminal_bright.png` | locally edited (2026-09-21) derivative of this mod's `pattern_disk_encoding_terminal_bright.png` (row above) |
-| `assets/ae2_pattern_disk/textures/part/pattern_disk_management_terminal_medium.png` | byte-identical copy of this mod's `pattern_disk_encoding_terminal_medium.png` (row above) |
-| `assets/ae2_pattern_disk/textures/part/pattern_disk_management_terminal_dark.png` | locally edited (2026-09-21) derivative of this mod's `pattern_disk_encoding_terminal_dark.png` (row above) |
-| `assets/ae2_pattern_disk/textures/part/monitor_front.png` | `assets/ae2/textures/part/monitor_front.png` |
-| `assets/ae2_pattern_disk/textures/part/monitor_sides.png` | `assets/ae2/textures/part/monitor_sides.png` |
-| `assets/ae2_pattern_disk/textures/part/monitor_back.png` | `assets/ae2/textures/part/monitor_back.png` |
-| `assets/ae2_pattern_disk/textures/part/monitor_colored.png` | `assets/ae2/textures/part/monitor_colored.png` |
-| `assets/ae2_pattern_disk/textures/part/pattern_disk_provider.png` | `assets/ae2/textures/part/pattern_provider.png` |
-| `assets/ae2_pattern_disk/textures/part/pattern_disk_provider_back.png` | `assets/ae2/textures/part/pattern_provider_back.png` |
-| `assets/ae2_pattern_disk/textures/part/pattern_disk_provider_sides.png` | `assets/ae2/textures/part/pattern_provider_sides.png` |
-| `assets/ae2_pattern_disk/textures/part/pattern_disk_provider_sides_status.png` | `assets/ae2/textures/part/monitor_sides_status.png` |
-
-**The following block textures are copied from AE2 or locally reworked from AE2 textures (LGPL-3.0):**
-
-| File | AE2 Source | Relation |
-|------|-----------|----------|
-| `assets/ae2_pattern_disk/textures/block/molecular_assembler.png` | `assets/ae2/textures/block/molecular_assembler.png` | locally edited derivative, 2026-09 (~44% of opaque pixels differ) |
-| `assets/ae2_pattern_disk/textures/block/pattern_provider.png` | `assets/ae2/textures/block/pattern_provider.png` | locally edited derivative, 2026-09 (~39% differ) |
-| `assets/ae2_pattern_disk/textures/block/pattern_provider_alternate.png` | `assets/ae2/textures/block/pattern_provider_alternate.png` | locally edited derivative, 2026-09 (~39% differ) |
-| `assets/ae2_pattern_disk/textures/block/pattern_provider_alternate_arrow.png` | `assets/ae2/textures/block/pattern_provider_alternate_arrow.png` | locally edited derivative, 2026-09 (~39% differ) |
-| `assets/ae2_pattern_disk/textures/block/pattern_provider_alternate_front.png` | `assets/ae2/textures/block/pattern_provider_alternate_front.png` | locally edited derivative, 2026-09 (~33% differ) |
-| `assets/ae2_pattern_disk/textures/block/pattern_transferer_front.png` | `assets/ae2/textures/block/io_port_front_off.png` | locally edited derivative, 2026-09 (~22% differ) |
-| `assets/ae2_pattern_disk/textures/block/pattern_transferer_top.png` | `assets/ae2/textures/block/io_port_top_off.png` | pixel-identical (PNG bytes differ) |
-| `assets/ae2_pattern_disk/textures/block/pattern_transferer_side.png` | `assets/ae2/textures/block/generics/side.png` | byte-identical copy |
-| `assets/ae2_pattern_disk/textures/block/pattern_transferer_back.png` | `assets/ae2/textures/block/generics/back.png` | byte-identical copy |
-| `assets/ae2_pattern_disk/textures/block/pattern_transferer_bottom.png` | `assets/ae2/textures/block/generics/bottom.png` | byte-identical copy |
-| `assets/ae2_pattern_disk/textures/block/pattern_transferer_front_on.png` | `assets/ae2/textures/block/io_port_front.png` | locally edited derivative, 2026-09 (~28% differ) |
-| `assets/ae2_pattern_disk/textures/block/pattern_transferer_top_on.png` | `assets/ae2/textures/block/io_port_top.png` | locally edited derivative, 2026-09 (~3% differ) |
-
-These textures are redistributed under the terms of LGPL-3.0. They began as copies of their AE2
-counterparts and were partially reworked in 2026-09; the relation column records a pixel comparison
-against AE2 19.2.17, which is why the reworked rows remain listed even though they are no longer
-byte-identical.
-
-**The batch assembler's block textures are not AE2-derived.** Its three grid textures and the
-glow-shell geometry of its lit model are the mod author's own work - neither AE2's nor AdvancedAE's -
-and the author keeps all rights to them (**ARR**, all rights reserved), so they are not covered by the
-LGPL-3.0 grant the AE2-derived assets above carry. They ship with the mod because the same author made
-them, so they stay inside the author's own works and no third-party attribution applies here. The
-block's GUI sheet is a separate case: it is an AE2-derived texture and stays under LGPL-3.0 (see the GUI
-table below).
-
-| File | Role |
-|------|------|
-| `assets/ae2_pattern_disk/textures/block/batch_assembler_grid.png` (+ `.mcmeta`) | unpowered shell |
-| `assets/ae2_pattern_disk/textures/block/batch_assembler_grid_on.png` (+ `.mcmeta`) | powered core, particle texture |
-| `assets/ae2_pattern_disk/textures/block/batch_assembler_grid_on_light.png` (+ `.mcmeta`) | powered emissive shell |
-| `assets/ae2_pattern_disk/models/block/batch_assembler.json` | unpowered `cube_all` model over the shell texture |
-| `assets/ae2_pattern_disk/models/block/batch_assembler_on.json` | powered glow-shell geometry and display transforms |
-
-The block's registry ID is `batch_molecular_assembler`, so its blockstate and item model files carry
-that name while the model and texture files are named `batch_assembler*`.
-
-An older io_port-style set of seven `textures/block/batch_assembler_*.png` files (byte-identical copies of
-the `pattern_transferer_*` files above) was deleted once the grid set replaced it and nothing referenced it
-any more; those files are no longer part of this distribution.
-
-**The following GUI textures were compared against AE2's GUI sheets (LGPL-3.0), pixel-by-pixel on the same canvas:**
-
-| File | AE2 Source | Relation |
-|------|-----------|----------|
-| `assets/ae2_pattern_disk/textures/guis/pattern_provider.png` | `assets/ae2/textures/guis/pattern_provider.png` | pixel-identical (PNG bytes differ) |
-| `assets/ae2_pattern_disk/textures/guis/ae2_pattern_disk.png` | `assets/ae2/textures/guis/io_port.png` | locally modified derivative, 2026-09 (~1% of opaque pixels differ) |
-| `assets/ae2_pattern_disk/textures/guis/ex_molecular_assembler.png` | `assets/ae2/textures/guis/molecular_assembler.png` | locally modified derivative, 2026-09 (~2% of opaque pixels differ) |
-| `assets/ae2_pattern_disk/textures/guis/pattern.png` | `assets/ae2/textures/guis/pattern.png` | locally modified derivative, 2026-09 (~9% of opaque pixels differ) |
-| `assets/ae2_pattern_disk/textures/guis/batch_molecular_assembler.png` | `assets/ae2/textures/guis/molecular_assembler.png` | locally modified derivative, 2026-09 (~43% of opaque pixels differ) |
-| `assets/ae2_pattern_disk/textures/guis/pattern_modes.png` | `assets/ae2/textures/guis/pattern_modes.png` | hand-drawn original asset (same canvas as AE2's; ~69% of the opaque pixels differ) |
-| `assets/ae2_pattern_disk/textures/guis/states.png` | `assets/ae2/textures/guis/states.png` | hand-drawn original asset (same canvas as AE2's; ~58% of the opaque pixels differ) |
-| `assets/ae2_pattern_disk/textures/guis/checkbox.png` | `assets/ae2/textures/guis/checkbox.png` | byte-identical copy (verified against 19.2.17) |
-
-The remaining textures under `textures/` (everything in `textures/item/`, plus
-`textures/block/pattern_disk_assembler_lights.png`) were compared against AE2 19.2.17 both byte-wise
-(against AE2's item and block textures) and pixel-wise (same canvas, same size): the closest same-size
-AE2 match for each item sheet differs in at least 62% of its opaque pixels, and
-`pattern_disk_assembler_lights.png` is a 12-frame emissive overlay built on the already-listed
-`block/molecular_assembler.png` copy. No same-canvas AE2 match reproduces more than 38% of any of
-these files, so none of them is a copy of an AE2 texture.
-
-`models/block/pattern_transferer.json` and `models/block/pattern_transferer_on.json` are derived from
-AE2's `assets/ae2/models/block/io_port.json` / `io_port_on.json` (same element geometry and display
-transforms, textures repointed to the local copies above), and are therefore also covered by
-LGPL-3.0. `models/block/batch_assembler.json` is a plain `cube_all` wrapper, while
-`batch_assembler_on.json` carries the author's own glow-shell geometry (see above); the item model
-points at the `_on` variant so the inventory icon keeps its display transforms. Which batch
-model is used is driven by the block's `powered` state, mirroring AE2's IO port: on while the ME node
-is online, so the glow means "connected and powered", not "currently crafting". The remaining model
-JSON files referencing `ae2:*` parents (`display_base`, `display_off`, `cable_interface`) are derivative
-works of AE2's model files as well. `models/part/pattern_disk_provider_base.json` copies the panel
-geometry of AE2's `part/pattern_provider_base` (by Sea_Kerman), and
-`models/item/cable_pattern_disk_provider.json` inherits `ae2:item/cable_interface` - both listed here for
-the same reason. Their two counterparts for the self-assembling provider's panel form are
-`models/part/meteorite_pattern_provider_base.json` (the panel model supplied by the texture artist) and
-`models/item/cable_meteorite_pattern_provider.json` (its listing icon). Both inherit AE2 parents for their
-geometry (`ae2:part/pattern_provider_base` and `ae2:item/cable_interface`), and both point their faces at
-AE2 Crystal Science's own textures (`ae2cs:block/meteorite_pattern_provider/base` and `.../back`). That is
-deliberate rather than a leftover: this device only exists while AE2 Crystal Science is installed, so its
-two forms are meant to look like that mod's block. The one face this mod still supplies itself is the panel
-model's `front`, `textures/block/meteorite_pattern_provider.png` (used together with the local
-`..._alternate*.png` by the block form's models).
+Which assets come from AE2 (LGPL-3.0), which are the author's own works (ARR), and how the models derive from AE2's are listed in [docs/ASSET_LICENSES.md](docs/ASSET_LICENSES.md).
 
 ### Third-Party Code
 

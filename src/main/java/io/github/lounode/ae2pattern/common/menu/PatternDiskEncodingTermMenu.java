@@ -878,7 +878,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
             var updated = stack.copy();
             if (disk.tryInsert(updated, encoded, level)) {
                 writeDiskSlot(inv, ref.slot(), updated);
-                // 样板已存入磁盘：编码槽清空，原编码样板回退为空白样板并按 ME网络→玩家背包→编码槽 优先级落位
+                // 样板已存入磁盘：编码槽清空，原编码样板回退为空白样板并按 空白样板槽→ME网络→玩家背包→编码槽 优先级落位
                 this.encodedPatternSlot.set(ItemStack.EMPTY);
                 returnBlankPatternToStorage();
                 return true;
