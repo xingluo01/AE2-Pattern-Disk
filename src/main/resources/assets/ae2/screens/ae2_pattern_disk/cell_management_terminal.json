@@ -107,6 +107,11 @@
   "textureHeight": 512
  },
  "slots": {
+  "TOOLBOX": {
+    "bottom": 84,
+    "right": -66,
+    "grid": "BREAK_AFTER_3COLS"
+  },
   "ae2_pattern_disk:cell_encode": {
    "$comment": "元件编码槽：右键盘里的存储元件移进来，它就是标记区正在编辑的那个元件。贴图坐标 181,194 的槽框内侧内容区。",
    "left": 182,
@@ -186,6 +191,16 @@
   }
  },
  "widgets": {
+  "toolbox": {
+    "right": -69,
+    "bottom": 90,
+    "width": 59,
+    "height": 66
+  },
+  "upgrades": {
+    "right": -76,
+    "top": 0
+  },
   "search": {
    "$comment": "AE2 给物品网格留的搜索框：本屏不显示物品网格，park 在屏外。",
    "left": 1000,

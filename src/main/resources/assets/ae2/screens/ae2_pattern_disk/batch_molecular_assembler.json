@@ -15,6 +15,11 @@
     ]
   },
   "slots": {
+    "TOOLBOX": {
+      "bottom": 84,
+      "right": -66,
+      "grid": "BREAK_AFTER_3COLS"
+    },
     "ae2_pattern_disk:batch_disk": {
       "left": 8,
       "top": 45,
@@ -27,6 +32,16 @@
     }
   },
   "widgets": {
+  "upgrades": {
+    "right": -76,
+    "top": 0
+  },
+    "toolbox": {
+      "right": -69,
+      "bottom": 90,
+      "width": 59,
+      "height": 66
+    },
     "openPriority": {
       "left": 152,
       "top": -5,

@@ -137,6 +137,11 @@
   "textureHeight": 512
  },
  "slots": {
+  "TOOLBOX": {
+    "bottom": 84,
+    "right": -66,
+    "grid": "BREAK_AFTER_3COLS"
+  },
   "CRAFTING_GRID": {
    "left": 181,
    "bottom": 70,
@@ -291,6 +296,16 @@
   }
  },
  "widgets": {
+  "toolbox": {
+    "right": -69,
+    "bottom": 90,
+    "width": 59,
+    "height": 66
+  },
+  "upgrades": {
+    "right": -76,
+    "top": 0
+  },
   "uploadColumn": {"left": 0, "top": 0, "width": 0, "height": 0},
   "modePanel0": {
    "left": 175,

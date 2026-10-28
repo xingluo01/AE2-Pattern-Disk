@@ -5,13 +5,18 @@
     "../wtlib/universal_terminal.json"
   ],
   "widgets": {
-    "uploadColumn": {"left": 0, "top": 0, "width": 0, "height": 0},
+    "uploadColumn": {
+      "left": 0,
+      "top": 0,
+      "width": 0,
+      "height": 0
+    },
     "scrollingUpgrades": {
-      "right": 3,
+      "right": -76,
       "top": 0
     },
     "upgradeScrollbar": {
-      "right": -16,
+      "right": -95,
       "top": 6
     }
   }

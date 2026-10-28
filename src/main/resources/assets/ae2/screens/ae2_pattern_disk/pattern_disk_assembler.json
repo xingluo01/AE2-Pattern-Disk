@@ -15,6 +15,11 @@
     ]
   },
   "slots": {
+    "TOOLBOX": {
+      "bottom": 84,
+      "right": -66,
+      "grid": "BREAK_AFTER_3COLS"
+    },
     "ae2_pattern_disk:assembler_grid_0": {
       "left": 29,
       "top": 30,
@@ -115,6 +120,16 @@
     }
   },
   "widgets": {
+  "upgrades": {
+    "right": -76,
+    "top": 0
+  },
+    "toolbox": {
+      "right": -69,
+      "bottom": 90,
+      "width": 59,
+      "height": 66
+    },
     "progressBar": {
       "left": 148,
       "top": 47

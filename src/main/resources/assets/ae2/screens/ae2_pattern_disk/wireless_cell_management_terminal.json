@@ -6,11 +6,11 @@
   ],
   "widgets": {
     "scrollingUpgrades": {
-      "right": 3,
+      "right": -76,
       "top": 0
     },
     "upgradeScrollbar": {
-      "right": -16,
+      "right": -95,
       "top": 6
     }
   }
