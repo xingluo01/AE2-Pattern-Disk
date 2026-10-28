@@ -19,6 +19,7 @@ import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import appeng.api.config.Actionable;
+import appeng.api.config.PowerMultiplier;
 import appeng.api.crafting.PatternDetailsHelper;
 import appeng.api.networking.IGridNode;
 import appeng.api.networking.IGridNodeListener;
@@ -61,7 +62,15 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
     public static final int THREADS = 8;
     public static final int GRID_SIZE = 9; // 3x3
     private static final int OUTPUT_SLOT = 9; // gridInv is 10 slots (9 grid + 1 output)
-    private static final int[] SPEED_STEPS = { 10, 13, 17, 20, 25, 50 };
+
+    /**
+     * 每 tick 推进的进度，按已装加速卡数取：与扩展分子装配室同一档（AE2 分子装配室的两倍）。
+     * 100 进度一件，所以空卡 5 tick 一件、五卡 1 tick 一件。
+     */
+    private static final int[] SPEED_STEPS = { 20, 26, 34, 40, 50, 100 };
+
+    /** 与 {@link #SPEED_STEPS} 一一对应的税率：每推进 1 点进度要付这么多 AE。 */
+    private static final double[] SPEED_TAXES = { 1.0, 1.3, 1.7, 2.0, 2.5, 5.0 };
 
     private final IActionSource actionSource = new MachineSource(this);
     private final IUpgradeInventory upgrades;
@@ -126,6 +135,10 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
 
     /** Client-synced power state. */
     private boolean isPowered = false;
+
+    /** 本 tick 要发的合成动画（最多一条），由 {@link #tickingRequest} 在遍历完线程后统一发出。 */
+    private @Nullable AEItemKey pendingAnimation;
+    private byte pendingAnimationSpeed;
 
     @OnlyIn(Dist.CLIENT)
     private AssemblerAnimationStatus animationStatus;
@@ -580,7 +593,17 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
     public TickRateModulation tickingRequest(IGridNode node, int ticksSinceLastCall) {
         boolean anyBusy = false;
         for (var unit : units) {
-            anyBusy |= advanceUnit(node, unit, ticksSinceLastCall);
+            anyBusy |= advanceUnit(unit, ticksSinceLastCall);
+        }
+        // 一台机器只留一份动画状态，按线程逐次发包只会互相覆盖；每 tick 汇总成最多一个包（EAE 同做法）。
+        var animation = pendingAnimation;
+        if (animation != null) {
+            pendingAnimation = null;
+            PacketDistributor.sendToPlayersNear(
+                    node.getLevel(), null,
+                    worldPosition.getX(), worldPosition.getY(), worldPosition.getZ(),
+                    32,
+                    new AssemblerAnimationPayload(worldPosition, pendingAnimationSpeed, animation));
         }
         return anyBusy ? TickRateModulation.FASTER : TickRateModulation.SLEEP;
     }
@@ -588,7 +611,7 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
     /**
      * Advances one crafting unit; returns true if it is still busy.
      */
-    private boolean advanceUnit(IGridNode node, CraftUnit unit, int ticksSinceLastCall) {
+    private boolean advanceUnit(CraftUnit unit, int ticksSinceLastCall) {
         // Keep retrying both finished output and container remainders until all leftovers are exported.
         ItemStack output = unit.grid.getStackInSlot(OUTPUT_SLOT);
         if (!output.isEmpty()) {
@@ -650,15 +673,17 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
             return true;
         }
 
-        int speedCards = upgrades.getInstalledUpgrades(AEItems.SPEED_CARD);
-        int speed = SPEED_STEPS[Math.min(speedCards, 5)];
-        // Power gating: skip if no power available.
-        if (!hasPower()) {
+        int speedCards = Math.min(upgrades.getInstalledUpgrades(AEItems.SPEED_CARD), SPEED_STEPS.length - 1);
+        int speed = SPEED_STEPS[speedCards];
+        double gathered = gatherPower(ticksSinceLastCall, speed, SPEED_TAXES[speedCards]);
+        if (gathered <= 0) {
+            // 没电就停在原地：进度不动，页面保持忙碌，等电网回电后接着走。
             return true;
         }
-        unit.progress += ticksSinceLastCall * speed;
+        unit.progress += gathered;
         if (unit.progress >= 100) {
-            unit.progress = 0;
+            // 只扣一件的量：余数已经付过电，tick 尖峰时留给下一 tick 继续做。
+            unit.progress -= 100;
             var level = this.level;
             if (level != null) {
                 var positioned = craftGrid(unit);
@@ -679,14 +704,11 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
                 // AE2 自己的分子装配室同理：它回送前先 output.copy()。
                 unit.grid.setItemDirect(OUTPUT_SLOT, result.copy());
 
-                // Send animation packet to nearby players (visual parity with AE2 molecular assembler)
+                // 动画包在这一 tick 末尾由 tickingRequest 统一发，见那里的注释。
                 var itemKey = AEItemKey.of(result);
-                if (itemKey != null) {
-                    PacketDistributor.sendToPlayersNear(
-                            node.getLevel(), null,
-                            worldPosition.getX(), worldPosition.getY(), worldPosition.getZ(),
-                            32,
-                            new AssemblerAnimationPayload(worldPosition, (byte) speed, itemKey));
+                if (itemKey != null && pendingAnimation == null) {
+                    pendingAnimation = itemKey;
+                    pendingAnimationSpeed = (byte) speed;
                 }
 
                 // A successful craft consumes the input grid; put container remainders back into the
@@ -715,14 +737,23 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
         return true;
     }
 
-    /** True if the grid can supply the per-work energy for this unit. */
-    private boolean hasPower() {
+    /**
+     * 本 tick 能推进多少进度：先按「档位速率 × 税率」向网络提电，再按税率折回进度。
+     *
+     * <p>与 AE2 分子装配室、扩展分子装配室同一口径：电不够时只推进提到的那一部分，而不是整 tick 白跑；
+     * 加速卡买的是速率，代价是每点进度更贵。单次提取封顶 5000 AE，与上游一致。</p>
+     */
+    private double gatherPower(int ticksSinceLastCall, int speed, double tax) {
         var grid = this.getMainNode().getGrid();
         if (grid == null) {
-            return false;
+            return 0;
         }
         var energy = grid.getEnergyService();
-        return energy == null || energy.isNetworkPowered();
+        if (energy == null) {
+            return 0;
+        }
+        double wanted = Math.min(ticksSinceLastCall * speed * tax, 5000);
+        return energy.extractAEPower(wanted, Actionable.MODULATE, PowerMultiplier.CONFIG) / tax;
     }
 
     /**

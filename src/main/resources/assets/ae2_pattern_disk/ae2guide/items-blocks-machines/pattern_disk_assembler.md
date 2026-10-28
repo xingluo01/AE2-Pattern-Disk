@@ -20,7 +20,7 @@ Each job goes to the first idle lane. Every lane has its own 3×3 crafting grid,
 
 ## Acceleration cards
 
-Up to five <ItemLink id="ae2:speed_card" />, with the same multipliers as the <ItemLink id="ae2:molecular_assembler" />.
+Up to five <ItemLink id="ae2:speed_card" />. The multipliers are the same as the <ItemLink id="ae2:molecular_assembler" />'s, but the whole ladder runs at twice its speed: five ticks per craft without cards, down to one tick with five. Each tick draws AE in proportion to the progress it makes.
 
 ## Output
 

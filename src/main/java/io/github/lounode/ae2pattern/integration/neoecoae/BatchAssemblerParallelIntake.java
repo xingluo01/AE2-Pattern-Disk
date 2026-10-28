@@ -39,14 +39,14 @@ import io.github.lounode.ae2pattern.common.block.entity.BatchAssemblerBlockEntit
  * {@link BigInteger} respectively, and they are what a very large order needs - the machine's own estimate is
  * already long-valued ({@link BatchAssemblerBlockEntity#availableParallelSlotsFor}), so nothing is truncated here.</p>
  *
- * <p><b>FastPath stays dormant until NEO ECO asks the registry.</b> {@code ECOFastPathFacade} resolves providers
- * with {@code instanceof} plus two hard-coded mod bridges; it never consults {@code ECOParallelCraftingProviders}
- * (tracked as our upstream request in {@code docs/UPSTREAM_API_REQUESTS.md}, draft 4). This adapter implements
- * {@link ECOFastPathDispatchProvider} anyway, so the day that facade consults the registry these two methods start
- * being called without any change here. A partial upstream change cannot half-apply: {@code supports} alone turning
- * true still leaves {@code resolveProvider} returning null and the dispatch falling back to the ordinary path. Two
- * entry points stay outside that: {@code ECOFastPathFacade.prepareAllocated} still tests the interface directly,
- * and a CPU routing through {@code prepareParallel} keeps using the {@code int} capacity below.</p>
+ * <p><b>FastPath is live on ECO 21.2.11 and newer.</b> Since upstream issue #134 (commit {@code ce67db49}),
+ * {@code ECOFastPathFacade.supports}, {@code resolveProvider}, {@code prepareAllocated} and
+ * {@code prepareExactAllocated} all consult {@code ECOParallelCraftingProviders}, so this registered adapter is
+ * discovered and the two methods below are actually called. On an older ECO the facade still resolves providers
+ * with {@code instanceof} plus two hard-coded mod bridges, which leaves FastPath dormant here while the ordinary
+ * path below keeps working - that is why the mod's optional floor can stay at {@code [21.2.1,)}. One entry point
+ * remains outside either discovery rule: a CPU routing through {@code prepareParallel} keeps using the
+ * {@code int} capacity below.</p>
  */
 final class BatchAssemblerParallelIntake implements ECOParallelCraftingProvider, ECOFastPathDispatchProvider {
 

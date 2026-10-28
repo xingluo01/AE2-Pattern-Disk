@@ -9,6 +9,12 @@
 
 ## 一、未开始
 
+### N. ECO 压缩链 API 发版后收口 API 层 — P2 ⬜
+- 背景：元件管理终端的 ECO 大宗元件压缩标记已做成两层——`CellBulkCutoffCompat` 中立接口，API 适配器在 `src/ecoapi/java`（仅 `-PecoApiJar` 时进源集），反射适配器在 `integration/neoecoae/EcoBulkCellsCompat`。上游 PR #141 已合并（2026-10-27，merge `5c8c9f2e`），最新发行版 21.2.11 还不含它。
+- ⬜ 带这条 API 的 ECO 版本发布后：把 API 适配器移进 `src/main/java`，把 ECO 依赖升到该版本，删掉 `ecoApiJar` 开关；反射适配器保留给旧版 ECO（`mods.toml` 地板仍是 `[21.2.1,)`）。
+- ⬜ 本地快照 jar 停在合并前的 `8d0b028e`，上游另补了 `7919d10b`（截断查询改走库存投影）：按 `origin/main` 重打一份再验。
+- ⬜ 实机把 ECO 大宗元件放进元件编码槽，验三枚按钮（截断调级／切换压缩选择／压缩统一管理）的显隐与落点、调级写回标记槽、不可压缩链停在 1 级且左右键无反应、统一管理按「有库存留在原矩阵 → 无库存优先归编码槽那张 → 装不下的回落网络第一顺位」压实、标记满 25 条时大宗拓展卡取不出。名单与库存现在都读元件副本（上游查生效截断会顺带落盘），所以还要确认截断层显示的仍是这条链真正生效的那一级。
+
 ### N. 上游 API 接入的剩余项 — P3 ⬜
 - 背景：已接入 ECO `21.2.6` 的 `api.storage.IECOStoragePriorityHost` 与青春版 `1.3.6` 的 `setCellStack`，本模组侧走「接口优先、反射兜底」（`integration/neoecoae/NeoECOStoragePriority.java`）。
 - ⬜ `ICellHost` 的类型化适配：上游已把 `ICellHost` 提到 `api.storage`，可新增 `integration/neoecoae/NeoECOCellHosts.java` 做编译期类型化，让 `CellDriveScanner` 只调中立 SPI、不再按名字探；`setCellStack(null)` / `EMPTY` / `removeCell()` 三路试探可收敛成一次文档化调用。

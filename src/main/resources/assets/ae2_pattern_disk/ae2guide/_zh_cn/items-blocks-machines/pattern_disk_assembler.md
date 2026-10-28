@@ -20,7 +20,7 @@ categories:
 
 ## 加速卡
 
-最多安装五张 <ItemLink id="ae2:speed_card" />，倍率与 <ItemLink id="ae2:molecular_assembler" /> 相同。
+最多安装五张 <ItemLink id="ae2:speed_card" />：倍率与 <ItemLink id="ae2:molecular_assembler" /> 相同，但整档速度是它的两倍——无卡 5 tick 一件，满卡 1 tick 一件。每 tick 按推进的进度扣电。
 
 ## 输出
 

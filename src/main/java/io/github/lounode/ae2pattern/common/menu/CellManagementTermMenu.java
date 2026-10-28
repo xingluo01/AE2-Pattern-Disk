@@ -2,7 +2,10 @@ package io.github.lounode.ae2pattern.common.menu;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.TagParser;
@@ -117,6 +120,9 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         registerClientAction(ACTION_CLEAR, this::clearMarkerArea);
         registerClientAction(ACTION_CYCLE_COPY_MODE, this::cycleCopyMode);
         registerClientAction(ACTION_CYCLE_COMPRESSION_CUTOFF, Boolean.class, this::cycleCompressionCutoff);
+        registerClientAction(ACTION_CYCLE_ECO_BULK_CUTOFF, EcoBulkCutoffRequest.class,
+                request -> cycleEcoBulkCutoff(request.slot, request.delta));
+        registerClientAction(ACTION_CONSOLIDATE_ECO_BULK, this::consolidateEcoBulkMarkers);
         registerClientAction(ACTION_MARK_BOOKMARKS, String.class, this::applyBookmarks);
         registerClientAction(ACTION_CYCLE_VOID_MODE, Boolean.class, this::cycleVoidMode);
         this.encodeCellUpgrades = new EncodeCellUpgrades(host);
@@ -198,6 +204,25 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
     private static final String ACTION_OPEN_PRIORITY = "openPriority";
     /** 切编码槽那张元件的压缩截断物（MEGA 大宗元件专有）；参数是「是否反向」。 */
     private static final String ACTION_CYCLE_COMPRESSION_CUTOFF = "cycleCompressionCutoff";
+    /** 调编码槽里 ECO 大宗元件的压缩截断；载荷是「标记槽 + 方向」。 */
+    private static final String ACTION_CYCLE_ECO_BULK_CUTOFF = "cycleEcoBulkCutoff";
+    /** 压缩统一管理：按链聚合去重并按读取顺序压实标记。 */
+    private static final String ACTION_CONSOLIDATE_ECO_BULK = "consolidateEcoBulkMarkers";
+
+    /** AE2 的客户端动作按 JSON 传参：公开字段 + 无参构造器，不依赖 GSON 对 record 的支持。 */
+    public static final class EcoBulkCutoffRequest {
+        public int slot;
+        public int delta;
+
+        public EcoBulkCutoffRequest() {
+        }
+
+        public EcoBulkCutoffRequest(int slot, int delta) {
+            this.slot = slot;
+            this.delta = delta;
+        }
+    }
+
     private static final String ACTION_MARK_BOOKMARKS = "markBookmarks";
     private static final String ACTION_CYCLE_VOID_MODE = "cycleVoidMode";
 
@@ -753,6 +778,260 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         }
         host.markForSave();
         broadcastChanges();
+    }
+
+    /**
+     * 调编码槽里 ECO 大宗元件的压缩截断物。
+     *
+     * <p>与 MEGA 那枚同一形状：客户端只发标记槽与方向，服务端改元件配置里的那一格。ECO 21.2.11 起标记物
+     * 本身就是截断层，所以写回的是 {@code cycleCompressionCutoff} 返回的新一级，而不是只改显示值。</p>
+     */
+    public void cycleEcoBulkCutoff(int markerSlot, int delta) {
+        if (delta != -1 && delta != 1) {
+            return;
+        }
+        if (!onServerSide()) {
+            sendClientAction(ACTION_CYCLE_ECO_BULK_CUTOFF, new EcoBulkCutoffRequest(markerSlot, delta));
+            return;
+        }
+        ItemStack cell = host.getEncodeCellInventory().getStackInSlot(0);
+        var site = CellBulkCutoffCompat.open(cell);
+        if (site == null || !site.cycleCutoff(markerSlot, delta)) {
+            return;
+        }
+        host.getEncodeCellInventory().sendChangeNotification(0);
+        host.markForSave();
+        // broadcastChanges 里会复核标记窗口缓存，标记槽换级后窗口不会停在旧内容上。
+        broadcastChanges();
+    }
+
+    /**
+     * 压缩统一管理：把网络里所有大宗矩阵的标记按链聚合去重，并优先归到编码槽里那张主矩阵。
+     *
+     * <p>归属规则：一条链在某台矩阵里真有东西，它就留在那台（删了等于把存着的东西标没了），别处的同链标记算重复；
+     * 谁都没东西的链先给主矩阵，按它的格数上限收，装不下的再回落到第一个列出它的矩阵。主矩阵自己列出的链
+     * 排在吸收的前面，不会被外来链挤掉。一台矩阵内部抄了两遍的也一并并掉。</p>
+     *
+     * <p>改动走终端已有的取放路：从宿主取出、改副本、放回原格；放不回去就把原件塞回去，宁可什么都不改。</p>
+     */
+    public void consolidateEcoBulkMarkers() {
+        if (!onServerSide()) {
+            sendClientAction(ACTION_CONSOLIDATE_ECO_BULK);
+            return;
+        }
+        var sites = collectBulkSites();
+        if (sites.isEmpty()) {
+            return;
+        }
+        var plan = planConsolidation(sites);
+        int touched = 0;
+        var owners = new ArrayList<Object>();
+        for (int index = 0; index < sites.size(); index++) {
+            if (!applyMarkers(sites.get(index), plan.wanted().get(index))) {
+                continue;
+            }
+            touched++;
+            var driveKey = sites.get(index).driveKey();
+            if (driveKey != null) {
+                var owner = ownerOf(driveKey);
+                if (owner != null) {
+                    owners.add(owner);
+                }
+            }
+        }
+        if (touched == 0) {
+            return;
+        }
+        host.getEncodeCellInventory().sendChangeNotification(0);
+        afterCellMoved(owners.toArray());
+        noticeWith(NOTICE + "bulk_consolidated", String.valueOf(plan.cleared()));
+    }
+
+    /** 一个参与聚合的大宗矩阵；{@code driveKey} 为 null 表示编码槽里那一张（主矩阵）。 */
+    private record BulkSite(@Nullable String driveKey, int driveSlot, ItemStack stack,
+                            CellBulkCutoffCompat.Site cell,
+                            List<CellBulkCutoffCompat.Marker> markers, int capacity, Set<AEKey> stored) {
+    }
+
+    /** 一次聚合的产物：每台矩阵该留的名单，与被清掉的重复标记条数。 */
+    private record ConsolidationPlan(List<List<ItemStack>> wanted, int cleared) {
+    }
+
+    /** 网络里所有大宗矩阵，按扫描顺序；编码槽那一张排在最后。名单取未去重的那份。 */
+    private List<BulkSite> collectBulkSites() {
+        var sites = new ArrayList<BulkSite>();
+        var grid = gridOrNull();
+        if (grid != null) {
+            for (var entry : CellDriveScanner.scan(grid, false)) {
+                for (var cell : entry.cells()) {
+                    var site = siteOf(cell.hostKey(), cell.hostSlot(), cell.stack());
+                    if (site != null) {
+                        sites.add(site);
+                    }
+                }
+            }
+        }
+        var primary = siteOf(null, 0, host.getEncodeCellInventory().getStackInSlot(0));
+        if (primary != null) {
+            sites.add(primary);
+        }
+        return sites;
+    }
+
+    /** 读一台矩阵的名单、格数与库存；不是大宗矩阵或没标记时返回 null（不参与聚合）。 */
+    @Nullable
+    private static BulkSite siteOf(@Nullable String driveKey, int driveSlot, ItemStack stack) {
+        var cell = CellBulkCutoffCompat.open(stack);
+        if (cell == null) {
+            return null;
+        }
+        var markers = cell.rawMarkers();
+        if (markers.isEmpty()) {
+            return null;
+        }
+        return new BulkSite(driveKey, driveSlot, stack, cell, markers, cell.capacity(), cell.storedKeys());
+    }
+
+    private ConsolidationPlan planConsolidation(List<BulkSite> sites) {
+        // 链 → 列出它的站点集合（同一台里抄了两遍也只算它一次）
+        var listed = new LinkedHashMap<Set<AEKey>, LinkedHashSet<Integer>>();
+        for (int index = 0; index < sites.size(); index++) {
+            for (var marker : sites.get(index).markers()) {
+                listed.computeIfAbsent(marker.chain(), key -> new LinkedHashSet<>()).add(index);
+            }
+        }
+        var keepers = new LinkedHashMap<Set<AEKey>, List<Integer>>();
+        for (var entry : listed.entrySet()) {
+            var stocked = stockedOwners(sites, List.copyOf(entry.getValue()), entry.getKey());
+            if (!stocked.isEmpty()) {
+                keepers.put(entry.getKey(), stocked);
+            }
+        }
+        // 没库存的链归主矩阵：先收它自己列出的，再收外来的，收到格数上限为止。
+        int primary = primarySite(sites);
+        if (primary >= 0) {
+            // 主矩阵自己「有库存而保留」的链也占格，不先扣掉会把没库存的链挤出容量。
+            int room = sites.get(primary).capacity();
+            for (var kept : keepers.values()) {
+                if (kept.contains(primary)) {
+                    room--;
+                }
+            }
+            for (boolean ownPass : List.of(true, false)) {
+                for (var entry : listed.entrySet()) {
+                    if (room <= 0 || keepers.containsKey(entry.getKey())
+                            || entry.getValue().contains(primary) != ownPass) {
+                        continue;
+                    }
+                    keepers.put(entry.getKey(), List.of(primary));
+                    room--;
+                }
+            }
+        }
+        // 还没归属的（没有主矩阵，或主矩阵装不下）：留在第一个列出它的矩阵。
+        for (var entry : listed.entrySet()) {
+            keepers.putIfAbsent(entry.getKey(), List.of(List.copyOf(entry.getValue()).get(0)));
+        }
+        var wanted = new ArrayList<List<ItemStack>>(sites.size());
+        int cleared = 0;
+        for (int index = 0; index < sites.size(); index++) {
+            var site = sites.get(index);
+            var mine = new ArrayList<ItemStack>();
+            var taken = new HashSet<Set<AEKey>>();
+            for (var marker : site.markers()) {
+                var chain = marker.chain();
+                if (!keepers.get(chain).contains(index) || !taken.add(chain)) {
+                    continue;
+                }
+                mine.add(marker.item());
+            }
+            cleared += site.markers().size() - taken.size();
+            // 归到这台、但它原本没列出的链：取来源那台的标记物。
+            for (var entry : listed.entrySet()) {
+                var chain = entry.getKey();
+                if (taken.contains(chain) || !keepers.get(chain).contains(index)) {
+                    continue;
+                }
+                var source = markerOf(sites.get(entry.getValue().iterator().next()), chain);
+                if (source != null) {
+                    mine.add(source.item());
+                    taken.add(chain);
+                }
+            }
+            wanted.add(mine);
+        }
+        return new ConsolidationPlan(wanted, cleared);
+    }
+
+    /** 编码槽里那一张在主矩阵位上的下标；没有时 -1。 */
+    private static int primarySite(List<BulkSite> sites) {
+        for (int index = 0; index < sites.size(); index++) {
+            if (sites.get(index).driveKey() == null) {
+                return index;
+            }
+        }
+        return -1;
+    }
+
+    /** 这条链在哪些站点里真有东西：一台都没有时返回空表，交给「归主 / 回落」那一趟处理。 */
+    private static List<Integer> stockedOwners(List<BulkSite> sites, List<Integer> holders, Set<AEKey> chain) {
+        var stocked = new ArrayList<Integer>();
+        for (int index : holders) {
+            if (!java.util.Collections.disjoint(sites.get(index).stored(), chain)) {
+                stocked.add(index);
+            }
+        }
+        return stocked;
+    }
+
+    @Nullable
+    private static CellBulkCutoffCompat.Marker markerOf(BulkSite site, Set<AEKey> chain) {
+        for (var marker : site.markers()) {
+            if (marker.chain().equals(chain)) {
+                return marker;
+            }
+        }
+        return null;
+    }
+
+    /** 按目标名单改写这一台；返回是否真的动了它。 */
+    private boolean applyMarkers(BulkSite site, List<ItemStack> markers) {
+        if (sameMarkers(site.markers(), markers)) {
+            return false;
+        }
+        if (site.driveKey() == null) {
+            return site.cell().setMarkers(markers);
+        }
+        var owner = ownerOf(site.driveKey());
+        if (owner == null) {
+            return false;
+        }
+        var taken = CellDriveScanner.extractCell(owner, site.driveSlot(), null);
+        if (taken.isEmpty()) {
+            // 这台现在不让动（无限存储迁移中、矩阵还没成型），跳过它而不是硬来。
+            return false;
+        }
+        var modified = taken.copy();
+        var replacement = CellBulkCutoffCompat.open(modified);
+        if (replacement == null || !replacement.setMarkers(markers)
+                || !CellDriveScanner.insertCell(owner, site.driveSlot(), modified)) {
+            CellDriveScanner.insertCell(owner, site.driveSlot(), taken);
+            return false;
+        }
+        return true;
+    }
+
+    /** 名单是否逐格相同：聚合会既删又加，条数相同不代表内容没变。 */
+    private static boolean sameMarkers(List<CellBulkCutoffCompat.Marker> current, List<ItemStack> markers) {
+        if (current.size() != markers.size()) {
+            return false;
+        }
+        for (int slot = 0; slot < current.size(); slot++) {
+            if (!ItemStack.isSameItemSameComponents(current.get(slot).item(), markers.get(slot))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**

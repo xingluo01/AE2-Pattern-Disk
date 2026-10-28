@@ -19,11 +19,11 @@ import appeng.api.stacks.KeyCounter;
  * 所以这里返回 {@code null} 表示<b>不能合</b>，调用方把这一批改走普通路径：写不进目标就拒收——按 AE 的规矩，
  * 收不下就是收不下，不绕过槽位语义硬塞。</p>
  *
- * <p><b>这个分支目前走不到，但别删。</b>扁平形状只从 FastPath 的两个入口来（{@code dispatchTotals} 给的数组
- * 长度为 1），而 {@code ECOFastPathFacade} 还不查注册表（{@code docs/UPSTREAM_API_REQUESTS.md} 第 4 条），
- * 那些入口处于休眠。顶上有单输入样板时两种形状碰巧都是长度 1，永远对得上——这就是它看起来像死代码的原因。
- * 但上游补上那个查询后，同一个<b>多输入</b>样板会同时以长度 1 和长度 n 到货，那时按槽截断就是静默丢料，而症状
- * （订单卡在某个数不动）极难归因到这个方法。</p>
+ * <p><b>ECO 21.2.11 起这个分支会走到，别删。</b>扁平形状只从 FastPath 的两个入口来（{@code dispatchTotals}
+ * 给的数组长度为 1），而 {@code ECOFastPathFacade} 现在会经 {@code ECOParallelCraftingProviders} 发现本模组的
+ * 适配器（上游 issue #134，提交 {@code ce67db49}），那些入口不再休眠。顶上有单输入样板时两种形状碰巧都是
+ * 长度 1，永远对得上；同一个<b>多输入</b>样板却会同时以长度 1 和长度 n 到货，那时按槽截断就是静默丢料，而症状
+ * （订单卡在某个数不动）极难归因到这个方法。旧版 ECO 上 FastPath 仍不被发现，这条分支只是暂时走不到。</p>
  */
 public final class BoostMerge {
 

@@ -23,7 +23,8 @@ import appeng.api.upgrades.Upgrades;
  * （{@link ICellWorkbenchItem} 继承自 {@code IUpgradeableItem}，这条读法正是 AE2 元件工作台用的）。</p>
  *
  * <p>槽位数量固定为 {@link #SIZE}，与贴图上的六个格子一致；元件自己允许插几张由它自己的升级库存判定
- * （{@code isItemValid} 直接转发），超出部分会被它拒收——不是我们替它决定的。</p>
+ * （{@code isItemValid} 直接转发），超出部分会被它拒收——不是我们替它决定的。取出同样委派给它
+ * （见 {@link #extractItem}）：默认实现会绕过元件那边的锁，还会把卡复制出来。</p>
  *
  * <p>编码槽为空时整片槽位不可用（读回空栈、写入被拒），槽底由图层的显隐逻辑画成暗色。</p>
  */
@@ -80,6 +81,29 @@ public class EncodeCellUpgrades implements InternalInventory {
             return false;
         }
         return upgrades.isItemValid(slot, stack);
+    }
+
+    /**
+     * 取出直接委派给元件自己的升级库存，不走 {@link InternalInventory} 那个「读一遍再 {@code setItemDirect}」的默认实现。
+     *
+     * <p>默认实现会先把整叠物品当作已经取出返回，再试着写回空栈；元件那边若拒绝写入（ECO 的大宗拓展卡就是这种：
+     * 标记数超过基础格数时那张卡被锁住），结果是<strong>卡进了玩家手里、元件里却还留着</strong>——凭空复制一张。
+     * 委派之后，锁住的卡连模拟取出都返回空，槽位自己也就不允许取了。</p>
+     *
+     * <p>这一层不认具体是哪张卡：谁能锁、什么时候锁，都由元件自己的升级库存说，ECO 将来加新的矩阵或卡都不用改这里。</p>
+     */
+    @Override
+    public ItemStack extractItem(int slot, int amount, boolean simulate) {
+        IUpgradeInventory upgrades = current();
+        if (upgrades == null || slot < 0 || slot >= upgrades.size()) {
+            return ItemStack.EMPTY;
+        }
+        ItemStack taken = upgrades.extractItem(slot, amount, simulate);
+        // 真取出后元件内容变了：不落盘的话重开界面卡还在元件里。
+        if (!simulate && !taken.isEmpty()) {
+            host.markForSave();
+        }
+        return taken;
     }
 
     /** 只转发槽位边界：真正的准入判定在元件自己的升级库存里，这里不替它拍板。 */

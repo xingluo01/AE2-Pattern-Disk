@@ -161,6 +161,8 @@ public final class AEPDConfig {
                 "Shown when putting the cell back after a failed move did not work either.");
         MESSAGES.define(builder, "cell_management_terminal.notice.priority_unsupported",
                 "Shown when opening AE2's priority GUI is not supported for the current selection.");
+        MESSAGES.define(builder, "cell_management_terminal.notice.bulk_consolidated",
+                "Shown after 'consolidate compression markers' merged the duplicate markers of the network's bulk matrices.");
 
         // ---- 三个终端共用 ----
         builder.comment("Shared by all three terminals.");

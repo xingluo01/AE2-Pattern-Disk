@@ -20,9 +20,17 @@ java {
     toolchain.languageVersion = JavaLanguageVersion.of(21)
 }
 
+// 可选的本地 ECO 快照：带大宗元件压缩链查询 API。设了这条路才把 API 适配器编进源集；
+// 普通构建仍用 CurseForge 发布件并走反射退场。上游发版后把 src/ecoapi 移进主源集、删掉本开关。
+def ecoApiJar = providers.gradleProperty('ecoApiJar').orNull
+
 sourceSets {
     main.resources {
         srcDir 'src/generated/resources'
+    }
+
+    if (ecoApiJar != null) {
+        main.java.srcDir 'src/ecoapi/java'
     }
 
     // Client is intentionally kept as a separate source set so server/common code
@@ -210,12 +218,21 @@ dependencies {
     // 逐字相同（javap -public 逐类 diff），集成层不用改。它的必需地板仍是 ae2 [19.2.17,) 与
     // ldlib2 [2.2.40,)，本环境分别是 19.2.18 与 2.2.40，都在区间内。
     //
+    // 2026-10-27 升到 21.2.11（构件 9336076）：issue #134 落地后 ECOFastPathFacade 会经
+    // ECOParallelCraftingProviders 发现本模组的 FastPath 适配器，long/BigInteger 入口开始生效。
+    // 地板不变（ae2 [19.2.17,) / ldlib2 [2.2.40,)）；绑定类型只新增 ECOPatternInsertionResult.UNCHANGED。
+    //
     // 注意：**这条地板不能抬**。FML 对「已安装的」可选依赖同样做版本检查，写成 [21.2.6,) 会让装了
     // 21.2.1–21.2.5 的包**整个模组不加载**（与下文 ae2jeiintegration 那条同一种失败形状）。所以维持
     // [21.2.1,)：旧 ECO 上优先级那格退化回只读，其余集成不受影响。集成层已按此做「接口优先、反射兜底」
     // + 存在性守卫（见 NeoECOStoragePriority#register）：缺接口时连桥都不注册，不会走到链接失败。
-    compileOnly 'curse.maven:neo-eco-ae-extension-1460639:9317271'
-    clientCompileOnly 'curse.maven:neo-eco-ae-extension-1460639:9317271'
+    if (ecoApiJar != null) {
+        compileOnly files(ecoApiJar)
+        clientCompileOnly files(ecoApiJar)
+    } else {
+        compileOnly 'curse.maven:neo-eco-ae-extension-1460639:9336076'
+        clientCompileOnly 'curse.maven:neo-eco-ae-extension-1460639:9336076'
+    }
 
     // Client source set: explicit client-side API access.
     clientCompileOnly(libs.ae2)
@@ -396,6 +413,7 @@ dependencies {
     //   Data Energistics：ECO 的 integration 与 compat 里都有；它另需 configuration 与 ldlib2。
     //   AE2 Utility：JEI 里直接「样板编码 + 上传」，与本模组的样板上传面重叠。
     //   a-useless-mod（CF 上的 some-useless-things）：万象合金炉的大数量目标 API，ECO 声明改进了它的大数量合成与批量派发；2026-10-10 起改走 CF 坐标（Modrinth 那份已删）。
+    //   Bigger AE2：抬高存储与并行规模，与本模组的大订单吞吐面重叠。
     //
     // 前两条是 2026-09-30 停用、2026-10-02 恢复的：当时它们缺前置 appliedenhancements [1.0.9,)，
     // 而 CF 构件不带依赖元数据、前置 jar 从未进入运行时，FML 在 pre-loading 直接中止启动。
@@ -455,7 +473,11 @@ dependencies {
     // a-useless-mod：2026-10-10 从 Modrinth 坐标换成 CurseForge。那个项目在 Modrinth 上已删除（API 返 404），
     // 而本机 gradle 缓存里还留着旧件，所以只有 CI 会解析失败——0.9.0 首轮发布就卡在这一步（Build 失败，
     // 未产生任何上传）。CF 坐标 project 1401600 / file 9089665 与之同源。
-    localRuntime 'curse.maven:some-useless-things-1401600:9089665'
+    // 2026-10-27 升到 2.4.6.2（构件 9332843）：ECO 21.2.11 的地板是 [1.21.1-2.4.6.2,)，
+    // 旧的 2.4.5.11 会在预加载被 FML 拦下，必须与 ECO 同批升。
+    localRuntime 'curse.maven:some-useless-things-1401600:9332843'
+    // Bigger AE2 21.2.3：满足 ECO 的 bigger_ae2 [21.2.3,)；必需前置只有 ae2 [19.0.26,)，本环境已满足。
+    localRuntime 'maven.modrinth:tHmKhHkk:RjWjkDsE'
 
     // 整理模组（Inventory Profiles Next + 它的库 libIPN）：开发环境装上用于验证「整理」不会把终端里
     // 非玩家槽（升级槽、样板输出槽）的物品移到光标。两个都是 mod，都只能进开发环境。
@@ -471,7 +493,12 @@ dependencies {
     // Pattern-Disk <-> FD Smart Pattern Bus integration.
     // Runtime uses the same dev jar as compile: runClient is how the integration is exercised, and a
     // published artifact may lag the version this mod was developed against.
-    localRuntime 'curse.maven:neo-eco-ae-extension-1460639:9317271'
+    // 21.2.11 起 FastPath 可在开发运行期直接验证（见上方 compileOnly 那段）。
+    if (ecoApiJar != null) {
+        localRuntime files(ecoApiJar)
+    } else {
+        localRuntime 'curse.maven:neo-eco-ae-extension-1460639:9336076'
+    }
     // Neo ECO Prototype: the unofficial L1 add-on for NEO ECO (drives, energy cells, bulk matrices,
     // interfaces and a pattern provider below ECO's L4 tier). Dev-only like every other optional
     // compatibility target - it is not a published dependency of this mod, and nothing in src/ names

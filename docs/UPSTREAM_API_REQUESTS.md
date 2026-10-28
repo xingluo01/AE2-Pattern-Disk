@@ -1,8 +1,8 @@
 # 上游 API 请求（AE2 本体 / ECO / ECO Prototype / ExtendedAE Plus）
 
-> 状态：前两份、第四份与第五份**已提交**（前两份本地 2026-10-09 02:55 / UTC `2026-10-08T18:55Z`，第四份 UTC `2026-10-25T10:10Z`，第五份 UTC `2026-10-26T16:15Z`，见文末「提交记录」）；第三份是 2026-10 发现的兜底缺陷，**尚未提交**。下面五份草稿保留原文，便于日后追进或修订时对照。
+> 状态：前两份、第四份、第五份与第六份**已提交**（前两份本地 2026-10-09 02:55 / UTC `2026-10-08T18:55Z`，第四份 UTC `2026-10-25T10:10Z`，第五份 UTC `2026-10-26T16:15Z`，第六份 2026-10-27 提了 PR #141，见文末「提交记录」）；**第四份已落地**——上游 issue #134 于 2026-10-25 关闭（提交 `ce67db49`），随 ECO **21.2.11** 发布；第六份**已合并**——PR #141 于 UTC `2026-10-27T13:43Z` 并进 `main`（merge `5c8c9f2e`，维护者另补 `7919d10b` 修正截断查询与库存展示的一致性），**尚未随版本发布**（最新仍是 21.2.11）；第三份是 2026-10 发现的兜底缺陷，**尚未提交**。下面六份草稿保留原文，便于日后追进或修订时对照。
 > 提出方：AE2 Pattern Disks（`ae2_pattern_disk`，作者 `xingluo01`）。
-> 用例：前两份是**元件管理终端**——把网络里所有能装存储元件的东西列成一张表，并支持取出/放入元件、调整存储优先级；第三份是**样板磁盘供应器的样板上传**；第四份是**批处理装配室的极大数合成**——单次交接量被 int 容量契约封在 21.4 亿份，而 FastPath 的 long 容量面没有注册表可用；第五份是**AE2 本体的语义缺陷**——`hasComponents()` 的返回值与名字相反，会污染按物品的替换判定缓存。
+> 用例：前两份是**元件管理终端**——把网络里所有能装存储元件的东西列成一张表，并支持取出/放入元件、调整存储优先级；第三份是**样板磁盘供应器的样板上传**；第四份是**批处理装配室的极大数合成**——单次交接量被 int 容量契约封在 21.4 亿份，而 FastPath 的 long 容量面没有注册表可用；第五份是**AE2 本体的语义缺陷**——`hasComponents()` 的返回值与名字相反，会污染按物品的替换判定缓存；第六份是**ECO 大宗元件的压缩链查询**——元件管理终端要按链合并标记，现在只能反射遍历元件副本。
 
 ## 为什么会有这些请求
 
@@ -26,6 +26,8 @@
 批处理装配室通过 `ECOParallelCraftingProvider` 接收合成批次，这条路径的容量签名是 `int eco$getAvailableParallelSlots()`，于是单次交接封顶 21.4 亿份。按 9:1 逐阶压缩九层的订单（目标 2.1e9 个九重）算，底层要 8.13e17 件圆石精华、整条链约 1.0e17 次合成——按 21.4 亿份/次的上限，这一单要几千万次交接。即使摊销路径本身不吃亏，交接次数也把它拖成跑不完的量级。
 
 `ECOFastPathDispatchProvider` 的 `Preparation.capacity` 是 `long`，覆盖这个量级没有困难。问题在发现面上：ordinary 路径有 `ECOParallelCraftingProviders.register(...)` 这个注册表，FastPath 没有对应的，`ECOFastPathFacade` 只认 `instanceof` 加两个硬编码的 mod 专用桥。本模组不能把 ECO 的类型写进总是加载的类（可选依赖，缺 ECO 时会在加载阶段炸），所以只能走注册面。
+
+**落地结果（2026-10-27）**：上游采纳了「复用既有注册表」的最小方案（issue #134，提交 `ce67db49`，关闭于 2026-10-25）。`ECOFastPathFacade.supports` / `resolveProvider` / `prepareAllocated` / `prepareExactAllocated` 现在都会用 `ECOParallelCraftingProviders.find(...)` 发现同时实现两种契约的适配器。本模组的 `BatchAssemblerParallelIntake` 早已按此注册，升到 ECO 21.2.11 后 FastPath 的两个大批量入口直接生效，集成代码无需改动。
 
 ---
 
@@ -203,7 +205,7 @@
 
 ---
 
-## 草稿 4 → `DancingSnow0517/NeoECOAEExtension`（已提交）
+## 草稿 4 → `DancingSnow0517/NeoECOAEExtension`（已提交，已落地 ECO 21.2.11 / issue #134）
 
 **标题**
 
@@ -323,9 +325,46 @@ hasComponents() 的返回值与名字相反，会污染按物品的替换判定�
 以上行号读自本地克隆 `D:/Temp/Applied-Energistics-2` 的 `1.21.1` 分支 @ `db17504`（该克隆没有 `main`）；javadoc 与实现的分歧以该提交为准。
 ````
 
+## 草稿 6 → `DancingSnow0517/NeoECOAEExtension`（已合并：PR #141 @ `5c8c9f2e`）
+
+**标题**
+
+```text
+建议给 IECOBulkDisplayCell 增加压缩链查询
+```
+
+**正文**
+
+````text
+## 背景
+
+AE2 Pattern Disk 的元件管理终端要把 ECO 大宗元件里的标记按压缩链合并（同一链只保留一个代表），并在选中标记上调截断层。`IECOBulkDisplayCell` 目前只有 `cycleCompressionCutoff`，没有“某物品属于哪条链”的查询，第三方只能反射遍历元件副本，既慢又脆。
+
+## 建议
+
+在 `IECOBulkDisplayCell` 增加两个默认方法：
+
+    default List<AEItemKey> getCompressionChain(AEItemKey item) { return List.of(item); }
+    default AEItemKey getCompressionCutoff(AEItemKey item) { return item; }
+
+`ECOBulkStorageCell` 分别覆写为 `ECOCompressionService.units(item).items()`，以及「内部截断记录优先、否则回落到同链标记」。默认方法保证已有第三方实现不需要改动。
+
+## 用途
+
+调用方遍历配置标记，用链判断重复、用 `chain.size() > 1` 判断是否可压缩，并用 `getCompressionCutoff` 显示这条链真正生效的那一级。第二处是必要的：`cutoffs` 表与标记槽可以不一致——ECO 自己的标记升降级会同时写两处，但直接在标记格里换物品只写配置，此时表里仍是旧值，`cutoff(key, account)` 又以表优先。只读标记会让第三方按钮显示一个库存其实不再采用的截断层。
+
+调级仍走现有的 `cycleCompressionCutoff`，本请求不改写入语义。
+
+## 取证方式
+
+签名读的是上游 `21.2.11` 源码（本地 worktree `E:/GitHub/NeoECOAEExtension-api`，tag `21.2.11`）。
+````
+
+---
+
 ## 取证清单
 
-前三份的签名来自实际 jar 的 `javap`；第四份读的是上游 `main` 分支源码（本地克隆 `D:/Temp/NeoECOAEExtension`，`api/me/provider` 的七个文件与 21.2.10 逐个比对一致；未联网核对 blob sha）；第五份读的是 AE2 本地克隆（`D:/Temp/Applied-Energistics-2`，`1.21.1` @ `db17504`）。三类来源的区别在表内分别标出。
+前三份的签名来自实际 jar 的 `javap`；第四份读的是上游 `main` 分支源码（本地克隆 `D:/Temp/NeoECOAEExtension`，`api/me/provider` 的七个文件与 21.2.10 逐个比对一致；未联网核对 blob sha）；第五份读的是 AE2 本地克隆（`D:/Temp/Applied-Energistics-2`，`1.21.1` @ `db17504`）；第六份读的是上游 `21.2.11` 源码（worktree `E:/GitHub/NeoECOAEExtension-api`）。三类来源的区别在表内分别标出。
 
 | 事实 | 来源 |
 |---|---|
@@ -341,7 +380,7 @@ hasComponents() 的返回值与名字相反，会污染按物品的替换判定�
 | ECO 仓库地址取自其 `mods.toml` 的 `issueTrackerURL`；青春版 `mods.toml` **未**声明 tracker，仓库为 `reliqwq/NeoECOPrototype` | 两个 jar 的 `META-INF/neoforge.mods.toml` + GitHub 检索 |
 | 上游 `21.2.1` **确实**编译期依赖本模组的 `PatternDiskApi`（与 `NeoECOIntegration` 的 javadoc 一致） | 该 jar 里有 `cn/dancingsnow/neoecoae/integration/ae2pattern/`（`AepdPatternDiskBackend` 等）；`mods.toml` 把 `ae2_pattern_disk` 列为可选依赖 |
 | `ECOParallelCraftingProviders.Adapter` 的返回类型被写死为 `ECOParallelCraftingProvider` | `ECOParallelCraftingProviders.java:43-49`（`main`） |
-| `ECOFastPathFacade.supports` 只认 `instanceof` + 两个硬编码桥，无注册表 | `ECOFastPathFacade.java:37-41`（`main`）；`resolveProvider` 在 `:44-48`；`prepareAllocated` 在 `:103-105` 也硬测该接口；`ECOBatchCapacityProvider.java` 是它的 `@Deprecated` 旧名 |
+| `ECOFastPathFacade.supports` 只认 `instanceof` + 两个硬编码桥，无注册表（21.2.11 前） | `ECOFastPathFacade.java:37-41`（`main`）；`resolveProvider` 在 `:44-48`；`prepareAllocated` 在 `:103-105` 也硬测该接口；`ECOBatchCapacityProvider.java` 是它的 `@Deprecated` 旧名。**21.2.11 起已改为先查 `ECOParallelCraftingProviders.find(...)`**（`ce67db49`，issue #134） |
 | FastPath 容量是 `long`，ordinary 容量是 `int`，且非正容量在构造器就抛 | `ECOFastPathDispatchProvider.java:43` / `:54-57`；`ECOParallelCraftingProvider.java:10`（`main`） |
 | `ECOVerifiedFastPathRecipe.trusted` 是包私有，第三方无法构造 `ECOStatefulBatchCalculator` | `crafting/execution/fastpath/ECOVerifiedFastPathRecipe.java:54`（`main`） |
 | `ECOJobAwareCraftingProvider` 在 21.2.10 才有，本地克隆（`ecba648`）里没有 | 上游 `api/me/provider` 目录页 vs 本地目录列举 |
@@ -351,11 +390,12 @@ hasComponents() 的返回值与名字相反，会污染按物品的替换判定�
 
 ## 提交记录
 
-| 仓库 | issue | 提交时间 | 状态 |
+| 仓库 | issue / PR | 提交时间 | 状态 |
 |---|---|---|---|
 | `DancingSnow0517/NeoECOAEExtension` | [#119](https://github.com/DancingSnow0517/NeoECOAEExtension/issues/119) | 2026-10-08T18:55Z（本地 10-09 02:55） | **已实现并已关闭**：ECO **21.2.6**（2026-10-16 发布）含 `api.storage.IECOStoragePriorityHost` 与提到 `api.storage` 的 `ICellHost`；维护者 Yang120231 于 2026-10-09 回「已添加」并标记 completed |
 | `reliqwq/NeoECOPrototype` | [#5](https://github.com/reliqwq/NeoECOPrototype/issues/5) | 2026-10-08T18:55Z（本地 10-09 02:55） | **已实现**（issue 仍 OPEN）：青春版 **1.3.6**（2026-10-16 发布）的 `SimplifyDriveBlockEntity` 已 `implements util.ICellHost` 并补 `setCellStack`；作者 reliqwq 于 2026-10-09 回「随下一个版本发出」 |
-| `DancingSnow0517/NeoECOAEExtension` | [#134](https://github.com/DancingSnow0517/NeoECOAEExtension/issues/134) | 2026-10-25T10:10Z（本地 10-25 18:10） | **待处理**：请 FastPath 补一个与 `ECOParallelCraftingProviders` 同形的 provider 注册面，让第三方能在不硬依赖 ECO 的前提下拿到 `long` 容量。未实现前本模组的批处理装配室停在 ordinary 并行路径 |
+| `DancingSnow0517/NeoECOAEExtension` | [#134](https://github.com/DancingSnow0517/NeoECOAEExtension/issues/134) | 2026-10-25T10:10Z（本地 10-25 18:10） | **已实现并已关闭**：ECO **21.2.11**（2026-10-26 发布，提交 `ce67db49`）让 `ECOFastPathFacade` 经 `ECOParallelCraftingProviders` 发现第三方 FastPath 适配器 |
+| `DancingSnow0517/NeoECOAEExtension` | [PR #141](https://github.com/DancingSnow0517/NeoECOAEExtension/pull/141) | 2026-10-27（本地） | **已合并**（UTC `2026-10-27T13:43Z`，merge `5c8c9f2e`）：给 `IECOBulkDisplayCell` 增加默认 `getCompressionChain` 与 `getCompressionCutoff`，让元件管理终端按链合并大宗元件标记、并显示这条链真正生效的截断层；默认方法，已有实现无需改动。**维护者合并前补了 `7919d10b`**：`getCompressionCutoff` 改走库存投影（配方重载后返回历史账户的基础单位、把失效的显示配置归一到当前链），签名不变、语义更准，本地快照 jar 仍停在 `8d0b028e`，验实机前按 `origin/main` 重打一份。**下一版发布后**把 API 适配器移进主源集（见 `TODO.md`） |
 | `AppliedEnergistics/Applied-Energistics-2` | [#9040](https://github.com/AppliedEnergistics/Applied-Energistics-2/pull/9040) | 2026-10-26T16:15Z（本地 10-27 00:15） | **待审**：`hasComponents()` 改成基于 `getComponentsPatch()`（`isComponentsPatchEmpty()`），修掉「带组件变体按 Item 共享判定缓存」与 `AEFluidKey#toString` 的同一错误；附回归测试，未本地构建（本机拿不到 Gradle 8.12 发行包） |
 
 提交账号：`xingluo01`。正文用中文（两个仓库既有 issue 以中文为主，见上方取证清单）。

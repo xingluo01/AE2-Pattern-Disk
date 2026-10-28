@@ -81,7 +81,7 @@ The other half of the pair. It lists the disks held by every pattern disk provid
 ### Efficient Molecular Assembler
 A parallel molecular assembler with **eight independent execution threads**. It accepts crafting jobs pushed by AE2 pattern providers and runs them concurrently. Each thread owns a 3×3 molecular assembler grid, an output slot, and independent progress. Like AE2's own molecular assembler it takes **no channel**; it still draws power from the grid.
 
-The GUI exposes one page per thread (mirroring ExtendedAE's (EAE) extension molecular assembler) with vertical progress only for the selected page. Accepts up to **five AE2 Speed Cards** with multipliers `1.0x / 1.3x / 1.7x / 2.0x / 2.5x / 5.0x`.
+The GUI exposes one page per thread (mirroring ExtendedAE's (EAE) extension molecular assembler) with vertical progress only for the selected page. Accepts up to **five AE2 Speed Cards** with multipliers `1.0x / 1.3x / 1.7x / 2.0x / 2.5x / 5.0x`. The whole ladder runs at twice AE2's molecular assembler speed - five ticks per craft without cards down to one tick with five - the same rates as EAE's extended molecular assembler, and each tick draws AE in proportion to the progress it makes.
 
 Each page also has an optional pattern slot. Inserting an encoded crafting pattern there turns that page into a self-executing unit: it pulls its own inputs from the ME network, crafts continuously while materials last, and hands products plus container remainders straight back to the ME network - a self-executing page never pushes into adjacent containers. A page running a manual pattern does not accept provider-pushed jobs, so the machine only takes pushed jobs while at least one page is idle.
 

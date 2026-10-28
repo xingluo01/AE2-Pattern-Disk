@@ -8,6 +8,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.ChatFormatting;
@@ -38,10 +39,12 @@ import appeng.api.config.CopyMode;
 import appeng.api.config.Settings;
 import appeng.api.config.SortDir;
 
+import io.github.lounode.ae2pattern.common.menu.CellBulkCutoffCompat;
 import io.github.lounode.ae2pattern.common.menu.CellDriveScanner;
 import io.github.lounode.ae2pattern.common.menu.CellManagementTermMenu;
 import io.github.lounode.ae2pattern.client.integration.bookmarks.BookmarkReader;
 import io.github.lounode.ae2pattern.client.integration.megacells.MegaCutoffButtonFactory;
+import io.github.lounode.ae2pattern.client.integration.neoecoae.EcoBulkCutoffButton;
 import io.github.lounode.ae2pattern.integration.extendedae.VoidCellCompat;
 import io.github.lounode.ae2pattern.integration.megacells.MegaCellsCompat;
 import io.github.lounode.ae2pattern.client.render.DriveHighlight;
@@ -108,17 +111,35 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
     private final Blitter blankCell;
 
     /**
-     * 四张覆盖层。它们来自本模组自己的 states.png（与 AE2 同款的几格，坐标已按本模组那份复制过来），
-     * 与贴图上画好的槽框同位置：元件存储/编码槽、元件升级槽、元件标记槽各一张，加一张「放不进去的位置」。
+     * 五张覆盖层。它们来自本模组自己的 states.png（与 AE2 同款的几格，坐标已按本模组那份复制过来），
+     * 与贴图上画好的槽框同位置：元件存储/编码槽、元件升级槽、元件标记槽各一张，加一张「放不进去的位置」，
+     * 以及一张 ECO 家族的存储矩阵座。
      */
     private static final Blitter CELL_SLOT_OVERLAY = states(240, 80);
     private static final Blitter UPGRADE_SLOT_OVERLAY = states(240, 96);
     private static final Blitter MARKER_SLOT_OVERLAY = states(240, 112);
     /** 空白槽位覆盖层：盖在段尾那些放不进去的列上（这台/这个主机没有这么多格）。 */
     private static final Blitter EMPTY_SLOT_OVERLAY = states(240, 128);
+    /** 存储矩阵座：表里 ECO 家族的空格用它，而不是 AE2 那只方槽。 */
+    private static final Blitter MATRIX_SLOT_OVERLAY = states(240, 160);
+
+    /**
+     * 哪些模组的存储主机用矩阵座：ECO 本体与青春版。
+     *
+     * <p>认法是第一格（首格单）那件方块物品的命名空间——清单里每组的图标就是主机的方块物品，
+     * 它跟着 {@code HostGroup} 一起同步到客户端，所以不必为「画哪种槽底」再往协议里加一个字段。</p>
+     */
+    private static final java.util.Set<String> MATRIX_SLOT_NAMESPACES = java.util.Set.of(
+            "neoecoae", "neoecoprototype");
 
     /** 「标记收藏」的图标（states.png 16,48）。 */
     private static final Blitter ICON_MARK_BOOKMARKS = states(16, 48);
+
+    /** 「切换压缩选择」的图标（states.png 64,48）。 */
+    private static final Blitter ICON_ECO_BULK_CUTOFF_SWITCH = states(64, 48);
+
+    /** 「压缩统一管理」的图标（states.png 80,48）。 */
+    private static final Blitter ICON_ECO_BULK_CONSOLIDATE = states(80, 48);
 
     /** 「物质聚合模式」三档的图标，从左到右：虚空 / 物质球 / 奇点（states.png 一条 48x16）。序号就是模式的枚举序号。
      * 固定三格：EAE 将来加第四档时图标会重复最后一格（提示语仍按枚举名取键，不会指错人）——那时补一格贴图即可。 */
@@ -170,6 +191,21 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
     /** MEGA Cells 的大宗压缩截断钮；那个模组不在场时为 null（工厂返回 null）。 */
     @Nullable
     private Button megaCutoffButton;
+    /** ECO 大宗元件的截断物按钮与选择按钮；ECO 不带该契约时为 null。 */
+    @Nullable
+    private EcoBulkCutoffButton ecoBulkCutoffButton;
+    @Nullable
+    private StatesIconButton ecoBulkCutoffSwitchButton;
+    @Nullable
+    private StatesIconButton ecoBulkConsolidateButton;
+    /** 上一次算过 ECO 标记列表的编码槽内容快照；null = 还没算过。 */
+    @Nullable
+    private ItemStack lastEcoBulkCell;
+    private List<CellBulkCutoffCompat.Marker> ecoBulkMarkers = List.of();
+    /** 当前选中的 ECO 标记配置槽；-1 = 没有选中。 */
+    private int selectedEcoBulkSlot = -1;
+    /** 上一次低频重算标记的客户端 tick；压缩链数据是异步同步的，不能只按元件内容失效。 */
+    private long lastEcoBulkRefreshTick = Long.MIN_VALUE;
     /** 「标记收藏」与「物质聚合模式」；后者只在编码槽里是 EAE 虚空元件时出现。 */
     private StatesIconButton markBookmarksButton;
     private StatesIconButton voidModeButton;
@@ -237,6 +273,35 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
             addToLeftToolbar(this.megaCutoffButton);
         }
 
+        // ECO 大宗元件：截断物按钮 + 切换按钮。旧版 ECO 或没装时整组不建；新版每次开屏时才注册。
+        if (CellBulkCutoffCompat.isAvailable()) {
+            this.ecoBulkCutoffButton = new EcoBulkCutoffButton(this::onEcoBulkCutoffPressed);
+            this.ecoBulkCutoffButton.setVisible(false);
+            addToLeftToolbar(this.ecoBulkCutoffButton);
+
+            this.ecoBulkCutoffSwitchButton = new StatesIconButton(
+                    () -> ICON_ECO_BULK_CUTOFF_SWITCH, this::onEcoBulkCutoffSwitchPressed);
+            this.ecoBulkCutoffSwitchButton.setBackground(BUTTON_BG_NORMAL, BUTTON_BG_HOVER);
+            this.ecoBulkCutoffSwitchButton.setTooltip(List.of(
+                    Component.translatable(
+                            "gui.ae2_pattern_disk.cell_management_terminal.eco_bulk_cutoff_switch"),
+                    Component.translatable(
+                            "gui.ae2_pattern_disk.cell_management_terminal.eco_bulk_cutoff_switch.previous"),
+                    Component.translatable(
+                            "gui.ae2_pattern_disk.cell_management_terminal.eco_bulk_cutoff_switch.next")));
+            this.ecoBulkCutoffSwitchButton.setVisibility(false);
+            addToLeftToolbar(this.ecoBulkCutoffSwitchButton);
+
+            this.ecoBulkConsolidateButton = new StatesIconButton(
+                    () -> ICON_ECO_BULK_CONSOLIDATE, this::onEcoBulkConsolidatePressed);
+            this.ecoBulkConsolidateButton.setBackground(BUTTON_BG_NORMAL, BUTTON_BG_HOVER);
+            this.ecoBulkConsolidateButton.setTooltip(List.of(
+                    Component.translatable(
+                            "gui.ae2_pattern_disk.cell_management_terminal.eco_bulk_consolidate")));
+            this.ecoBulkConsolidateButton.setVisibility(false);
+            addToLeftToolbar(this.ecoBulkConsolidateButton);
+        }
+
         // 两枚项目自己的图标按钮（states.png）。都做成“图标每帧现取”的那种：模式那枚的图标要跟着当前模式走。
         this.markBookmarksButton = new StatesIconButton(() -> ICON_MARK_BOOKMARKS, this::onMarkBookmarksPressed);
         this.markBookmarksButton.setBackground(BUTTON_BG_NORMAL, BUTTON_BG_HOVER);
@@ -293,10 +358,14 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
      *
      * <p>闪电科技那两枚（频率卡配置、自动连接开关）由上游自己对每个通用终端能力屏追加（频率卡在场时才真出现）：
      * 按 tooltip 定身份（见基类的 {@code isFrequencyCardButton} / {@code isFrequencyAutoConnectButton}）。</p>
+     *
+     * <p>三枚截断钮排在末尾、彼此相邻：MEGA 一枚，ECO 大宗元件两枚（截断物与切换选中）。它们都是「编码槽里
+     * 那张元件决定显隐」的按钮，同一时间最多出现一组。</p>
      */
     private static final List<String> TOOLBAR = List.of(
             "guide", "sortOrder", "terminalStyle", "partition", "clear", "copyMode",
-            "markBookmarks", "voidMode", "terminalSwitch", "frequencyCard", "frequencyAutoConnect", "megaCutoff");
+            "markBookmarks", "voidMode", "terminalSwitch", "frequencyCard", "frequencyAutoConnect",
+            "megaCutoff", "ecoBulkCutoff", "ecoBulkCutoffSwitch", "ecoBulkConsolidate");
 
     @Override
     protected List<String> toolbarPlan() {
@@ -334,6 +403,15 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
         if (button == this.megaCutoffButton) {
             return "megaCutoff";
         }
+        if (button == this.ecoBulkCutoffButton) {
+            return "ecoBulkCutoff";
+        }
+        if (button == this.ecoBulkCutoffSwitchButton) {
+            return "ecoBulkCutoffSwitch";
+        }
+        if (button == this.ecoBulkConsolidateButton) {
+            return "ecoBulkConsolidate";
+        }
         // 「切换终端」那枚由基类按类名认（无线屏挂上来的 AE2WTLib 按钮），这里不必再重复。
         return null;
     }
@@ -351,6 +429,35 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
         }
         boolean reverse = net.minecraft.client.gui.screens.Screen.hasShiftDown();
         getMenu().cycleCompressionCutoff(reverse);
+    }
+
+    /** ECO 截断物按钮：左键降一级、右键升一级（与 MEGA 那枚同一手势）。 */
+    private void onEcoBulkCutoffPressed(Button button) {
+        int index = indexOfSelectedEcoMarker();
+        if (index < 0) {
+            return;
+        }
+        var selected = ecoBulkMarkers.get(index);
+        if (!selected.compressible()) {
+            // 这条链只有一级，截断层就是它自己：按钮照常画，左右键都无事发生。
+            return;
+        }
+        getMenu().cycleEcoBulkCutoff(selected.slot(), isHandlingRightClick() ? 1 : -1);
+    }
+
+    /** 切换当前操作的标记：左键上一个，右键下一个，首尾循环。 */
+    private void onEcoBulkCutoffSwitchPressed(Button button) {
+        if (ecoBulkMarkers.isEmpty()) {
+            return;
+        }
+        int index = indexOfSelectedEcoMarker();
+        if (index < 0) {
+            index = 0;
+        }
+        int delta = isHandlingRightClick() ? 1 : -1;
+        index = Math.floorMod(index + delta, ecoBulkMarkers.size());
+        selectedEcoBulkSlot = ecoBulkMarkers.get(index).slot();
+        updateEcoBulkButtons();
     }
 
     /**
@@ -431,6 +538,76 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
         }
     }
 
+    /**
+     * 每帧把 ECO 的两枚按钮对到编码槽里那张元件上。
+     *
+     * <p>标记列表随元件内容变（换元件、调级、别处改了这个元件），另外每 100 tick 重算一次：压缩链数据是
+     * 客户端异步同步的，元件内容不变时也要能把刚到的链补上。选中槽在列表重建后仍按配置槽号保留。
+     * 没有标记时两枚都藏；有标记就两枚都在，选中链只有一级时截断物钮仍显示它自己，点击无事发生。</p>
+     */
+    private void syncEcoBulkButtons() {
+        if (this.ecoBulkCutoffButton == null || this.ecoBulkCutoffSwitchButton == null
+                || this.ecoBulkConsolidateButton == null) {
+            return;
+        }
+        var stack = getMenu().getCellHost().getEncodeCellInventory().getStackInSlot(0);
+        var level = Minecraft.getInstance().level;
+        long tick = level == null ? 0L : level.getGameTime();
+        boolean periodic = tick != this.lastEcoBulkRefreshTick && tick % 100L == 0L;
+        if (!periodic && this.lastEcoBulkCell != null && ItemStack.matches(this.lastEcoBulkCell, stack)) {
+            return;
+        }
+        if (periodic) {
+            this.lastEcoBulkRefreshTick = tick;
+        }
+        this.lastEcoBulkCell = stack.copy();
+        var markers = CellBulkCutoffCompat.markers(stack.copy());
+        this.ecoBulkMarkers = markers == null ? List.of() : markers;
+        if (this.ecoBulkMarkers.isEmpty()) {
+            this.selectedEcoBulkSlot = -1;
+        } else if (indexOfSelectedEcoMarker() < 0) {
+            this.selectedEcoBulkSlot = this.ecoBulkMarkers.get(0).slot();
+        }
+        updateEcoBulkButtons();
+    }
+
+    private int indexOfSelectedEcoMarker() {
+        for (int index = 0; index < this.ecoBulkMarkers.size(); index++) {
+            if (this.ecoBulkMarkers.get(index).slot() == this.selectedEcoBulkSlot) {
+                return index;
+            }
+        }
+        return -1;
+    }
+
+    private void updateEcoBulkButtons() {
+        if (this.ecoBulkCutoffButton == null || this.ecoBulkCutoffSwitchButton == null
+                || this.ecoBulkConsolidateButton == null) {
+            return;
+        }
+        int index = indexOfSelectedEcoMarker();
+        if (index < 0) {
+            this.ecoBulkCutoffButton.setVisible(false);
+            this.ecoBulkCutoffSwitchButton.setVisibility(false);
+            this.ecoBulkConsolidateButton.setVisibility(false);
+            return;
+        }
+        var selected = this.ecoBulkMarkers.get(index);
+        this.ecoBulkCutoffButton.setItem(selected.item());
+        // 不可压缩的链也显示这一枚：截断层就是它自己（第 1 级），只是点下去无事发生。
+        this.ecoBulkCutoffButton.setVisible(true);
+        this.ecoBulkCutoffSwitchButton.setVisibility(true);
+        this.ecoBulkConsolidateButton.setVisibility(true);
+    }
+
+    /** 压缩统一管理：按链聚合去重，并按元件自己的读取顺序把标记压实。 */
+    private void onEcoBulkConsolidatePressed(Button button) {
+        if (ecoBulkMarkers.isEmpty()) {
+            return;
+        }
+        getMenu().consolidateEcoBulkMarkers();
+    }
+
     @Override
     protected void updateBeforeRender() {
         super.updateBeforeRender();
@@ -438,6 +615,8 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
         this.copyModeButton.setState(getMenu().copyMode == CopyMode.CLEAR_ON_REMOVE);
         // MEGA 那枚（装了才有）每帧对一次：显隐与图标跟着编码槽那张元件走。
         syncMegaCutoffButton();
+        // ECO 大宗元件的两枚按钮同理。
+        syncEcoBulkButtons();
         syncMarkBookmarksButton();
         syncVoidModeButton();
         syncScrollbar();
@@ -800,14 +979,24 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
             }
             var cell = entry.cell();
             if (cell.stack().isEmpty()) {
-                // 真实存在、还能放元件的空格：元件存储槽的槽底，按切片原尺寸 16×16 铺（不拉伸）
-                blitSlotOverlay(guiGraphics, cellX, cellY, CELL_SLOT_OVERLAY, 1f);
+                // 真实存在、还能放元件的空格：ECO 家族盖矩阵座，其余盖元件存储槽底，都按切片原尺寸 16×16 铺
+                blitSlotOverlay(guiGraphics, cellX, cellY,
+                        usesMatrixSlot(group) ? MATRIX_SLOT_OVERLAY : CELL_SLOT_OVERLAY, 1f);
                 continue;
             }
             guiGraphics.renderItem(cell.stack(), cellX, cellY);
             guiGraphics.renderItemDecorations(font, cell.stack(), cellX, cellY);
             drawOccupancyBars(guiGraphics, cellX, cellY, cell);
         }
+    }
+
+    /** 这一段的存储格是不是 ECO 家族的矩阵座：认首格图标的命名空间。 */
+    private static boolean usesMatrixSlot(@Nullable CellHostListPayload.HostGroup group) {
+        if (group == null || group.icon().isEmpty()) {
+            return false;
+        }
+        return MATRIX_SLOT_NAMESPACES.contains(
+                BuiltInRegistries.ITEM.getKey(group.icon().getItem()).getNamespace());
     }
 
     /**

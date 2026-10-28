@@ -56,7 +56,7 @@ It likewise has a **wireless** version, opening the same table.
 
 ### Efficient Molecular Assembler
 
-A parallel molecular assembler with **eight independent execution threads**. It accepts crafting jobs pushed by AE2 pattern providers and runs them concurrently. Each thread owns a 3×3 molecular assembler grid, an output slot, and independent progress. Accepts up to **five AE2 Speed Cards**.
+A parallel molecular assembler with **eight independent execution threads**. It accepts crafting jobs pushed by AE2 pattern providers and runs them concurrently. Each thread owns a 3×3 molecular assembler grid, an output slot, and independent progress. Accepts up to **five AE2 Speed Cards**, running at the same rates as ExtendedAE's extended molecular assembler: five ticks per craft without cards, one tick with five, with AE drawn per progress.
 
 Each page also has an optional pattern slot: inserting an encoded crafting pattern there turns that page into a self-executing unit, pulling its own inputs from the ME network and pushing products to adjacent inventories or back into the network.
 
