@@ -54,4 +54,4 @@ All three are recorded on the memory card together with the selected marks, so c
 
 Mounted on an ME cable it becomes a panel with the same interface and behaviour, and it pushes out of the face it is attached to until changed with a wrench. Both forms share the same logic, menu and layout document.
 
-The panel is crafted **from the block itself** - one block form in, one panel form out. Because its only ingredient is the item it produces alongside, JEI files it under the block form's **invalid recipes** rather than as an ordinary craft: assemble the block form first, then convert it. The reverse conversion is not offered.
+The two forms convert into each other: one block form in gives one panel form out, and the other way round. Each of those recipes takes the other one's product as its only ingredient, so JEI files them under the source item's **invalid recipes** rather than as ordinary crafts - assemble the block form first, then convert it.
