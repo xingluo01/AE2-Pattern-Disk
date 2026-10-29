@@ -20,17 +20,9 @@ java {
     toolchain.languageVersion = JavaLanguageVersion.of(21)
 }
 
-// 可选的本地 ECO 快照：带大宗元件压缩链查询 API。设了这条路才把 API 适配器编进源集；
-// 普通构建仍用 CurseForge 发布件并走反射退场。上游发版后把 src/ecoapi 移进主源集、删掉本开关。
-def ecoApiJar = providers.gradleProperty('ecoApiJar').orNull
-
 sourceSets {
     main.resources {
         srcDir 'src/generated/resources'
-    }
-
-    if (ecoApiJar != null) {
-        main.java.srcDir 'src/ecoapi/java'
     }
 
     // Client is intentionally kept as a separate source set so server/common code
@@ -222,17 +214,20 @@ dependencies {
     // ECOParallelCraftingProviders 发现本模组的 FastPath 适配器，long/BigInteger 入口开始生效。
     // 地板不变（ae2 [19.2.17,) / ldlib2 [2.2.40,)）；绑定类型只新增 ECOPatternInsertionResult.UNCHANGED。
     //
-    // 注意：**这条地板不能抬**。FML 对「已安装的」可选依赖同样做版本检查，写成 [21.2.6,) 会让装了
-    // 21.2.1–21.2.5 的包**整个模组不加载**（与下文 ae2jeiintegration 那条同一种失败形状）。所以维持
-    // [21.2.1,)：旧 ECO 上优先级那格退化回只读，其余集成不受影响。集成层已按此做「接口优先、反射兜底」
-    // + 存在性守卫（见 NeoECOStoragePriority#register）：缺接口时连桥都不注册，不会走到链接失败。
-    if (ecoApiJar != null) {
-        compileOnly files(ecoApiJar)
-        clientCompileOnly files(ecoApiJar)
-    } else {
-        compileOnly 'curse.maven:neo-eco-ae-extension-1460639:9336076'
-        clientCompileOnly 'curse.maven:neo-eco-ae-extension-1460639:9336076'
-    }
+    // 2026-10-28 升到 21.2.12（构件 9349859）；原因与后果分别是 PR #141 落地与大宗压缩换了载体：
+    // IECOBulkDisplayCell 现在自带默认 getCompressionChain / getCompressionCutoff，元件管理终端的 API 适配器首次有发行版可编；
+    // 大宗压缩改由 Bigger AE2 数字奇点物品矩阵承载（该通道 typeLimit=5、装 ECO 大宗扩展卡到 25；ECO 自己的大宗盘是 25/50），旧 MEGA 大宗矩阵降为只读兼容 + 弃用提示；
+    // 内部 impl/storage/** 整棵树搬到 storage/**（类清单 60 删 71 增，其中 7 个是真新增）。当时的反射与编译面只引 api.*，未被搬移打中（反射层现已删除，见下方地板段）：
+    // api 与 gui 全量 411→412 个类逐类 javap，成员级差异只有 ECOStorageCells 把 synchronized 从四个静态读方法挪到 register（描述符不变、
+    // 字段改 volatile 数组）与 IECOBulkDisplayCell 多这两个默认方法；新 api 接口 INativeMEStorageRestrictedItem 是纯新增。
+    // 地板与 21.2.11 逐行 diff 只有 ae2lt 的 ordering 由 AFTER 改 NONE，其余（ae2 / ldlib2 / bigger_ae2 / megacells / useless_mod）不变。
+    //
+    // 地板 2026-10-28 抬到 [21.2.12,)：压缩链查询（PR #141）只从这个版本起随发布件提供，集成层已改成编译期直接
+    // 调用它，反射兜底随之删除。代价要说准：FML 对**已安装的**可选依赖同样查区间，装 21.2.1–21.2.11 时不是
+    // 「本模组单独不加载」：ModSorter.sort 用 systemMods 重构造加载列表，报错屏点名「Mod ae2_pattern_disk
+    // only supports neoecoae [21.2.12,)」。换到的是「不留一条永不可达的反射路径」。
+    compileOnly 'curse.maven:neo-eco-ae-extension-1460639:9349859'
+    clientCompileOnly 'curse.maven:neo-eco-ae-extension-1460639:9349859'
 
     // Client source set: explicit client-side API access.
     clientCompileOnly(libs.ae2)
@@ -492,28 +487,28 @@ dependencies {
     // Runtime uses the same dev jar as compile: runClient is how the integration is exercised, and a
     // published artifact may lag the version this mod was developed against.
     // 21.2.11 起 FastPath 可在开发运行期直接验证（见上方 compileOnly 那段）。
-    if (ecoApiJar != null) {
-        localRuntime files(ecoApiJar)
-    } else {
-        localRuntime 'curse.maven:neo-eco-ae-extension-1460639:9336076'
-    }
+    localRuntime 'curse.maven:neo-eco-ae-extension-1460639:9349859'
     // Neo ECO Prototype: the unofficial L1 add-on for NEO ECO (drives, energy cells, bulk matrices,
     // interfaces and a pattern provider below ECO's L4 tier). Dev-only like every other optional
     // compatibility target - it is not a published dependency of this mod, and nothing in src/ names
     // its types: the cell management terminal reaches the storage side through ECO's own classes, and
     // this add-on's L1 drive is an ECO storage host like any other. It is loaded so that enumeration
     // can be exercised against it.
-    // Hard gate: 它 1.4.1 的 mods.toml 声明 neoecoae [21.2.10,)，与上面那条 ECO 精确配对——升 ECO 就必须
-    // 同批升它，否则 FML 在预加载阶段按地板拦下。1.3.6 起另有一项与本模组直接相关：SimplifyDriveBlockEntity
+    // Hard gate: 它 1.4.3 的 mods.toml 声明 neoecoae [21.2.12,)，与上面那条 ECO 精确配对——升 ECO 就必须
+    // 同批升它，否则 FML 在预加载阶段按地板拦下。地板从 [21.2.10,) 跳到 [21.2.12,) 是搬移造成的：它的
+    // createCellInventory 契约与驱动器渲染按 21.2.12 的 storage/** 新名字编译，装旧 ECO 会 NoClassDefFoundError。1.3.6 起另有一项与本模组直接相关：SimplifyDriveBlockEntity
     // implements util.ICellHost 并补上 setCellStack(ItemStack)（我们在 issue #5 提的）。注意它的语义与
     // ECO 一致：清格传 null（EMPTY 会被 isItemValid 那道闸拒），占用时是替换而非拒绝。
-    localRuntime 'curse.maven:neo-eco-prototype-1695260:9321737'   // 1.4.1（2026-10-25；旧件 9204257 是 1.3.6）
+    localRuntime 'curse.maven:neo-eco-prototype-1695260:9350441'   // 1.4.3（2026-10-28；旧件 9321737 是 1.4.1）
     // MEGA Cells: ECO 的联动清单要求 4.11.0+（大宗盘与小型大宗矩阵），Neo ECO Prototype 也把它列为可选前置。
     // 只进开发环境。Modrinth 把该项目放在 id jjuIRIVr 下（slug 也是 megacells），RPG4EriK = 4.11.0 for
     // 1.21.1 neoforge；用 id + version id 而非版本号，免得跨 loader 解析到别的构建。
     localRuntime 'maven.modrinth:jjuIRIVr:RPG4EriK'
     // ECO More Cell: ECO 的附属（更多存储单元）。坐标由用户给出，只进开发环境；它是可选的，缺席时本模组不受影响。
-    localRuntime 'curse.maven:eco-more-cell-1720697:9026477'
+    // 2026-10-28 摘掉：它的 1.0.0 把 `neoecoae.impl.storage.ECOStorageCell` 写进三只元件的父类，21.2.12 把那棵树
+    // 搬进 storage/** 后它在 RegisterEvent 期 NoClassDefFoundError（自报地板 [21.2.0,) 不带上限，FML 那道拦不住）。
+    // 上游按 21.2.12 重发后再挂回来。
+    // localRuntime 'curse.maven:eco-more-cell-1720697:9026477'
     // LDLib: mandatory runtime dependency of Neo ECO AE Extension (its GUI library). Pin the exact
     // version Neo ECO itself depends on (2.2.40) instead of a nearby release, so Gradle cannot
     // downgrade the transitive requirement.

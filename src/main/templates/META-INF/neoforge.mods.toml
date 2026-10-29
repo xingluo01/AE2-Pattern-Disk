@@ -60,18 +60,22 @@ side="CLIENT"
 
 # NEO ECO AE Extension is optional, and the relationship now runs both ways: it compiles against this mod's
 # PatternDiskApi and registers its own disk holders and terminal views, while this mod registers a parallel
-# intake with it and installs an upload action on this mod's terminal. That contract arrived in 21.2.1 - the
-# first release to name this mod at all (its changelog gives AE2 Pattern Disk 0.7.1 as a floor). An older
-# build does not merely lack a feature: it cannot see this mod, so the integration would have nothing to
-# stand down from. Hence a declared floor instead of per-feature probes - a build below it is refused at load
-# time with a plain message, rather than failing later inside the other mod's constructor.
+# intake with it and installs an upload action on this mod's terminal.
 #
-# A beta of 21.2.1 or later is refused by this range: Maven ranks a release above its own pre-releases, so
-# `[21.2.1,)` excludes `21.2.1-beta3`. Widen it to `[21.2.1-beta2,)` while testing against a beta build.
+# Floor 21.2.12: the cell management terminal's bulk compression buttons call IECOBulkDisplayCell's
+# getCompressionChain / getCompressionCutoff (upstream PR #141), which ship from that release on. Those are
+# compile-time calls now, so a build below the floor would fail inside the other mod's constructor rather
+# than merely lose the buttons - hence the range, and hence no reflection fallback any more.
+#
+# An older NEO ECO stops the whole pack, not just this mod: FML checks ranges on installed optional
+# dependencies and, on a miss, builds the loading list from system mods only (ModSorter.sort ->
+# verifyDependencyVersions). The screen reads "Mod ae2_pattern_disk only supports neoecoae [21.2.12,)"
+# (fml.modloadingissue.missingdependency.optional), so the range is named. That is the price we accept on
+# purpose, and it is why this range must not be widened without re-checking the upstream release.
 [[dependencies.${mod_id}]]
 modId="neoecoae"
 type="optional"
-versionRange="[21.2.1,)"
+versionRange="[21.2.12,)"
 ordering="AFTER"
 side="BOTH"
 

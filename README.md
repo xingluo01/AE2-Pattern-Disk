@@ -134,21 +134,25 @@ from EMI's recipe categories instead.
 
 ### Development dependency: Neo ECO AE Extension
 
-The source compiles against **Neo ECO AE Extension 21.2.1** from CurseForge - no local jar is needed:
+The source compiles against **Neo ECO AE Extension 21.2.12** from CurseForge - no local jar is needed:
 
 ```groovy
-compileOnly 'curse.maven:neo-eco-ae-extension-1460639:9095600'
+compileOnly 'curse.maven:neo-eco-ae-extension-1460639:9349859'
 ```
 
-That release (2026-10-08) is the first on CurseForge to carry the parts this mod hooks into: the
-parallel-intake registry the batch assembler registers against, and the reporting upload. Its changelog
-names **AE2 Pattern Disk 0.7.1** as a floor. `21.2.1` is also the floor declared by **Neo ECO Prototype**,
-the L1 add-on loaded at runtime.
+The floor this mod declares is **21.2.12**: the cell management terminal's bulk compression buttons call
+`getCompressionChain` / `getCompressionCutoff` at compile time, and those ship from that release on (upstream
+PR #141). A pack with an older NEO ECO stops the whole mod set: FML rebuilds the loading list from
+system mods only and the error screen names the range - "Mod ae2_pattern_disk only supports neoecoae
+[21.2.12,)". That is what pays for removing the reflection fallback which used to walk the chain slot by
+slot. The new carrier, the digital singularity item matrix, is registered by ECO's Bigger AE2 integration,
+so it needs Bigger AE2 installed. The dev runtime pairs this mod with **Neo ECO Prototype 1.4.3**, which
+demands the same range, so those two coordinates move together.
 
 The FD Smart Pattern Bus integration (upload-to-ECO button, disk-aware insertion, pattern access
-terminal view, encoding-terminal disk list) needs the hooks that arrived in NEO ECO 21.2.1, and the mod
-declares that as a dependency floor: an older NEO ECO is refused at load time with a message naming the
-required range, rather than starting with a few features quietly missing.
+terminal view, encoding-terminal disk list) rests on hooks that arrived in NEO ECO 21.2.1; the floor
+sits above it because of the bulk chain queries, so an older NEO ECO never reaches a partially wired
+state: it is refused at load time with a message naming the required range.
 
 ## License
 

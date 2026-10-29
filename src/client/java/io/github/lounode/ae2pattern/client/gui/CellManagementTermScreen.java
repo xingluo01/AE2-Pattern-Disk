@@ -191,7 +191,7 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
     /** MEGA Cells 的大宗压缩截断钮；那个模组不在场时为 null（工厂返回 null）。 */
     @Nullable
     private Button megaCutoffButton;
-    /** ECO 大宗元件的截断物按钮与选择按钮；ECO 不带该契约时为 null。 */
+    /** ECO 大宗元件的截断物按钮与选择按钮；ECO 不在场时整组为 null。 */
     @Nullable
     private EcoBulkCutoffButton ecoBulkCutoffButton;
     @Nullable
@@ -273,7 +273,7 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
             addToLeftToolbar(this.megaCutoffButton);
         }
 
-        // ECO 大宗元件：截断物按钮 + 切换按钮。旧版 ECO 或没装时整组不建；新版每次开屏时才注册。
+        // ECO 大宗元件：截断物按钮 + 切换按钮。ECO 不在场时适配器不注册，这一组就不建；按钮每屏各建一次。
         if (CellBulkCutoffCompat.isAvailable()) {
             this.ecoBulkCutoffButton = new EcoBulkCutoffButton(this::onEcoBulkCutoffPressed);
             this.ecoBulkCutoffButton.setVisible(false);
@@ -439,7 +439,7 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
         }
         var selected = ecoBulkMarkers.get(index);
         if (!selected.compressible()) {
-            // 这条链只有一级，截断层就是它自己：按钮照常画，左右键都无事发生。
+            // 按钮只在可压缩链上出现；这里仍守住旧语义，防止选中态在刷新间隙落到单级链上。
             return;
         }
         getMenu().cycleEcoBulkCutoff(selected.slot(), isHandlingRightClick() ? 1 : -1);
@@ -447,16 +447,20 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
 
     /** 切换当前操作的标记：左键上一个，右键下一个，首尾循环。 */
     private void onEcoBulkCutoffSwitchPressed(Button button) {
-        if (ecoBulkMarkers.isEmpty()) {
+        var compressible = compressibleEcoBulkMarkers();
+        if (compressible.isEmpty()) {
             return;
         }
-        int index = indexOfSelectedEcoMarker();
-        if (index < 0) {
-            index = 0;
+        int current = -1;
+        for (int i = 0; i < compressible.size(); i++) {
+            if (compressible.get(i).slot() == this.selectedEcoBulkSlot) {
+                current = i;
+                break;
+            }
         }
         int delta = isHandlingRightClick() ? 1 : -1;
-        index = Math.floorMod(index + delta, ecoBulkMarkers.size());
-        selectedEcoBulkSlot = ecoBulkMarkers.get(index).slot();
+        current = Math.floorMod(current < 0 ? 0 : current + delta, compressible.size());
+        this.selectedEcoBulkSlot = compressible.get(current).slot();
         updateEcoBulkButtons();
     }
 
@@ -539,11 +543,13 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
     }
 
     /**
-     * 每帧把 ECO 的两枚按钮对到编码槽里那张元件上。
+     * 每帧把 ECO 的三枚按钮对到编码槽里那张元件上。
      *
      * <p>标记列表随元件内容变（换元件、调级、别处改了这个元件），另外每 100 tick 重算一次：压缩链数据是
-     * 客户端异步同步的，元件内容不变时也要能把刚到的链补上。选中槽在列表重建后仍按配置槽号保留。
-     * 没有标记时两枚都藏；有标记就两枚都在，选中链只有一级时截断物钮仍显示它自己，点击无事发生。</p>
+     * 客户端异步同步的，元件不变时也要能把刚到的链补上。选中槽在列表重建后仍按配置槽号保留。</p>
+     *
+     * <p>显隐：装了 ECO 就常驻「压缩统一管理」；截断物与切换两枚只在编码槽那张元件有可压缩链时出现
+     * （不是大宗元件、或一条可压缩链都没有时，这两枚藏起来）。</p>
      */
     private void syncEcoBulkButtons() {
         if (this.ecoBulkCutoffButton == null || this.ecoBulkCutoffSwitchButton == null
@@ -563,10 +569,11 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
         this.lastEcoBulkCell = stack.copy();
         var markers = CellBulkCutoffCompat.markers(stack.copy());
         this.ecoBulkMarkers = markers == null ? List.of() : markers;
-        if (this.ecoBulkMarkers.isEmpty()) {
-            this.selectedEcoBulkSlot = -1;
-        } else if (indexOfSelectedEcoMarker() < 0) {
-            this.selectedEcoBulkSlot = this.ecoBulkMarkers.get(0).slot();
+        var compressible = compressibleEcoBulkMarkers();
+        int selectedIndex = indexOfSelectedEcoMarker();
+        // 选中位可能落在单级链上（链数据每 100 tick 刷新，压缩关系会变）：不在可压缩集合里就重挑。
+        if (selectedIndex < 0 || !this.ecoBulkMarkers.get(selectedIndex).compressible()) {
+            this.selectedEcoBulkSlot = compressible.isEmpty() ? -1 : compressible.get(0).slot();
         }
         updateEcoBulkButtons();
     }
@@ -586,25 +593,34 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
             return;
         }
         int index = indexOfSelectedEcoMarker();
-        if (index < 0) {
+        boolean compressible = index >= 0 && this.ecoBulkMarkers.get(index).compressible();
+        // 空盘（没有标记）也留着统一管理：把网络里散着的标记压实到刚放进去的这张盘，正是它的用法。
+        // 「压缩统一管理」只看 ECO 在不在：装着 ECO 就一直显示，编码槽空着也能按（那时它整理的是网络里的矩阵）。
+        this.ecoBulkConsolidateButton.setVisibility(CellBulkCutoffCompat.isAvailable());
+        if (!compressible) {
             this.ecoBulkCutoffButton.setVisible(false);
             this.ecoBulkCutoffSwitchButton.setVisibility(false);
-            this.ecoBulkConsolidateButton.setVisibility(false);
             return;
         }
-        var selected = this.ecoBulkMarkers.get(index);
-        this.ecoBulkCutoffButton.setItem(selected.item());
-        // 不可压缩的链也显示这一枚：截断层就是它自己（第 1 级），只是点下去无事发生。
+        this.ecoBulkCutoffButton.setItem(this.ecoBulkMarkers.get(index).item());
         this.ecoBulkCutoffButton.setVisible(true);
         this.ecoBulkCutoffSwitchButton.setVisibility(true);
-        this.ecoBulkConsolidateButton.setVisibility(true);
+    }
+
+    /** 属于多级压缩链的标记：只有这些能让截断物按钮有活干。 */
+    private List<CellBulkCutoffCompat.Marker> compressibleEcoBulkMarkers() {
+        var result = new ArrayList<CellBulkCutoffCompat.Marker>();
+        for (var marker : this.ecoBulkMarkers) {
+            if (marker.compressible()) {
+                result.add(marker);
+            }
+        }
+        return result;
     }
 
     /** 压缩统一管理：按链聚合去重，并按元件自己的读取顺序把标记压实。 */
     private void onEcoBulkConsolidatePressed(Button button) {
-        if (ecoBulkMarkers.isEmpty()) {
-            return;
-        }
+        // 空盘也能按：服务端会把网络里散着的标记压实到编码槽这张。
         getMenu().consolidateEcoBulkMarkers();
     }
 

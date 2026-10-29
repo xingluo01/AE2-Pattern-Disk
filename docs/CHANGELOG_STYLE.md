@@ -65,7 +65,7 @@
 放在「调整与依赖」末尾，句式固定：
 
 ```
-- NEO ECO AE Extension 最低版本为 **21.2.1**
+- NEO ECO AE Extension 最低版本为 **21.2.1**（示例值，只示意句式）
 ```
 
 只列**本次发版变动的**硬线下限（`neoforge.mods.toml` 里进了 `versionRange` 的那些，现有六条：AE2、AE2WTLib、JEI、EMI、Jade、NEO ECO）。没变的不重复列——玩家装不上时加载器会在启动阶段直接报出是哪一条。软依赖的建议版本写进条目正文。

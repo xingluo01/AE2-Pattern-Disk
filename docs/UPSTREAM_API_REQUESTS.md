@@ -1,6 +1,6 @@
 # 上游 API 请求（AE2 本体 / ECO / ECO Prototype / ExtendedAE Plus）
 
-> 状态：前两份、第四份、第五份与第六份**已提交**（前两份本地 2026-10-09 02:55 / UTC `2026-10-08T18:55Z`，第四份 UTC `2026-10-25T10:10Z`，第五份 UTC `2026-10-26T16:15Z`，第六份 2026-10-27 提了 PR #141，见文末「提交记录」）；**第四份已落地**——上游 issue #134 于 2026-10-25 关闭（提交 `ce67db49`），随 ECO **21.2.11** 发布；第六份**已合并**——PR #141 于 UTC `2026-10-27T13:43Z` 并进 `main`（merge `5c8c9f2e`，维护者另补 `7919d10b` 修正截断查询与库存展示的一致性），**尚未随版本发布**（最新仍是 21.2.11）；第三份是 2026-10 发现的兜底缺陷，**尚未提交**。下面六份草稿保留原文，便于日后追进或修订时对照。
+> 状态：前两份、第四份、第五份与第六份**已提交**（前两份本地 2026-10-09 02:55 / UTC `2026-10-08T18:55Z`，第四份 UTC `2026-10-25T10:10Z`，第五份 UTC `2026-10-26T16:15Z`，第六份 2026-10-27 提了 PR #141，见文末「提交记录」）；**第四份已落地**——上游 issue #134 于 2026-10-25 关闭（提交 `ce67db49`），随 ECO **21.2.11** 发布；第六份**已合并、已发布、且本模组已收口**——PR #141 于 UTC `2026-10-27T13:43Z` 并进 `main`（merge `5c8c9f2e`，维护者另补 `7919d10b` 修正截断查询与库存展示的一致性），随 ECO **21.2.12**（2026-10-28，CF 构件 `9349859`）发出，`javap` 已在 jar 里确认这两个默认方法；第三份是 2026-10 发现的兜底缺陷，**尚未提交**。下面六份草稿保留原文，便于日后追进或修订时对照。
 > 提出方：AE2 Pattern Disks（`ae2_pattern_disk`，作者 `xingluo01`）。
 > 用例：前两份是**元件管理终端**——把网络里所有能装存储元件的东西列成一张表，并支持取出/放入元件、调整存储优先级；第三份是**样板磁盘供应器的样板上传**；第四份是**批处理装配室的极大数合成**——单次交接量被 int 容量契约封在 21.4 亿份，而 FastPath 的 long 容量面没有注册表可用；第五份是**AE2 本体的语义缺陷**——`hasComponents()` 的返回值与名字相反，会污染按物品的替换判定缓存；第六份是**ECO 大宗元件的压缩链查询**——元件管理终端要按链合并标记，现在只能反射遍历元件副本。
 
@@ -325,7 +325,7 @@ hasComponents() 的返回值与名字相反，会污染按物品的替换判定�
 以上行号读自本地克隆 `D:/Temp/Applied-Energistics-2` 的 `1.21.1` 分支 @ `db17504`（该克隆没有 `main`）；javadoc 与实现的分歧以该提交为准。
 ````
 
-## 草稿 6 → `DancingSnow0517/NeoECOAEExtension`（已合并：PR #141 @ `5c8c9f2e`）
+## 草稿 6 → `DancingSnow0517/NeoECOAEExtension`（已合并：PR #141 @ `5c8c9f2e`，随 21.2.12 发布并已收口）
 
 **标题**
 
@@ -395,7 +395,7 @@ AE2 Pattern Disk 的元件管理终端要把 ECO 大宗元件里的标记按压�
 | `DancingSnow0517/NeoECOAEExtension` | [#119](https://github.com/DancingSnow0517/NeoECOAEExtension/issues/119) | 2026-10-08T18:55Z（本地 10-09 02:55） | **已实现并已关闭**：ECO **21.2.6**（2026-10-16 发布）含 `api.storage.IECOStoragePriorityHost` 与提到 `api.storage` 的 `ICellHost`；维护者 Yang120231 于 2026-10-09 回「已添加」并标记 completed |
 | `reliqwq/NeoECOPrototype` | [#5](https://github.com/reliqwq/NeoECOPrototype/issues/5) | 2026-10-08T18:55Z（本地 10-09 02:55） | **已实现**（issue 仍 OPEN）：青春版 **1.3.6**（2026-10-16 发布）的 `SimplifyDriveBlockEntity` 已 `implements util.ICellHost` 并补 `setCellStack`；作者 reliqwq 于 2026-10-09 回「随下一个版本发出」 |
 | `DancingSnow0517/NeoECOAEExtension` | [#134](https://github.com/DancingSnow0517/NeoECOAEExtension/issues/134) | 2026-10-25T10:10Z（本地 10-25 18:10） | **已实现并已关闭**：ECO **21.2.11**（2026-10-26 发布，提交 `ce67db49`）让 `ECOFastPathFacade` 经 `ECOParallelCraftingProviders` 发现第三方 FastPath 适配器 |
-| `DancingSnow0517/NeoECOAEExtension` | [PR #141](https://github.com/DancingSnow0517/NeoECOAEExtension/pull/141) | 2026-10-27（本地） | **已合并**（UTC `2026-10-27T13:43Z`，merge `5c8c9f2e`）：给 `IECOBulkDisplayCell` 增加默认 `getCompressionChain` 与 `getCompressionCutoff`，让元件管理终端按链合并大宗元件标记、并显示这条链真正生效的截断层；默认方法，已有实现无需改动。**维护者合并前补了 `7919d10b`**：`getCompressionCutoff` 改走库存投影（配方重载后返回历史账户的基础单位、把失效的显示配置归一到当前链），签名不变、语义更准，本地快照 jar 仍停在 `8d0b028e`，验实机前按 `origin/main` 重打一份。**下一版发布后**把 API 适配器移进主源集（见 `TODO.md`） |
+| `DancingSnow0517/NeoECOAEExtension` | [PR #141](https://github.com/DancingSnow0517/NeoECOAEExtension/pull/141) | 2026-10-27（本地） | **已合并**（UTC `2026-10-27T13:43Z`，merge `5c8c9f2e`）：给 `IECOBulkDisplayCell` 增加默认 `getCompressionChain` 与 `getCompressionCutoff`，让元件管理终端按链合并大宗元件标记、并显示这条链真正生效的截断层；默认方法，已有实现无需改动。**维护者合并前补了 `7919d10b`**：`getCompressionCutoff` 改走库存投影（配方重载后返回历史账户的基础单位、把失效的显示配置归一到当前链），签名不变、语义更准（当时用的本地快照 jar 停在 `8d0b028e`；现在构建直接吃发布件 `9349859`，不再需要重打）。**已随 21.2.12 发布**（构件 `9349859`）并完成收口：API 适配器移进 `src/main/java`（现名 `EcoBulkCells`），反射层 `EcoBulkCellsCompat` 与 `-PecoApiJar` 开关删除，`mods.toml` 的 ECO 地板抬到 `[21.2.12,)`（2026-10-28） |
 | `AppliedEnergistics/Applied-Energistics-2` | [#9040](https://github.com/AppliedEnergistics/Applied-Energistics-2/pull/9040) | 2026-10-26T16:15Z（本地 10-27 00:15） | **待审**：`hasComponents()` 改成基于 `getComponentsPatch()`（`isComponentsPatchEmpty()`），修掉「带组件变体按 Item 共享判定缓存」与 `AEFluidKey#toString` 的同一错误；附回归测试，未本地构建（本机拿不到 Gradle 8.12 发行包） |
 
 提交账号：`xingluo01`。正文用中文（两个仓库既有 issue 以中文为主，见上方取证清单）。

@@ -3,8 +3,6 @@ package io.github.lounode.ae2pattern.integration.neoecoae;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import appeng.api.stacks.AEItemKey;
-
 import cn.dancingsnow.neoecoae.api.integration.Integration;
 import cn.dancingsnow.neoecoae.api.me.provider.ECOParallelCraftingProviders;
 
@@ -58,76 +56,16 @@ public class NeoECOIntegration {
         guarded("the encoding terminal upload", NeoECOIntegration::wireEncodingTerminalUpload);
         guarded("the parallel intake registration", NeoECOIntegration::registerParallelIntake);
         guarded("the bulk cell cutoff bridge", NeoECOIntegration::registerBulkCutoff);
-        // 这次的 API 请求（issue #119）落地后，优先级读写走公开契约、反射退居兜底。
-        // 先探类、再取方法引用：缺契约时连桥类都不加载（加载会解析它 implements 的超接口），
-        // 方法体里引用的邻居类型则要等执行时才解析——两道都挡上。探类本身不命名邻居类型。
-        if (classPresent(STORAGE_PRIORITY_CONTRACT)) {
-            guarded("the storage priority contract", NeoECOStoragePriority::register);
-        }
+        // issue #119 落地后优先级读写走公开契约；本类由 ECO 的 IntegrationManager 调起，ECO 不在场时这段不执行，
+        // 所以直接引用契约类型即可，不再按类名探。地板 [21.2.12,) 由 mods.toml 保证：ECO 太旧时整包停在加载
+        // 阶段并报出区间，ECO 不在场时这段根本不执行。
+        guarded("the storage priority contract", () -> NeoECOStoragePriority.register());
     }
 
-    /** ECO 21.2.6 才有的公开契约（存储优先级的读写口）。 */
-    private static final String STORAGE_PRIORITY_CONTRACT =
-            "cn.dancingsnow.neoecoae.api.storage.IECOStoragePriorityHost";
-
-    /** ECO 21.2.11 的大宗元件契约；旧版没有，相关按钮不出现。 */
-    private static final String BULK_MARKABLE_CELL =
-            "cn.dancingsnow.neoecoae.api.storage.IECOBulkMarkableCellItem";
-    private static final String BULK_DISPLAY_CELL =
-            "cn.dancingsnow.neoecoae.api.storage.IECOBulkDisplayCell";
-    private static final String BULK_CHAIN_METHOD = "getCompressionChain";
-    private static final String BULK_CUTOFF_METHOD = "getCompressionCutoff";
-
-    /**
-     * 只有用本地补丁 jar 构建时才会进源集。上游发版前普通构建走反射兜底，发版后把它移进主源集。
-     */
-    private static final String BULK_API_ADAPTER =
-            "io.github.lounode.ae2pattern.integration.neoecoae.EcoBulkCellsApi";
-
-    /**
-     * 大宗元件的压缩截断桥：新版走公开 API，旧版走反射，ECO 缺席或不带该契约时整层不注册。
-     */
+    /** 大宗元件的压缩截断桥：名单、链与生效截断都走 ECO 的公开查询。 */
     private static void registerBulkCutoff() {
-        if (!classPresent(BULK_MARKABLE_CELL) || !classPresent(BULK_DISPLAY_CELL)) {
-            return;
-        }
-        if (bulkCutoffApiPresent() && classPresent(BULK_API_ADAPTER)) {
-            try {
-                var adapter = (CellBulkCutoffCompat.Adapter) Class.forName(BULK_API_ADAPTER)
-                        .getDeclaredConstructor()
-                        .newInstance();
-                CellBulkCutoffCompat.register(adapter);
-                LOGGER.info("[AE2-Pattern-Disk] ECO bulk cutoff wired through the public chain API");
-                return;
-            } catch (ReflectiveOperationException | LinkageError broken) {
-                LOGGER.warn("[AE2-Pattern-Disk] the ECO bulk cutoff API adapter could not be loaded;"
-                        + " falling back to reflection", broken);
-            }
-        }
-        CellBulkCutoffCompat.register(new EcoBulkCellsCompat());
-        LOGGER.info("[AE2-Pattern-Disk] ECO bulk cutoff wired through reflection");
-    }
-
-    /** 上游是否已经有压缩链与生效截断两个查询；缺任一个都连 API 适配器都不加载。 */
-    private static boolean bulkCutoffApiPresent() {
-        try {
-            Class<?> display = Class.forName(BULK_DISPLAY_CELL, false, NeoECOIntegration.class.getClassLoader());
-            display.getMethod(BULK_CHAIN_METHOD, AEItemKey.class);
-            display.getMethod(BULK_CUTOFF_METHOD, AEItemKey.class);
-            return true;
-        } catch (ClassNotFoundException | NoSuchMethodException | LinkageError absent) {
-            return false;
-        }
-    }
-
-    /** 类在不在；keep initialize=false，不触发对方静态初始化。 */
-    private static boolean classPresent(String name) {
-        try {
-            Class.forName(name, false, NeoECOIntegration.class.getClassLoader());
-            return true;
-        } catch (ClassNotFoundException | LinkageError absent) {
-            return false;
-        }
+        CellBulkCutoffCompat.register(new EcoBulkCells());
+        LOGGER.info("[AE2-Pattern-Disk] ECO bulk cutoff wired through the public chain API");
     }
 
     /**
@@ -138,8 +76,8 @@ public class NeoECOIntegration {
      * RuntimeException 会把它放出去——而这一段跑在 ECO 的 mod 构造器里，放出去就是启动失败。</p>
      *
      * <p><b>它只包住 lambda 体，不包参数求值</b>：写 {@code guarded("x", SomeNeighbourClass::wire)} 时，
-     * 方法引用本身先于本方法求值（加载那个类）。所以面向可选邻居的引用必须先在外面用字符串探过类，
-     * 再放进 lambda 里取。</p>
+     * 方法引用本身先于本方法求值（加载那个类）。所以引用邻居类型的那一行要放进 lambda 里取；本类的桥
+     * 也一律用 lambda（{@code () -> Bridge.register()}），连桥类自身的加载都落在受保护的那一段里。</p>
      */
     private static void guarded(String what, Runnable step) {
         try {

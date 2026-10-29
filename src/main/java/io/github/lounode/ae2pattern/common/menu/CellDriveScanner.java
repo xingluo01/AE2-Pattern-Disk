@@ -74,9 +74,11 @@ public final class CellDriveScanner {
      * @param icon     驱动器方块物品图标（标题栏与每台驱动器的首格都画它）
      * @param priority 存储优先级；读不到时是 {@link #PRIORITY_UNKNOWN}
      * @param cells    这一组里所有驱动器的格位（稠密，同一台的格连续排在一起）
+     * @param priorityValue 同一个优先级的数值形式；读不到时 null（显示口径仍用 {@link #priority}）
+     * @param ecoHost 这一组是不是 ECO 的存储主机（否则是 AE2 / ExtendedAE 的驱动器）
      */
     public record DriveEntry(String key, String name, ItemStack icon, String priority,
-            List<CellHostListPayload.CellSlot> cells) {}
+            List<CellHostListPayload.CellSlot> cells, @Nullable Integer priorityValue, boolean ecoHost) {}
 
     public static List<DriveEntry> scan(IGrid grid) {
         return scan(grid, true);
@@ -147,6 +149,8 @@ public final class CellDriveScanner {
         private final ItemStack icon;
         private final String name;
         private final String priority;
+        private final Integer priorityValue;
+        private final boolean ecoHost;
         private final String key;
         private final List<CellHostListPayload.CellSlot> cells = new ArrayList<>();
 
@@ -154,6 +158,8 @@ public final class CellDriveScanner {
             this.icon = first.icon();
             this.name = first.name();
             this.priority = first.priority();
+            this.priorityValue = first.priorityValue();
+            this.ecoHost = first.ecoHost();
             this.key = typeKeyOf(first);
         }
 
@@ -167,7 +173,7 @@ public final class CellDriveScanner {
             cells.sort(java.util.Comparator
                     .comparing(CellHostListPayload.CellSlot::hostKey)
                     .thenComparingInt(CellHostListPayload.CellSlot::hostSlot));
-            return new DriveEntry(key, name, icon, priority, List.copyOf(cells));
+            return new DriveEntry(key, name, icon, priority, List.copyOf(cells), priorityValue, ecoHost);
         }
     }
 
@@ -195,7 +201,7 @@ public final class CellDriveScanner {
     private static DriveEntry ae2Drive(DriveBlockEntity drive, @Nullable CellUsageCache usage) {
         String hostKey = keyOf(drive);
         return new DriveEntry(hostKey, nameOf(drive), iconOf(drive),
-                Integer.toString(drive.getPriority()), driveCells(drive, hostKey, usage));
+                Integer.toString(drive.getPriority()), driveCells(drive, hostKey, usage), drive.getPriority(), false);
     }
 
     /**
@@ -275,7 +281,7 @@ public final class CellDriveScanner {
                     .comparing(CellHostListPayload.CellSlot::hostKey)
                     .thenComparingInt(CellHostListPayload.CellSlot::hostSlot));
             return new DriveEntry(keyOf(subsystem), nameOf(subsystem), iconOf(subsystem),
-                    storagePriority(subsystem), List.copyOf(cells));
+                    storagePriority(subsystem), List.copyOf(cells), readStoragePriority(subsystem), true);
         }
     }
 
@@ -311,9 +317,8 @@ public final class CellDriveScanner {
         if (stack.getItem() instanceof IBasicCellItem || StorageCells.isCellHandled(stack)) {
             return true;
         }
-        // ECO 系：元件的面是 {@code IBasicECOCellItem}（它再继承 AE2 的 ICellWorkbenchItem），
-        // 而不是根本不存在的 IECOStorageCellItem（旧写法认错了名字，于是 ECO 原生与 ECO 青春版的
-        // 「无限存储矩阵」这类元件全漏了）。连接口的父接口一起比，免得实现只是继承过去的。
+        // ECO 系：认 api.storage.IBasicECOCellItem——它自己继承 AE2 的 ICellWorkbenchItem 与 ECO 的
+        // IECOStorageCellItem。连接口与它们的父接口一起比，免得某个元件只是继承了其中一条名字。
         return implementsAny(stack.getItem().getClass(), ECO_CELL_INTERFACES);
     }
 

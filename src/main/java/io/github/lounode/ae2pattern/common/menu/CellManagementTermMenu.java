@@ -1,6 +1,7 @@
 package io.github.lounode.ae2pattern.common.menu;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -83,6 +84,9 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
     /** 诊断用：动作是否真的到达服务端、以及在哪一步被拒（见 {@code withDriveSlot} 与 {@code ownerOf}）。 */
     private static final org.slf4j.Logger LOGGER = org.slf4j.LoggerFactory
             .getLogger(CellManagementTermMenu.class);
+
+    /** 非 ECO 主机里发现大宗元件时的去重键（每次开终端的聚合只提醒一次）。 */
+    private static final java.util.Set<String> MISPLACED = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     /** 标记窗：21 格槽位挂在它上面，滚动只撼它的起点。 */
     private final SlidingInventoryWindow markerWindow;
@@ -824,10 +828,21 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
             return;
         }
         var plan = planConsolidation(sites);
-        int touched = 0;
+        // 主矩阵（编码槽那张）先写：它直接写 live config，失败时其它站点还没被清空。
+        int primary = primarySite(sites);
+        var primaryResult = primary >= 0
+                ? applyMarkers(sites.get(primary), plan.wanted().get(primary))
+                : ApplyResult.UNCHANGED;
+        if (primaryResult == ApplyResult.FAILED) {
+            return;
+        }
+        int touched = primaryResult == ApplyResult.APPLIED ? 1 : 0;
         var owners = new ArrayList<Object>();
         for (int index = 0; index < sites.size(); index++) {
-            if (!applyMarkers(sites.get(index), plan.wanted().get(index))) {
+            if (index == primary) {
+                continue;
+            }
+            if (applyMarkers(sites.get(index), plan.wanted().get(index)) != ApplyResult.APPLIED) {
                 continue;
             }
             touched++;
@@ -850,10 +865,14 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
     /** 一个参与聚合的大宗矩阵；{@code driveKey} 为 null 表示编码槽里那一张（主矩阵）。 */
     private record BulkSite(@Nullable String driveKey, int driveSlot, ItemStack stack,
                             CellBulkCutoffCompat.Site cell,
-                            List<CellBulkCutoffCompat.Marker> markers, int capacity, Set<AEKey> stored) {
+                            List<CellBulkCutoffCompat.Marker> markers, int capacity,
+                            @Nullable Integer priority, boolean ecoHost) {
     }
 
     /** 一次聚合的产物：每台矩阵该留的名单，与被清掉的重复标记条数。 */
+    /** 一次站点写回的结果：没变、写了、写不动（读不可信 / 换格失败 / 元件被挪走）。 */
+    private enum ApplyResult { UNCHANGED, APPLIED, FAILED }
+
     private record ConsolidationPlan(List<List<ItemStack>> wanted, int cleared) {
     }
 
@@ -864,32 +883,42 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         if (grid != null) {
             for (var entry : CellDriveScanner.scan(grid, false)) {
                 for (var cell : entry.cells()) {
-                    var site = siteOf(cell.hostKey(), cell.hostSlot(), cell.stack());
+                    var site = siteOf(cell.hostKey(), cell.hostSlot(), cell.stack(), entry.priorityValue(), entry.ecoHost());
+                    if (site != null && !entry.ecoHost() && MISPLACED.add(cell.hostKey() + "|" + cell.stack().getItem())) {
+                        LOGGER.warn("[cell-mgmt] 大宗元件 {} 放在非 ECO 主机 {} 里：它不在 ECO 存储系统内，聚合仍按该驱动器的优先级排序",
+                                cell.stack().getItem(), cell.hostKey());
+                    }
                     if (site != null) {
                         sites.add(site);
                     }
                 }
             }
         }
-        var primary = siteOf(null, 0, host.getEncodeCellInventory().getStackInSlot(0));
+        var primary = siteOf(null, 0, host.getEncodeCellInventory().getStackInSlot(0), null, false);
         if (primary != null) {
             sites.add(primary);
         }
         return sites;
     }
 
-    /** 读一台矩阵的名单、格数与库存；不是大宗矩阵或没标记时返回 null（不参与聚合）。 */
+    /** 读一台矩阵的名单、格数与库存；只要是大宗元件就返回（空盘也有格数，能当聚合目标）。 */
     @Nullable
-    private static BulkSite siteOf(@Nullable String driveKey, int driveSlot, ItemStack stack) {
+    private static BulkSite siteOf(@Nullable String driveKey, int driveSlot, ItemStack stack,
+            @Nullable Integer priority, boolean ecoHost) {
         var cell = CellBulkCutoffCompat.open(stack);
         if (cell == null) {
             return null;
         }
         var markers = cell.rawMarkers();
-        if (markers.isEmpty()) {
+        if (!cell.trusted()) {
+            // 读失败不能当空盘：那会让主矩阵位把真实标记整份覆盖。
             return null;
         }
-        return new BulkSite(driveKey, driveSlot, stack, cell, markers, cell.capacity(), cell.storedKeys());
+        if (driveKey != null && markers.isEmpty()) {
+            // 网络里的空盘不参与聚合：既没有可搬的链，也不必为它读一次账本。
+            return null;
+        }
+        return new BulkSite(driveKey, driveSlot, stack, cell, markers, cell.capacity(), priority, ecoHost);
     }
 
     private ConsolidationPlan planConsolidation(List<BulkSite> sites) {
@@ -900,35 +929,37 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
                 listed.computeIfAbsent(marker.chain(), key -> new LinkedHashSet<>()).add(index);
             }
         }
+        // 归属只看目标顺序：每条链归顺序里第一个还有格位的那台，不管库存现在在谁那里（库存本身不动）。
         var keepers = new LinkedHashMap<Set<AEKey>, List<Integer>>();
+        var targets = targetOrder(sites);
+        var room = new int[sites.size()];
+        for (int index = 0; index < sites.size(); index++) {
+            room[index] = sites.get(index).capacity();
+        }
+        if (LOGGER.isInfoEnabled()) {
+            var order = new StringBuilder();
+            for (int target : targets) {
+                var site = sites.get(target);
+                order.append(target).append('=').append(site.driveKey() == null ? "encode" : site.driveKey())
+                        .append("/p").append(site.priority() == null ? "?" : site.priority().toString())
+                        .append("/m").append(site.markers().size())
+                        .append("/c").append(site.capacity())
+                        .append(site.ecoHost() ? "/eco" : "/drive").append(' ');
+            }
+            LOGGER.info("[cell-mgmt] bulk consolidation: {} sites, target order: {}", sites.size(), order);
+        }
         for (var entry : listed.entrySet()) {
-            var stocked = stockedOwners(sites, List.copyOf(entry.getValue()), entry.getKey());
-            if (!stocked.isEmpty()) {
-                keepers.put(entry.getKey(), stocked);
+            for (int target : targets) {
+                if (room[target] <= 0) {
+                    continue;
+                }
+                keepers.put(entry.getKey(), List.of(target));
+                room[target]--;
+                break;
             }
         }
-        // 没库存的链归主矩阵：先收它自己列出的，再收外来的，收到格数上限为止。
-        int primary = primarySite(sites);
-        if (primary >= 0) {
-            // 主矩阵自己「有库存而保留」的链也占格，不先扣掉会把没库存的链挤出容量。
-            int room = sites.get(primary).capacity();
-            for (var kept : keepers.values()) {
-                if (kept.contains(primary)) {
-                    room--;
-                }
-            }
-            for (boolean ownPass : List.of(true, false)) {
-                for (var entry : listed.entrySet()) {
-                    if (room <= 0 || keepers.containsKey(entry.getKey())
-                            || entry.getValue().contains(primary) != ownPass) {
-                        continue;
-                    }
-                    keepers.put(entry.getKey(), List.of(primary));
-                    room--;
-                }
-            }
-        }
-        // 还没归属的（没有主矩阵，或主矩阵装不下）：留在第一个列出它的矩阵。
+
+        // 所有目标都满员：这条链留在第一个列出它的矩阵，宁可不并也不丢。
         for (var entry : listed.entrySet()) {
             keepers.putIfAbsent(entry.getKey(), List.of(List.copyOf(entry.getValue()).get(0)));
         }
@@ -960,6 +991,13 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
             }
             wanted.add(mine);
         }
+        if (LOGGER.isInfoEnabled()) {
+            var sizes = new StringBuilder();
+            for (int index = 0; index < wanted.size(); index++) {
+                sizes.append(index).append('=').append(wanted.get(index).size()).append(' ');
+            }
+            LOGGER.info("[cell-mgmt] bulk consolidation: wanted per site: {}, cleared={}", sizes, cleared);
+        }
         return new ConsolidationPlan(wanted, cleared);
     }
 
@@ -973,15 +1011,31 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         return -1;
     }
 
-    /** 这条链在哪些站点里真有东西：一台都没有时返回空表，交给「归主 / 回落」那一趟处理。 */
-    private static List<Integer> stockedOwners(List<BulkSite> sites, List<Integer> holders, Set<AEKey> chain) {
-        var stocked = new ArrayList<Integer>();
-        for (int index : holders) {
-            if (!java.util.Collections.disjoint(sites.get(index).stored(), chain)) {
-                stocked.add(index);
+    /**
+     * 填充顺序：编码槽那张最先，其后按控制器的存储优先级降序（读不到的排最后），同优先级按扫描顺序。
+     *
+     * <p>优先级来自扫描时的 {@code DriveEntry.priorityValue()}：ECO 走 {@code IECOStoragePriorityHost}，
+     * AE2 驱动器走 {@code getPriority()}；编码槽那张没有控制器，靠「排最前」拿到固定位置。</p>
+     */
+    private static List<Integer> targetOrder(List<BulkSite> sites) {
+        var order = new ArrayList<Integer>(sites.size());
+        for (int index = 0; index < sites.size(); index++) {
+            if (sites.get(index).driveKey() == null) {
+                order.add(index);
             }
         }
-        return stocked;
+        var rest = new ArrayList<Integer>();
+        for (int index = 0; index < sites.size(); index++) {
+            if (sites.get(index).driveKey() != null) {
+                rest.add(index);
+            }
+        }
+        rest.sort(Comparator.comparingInt((Integer index) -> {
+            Integer priority = sites.get(index).priority();
+            return priority == null ? Integer.MIN_VALUE : priority;
+        }).reversed());
+        order.addAll(rest);
+        return order;
     }
 
     @Nullable
@@ -995,30 +1049,42 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
     }
 
     /** 按目标名单改写这一台；返回是否真的动了它。 */
-    private boolean applyMarkers(BulkSite site, List<ItemStack> markers) {
+    private ApplyResult applyMarkers(BulkSite site, List<ItemStack> markers) {
+        if (!site.cell().trusted()) {
+            return ApplyResult.FAILED;
+        }
         if (sameMarkers(site.markers(), markers)) {
-            return false;
+            return ApplyResult.UNCHANGED;
         }
         if (site.driveKey() == null) {
-            return site.cell().setMarkers(markers);
+            if (markers.size() > site.capacity()) {
+                // 计划是按扫描时的格数算的；元件被换过/扩容卡变过就别硬写。
+                return ApplyResult.FAILED;
+            }
+            boolean changed = site.cell().setMarkers(markers);
+            if (!changed && !sameMarkers(site.cell().rawMarkers(), markers)) {
+                // setMarkers 只有「没变」和「写失败」两种 false；计划本来就与现状不同时，只能是后者。
+                return ApplyResult.FAILED;
+            }
+            return changed ? ApplyResult.APPLIED : ApplyResult.UNCHANGED;
         }
         var owner = ownerOf(site.driveKey());
         if (owner == null) {
-            return false;
+            return ApplyResult.FAILED;
         }
         var taken = CellDriveScanner.extractCell(owner, site.driveSlot(), null);
         if (taken.isEmpty()) {
             // 这台现在不让动（无限存储迁移中、矩阵还没成型），跳过它而不是硬来。
-            return false;
+            return ApplyResult.FAILED;
         }
         var modified = taken.copy();
         var replacement = CellBulkCutoffCompat.open(modified);
         if (replacement == null || !replacement.setMarkers(markers)
                 || !CellDriveScanner.insertCell(owner, site.driveSlot(), modified)) {
             CellDriveScanner.insertCell(owner, site.driveSlot(), taken);
-            return false;
+            return ApplyResult.FAILED;
         }
-        return true;
+        return ApplyResult.APPLIED;
     }
 
     /** 名单是否逐格相同：聚合会既删又加，条数相同不代表内容没变。 */

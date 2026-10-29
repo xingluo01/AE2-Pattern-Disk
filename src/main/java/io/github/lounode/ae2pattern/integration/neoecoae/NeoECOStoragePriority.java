@@ -18,9 +18,8 @@ import io.github.lounode.ae2pattern.common.menu.CellDriveScanner;
  * <h2>为什么这层桥放在 integration 包</h2>
  *
  * <p>{@link CellDriveScanner} 在总是加载的 {@code main} 源集里，不能出现邻居模组的类型名——ECO 缺席时那会变成
- * 加载期错误。所以由本类（只在契约类存在时才会被注册）实现
- * {@link CellDriveScanner.PriorityAdapter} 并注册进去，契约于是只活在这一层。
- * 调用点（{@code NeoECOIntegration#apply}）会先用字符串探一次类，探不到就连本类也不加载。</p>
+ * 加载期错误。所以由本类实现 {@link CellDriveScanner.PriorityAdapter} 并注册进去，契约只活在这一层；本类只在
+ * ECO 在场时被调起（{@code NeoECOIntegration} 由 ECO 的 IntegrationManager 发现），缺 ECO 时它连同契约类型都不会加载。</p>
  *
  * <h2>仍然靠反射的那一半</h2>
  *
@@ -28,8 +27,8 @@ import io.github.lounode.ae2pattern.common.menu.CellDriveScanner;
  * {@link CellDriveScanner#storageController(Object)} 按方法名探（ECO 走 {@code getStorageController()}、
  * 青春版走 {@code getCluster().getController()}）；只有拿到控制器之后的读写才是编译期契约。</p>
  *
- * <p>青春版 1.3.6 目前仍未实现该接口（它选的是先挂 {@code util.ICellHost}），所以它的优先级继续走反射——
- * 它那两个方法本来就是 public，行为与从前一致。ECO 更早的版本同理。</p>
+ * <p>青春版仍未实现该接口（它选的是先挂 {@code util.ICellHost}），所以它的优先级继续走上面那条按方法名的路——
+ * 它那两个方法本来就是 public，行为与从前一致。</p>
  */
 public final class NeoECOStoragePriority implements CellDriveScanner.PriorityAdapter {
 
@@ -38,37 +37,21 @@ public final class NeoECOStoragePriority implements CellDriveScanner.PriorityAda
     private NeoECOStoragePriority() {
     }
 
-    /** 公开契约不在旧版 ECO 里：用类名探而不是直接引用类型。 */
-    private static final String PRIORITY_CONTRACT =
-            "cn.dancingsnow.neoecoae.api.storage.IECOStoragePriorityHost";
-
     /**
-     * 由 {@code NeoECOIntegration#apply()} 调用一次（那边已先用字符串探过一次类）。
+     * 由 {@code NeoECOIntegration#apply()} 调用一次。地板 {@code [21.2.12,)} 保证契约在，所以不再按类名探。
      *
-     * <p>这里再探一次是防御：本类（含下面的 {@link #priorityHost}）引用了那个接口，而它只在 ECO 21.2.6+ 里
-     * 存在。探不到就不注册，终端继续走反射；换了别的调用点也能自己拦住。</p>
+     * <p>下面的 {@link LinkageError} 只覆盖注册这一步（加载桥类）。它挡的是「本模组的构建与运行期 ECO 错配」，
+     * 不是「邻居太旧」——后者已被 mods.toml 的地板在加载阶段拦下。真正的契约调用在 {@link #priorityHost} 里，
+     * 那两处若错配会炸在扫描器一侧，本方法接不到。</p>
      */
     public static void register() {
-        if (!classPresent(PRIORITY_CONTRACT)) {
-            return;
-        }
         try {
             CellDriveScanner.registerPriorityAdapter(new NeoECOStoragePriority());
         } catch (LinkageError mismatch) {
-            // 契约类探到了、桥却载不起来：这不是「邻居太旧」，而是本模组的构建与运行期 ECO 错配。
+            // 桥类载不起来：这不是「邻居太旧」（地板已在加载阶段拦下），而是本模组的构建与运行期 ECO 错配。
             // 按 ERROR 报（而不是与旧版退化共用一条静默路径），否则这种错配会被当成正常退场。
             LOGGER.error("[AE2-Pattern-Disk] the NEO ECO storage priority contract is present but this mod's"
                     + " bridge could not be linked; the priority column stays read-only", mismatch);
-        }
-    }
-
-    private static boolean classPresent(String name) {
-        try {
-            // initialize=false：只要「类在」，不触发静态初始化。
-            Class.forName(name, false, NeoECOStoragePriority.class.getClassLoader());
-            return true;
-        } catch (ClassNotFoundException | LinkageError absent) {
-            return false;
         }
     }
 

@@ -226,7 +226,7 @@
 | 邻居 | 服务端 | 客户端 | 干什么 |
 |---|---|---|---|
 | AE2 WTLib | `integration/ae2wtlib` | `client/integration/ae2wtlib` | 两个无线终端 |
-| NEO ECO AE Extension | `integration/neoecoae` | `client/integration/neoecoae` | 上传按钮、整批并行入口、大宗元件截断调级（API 优先、反射兜底） |
+| NEO ECO AE Extension | `integration/neoecoae` | `client/integration/neoecoae` | 上传按钮、整批并行入口、大宗元件截断调级（编译期公开契约） |
 | ExtendedAE Plus | `integration/extendedae_plus` | `client/integration/extendedae_plus` | 往供应器上传样板的链路 |
 | AE2 Crystal Science | `integration/ae2cs` | — | 自装配供应器的整套注册 |
 | Jade | `integration/jade` | — | 显示机器状态 |
@@ -235,7 +235,7 @@
 
 客户端那边有个反复出现的写法：`ClientExtendedAEPlusCompat` 这类**把"带契约的邻居在场"变成一屏**的类。理由是编译期可选依赖的类型名一旦出现在总是加载的类里，缺那个模组的玩家就会在加载阶段炸掉；把名字关进只在门禁通过后才碰的类，缺了就只是一屏。
 
-NEO ECO 的类型名与方法名集中在 `integration/neoecoae`：`NeoECOIntegration` 只做门禁与注册，带类型的桥各自成类。大宗元件的截断调级是两层：上游有 `getCompressionChain` / `getCompressionCutoff` 时用 `EcoBulkCellsApi`（`src/ecoapi/java`，仅 `-PecoApiJar` 时进源集），否则用 `EcoBulkCellsCompat` 反射遍历元件副本；两者都实现 `CellBulkCutoffCompat.Adapter`，终端只认这个中立接口。中立接口按「一张元件一个 `Site`」收口：聚合要看名单、格数与库存，句柄把这三样落在同一次解析上，读一律走 `stack.copy()`——上游查生效截断时会顺带做历史账户恢复并落盘，客户端算按钮状态不能写进真元件。
+NEO ECO 的类型名与方法名集中在 `integration/neoecoae`：`NeoECOIntegration` 只做门禁与注册，带类型的桥各自成类。大宗元件的截断调级由 `EcoBulkCells` 一个适配器实现 `CellBulkCutoffCompat.Adapter`，编译期直接调上游的 `getCompressionChain` / `getCompressionCutoff`（21.2.12 起随发布件提供，故 `mods.toml` 把地板抬到 `[21.2.12,)`；装更旧的 ECO 时整包停在加载阶段）；终端只认中立接口，判定只看契约不看物品 id，所以 ECO 的大宗盘（含 MEGA 联动那批）与 21.2.12 新出的数字奇点物品存储矩阵走同一条路——后者要 Bigger AE2 在场才注册；MEGA Cells 自己那枚截断按钮仍走 `MegaCellsCompat`，不经过这条链。中立接口按「一张元件一个 `Site`」收口：聚合要看名单、格数与库存，句柄把这三样落在同一次解析上，读一律走 `stack.copy()`——上游查生效截断时会顺带做历史账户恢复并落盘，客户端算按钮状态不能写进真元件。
 
 ---
 
@@ -262,7 +262,7 @@ NEO ECO 的类型名与方法名集中在 `integration/neoecoae`：`NeoECOIntegr
 
 - AE2 / GuideME：在 `gradle/libs.versions.toml` 里声明，`compileOnly`（AE2 另加 `accessCompileOnly` 与 `clientCompileOnly`），运行时由整合包提供。
 - JEI / EMI：`clientCompileOnly`，只是编译期 API。AE2WTLib / Jade / Polymorph / IPN 经 maven 或 CurseForge 自动解析，不需要本地 jar。
-- NEO ECO：`compileOnly` / `clientCompileOnly` 与开发运行期都用 CurseForge 发布件 `curse.maven:neo-eco-ae-extension-1460639:9336076`（21.2.11，2026-10-27）。不再需要本地 jar。本模组在 `mods.toml` 里对它的地板是 `[21.2.1,)`（旧 ECO 上存储优先级那格退化回只读，FastPath 也不会被发现）；运行期 `Neo ECO Prototype` 反过来要求 `[21.2.10,)`，所以这两条坐标必须同批升。21.2.11 起 `ECOFastPathFacade` 会经 `ECOParallelCraftingProviders` 发现本模组的适配器（上游 issue #134），批处理装配室的 `long` / `BigInteger` 大批量入口随之生效。大宗元件截断调级的 API 层暂放 `src/ecoapi/java`，用 `-PecoApiJar=<带 PR #141 的 ECO jar>` 构建时才进源集；普通构建走反射退场。
+- NEO ECO：`compileOnly` / `clientCompileOnly` 与开发运行期都用 CurseForge 发布件 `curse.maven:neo-eco-ae-extension-1460639:9349859`（21.2.12，2026-10-28）。不再需要本地 jar，也没有 `-PecoApiJar` 这类快照开关。本模组在 `mods.toml` 里把它的地板写成 `[21.2.12,)`：大宗压缩链的两个查询只从这个版本起随发布件提供，而集成层是编译期直接调用，装更旧的 ECO 时整包停在加载阶段（FML 只用 systemMods 构加载列表，报错屏点名这条区间），不是某格退化回只读。运行期 `Neo ECO Prototype` 1.4.3 同样要求 `[21.2.12,)`（21.2.12 把 `impl/storage/**` 搬进 `storage/**`，青春版按新名字编译），所以这两条坐标必须同批升。21.2.11 起 `ECOFastPathFacade` 会经 `ECOParallelCraftingProviders` 发现本模组的适配器（上游 issue #134），批处理装配室的 `long` / `BigInteger` 大批量入口随之生效。
 - ExtendedAE Plus：`compileOnly` / `clientCompileOnly` / 开发运行期都用 CurseForge 发布件 `curse.maven:extendedae-plus-1337639:8998231`（1.6.3，2026-09-28）。这个版本同时解决了两件事：带本模组要的终端兼容层接口（`IPatternUploadMenu` / `IPatternUploadTerminal`，1.6.2 没有），且修掉了 1.6.2 与 JEI 19.56 的不兼容（它的 `BookmarkOverlayMixin` 改引用 `mezz.jei.common.input.handlers`）。不再需要本地 jar；`-PeaePlusJar=<路径>` 保留为应急覆盖。
 - AECS：放到 `libs/ae2cs-1.21.1-1.3.0.jar`，只作运行时。**这份仍是本地件**：CurseForge 与 Modrinth 上最新的 1.21.1 发布版都停在 1.2.1（2026-07-24），1.3.0 只存在于上游 `1.21.1-main` 分支，未发版。
 
