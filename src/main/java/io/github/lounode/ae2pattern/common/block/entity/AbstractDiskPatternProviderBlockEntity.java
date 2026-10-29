@@ -167,6 +167,10 @@ public abstract class AbstractDiskPatternProviderBlockEntity<L extends PatternDi
         }
         super.importSettings(mode, cleanInput, player);
         if (mode == SettingsFrom.MEMORY_CARD) {
+            // 本模组自己的设置（阻挡/倍增/抽取/选中标记）不在 AE2 的 Settings 里，得单独搬。
+            if (getLogic() instanceof PatternDiskProviderLogic logic) {
+                logic.importCustomSettings(cleanInput);
+            }
             // 必须强制重建：磁盘没动，状态检查会跳过，镜像就停在 super.importSettings 留下的样子。
             disks.refreshFromDisks(true);
         }
@@ -181,6 +185,9 @@ public abstract class AbstractDiskPatternProviderBlockEntity<L extends PatternDi
         super.exportSettings(mode, builder, player);
         if (mode == SettingsFrom.MEMORY_CARD) {
             builder.set(AEComponents.EXPORTED_PATTERNS, ItemContainerContents.EMPTY);
+            if (getLogic() instanceof PatternDiskProviderLogic logic) {
+                logic.exportCustomSettings(builder);
+            }
         }
     }
 

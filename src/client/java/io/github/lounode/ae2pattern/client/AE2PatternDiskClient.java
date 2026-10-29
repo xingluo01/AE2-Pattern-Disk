@@ -117,13 +117,27 @@ public class AE2PatternDiskClient {
         // 屏幕类多了一个接受布局文档的构造，方法引用不再能唯一定位，所以这里把两个泛型参数写实。
         event.register(AEPatternRegistries.MENU_PROVIDER.get(),
                 new net.minecraft.client.gui.screens.MenuScreens.ScreenConstructor<
-                        io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu, PatternDiskProviderScreen>() {
+                        io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu,
+                        PatternDiskProviderScreen<io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu>>() {
                     @Override
-                    public PatternDiskProviderScreen create(
+                    public PatternDiskProviderScreen<io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu> create(
                             io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu menu,
                             net.minecraft.world.entity.player.Inventory playerInventory,
                             net.minecraft.network.chat.Component title) {
-                        return new PatternDiskProviderScreen(menu, playerInventory, title);
+                        return new PatternDiskProviderScreen<>(menu, playerInventory, title);
+                    }
+                });
+        event.register(AEPatternRegistries.MENU_MARKED_PROVIDER.get(),
+                new net.minecraft.client.gui.screens.MenuScreens.ScreenConstructor<
+                        io.github.lounode.ae2pattern.common.menu.MarkedPatternDiskProviderMenu,
+                        io.github.lounode.ae2pattern.client.gui.MarkedPatternDiskProviderScreen>() {
+                    @Override
+                    public io.github.lounode.ae2pattern.client.gui.MarkedPatternDiskProviderScreen create(
+                            io.github.lounode.ae2pattern.common.menu.MarkedPatternDiskProviderMenu menu,
+                            net.minecraft.world.entity.player.Inventory playerInventory,
+                            net.minecraft.network.chat.Component title) {
+                        return new io.github.lounode.ae2pattern.client.gui.MarkedPatternDiskProviderScreen(
+                                menu, playerInventory, title);
                     }
                 });
         event.register(AEPatternRegistries.MENU_ASSEMBLER.get(), PatternDiskAssemblerScreen::new);
@@ -145,13 +159,14 @@ public class AE2PatternDiskClient {
         }
         event.register(io.github.lounode.ae2pattern.MeteoritePatternProviderRegistrations.MENU.get(),
                 new net.minecraft.client.gui.screens.MenuScreens.ScreenConstructor<
-                        io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu, PatternDiskProviderScreen>() {
+                        io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu,
+                        PatternDiskProviderScreen<io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu>>() {
                     @Override
-                    public PatternDiskProviderScreen create(
+                    public PatternDiskProviderScreen<io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu> create(
                             io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu menu,
                             net.minecraft.world.entity.player.Inventory playerInventory,
                             net.minecraft.network.chat.Component title) {
-                        return new PatternDiskProviderScreen(menu, playerInventory, title,
+                        return new PatternDiskProviderScreen<>(menu, playerInventory, title,
                                 StyleManager.loadStyleDoc(
                                         "/screens/ae2_pattern_disk/meteorite_pattern_provider.json"),
                                 true);

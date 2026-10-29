@@ -49,7 +49,7 @@ import java.util.List;
  * over a menu with a deterministic slot layout, so it never introduces server/client drift. Layout driven
  * by {@code assets/ae2/screens/ae2_pattern_disk/pattern_disk_provider.json}.
  */
-public class PatternDiskProviderScreen extends AEBaseScreen<PatternDiskProviderMenu> {
+public class PatternDiskProviderScreen<T extends PatternDiskProviderMenu> extends AEBaseScreen<T> {
 
     private final StatesIconButton blockingModeButton;
     private final StatesIconButton extractionButton;
@@ -104,7 +104,7 @@ public class PatternDiskProviderScreen extends AEBaseScreen<PatternDiskProviderM
             .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/states.png"))
             .src(226, 224, 18, 20);
 
-    public PatternDiskProviderScreen(PatternDiskProviderMenu menu, Inventory playerInventory, Component title) {
+    public PatternDiskProviderScreen(T menu, Inventory playerInventory, Component title) {
         this(menu, playerInventory, title,
                 StyleManager.loadStyleDoc("/screens/ae2_pattern_disk/pattern_disk_provider.json"), false);
     }
@@ -116,7 +116,7 @@ public class PatternDiskProviderScreen extends AEBaseScreen<PatternDiskProviderM
      * @param selfAssembling 是否是自装配版：只影响指南页指向（它照着 AE2 Crystal Science 那台做，
      *                       问号应该跳去对方的页面）。
      */
-    public PatternDiskProviderScreen(PatternDiskProviderMenu menu, Inventory playerInventory, Component title,
+    public PatternDiskProviderScreen(T menu, Inventory playerInventory, Component title,
             ScreenStyle style, boolean selfAssembling) {
         super(menu, playerInventory, title, style);
         this.selfAssembling = selfAssembling;

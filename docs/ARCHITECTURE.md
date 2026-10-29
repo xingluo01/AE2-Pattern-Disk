@@ -304,6 +304,7 @@ NEO ECO 的类型名与方法名集中在 `integration/neoecoae`：`NeoECOIntegr
 - `PatternDiskProviderScreen` 被两份设备共用：普通供应器与自装配（陨石）供应器。布局拆成三层：
   - 基底 `assets/ae2/screens/ae2_pattern_disk/pattern_disk_provider_base.json`：背景、槽位、共用字样、控件，以及 `common.json` / `player_inventory.json` 两个公共 include；
   - 派生 `pattern_disk_provider.json` 与 `meteorite_pattern_provider.json`：只写 `helpTopic` 与 `text.dialog_title`，其余全靠 include。
+- `MarkedPatternDiskProviderScreen`（标记式供应器）继承泛型化后的 `PatternDiskProviderScreen` 复用整套左侧工具栏，但**自带一份完整布局文档** `marked_pattern_disk_provider.json`：它的背景、槽位与控件都与两台磁盘供应器不同，不参与 `pattern_disk_provider_base.json` 的基底/派生两层。`ProviderScreenLayoutTest` 把它一起列进覆盖表。
 - 新增一个「从布局文档取控件」的 `widgets.add*` 调用，写进**基底**即可，派生自动拿到。漏写时 AE2 的 `ScreenStyle.getWidget` 会抛 `IllegalStateException: Screen is missing required widget`，而这个异常发生在开屏的网络处理器里——后果不是画错，是玩家开界面时被踢下线。`ProviderScreenLayoutTest` 沿 include 链守着这条。
 - 不要在两份派生文档里重复 include 公共文档（`common.json` 等）：AE2 的 `StyleManager` 用 `Set` 记录已加载文件，同一文件在一次加载里出现两次会抛 `IllegalStateException: Recursive style includes`。公共文档只在基底写一次，测试也会查这一点。
 - 合并语义（AE2 `StyleManager.combineLayers`）：顶层键（`background`、`helpTopic`、`$schema`）后层整体覆盖；`slots` / `text` / `palette` / `images` / `terminalStyle` / `widgets` 按键合并，同名子对象整体覆盖（所以派生写 `dialog_title` 必须写全的 `text` + `position`，不能只写一半）。

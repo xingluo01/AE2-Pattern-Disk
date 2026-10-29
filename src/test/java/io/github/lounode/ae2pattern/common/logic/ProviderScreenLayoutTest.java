@@ -34,7 +34,15 @@ class ProviderScreenLayoutTest {
     /** 屏幕类取控件的文档顶端：两份派生文档都 include 同一份基底。 */
     private static final List<String> PROVIDER_LAYOUTS = List.of(
             "/assets/ae2/screens/ae2_pattern_disk/pattern_disk_provider.json",
-            "/assets/ae2/screens/ae2_pattern_disk/meteorite_pattern_provider.json");
+            "/assets/ae2/screens/ae2_pattern_disk/meteorite_pattern_provider.json",
+            "/assets/ae2/screens/ae2_pattern_disk/marked_pattern_disk_provider.json");
+
+    /** 标记式供应器自己那份完整文档，与它独有的控件。 */
+    private static final String MARKED_LAYOUT =
+            "/assets/ae2/screens/ae2_pattern_disk/marked_pattern_disk_provider.json";
+
+    private static final List<String> MARK_GRID_WIDGETS =
+            List.of("markSearch", "markScrollbar", "showMode", "clearMark");
 
     /**
      * 屏幕构造里用 {@code widgets.add/addTextField} 按 id 取的控件。
@@ -44,6 +52,20 @@ class ProviderScreenLayoutTest {
      * </p>
      */
     private static final List<String> REQUIRED_WIDGETS = List.of("boostLimit", "lockReason");
+
+    /**
+     * 标记式供应器的屏幕还按 id 取走候选区那几枚控件。它用的是自己那份完整文档（不走基底/派生两层），
+     * 所以单独守：漏一个键，开界面时同样是被踢下线。
+     */
+    @Test
+    void markedProviderLayoutDeclaresTheMarkGridWidgets() throws IOException {
+        var widgets = loadWidgets(MARKED_LAYOUT);
+        for (var widget : MARK_GRID_WIDGETS) {
+            assertTrue(widgets.contains(widget),
+                    () -> MARKED_LAYOUT + " 缺少 widget \""+ widget + "\"：屏幕构造会抛 "
+                            + "Screen is missing required widget，玩家开界面时被踢下线");
+        }
+    }
 
     @Test
     void everyProviderLayoutDeclaresTheWidgetsTheScreenAsksFor() throws IOException {

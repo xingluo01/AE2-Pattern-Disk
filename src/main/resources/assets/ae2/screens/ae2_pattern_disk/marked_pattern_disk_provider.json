@@ -1,0 +1,109 @@
+{
+  "$schema": "../schema.json",
+  "includes": [
+    "../common/common.json",
+    "../common/toolbox.json"
+  ],
+  "background": {
+    "texture": "ae2_pattern_disk:textures/guis/marked_pattern_disk_provider.png",
+    "srcRect": [
+      0,
+      0,
+      176,
+      250
+    ]
+  },
+  "slots": {
+    "STORAGE": {
+      "$comment": "用户给的 7,125 是含 1px 边框的槽外框；槽坐标要落在凹槽内部，所以各 +1。",
+      "left": 8,
+      "top": 126,
+      "grid": "HORIZONTAL"
+    },
+    "PLAYER_INVENTORY": {
+      "left": 8,
+      "top": 160,
+      "grid": "BREAK_AFTER_9COLS"
+    },
+    "PLAYER_HOTBAR": {
+      "left": 8,
+      "top": 218,
+      "grid": "HORIZONTAL"
+    },
+    "TOOLBOX": {
+      "$comment": "与玩家物品栏第一行对齐：bottom 是左上角锚点，250-91=159 正好是背包首行。right 恒为控件 right 减 1。",
+      "bottom": 90,
+      "right": 1,
+      "grid": "BREAK_AFTER_3COLS"
+    }
+  },
+  "text": {
+    "dialog_title": {
+      "text": {
+        "translate": "gui.ae2_pattern_disk.marked_pattern_disk_provider"
+      },
+      "position": {
+        "left": 8,
+        "top": 6
+      }
+    },
+    "provider_return": {
+      "text": {
+        "translate": "gui.ae2_pattern_disk.provider_return"
+      },
+      "position": {
+        "left": 8,
+        "top": 115
+      }
+    }
+  },
+  "widgets": {
+    "toolbox": {
+      "$comment": "面板贴图比槽高一格内边距 6px，所以 bottom 比槽多 6：250-97=153 是贴图左上角。",
+      "right": 2,
+      "bottom": 96,
+      "width": 59,
+      "height": 66
+    },
+    "openPriority": {
+      "left": 152,
+      "top": -5,
+      "width": 20,
+      "height": 20
+    },
+    "lockReason": {
+      "left": 5,
+      "top": 15
+    },
+    "boostLimit": {
+      "left": 0,
+      "top": 0,
+      "width": 24,
+      "height": 12
+    },
+    "markSearch": {
+      "left": 15,
+      "top": 31,
+      "width": 112,
+      "height": 12
+    },
+    "markScrollbar": {
+      "$comment": "标记候选区的滚动条：轨道在 x=131..135（5 宽），滑块宽度由 Scrollbar.Style 的贴图决定；高度由屏幕每帧 setHeight 设成候选区高度（3 行 = 54）。",
+      "left": 130,
+      "top": 51
+    },
+    "showMode": {
+      "left": 150,
+      "top": 44,
+      "width": 16,
+      "height": 16
+    },
+    "clearMark": {
+      "left": 150,
+      "top": 92,
+      "width": 16,
+      "height": 16
+    }
+  },
+  "helpTopic": "ae2_pattern_disk:items-blocks-machines/marked_pattern_disk_provider.md"
+}

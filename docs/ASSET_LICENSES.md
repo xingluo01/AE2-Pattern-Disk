@@ -120,3 +120,9 @@ deliberate rather than a leftover: this device only exists while AE2 Crystal Sci
 two forms are meant to look like that mod's block. The one face this mod still supplies itself is the panel
 model's `front`, `textures/block/meteorite_pattern_provider.png` (used together with the local
 `..._alternate*.png` by the block form's models).
+
+The marked provider's panel form follows the same rule: `models/part/marked_pattern_disk_provider_base.json`
+copies the panel geometry of AE2's `part/pattern_provider_base` (by Sea_Kerman), and
+`models/item/cable_marked_pattern_disk_provider.json` inherits `ae2:item/cable_interface`. Both still point
+their faces at this mod's own `pattern_disk_provider*` textures - that is a deliberate placeholder until the
+device gets its own art, not a leftover.

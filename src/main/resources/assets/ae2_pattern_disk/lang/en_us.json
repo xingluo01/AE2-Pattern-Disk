@@ -238,5 +238,15 @@
   "gui.ae2_pattern_disk.cell_management_terminal.eco_bulk_consolidate": "Consolidate compression markers",
   "gui.ae2_pattern_disk.cell_management_terminal.notice.mark_bookmarks": "Marked from bookmarks: %s written (duplicates %s, skipped %s, non-items %s)",
   "gui.ae2_pattern_disk.notice.no_network_quick_move": "This terminal does not send items into the ME network",
-  "gui.ae2_pattern_disk.cell_management_terminal.drive_tooltip.mid": "Middle click changes this drive's priority"
+  "gui.ae2_pattern_disk.cell_management_terminal.drive_tooltip.mid": "Middle click changes this drive's priority",
+  "block.ae2_pattern_disk.marked_pattern_disk_provider": "Marked Pattern Disk Provider",
+  "item.ae2_pattern_disk.cable_marked_pattern_disk_provider": "Marked Pattern Disk Provider",
+  "gui.ae2_pattern_disk.marked_pattern_disk_provider": "Marked Pattern Disk Provider",
+  "gui.ae2_pattern_disk.marked_provider.search": "Search marks",
+  "gui.ae2_pattern_disk.marked_provider.show_mode": "Display mode",
+  "gui.ae2_pattern_disk.marked_provider.show_mode.all": "Show all marks",
+  "gui.ae2_pattern_disk.marked_provider.show_mode.selected": "Show selected mark",
+  "gui.ae2_pattern_disk.marked_provider.clear": "Clear selected mark",
+  "gui.ae2_pattern_disk.marked_provider.clear.confirm": "§cConfirm clearing the selected mark",
+  "ae2_pattern_disk.tooltip.mark.category": "Recipe category: %s"
 }

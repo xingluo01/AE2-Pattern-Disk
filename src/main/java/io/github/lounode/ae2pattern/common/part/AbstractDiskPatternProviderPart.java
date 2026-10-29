@@ -315,8 +315,21 @@ public abstract class AbstractDiskPatternProviderPart<L extends PatternDiskProvi
         if (mode == SettingsFrom.MEMORY_CARD) {
             // 本类继承的是 AEBasePart，不是 AE2 的 PatternProviderPart，所以设置不会自己走到逻辑那去。
             logic.importSettings(cleanInput, player);
+            // 本模组自己的设置（阻挡/倍增/抽取/选中标记）不在 AE2 的 Settings 里，得单独搬。
+            logic.importCustomSettings(cleanInput);
             // 必须强制重建：磁盘没动，状态检查会跳过，镜像就停在 super.importSettings 留下的样子。
             disks.refreshFromDisks(true);
+        }
+    }
+
+    /**
+     * 写内存卡时带上本模组自己的设置。父类 {@code AEBasePart} 没有样板段要摘，自定义设置仍要写。
+     */
+    @Override
+    public void exportSettings(SettingsFrom mode, DataComponentMap.Builder builder) {
+        super.exportSettings(mode, builder);
+        if (mode == SettingsFrom.MEMORY_CARD) {
+            logic.exportCustomSettings(builder);
         }
     }
 

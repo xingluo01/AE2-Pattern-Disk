@@ -48,9 +48,15 @@ public final class PatternDiskMarkTooltip {
             return;
         }
         var raw = PatternDiskMarks.rawMark(stack);
-        if (raw != null) {
-            tooltip.add(Component.translatable("ae2_pattern_disk.tooltip.mark.raw", raw)
-                    .withStyle(ChatFormatting.DARK_GRAY));
+        if (raw == null) {
+            return;
         }
+        // 盘上存的常常是打标时从搜索栏抄下来的可读名（#粉碎），当「标记 ID」看毫无意义。
+        // 能反查出配方类别就报真实 id（mekanism:crusher），报不出才退回报存着的那串。
+        var category = MarkCategoryIndex.of(raw);
+        var line = category != null
+                ? Component.translatable("ae2_pattern_disk.tooltip.mark.category", category.toString())
+                : Component.translatable("ae2_pattern_disk.tooltip.mark.raw", raw);
+        tooltip.add(line.withStyle(ChatFormatting.DARK_GRAY));
     }
 }

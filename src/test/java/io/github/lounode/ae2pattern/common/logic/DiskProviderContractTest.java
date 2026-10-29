@@ -54,7 +54,9 @@ class DiskProviderContractTest {
             "io.github.lounode.ae2pattern.common.block.entity.PatternDiskProviderBlockEntity",
             "io.github.lounode.ae2pattern.common.block.entity.MeteoritePatternProviderBlockEntity",
             "io.github.lounode.ae2pattern.common.part.PatternDiskProviderPart",
-            "io.github.lounode.ae2pattern.common.part.MeteoritePatternProviderPart");
+            "io.github.lounode.ae2pattern.common.part.MeteoritePatternProviderPart",
+            "io.github.lounode.ae2pattern.common.block.entity.MarkedPatternDiskProviderBlockEntity",
+            "io.github.lounode.ae2pattern.common.part.MarkedPatternDiskProviderPart");
 
     @Test
     void logicKeepsMirrorHooksOverridden() {

@@ -238,5 +238,15 @@
   "gui.ae2_pattern_disk.cell_management_terminal.eco_bulk_consolidate": "压缩统一管理",
   "gui.ae2_pattern_disk.cell_management_terminal.notice.mark_bookmarks": "标记收藏：写入 %s 项（重复 %s、未写入 %s、跳过非物品 %s）",
   "gui.ae2_pattern_disk.notice.no_network_quick_move": "本终端不把物品送进 ME 网络",
-  "gui.ae2_pattern_disk.cell_management_terminal.drive_tooltip.mid": "中键调整这一台的存储优先级"
+  "gui.ae2_pattern_disk.cell_management_terminal.drive_tooltip.mid": "中键调整这一台的存储优先级",
+  "block.ae2_pattern_disk.marked_pattern_disk_provider": "标记式样板磁盘供应器",
+  "item.ae2_pattern_disk.cable_marked_pattern_disk_provider": "标记式样板磁盘供应器",
+  "gui.ae2_pattern_disk.marked_pattern_disk_provider": "标记式样板磁盘供应器",
+  "gui.ae2_pattern_disk.marked_provider.search": "搜索标记",
+  "gui.ae2_pattern_disk.marked_provider.show_mode": "显示模式",
+  "gui.ae2_pattern_disk.marked_provider.show_mode.all": "显示全部标记",
+  "gui.ae2_pattern_disk.marked_provider.show_mode.selected": "显示选中标记",
+  "gui.ae2_pattern_disk.marked_provider.clear": "清空选中标记",
+  "gui.ae2_pattern_disk.marked_provider.clear.confirm": "§c确认清空选中标记",
+  "ae2_pattern_disk.tooltip.mark.category": "配方类别：%s"
 }

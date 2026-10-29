@@ -118,6 +118,17 @@ public class AE2PatternDisk {
                 AEPatternRegistries.BE_PROVIDER.get(),
                 (be, dir) -> PatternDiskProviderBlockEntity.class.cast(be).getLogic().getReturnInv());
 
+        // 标记式供应器：与上面两条同一套后果——漏了不报错，只是这台机器根本不上网、产物回不来。
+        event.registerBlockEntity(
+                appeng.api.AECapabilities.IN_WORLD_GRID_NODE_HOST,
+                AEPatternRegistries.BE_MARKED_PROVIDER.get(),
+                (be, dir) -> (appeng.api.networking.IInWorldGridNodeHost) be);
+        event.registerBlockEntity(
+                appeng.api.AECapabilities.GENERIC_INTERNAL_INV,
+                AEPatternRegistries.BE_MARKED_PROVIDER.get(),
+                (be, dir) -> io.github.lounode.ae2pattern.common.block.entity.MarkedPatternDiskProviderBlockEntity
+                        .class.cast(be).getLogic().getReturnInv());
+
         // 自装配样板磁盘供应器：它同样要能从网上被找到，并把返回仓露给分子装配台回送产物。
         if (MeteoritePatternProviderRegistrations.isRegistered()) {
             event.registerBlockEntity(
@@ -229,6 +240,12 @@ public class AE2PatternDisk {
                     PatternDiskProviderBlockEntity.class,
                     AEPatternRegistries.BE_PROVIDER.get());
 
+            // 标记式供应器：同样需要 server ticker（网格重扫与攒批外发都靠它驱动）。
+            attachTickingBlockEntity(
+                    AEPatternRegistries.BLOCK_MARKED_PROVIDER.get(),
+                    io.github.lounode.ae2pattern.common.block.entity.MarkedPatternDiskProviderBlockEntity.class,
+                    AEPatternRegistries.BE_MARKED_PROVIDER.get());
+
             AEPatternRegistries.BLOCK_ASSEMBLER.get().setBlockEntity(
                     PatternDiskAssemblerBlockEntity.class,
                     AEPatternRegistries.BE_ASSEMBLER.get(),
@@ -315,6 +332,7 @@ public class AE2PatternDisk {
     private static void verifyTickingBlockEntities() {
         var required = new java.util.ArrayList<Object>();
         required.add(AEPatternRegistries.BLOCK_PROVIDER.get());
+        required.add(AEPatternRegistries.BLOCK_MARKED_PROVIDER.get());
         required.add(AEPatternRegistries.BLOCK_TRANSFERER.get());
         if (MeteoritePatternProviderRegistrations.isRegistered()) {
             required.add(MeteoritePatternProviderRegistrations.BLOCK.get());
@@ -374,7 +392,9 @@ public class AE2PatternDisk {
         // Applied Flux 的感应卡：它自己只给 AE2 的供应器与接口登记过，所以本模组的供应器两种形态得各登记
         // 一次——否则 AppFlux 挂上来的那一格升级库存摆在那儿，却一张卡也放不进去。细节见 AppFluxInductionCard。
         AppFluxInductionCard.register(AEPatternRegistries.ITEM_PROVIDER.get(),
-                AEPatternRegistries.ITEM_CABLE_PATTERN_DISK_PROVIDER.get());
+                AEPatternRegistries.ITEM_CABLE_PATTERN_DISK_PROVIDER.get(),
+                AEPatternRegistries.ITEM_MARKED_PROVIDER.get(),
+                AEPatternRegistries.ITEM_CABLE_MARKED_PROVIDER.get());
 
         // AdvancedAE 的高级样板编码器：装上它，编码终端才多出高级编码模式。面板版走 AE2 的升级表，
         // 无线版（含 AE2WTLib 的通用终端）走它自己那一套。细节见 AdvancedPatternEncoder。

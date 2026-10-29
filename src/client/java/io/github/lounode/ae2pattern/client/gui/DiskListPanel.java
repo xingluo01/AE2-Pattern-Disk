@@ -269,8 +269,13 @@ public class DiskListPanel implements ICompositeWidget {
                     if (Minecraft.getInstance().options.advancedItemTooltips) {
                         var raw = PatternDiskMarks.rawMark(entry.stack());
                         if (raw != null) {
-                            lines.add(Component.translatable("ae2_pattern_disk.tooltip.mark.raw", raw)
-                                    .withStyle(ChatFormatting.DARK_GRAY));
+                            // 与物品 tooltip 同一套：优先报真实配方类别 id，报不出才退回盘上存的那串。
+                            var category = MarkCategoryIndex.of(raw);
+                            var line = category != null
+                                    ? Component.translatable("ae2_pattern_disk.tooltip.mark.category",
+                                            category.toString())
+                                    : Component.translatable("ae2_pattern_disk.tooltip.mark.raw", raw);
+                            lines.add(line.withStyle(ChatFormatting.DARK_GRAY));
                         }
                     }
                 }

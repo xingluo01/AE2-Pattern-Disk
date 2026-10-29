@@ -14,6 +14,7 @@ import java.util.function.Supplier;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
+import net.minecraft.core.component.DataComponentMap;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
@@ -52,6 +53,7 @@ import appeng.parts.AEBasePart;
 import appeng.parts.automation.StackWorldBehaviors;
 import appeng.util.inv.AppEngInternalInventory;
 
+import io.github.lounode.ae2pattern.AEPatternRegistries;
 import io.github.lounode.ae2pattern.common.logic.BoostMergeLimit;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
 import io.github.lounode.ae2pattern.common.pattern.DiskSlotVersions;
@@ -83,16 +85,21 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
 
     /** 宿主与节点自己留一份：父类那两个字段是 private，而多面投递要靠它们定位邻居。 */
     private final PatternProviderLogicHost host;
-    private final IManagedGridNode mainNode;
+
     /** 与父类同源的动作源（同一个 {@code MachineSource} 形态，挂在同一个网格节点上）。 */
     private final IActionSource actionSource;
 
     /**
      * 镜像样板栏的原件（磁盘展开出的样板副本，<b>不是真身</b>）：真身在磁盘物品组件里，终端的读写走
-     * {@code getTerminalPatternInventory()}。只在本类内部用（重建与清空）；不对外开访问器，那等于给只读化
-     * 留一个绕过口。
+     * {@code getTerminalPatternInventory()}。只在本类与子类内部用（重建与清空）；不对外开访问器，那等于
+     * 给只读化留一个绕过口。
+     *
+     * <p>标记式镜像设备的样板来自网格上别的机器，但写的是同一份镜像、同一套只读语义。</p>
      */
-    private final InternalInventory mirror;
+    protected final InternalInventory mirror;
+
+    /** 主节点：子类要扫整张网格（标记式镜像设备从别人的磁盘取样板）。 */
+    protected final IManagedGridNode mainNode;
 
     /** {@link #getPatternInv()} 交出去的那份只读视图，构造一次、长期复用。 */
     private final InternalInventory readOnlyMirror;
@@ -222,7 +229,18 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
 
     public PatternDiskProviderLogic(IManagedGridNode mainNode, PatternProviderLogicHost host,
             int diskSlots, Supplier<AppEngInternalInventory> diskInventorySupplier) {
-        super(mainNode, host, mirrorCapacity(diskSlots));
+        this(mainNode, host, diskSlots, diskInventorySupplier, null);
+    }
+
+    /**
+     * 让调用方直接定镜像槽数：镜像设备没有自己的磁盘槽，容量没法按槽数推。
+     *
+     * @param mirrorSlots 显式镜像槽数；{@code null} 时仍按磁盘槽数推导
+     */
+    protected PatternDiskProviderLogic(IManagedGridNode mainNode, PatternProviderLogicHost host,
+            int diskSlots, Supplier<AppEngInternalInventory> diskInventorySupplier,
+            @Nullable Integer mirrorSlots) {
+        super(mainNode, host, mirrorSlots != null ? mirrorSlots : mirrorCapacity(diskSlots));
         this.diskInventorySupplier = diskInventorySupplier;
         this.lastDiskVersions = null;
         this.host = host;
@@ -964,23 +982,37 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
             all.addAll(contents.patterns());
         }
 
-        rebuildingMirror = true;
-        try {
-            patternInv.clear();
-            for (int i = 0; i < all.size() && i < patternInv.size(); i++) {
-                // copy(): the stacks come straight out of the disks' components, and a holder of the mirror
-                // must not be able to mutate what the disk shows.
-                patternInv.setItemDirect(i, all.get(i).copy());
-            }
-        } finally {
-            rebuildingMirror = false;
-        }
+        rewriteMirror(all);
 
         // Parent decodes patternInventory into its patterns list and requests a grid update.
         updatePatterns();
 
         lastDiskVersions = versions;
         return true;
+    }
+
+    /**
+     * 用一组样板整体替换镜像栏：抑制逐槽通知，由调用方在末尾跑一次 {@link #updatePatterns()}。
+     *
+     * <p>只在镜像容量不足时截断并记一条日志——镜像设备的样板来自整张网格，容量是按「满配磁盘」估的上界，
+     * 正常玩法碰不到；碰得到也不该静默少掉几张。</p>
+     */
+    protected final void rewriteMirror(List<ItemStack> patterns) {
+        rebuildingMirror = true;
+        try {
+            mirror.clear();
+            int limit = Math.min(patterns.size(), mirror.size());
+            for (int i = 0; i < limit; i++) {
+                // copy(): 样板出自磁盘组件，镜像的持有者不能借此改到磁盘看到的内容。
+                mirror.setItemDirect(i, patterns.get(i).copy());
+            }
+            if (patterns.size() > limit && LOGGER.isWarnEnabled()) {
+                LOGGER.warn("样板磁盘供应器的镜像容量不足：{} 张样板只能放入前 {} 张，其余被截断",
+                        patterns.size(), limit);
+            }
+        } finally {
+            rebuildingMirror = false;
+        }
     }
 
     // The parent's updatePatterns re-reads patternInventory; our refresh already filled it.
@@ -1086,6 +1118,50 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
         // 合并中的材料已经由 addDrops 掉出去了，这里只清账，避免拆机后再被 flush 一遍。
         pendingBatches.clear();
         updatePatterns();
+    }
+
+    // ---- 内存卡：本模组自己的设置 ------------------------------------------
+
+    /**
+     * 把本模组的设置写进内存卡。AE2 的 {@code Settings} 枚举不可扩展，阻挡三档/发配倍增/产物抽取只能
+     * 自带一段组件，否则粘贴时这三项会悄悄丢掉。
+     */
+    public void exportCustomSettings(DataComponentMap.Builder builder) {
+        var tag = new CompoundTag();
+        tag.putString(NBT_BLOCKING_MODE, blockingMode.name());
+        tag.putBoolean(NBT_BOOST_ENABLED, boostEnabled);
+        tag.putInt(NBT_BOOST_LIMIT, boostLimit);
+        tag.putString(NBT_EXTRACTION_MODE, extractionMode.name());
+        writeExtraSettings(tag);
+        builder.set(AEPatternRegistries.MEMORY_CARD_SETTINGS, tag);
+    }
+
+    /**
+     * 应用内存卡里的本模组设置。卡上没有这一段（旧卡、或由别的机器写出的卡）时保持原样。
+     */
+    public void importCustomSettings(DataComponentMap input) {
+        var tag = input.get(AEPatternRegistries.MEMORY_CARD_SETTINGS.get());
+        if (tag == null) {
+            return;
+        }
+        blockingMode = parseBlockingMode(tag.getString(NBT_BLOCKING_MODE));
+        boostEnabled = tag.getBoolean(NBT_BOOST_ENABLED);
+        boostLimit = Math.max(0, Math.min(BoostMergeLimit.MAX_LIMIT, tag.getInt(NBT_BOOST_LIMIT)));
+        mergeLimit = new BoostMergeLimit(boostLimit);
+        extractionMode = parseExtractionMode(tag.getString(NBT_EXTRACTION_MODE));
+        readExtraSettings(tag);
+        // 与读档同一条对齐：AE2 那边的开关得跟着本模组的三档走。
+        getConfigManager().putSetting(Settings.BLOCKING_MODE,
+                blockingMode == ProviderBlockingMode.ALL ? YesNo.YES : YesNo.NO);
+        saveChanges();
+    }
+
+    /** 子类追加要随卡走的设置（标记式设备的选中标记）。 */
+    protected void writeExtraSettings(CompoundTag tag) {
+    }
+
+    /** 子类读回自己追加的设置。 */
+    protected void readExtraSettings(CompoundTag tag) {
     }
 
     // ---- 供应器设置：阻挡三档与发配倍增 -----------------------------------
@@ -1512,6 +1588,8 @@ public class PatternDiskProviderLogic extends PatternProviderLogic {
         boostEnabled = tag.getBoolean(NBT_BOOST_ENABLED);
         boostLimit = Math.max(0, Math.min(BoostMergeLimit.MAX_LIMIT, tag.getInt(NBT_BOOST_LIMIT)));
         mergeLimit = new BoostMergeLimit(boostLimit);
+        // 之前漏了这一步：档位写进存档却从不读回，读档后总是回落 OFF。
+        extractionMode = parseExtractionMode(tag.getString(NBT_EXTRACTION_MODE));
         // 退避进度是运行时状态，不落盘：快速档的初始间隔永远是 1 tick（读档后从最快档重新开始）。
         extractionInterval = ProviderExtractionPacing.FAST_START_INTERVAL;
         extractionCooldown = 0;

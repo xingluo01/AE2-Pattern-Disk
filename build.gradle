@@ -349,6 +349,12 @@ dependencies {
     // and resolves to the Fabric jar).
     localRuntime 'maven.modrinth:geckolib:gFmrC8Ru'
 
+    // JECH (JustEnoughCharacters): 拼音搜索。磁盘列表与标记搜索都按类名反射调它的
+    // me.towdium.jecharacters.utils.Match#contains（见 JechPinyin），没装时自动退成小写子串匹配，
+    // 所以它是纯运行期件、不进 compileOnly。用 modrinth 的 version id：4.5.30 这个号同时有
+    // neoforge 与 fabric 两个构件，裸版本号会解析到 fabric 那份（与上面 geckolib 同一个坑）。
+    localRuntime 'maven.modrinth:justenoughcharacters:iNnJuUnx'
+
     // Runtime environment mods used for integration testing.
     localRuntime 'maven.modrinth:modern-ui:3.13.0.1'
     localRuntime 'maven.modrinth:jade:15.10.6+neoforge'

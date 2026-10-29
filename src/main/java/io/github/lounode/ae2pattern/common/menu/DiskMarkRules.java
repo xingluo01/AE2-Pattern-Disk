@@ -64,6 +64,42 @@ public final class DiskMarkRules {
         };
     }
 
+    /**
+     * 这个标记指向哪个规范配方类别 id；认不出时返回 null。
+     *
+     * <p>两种写法都认：导入配方写下的 {@code #<配方类别>} 原样就是类别，手动编码写下的
+     * {@code #mode:<模式>} 先归一到该模式对应的规范类别（与显示、搜索同一套锚点）。</p>
+     *
+     * <p><b>返回 null 的三种情况都必须走这一句判空，不能把模式名反查的结果直接喂给
+     * {@link #categoryForMode}</b>：那是对枚举做 switch，编译成 {@code mode.ordinal()}，喂 null 就是
+     * NPE。三种情况是——不是 {@code #} 开头（玩家自写的文本）、雕凿（它不在 {@link EncodingMode} 里，
+     * 只有这里写死的模式名）、以及处理档（{@link #categoryForMode} 对它本来就返回 null，因为不同机器
+     * 各有各的类别）。</p>
+     */
+    @Nullable
+    public static String categoryIdOfMark(@Nullable String mark) {
+        if (mark == null || !mark.startsWith("#") || mark.length() < 2) {
+            return null;
+        }
+        var body = mark.substring(1);
+        if (!body.startsWith(MODE_MARK_PREFIX)) {
+            return body;
+        }
+        var mode = modeForMarkName(body.substring(MODE_MARK_PREFIX.length()));
+        return mode == null ? null : categoryForMode(mode);
+    }
+
+    /** {@code #mode:<名>} 里那个名字对应的编码模式；认不出（含雕凿）返回 null。 */
+    @Nullable
+    private static EncodingMode modeForMarkName(String name) {
+        for (var mode : EncodingMode.values()) {
+            if (mode.name().equalsIgnoreCase(name)) {
+                return mode;
+            }
+        }
+        return null;
+    }
+
     /** The mark standing for an encoding mode, for disks marked without an imported recipe. */
     public static String modeMarkId(EncodingMode mode) {
         return "#" + MODE_MARK_PREFIX + mode.name().toLowerCase(Locale.ROOT);

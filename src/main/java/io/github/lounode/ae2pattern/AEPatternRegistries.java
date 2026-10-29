@@ -32,16 +32,19 @@ import appeng.api.parts.PartModels;
 
 import io.github.lounode.ae2pattern.common.block.BatchAssemblerBlock;
 import io.github.lounode.ae2pattern.common.block.PatternDiskAssemblerBlock;
+import io.github.lounode.ae2pattern.common.block.MarkedPatternDiskProviderBlock;
 import io.github.lounode.ae2pattern.common.block.PatternDiskProviderBlock;
 import io.github.lounode.ae2pattern.common.block.PatternTransfererBlock;
 import io.github.lounode.ae2pattern.common.block.entity.BatchAssemblerBlockEntity;
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskAssemblerBlockEntity;
+import io.github.lounode.ae2pattern.common.block.entity.MarkedPatternDiskProviderBlockEntity;
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskProviderBlockEntity;
 import io.github.lounode.ae2pattern.common.block.entity.PatternTransfererBlockEntity;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
 import io.github.lounode.ae2pattern.integration.ae2wtlib.WirelessPatternDiskTerminalItem;
 import io.github.lounode.ae2pattern.common.menu.BatchAssemblerMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskAssemblerMenu;
+import io.github.lounode.ae2pattern.common.menu.MarkedPatternDiskProviderMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternTransfererMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
@@ -53,6 +56,7 @@ import io.github.lounode.ae2pattern.common.part.PatternDiskEncodingTerminalPart;
 import io.github.lounode.ae2pattern.common.part.PatternDiskManagementTerminalPart;
 import io.github.lounode.ae2pattern.common.menu.CellManagementTermMenu;
 import io.github.lounode.ae2pattern.common.part.CellManagementTerminalPart;
+import io.github.lounode.ae2pattern.common.part.MarkedPatternDiskProviderPart;
 import io.github.lounode.ae2pattern.common.part.PatternDiskProviderPart;
 import io.github.lounode.ae2pattern.api.PatternDiskApi;
 import io.github.lounode.ae2pattern.api.PatternDiskContents;
@@ -130,6 +134,16 @@ public final class AEPatternRegistries {
      * provider.
      */
     public static final DeferredItem<PartItem<PatternDiskProviderPart>> ITEM_CABLE_PATTERN_DISK_PROVIDER = createPanelProvider();
+
+    /** 标记式供应器的面板形态，逻辑与方块版共用。 */
+    public static final DeferredItem<PartItem<MarkedPatternDiskProviderPart>> ITEM_CABLE_MARKED_PROVIDER = createMarkedPanelProvider();
+
+    private static DeferredItem<PartItem<MarkedPatternDiskProviderPart>> createMarkedPanelProvider() {
+        PartModels.registerModels(MarkedPatternDiskProviderPart.MODEL);
+        return ITEMS.registerItem("cable_marked_pattern_disk_provider",
+                props -> new PartItem<>(props, MarkedPatternDiskProviderPart.class,
+                        MarkedPatternDiskProviderPart::new));
+    }
 
     private static DeferredItem<PartItem<PatternDiskProviderPart>> createPanelProvider() {
         PartModels.registerModels(PatternDiskProviderPart.MODEL);
@@ -216,6 +230,11 @@ public final class AEPatternRegistries {
             "pattern_disk_provider",
             PatternDiskProviderBlock::new);
 
+    /** 标记式供应器：没有磁盘槽，镜像网格上带选中标记的磁盘。 */
+    public static final DeferredBlock<MarkedPatternDiskProviderBlock> BLOCK_MARKED_PROVIDER = BLOCKS.register(
+            "marked_pattern_disk_provider",
+            MarkedPatternDiskProviderBlock::new);
+
     public static final DeferredBlock<PatternDiskAssemblerBlock> BLOCK_ASSEMBLER = BLOCKS.register(
             "pattern_disk_assembler",
             PatternDiskAssemblerBlock::new);
@@ -229,6 +248,8 @@ public final class AEPatternRegistries {
             .registerSimpleBlockItem("pattern_transferer", BLOCK_TRANSFERER);
     public static final DeferredItem<net.minecraft.world.item.BlockItem> ITEM_PROVIDER = ITEMS
             .registerSimpleBlockItem("pattern_disk_provider", BLOCK_PROVIDER);
+    public static final DeferredItem<net.minecraft.world.item.BlockItem> ITEM_MARKED_PROVIDER = ITEMS
+            .registerSimpleBlockItem("marked_pattern_disk_provider", BLOCK_MARKED_PROVIDER);
     public static final DeferredItem<net.minecraft.world.item.BlockItem> ITEM_ASSEMBLER = ITEMS
             .registerSimpleBlockItem("pattern_disk_assembler", BLOCK_ASSEMBLER);
     public static final DeferredItem<net.minecraft.world.item.BlockItem> ITEM_BATCH_ASSEMBLER = ITEMS
@@ -253,6 +274,14 @@ public final class AEPatternRegistries {
                     () -> BlockEntityType.Builder.of(
                             PatternDiskProviderBlockEntity::new,
                             BLOCK_PROVIDER.get())
+                            .build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<MarkedPatternDiskProviderBlockEntity>> BE_MARKED_PROVIDER = BLOCK_ENTITIES
+            .register(
+                    "marked_pattern_disk_provider",
+                    () -> BlockEntityType.Builder.of(
+                            MarkedPatternDiskProviderBlockEntity::new,
+                            BLOCK_MARKED_PROVIDER.get())
                             .build(null));
 
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<PatternDiskAssemblerBlockEntity>> BE_ASSEMBLER = BLOCK_ENTITIES
@@ -281,6 +310,9 @@ public final class AEPatternRegistries {
 
     public static final DeferredHolder<MenuType<?>, MenuType<PatternDiskProviderMenu>> MENU_PROVIDER = MENUS
             .register("pattern_disk_provider", () -> PatternDiskProviderMenu.TYPE);
+
+    public static final DeferredHolder<MenuType<?>, MenuType<MarkedPatternDiskProviderMenu>> MENU_MARKED_PROVIDER = MENUS
+            .register("marked_pattern_disk_provider", () -> MarkedPatternDiskProviderMenu.TYPE);
 
     public static final DeferredHolder<MenuType<?>, MenuType<PatternDiskAssemblerMenu>> MENU_ASSEMBLER = MENUS
             .register("pattern_disk_assembler", () -> PatternDiskAssemblerMenu.TYPE);
@@ -329,6 +361,15 @@ public final class AEPatternRegistries {
                     "disk_contents",
                     builder -> builder.persistent(PatternDiskContents.CODEC)
                             .networkSynchronized(PatternDiskContents.STREAM_CODEC));
+
+    /**
+     * 内存卡里随卡携带的供应器设置：阻挡三档、发配倍增、产物抽取，以及标记式设备的选中标记。
+     * AE2 的 {@code Settings} 枚举装不下这几项，复制/粘贴只能自带一段组件。
+     */
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<CompoundTag>> MEMORY_CARD_SETTINGS = COMPONENTS
+            .registerComponentType("memory_card_settings",
+                    builder -> builder.persistent(CompoundTag.CODEC)
+                            .networkSynchronized(ByteBufCodecs.COMPOUND_TAG));
 
     /** Custom prefix bound to a disk (disk renamed to this prefix, used for prefix-filtering). */
     public static final DeferredHolder<DataComponentType<?>, DataComponentType<String>> DISK_PREFIX = COMPONENTS
@@ -383,6 +424,8 @@ public final class AEPatternRegistries {
                         // 面板（贴电缆）形态紧跟它的方块形态；自装配那两件再跟在同族的两形态之后。
                         // 自装配只在 AE2 Crystal Science 在场时注册，创造页也跟着它出现。
                         output.accept(ITEM_CABLE_PATTERN_DISK_PROVIDER.get());
+                        output.accept(ITEM_MARKED_PROVIDER.get());
+                        output.accept(ITEM_CABLE_MARKED_PROVIDER.get());
                         if (MeteoritePatternProviderRegistrations.isRegistered()) {
                             output.accept(MeteoritePatternProviderRegistrations.ITEM.get());
                             output.accept(MeteoritePatternProviderRegistrations.ITEM_PART.get());
