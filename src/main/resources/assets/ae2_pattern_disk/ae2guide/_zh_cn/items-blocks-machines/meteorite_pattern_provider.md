@@ -36,11 +36,3 @@ categories:
 ## 形态、方向与上传
 
 磁盘、方向处理与上传按钮都与 [ME样板磁盘供应器](pattern_disk_provider.md) 一致：用旋转档扳手切换推入方向，方块与面板两形态可用工作台无序合成互换，上传的样板落在机上磁盘的空位。
-
-## 合成配方
-
-<Recipe id="ae2_pattern_disk:meteorite_pattern_provider" fallbackText="需要 AE2 Crystal Science。" />
-
-<Recipe id="ae2_pattern_disk:cable_meteorite_pattern_provider_to_block" fallbackText="" />
-
-<Recipe id="ae2_pattern_disk:meteorite_pattern_provider_to_cable" fallbackText="" />

@@ -79,9 +79,3 @@ Two known boundaries:
 Extraction only takes items that appear in the **outputs of an installed pattern**, so leftover ingredients, tools and anything else stay where they are. Each pass moves as much as the network accepts; whatever does not fit stays in the target.
 
 Because the whitelist is the pattern outputs, a product that is also the input of another installed pattern can be pulled back into the network too. If two patterns share one machine and one feeds the other, keep them on separate providers or leave extraction off on that machine.
-
-## Recipes
-
-<RecipesFor id="ae2_pattern_disk:pattern_disk_provider" />
-
-<RecipeFor id="ae2_pattern_disk:cable_pattern_disk_provider" />

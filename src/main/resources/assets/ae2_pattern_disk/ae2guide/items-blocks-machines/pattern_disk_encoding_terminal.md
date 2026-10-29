@@ -91,7 +91,3 @@ group. An empty disk - no mark, no lock - belongs to no group and is never writt
 ## Uploading to NEO ECO
 
 With NEO ECO AE Extension installed, an upload button appears in the top right. It sends the pattern in the encoded slot to NEO ECO's computation cluster pattern storage, clears the slot on success, and returns the replacement the other side names (usually a blank pattern) in the order blank-pattern slot → network → inventory → encoded slot. Nothing is handed back when the pattern was merely stored as an item, since the network already holds that stack; when the other side has no replacement to give, the pattern stays in the encoded slot rather than being dropped. Without that mod the button does not appear.
-
-## Recipe
-
-<RecipeFor id="ae2_pattern_disk:pattern_disk_encoding_terminal" />

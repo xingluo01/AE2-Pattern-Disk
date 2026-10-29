@@ -55,7 +55,3 @@ Up to four <ItemLink id="ae2:speed_card" />, each doubling the parallel analysis
 ## Pairing with a pattern provider
 
 Put it next to an ME Pattern Disk Provider or any other AE2 pattern provider.
-
-## Recipe
-
-<RecipeFor id="ae2_pattern_disk:batch_molecular_assembler" />

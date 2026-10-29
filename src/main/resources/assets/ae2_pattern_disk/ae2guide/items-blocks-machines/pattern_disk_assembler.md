@@ -33,7 +33,3 @@ Each lane's page has a pattern slot. Put an encoded crafting pattern in by hand 
 Materials are drawn as a whole set: when the network cannot cover every ingredient of the recipe, the page draws nothing at all, so it never leaves half a set in its grid and never ends up with materials it cannot assemble.
 
 A lane holding a pattern will not take jobs pushed by a pattern provider, so the machine only accepts work while at least one lane is completely idle. Take the pattern out and the lane returns whatever is left on its grid, then goes back to being idle.
-
-## Recipe
-
-<RecipeFor id="ae2_pattern_disk:pattern_disk_assembler" />

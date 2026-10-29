@@ -67,9 +67,3 @@ AE2's cell workbench has.
 
 The wireless terminal opens the same table and follows the item, like the network's other wireless terminals:
 its own upgrade cards, a terminal switch button inside a universal terminal, and a hotkey.
-
-## Recipes
-
-<RecipesFor id="ae2_pattern_disk:cell_management_terminal" />
-
-<RecipeFor id="ae2_pattern_disk:wireless_cell_management_terminal" />

@@ -55,7 +55,3 @@ categories:
 ## 与样板供应器搭配
 
 把批处理装配室放在 ME样板磁盘供应器或其它 AE2 样板供应器旁边即可。
-
-## 合成配方
-
-<RecipeFor id="ae2_pattern_disk:batch_molecular_assembler" />

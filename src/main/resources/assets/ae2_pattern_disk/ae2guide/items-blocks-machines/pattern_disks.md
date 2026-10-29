@@ -71,11 +71,3 @@ holds patterns does not match.
 ## Compatibility
 
 The larger the disk, the more data the item carries. Keep disks in ordinary containers such as chests, and avoid leaving a large disk open in an item interface for long.
-
-## Recipes
-
-<RecipesFor id="ae2_pattern_disk:pattern_disk_1k" />
-<RecipeFor id="ae2_pattern_disk:pattern_disk_4k" />
-<RecipeFor id="ae2_pattern_disk:pattern_disk_16k" />
-<RecipeFor id="ae2_pattern_disk:pattern_disk_64k" />
-<RecipeFor id="ae2_pattern_disk:pattern_disk_256k" />

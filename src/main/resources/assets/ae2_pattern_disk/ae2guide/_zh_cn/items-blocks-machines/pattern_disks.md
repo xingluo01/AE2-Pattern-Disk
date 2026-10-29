@@ -67,11 +67,3 @@ item_ids:
 ## 兼容性
 
 磁盘容量越大，物品携带的数据越多。建议存放在普通箱子一类容器中，避免长时间停留在大容量磁盘的物品界面里。
-
-## 合成配方
-
-<RecipesFor id="ae2_pattern_disk:pattern_disk_1k" />
-<RecipeFor id="ae2_pattern_disk:pattern_disk_4k" />
-<RecipeFor id="ae2_pattern_disk:pattern_disk_16k" />
-<RecipeFor id="ae2_pattern_disk:pattern_disk_64k" />
-<RecipeFor id="ae2_pattern_disk:pattern_disk_256k" />

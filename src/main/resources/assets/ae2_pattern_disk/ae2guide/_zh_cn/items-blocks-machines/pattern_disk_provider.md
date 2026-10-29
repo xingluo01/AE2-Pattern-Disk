@@ -74,9 +74,3 @@ ME样板磁盘供应器用实体样板磁盘替代样板槽。把装有样板的
 抽取只动「已装样板的输出」那些物品，目标里剩下的原料、工具与其它东西不碰；每次能抽多少抽多少，ME 网络装不下就留在目标里。
 
 白名单就是样板输出，所以「既是某张样板的产物、又是另一张样板的原料」的物品也会被抽回网络。两张样板共用一台机器且前后相接时，建议分到不同供应器上，或那台机器关掉抽取。
-
-## 合成配方
-
-<RecipesFor id="ae2_pattern_disk:pattern_disk_provider" />
-
-<RecipeFor id="ae2_pattern_disk:cable_pattern_disk_provider" />

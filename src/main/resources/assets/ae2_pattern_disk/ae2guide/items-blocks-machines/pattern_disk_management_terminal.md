@@ -72,7 +72,3 @@ The lower half matches the [ME Pattern Disk Encoding Terminal](pattern_disk_enco
 - The table is a read-only view: it shows disk contents, and changing them takes the controls above or the encoding area. Dragging a pattern into a cell does nothing.
 - Contents are shown in full: a disk holding more takes more rows, with the disk in the first cell of its first row and 17 pattern cells on every row below.
 - Contents come from the server on demand, so a disk just placed may show as the disk alone for a frame or two.
-
-## Recipe
-
-<RecipeFor id="ae2_pattern_disk:pattern_disk_management_terminal" />

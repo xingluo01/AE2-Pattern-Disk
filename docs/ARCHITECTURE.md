@@ -244,7 +244,7 @@ NEO ECO 的类型名与方法名集中在 `integration/neoecoae`：`NeoECOIntegr
 - `assets/ae2_pattern_disk`：`lang`（含 `_zh_cn`）、`models`、`blockstates`、`textures/guis`（终端贴图按 512 网格切片）
 - `data/ae2_pattern_disk`：`recipe`、`loot_table`、`tags`
 - `assets/ae2/screens/ae2_pattern_disk/`：终端布局 JSON（每台机器一份，当前 10 份，改布局先改这里）
-- `ae2guide` 与 `ae2guide/_zh_cn`：GuideME 指南，中英各一份——**两份要同步改**
+- `ae2guide` 与 `ae2guide/_zh_cn`：GuideME 指南，中英各一份——**两份要同步改**；页内**不放合成配方展示**（`<RecipeFor>` / `<RecipesFor>` / `<Recipe>` 一律不用），配方统一由 JEI/EMI 呈现——配方一改，手册里的配方就成了过时的说法，而它没人会去更新。
 - `ae2_pattern_disk.mixins.json` + `src/client/java/.../mixin/KeySortersMixin.java`（**客户端源集**）：AE2 物品网格"按 mod"排序在组内比字符串，于是 16k 排在 1k 前；混入在比较器构造处插一脚。只在当前屏幕是本模组终端、"数值排序"开着、且档位是 mod 时生效；`require = 0` 加 `required: false`，AE2 改签名时它只是静默失效
 - `accesstransformer.cfg` / `mods_accessor.cfg`：访问 AE2 的非公开成员
 

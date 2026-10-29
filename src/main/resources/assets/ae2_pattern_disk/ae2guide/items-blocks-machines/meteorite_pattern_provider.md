@@ -47,11 +47,3 @@ Both kinds of card share the same four upgrade slots.
 Disks, direction handling and the upload button are all the same as the
 [ME Pattern Disk Provider](pattern_disk_provider.md): a wrench walks the push direction, the block and panel
 forms convert into each other with a shapeless craft, and uploading a pattern lands on one of the disks.
-
-## Recipes
-
-<Recipe id="ae2_pattern_disk:meteorite_pattern_provider" fallbackText="Requires AE2 Crystal Science." />
-
-<Recipe id="ae2_pattern_disk:cable_meteorite_pattern_provider_to_block" fallbackText="" />
-
-<Recipe id="ae2_pattern_disk:meteorite_pattern_provider_to_cable" fallbackText="" />

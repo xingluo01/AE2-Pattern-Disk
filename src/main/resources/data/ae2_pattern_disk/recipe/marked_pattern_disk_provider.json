@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "ae2_pattern_disk:pattern_disk_provider"
+    },
+    {
+      "tag": "c:glass_blocks"
+    }
+  ],
+  "result": {
+    "count": 1,
+    "id": "ae2_pattern_disk:marked_pattern_disk_provider"
+  }
+}

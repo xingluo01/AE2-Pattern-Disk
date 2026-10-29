@@ -51,9 +51,3 @@ categories:
 ## 无线形态
 
 无线版打开同一张表，并且与网络里另外两个无线终端一样跟着物品走：自带升级卡槽、装在通用终端里时有终端切换按钮，也有打开它的热键。
-
-## 合成配方
-
-<RecipesFor id="ae2_pattern_disk:cell_management_terminal" />
-
-<RecipeFor id="ae2_pattern_disk:wireless_cell_management_terminal" />

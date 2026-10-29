@@ -88,7 +88,3 @@ ME样板磁盘编码终端在 <ItemLink id="ae2:pattern_encoding_terminal" /> �
 ## 上传到 NEO ECO 计算集群
 
 安装 NEO ECO AE Extension 后，界面右上角出现上传按钮：把编码槽中的样板送入 NEO ECO 计算集群的样板存储，成功后清空编码槽，并按「空白样板槽 → 网络 → 背包 → 编码槽」的顺序补回对方指定的替代物，通常为空白样板。样板只是被搬到总线槽位（网络中已有该样板）时不补回；对方无法给出替代物时样板留在编码槽中，不会丢失。未安装该模组时按钮不显示。
-
-## 合成配方
-
-<RecipeFor id="ae2_pattern_disk:pattern_disk_encoding_terminal" />
