@@ -44,6 +44,14 @@ public final class CellBulkCutoffCompat {
         /** 同一份名单，但<b>不</b>按链去重：每个非空标记格一条，带着它所属的链。 */
         List<Marker> rawMarkers();
 
+        /**
+         * 这张矩阵自己的存储优先级（ECO 元件级，玩家在元件的优先级界面里调的就是它）。
+         *
+         * <p>聚合归属先看它、再看宿主的控制器优先级：同一台控制器下多张矩阵时，玩家给每张盘起的
+         * 优先级才是「谁先接」的真正依据。</p>
+         */
+        int storagePriority();
+
         /** 现在能标多少条（含空位），随已装的扩容卡变。 */
         int capacity();
 

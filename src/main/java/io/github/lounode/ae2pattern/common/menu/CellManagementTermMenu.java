@@ -866,7 +866,7 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
     private record BulkSite(@Nullable String driveKey, int driveSlot, ItemStack stack,
                             CellBulkCutoffCompat.Site cell,
                             List<CellBulkCutoffCompat.Marker> markers, int capacity,
-                            @Nullable Integer priority, boolean ecoHost) {
+                            int cellPriority, @Nullable Integer priority, boolean ecoHost) {
     }
 
     /** 一次聚合的产物：每台矩阵该留的名单，与被清掉的重复标记条数。 */
@@ -914,11 +914,8 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
             // 读失败不能当空盘：那会让主矩阵位把真实标记整份覆盖。
             return null;
         }
-        if (driveKey != null && markers.isEmpty()) {
-            // 网络里的空盘不参与聚合：既没有可搬的链，也不必为它读一次账本。
-            return null;
-        }
-        return new BulkSite(driveKey, driveSlot, stack, cell, markers, cell.capacity(), priority, ecoHost);
+        return new BulkSite(driveKey, driveSlot, stack, cell, markers, cell.capacity(),
+                cell.storagePriority(), priority, ecoHost);
     }
 
     private ConsolidationPlan planConsolidation(List<BulkSite> sites) {
@@ -941,6 +938,7 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
             for (int target : targets) {
                 var site = sites.get(target);
                 order.append(target).append('=').append(site.driveKey() == null ? "encode" : site.driveKey())
+                        .append("/q").append(site.cellPriority())
                         .append("/p").append(site.priority() == null ? "?" : site.priority().toString())
                         .append("/m").append(site.markers().size())
                         .append("/c").append(site.capacity())
@@ -1030,10 +1028,14 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
                 rest.add(index);
             }
         }
-        rest.sort(Comparator.comparingInt((Integer index) -> {
-            Integer priority = sites.get(index).priority();
-            return priority == null ? Integer.MIN_VALUE : priority;
-        }).reversed());
+        // 先按矩阵自己的优先级（元件级），再按宿主控制器优先级，最后按扫描顺序（List.sort 稳定）。
+        rest.sort(Comparator
+                .comparingInt((Integer index) -> sites.get(index).cellPriority())
+                .thenComparingInt((Integer index) -> {
+                    Integer priority = sites.get(index).priority();
+                    return priority == null ? Integer.MIN_VALUE : priority;
+                })
+                .reversed());
         order.addAll(rest);
         return order;
     }

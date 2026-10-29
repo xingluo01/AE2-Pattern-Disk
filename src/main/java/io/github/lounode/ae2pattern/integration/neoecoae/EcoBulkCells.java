@@ -179,6 +179,11 @@ public final class EcoBulkCells implements CellBulkCutoffCompat.Adapter {
         }
 
         @Override
+        public int storagePriority() {
+            return probe() instanceof IECOStorageCell cell ? cell.getStoragePriority() : 0;
+        }
+
+        @Override
         public int capacity() {
             return config.size();
         }
