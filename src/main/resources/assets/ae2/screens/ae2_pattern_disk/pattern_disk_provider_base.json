@@ -16,7 +16,7 @@
   },
   "slots": {
     "TOOLBOX": {
-      "bottom": 60,
+      "bottom": 84,
       "right": 1,
       "grid": "BREAK_AFTER_3COLS"
     },
@@ -54,7 +54,7 @@
   "widgets": {
     "toolbox": {
       "right": 2,
-      "bottom": 66,
+      "bottom": 90,
       "width": 59,
       "height": 66
     },

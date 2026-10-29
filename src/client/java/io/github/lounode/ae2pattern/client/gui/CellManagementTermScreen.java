@@ -956,8 +956,8 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
         var group = drives.get(header.driveKey());
         int textX = baseX + 4;
         if (group != null && !group.icon().isEmpty()) {
-            // 与样板磁盘终端的标题栏同口径：图标落点 baseX+1、基线 rowY+ROW_TEXT_Y_INSET，文字从图标右边 4 像素起。
-            guiGraphics.renderItem(group.icon(), baseX + 1, rowY + ROW_TEXT_Y_INSET);
+            // 与样板磁盘终端的标题栏同口径：图标落点 baseX+1、基线 rowY+ROW_TEXT_Y_INSET 再上移 1px（实机反馈），文字从图标右边 4 像素起。
+            guiGraphics.renderItem(group.icon(), baseX + 1, rowY + ROW_TEXT_Y_INSET - 1);
             textX = baseX + 21;
         }
         String label = Component.translatable("gui.ae2_pattern_disk.cell_management_terminal.drive_header",
