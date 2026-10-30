@@ -9,6 +9,7 @@ import appeng.api.stacks.AEKeyType;
 import appeng.api.stacks.KeyCounter;
 import appeng.api.storage.StorageCells;
 import appeng.api.storage.cells.IBasicCellItem;
+import appeng.api.storage.cells.ISaveProvider;
 import appeng.api.storage.cells.StorageCell;
 import appeng.blockentity.inventory.AppEngCellInventory;
 
@@ -25,6 +26,12 @@ import appeng.blockentity.inventory.AppEngCellInventory;
  * <p><b>元件容量是共享的。</b>总字节与「每类型字节」都是所有元件合起来算，所以按 key 单独模拟插入会高估
  * （每个 key 都以为自己能独占剩余空间）。单 key 的模拟只用来判定「能不能再吃下一批」，真正的整批摄入由
  * 调用方按实际结果回滚。</p>
+ *
+ * <p><b>元件的账要一次改完，不要改一遍结一遍账。</b>AE2 的元件在没有保存回调时，每次内容变更都会把整份
+ * 已存条目重算并写回元件物品（{@code BasicCellInventory.saveChanges} 直接走 {@code persist}）。元件越大、
+ * 到货越碎，这笔按次收费的账越贵，所以 {@link #rebuild()} 建句柄时挂上宿主给的 {@link ISaveProvider}：
+ * AE2 只标脏，写回由 {@link AppEngCellInventory} 在读写元件物品前统一做（存盘走的就是 {@code getStackInSlot}，
+ * 换元件与清空也是），内存里的账始终是同一份。</p>
  */
 public final class CellBuffer {
 
@@ -40,16 +47,20 @@ public final class CellBuffer {
 
     private final AppEngCellInventory inventory;
     private final IActionSource actionSource;
+    /** 元件内容变更后要通知的宿主；它换掉的正是类注释里那笔按次全量写回的账。 */
+    private final ISaveProvider saveProvider;
     private final StorageCell[] cells;
     private boolean dirty = true;
 
     /**
      * @param inventory    元件槽所在的库存（同时也是元件内容的持久化载体）
      * @param actionSource 读写元件时的操作来源，用于 AE2 的权限与记账
+     * @param saveProvider 元件内容变更后的保存回调；传 {@code null} 就退回 AE2 的「每次改动都全量写回元件物品」
      */
-    public CellBuffer(AppEngCellInventory inventory, IActionSource actionSource) {
+    public CellBuffer(AppEngCellInventory inventory, IActionSource actionSource, ISaveProvider saveProvider) {
         this.inventory = inventory;
         this.actionSource = actionSource;
+        this.saveProvider = saveProvider;
         this.cells = new StorageCell[inventory.size()];
     }
 
@@ -126,6 +137,38 @@ public final class CellBuffer {
         return false;
     }
 
+    /**
+     * 把按槽的到货清单合并成按 key 的总量。
+     *
+     * <p>AE2 递来的输入栏是「一槽一个 {@link KeyCounter}」，而一份合成常常拿同一种物品占好几格——9:1 的
+     * 压缩配方就是九格同一种东西。元件按 key 记账，逐槽插入会把同一种物品在元件里重写九遍，每遍都要重算
+     * 元件的已存条目。合并只改写入次数，不改收下的总量，因而不影响「能不能整批收下」的判据。</p>
+     *
+     * <p>空槽、零量与负量都跳过：调用方给的形状不保证干净，而一条零量条目会让「这次没收到任何材料」的判据
+     * 误判。求和按饱和收敛——这个和只用来决定收不收得下，绕成负数会伪装成「还装得下」。</p>
+     */
+    public static KeyCounter totalsByKey(KeyCounter[] perSlotInputs) {
+        var totals = new KeyCounter();
+        for (var counter : perSlotInputs) {
+            if (counter == null) {
+                continue;
+            }
+            for (var entry : counter) {
+                if (entry == null || entry.getKey() == null) {
+                    continue;
+                }
+                long amount = entry.getLongValue();
+                if (amount <= 0) {
+                    continue;
+                }
+                var key = entry.getKey();
+                long held = totals.get(key);
+                totals.set(key, held >= Long.MAX_VALUE - amount ? Long.MAX_VALUE : held + amount);
+            }
+        }
+        return totals;
+    }
+
     /** 一个尚未被持有的 key，光「类型条目」就要占掉的容量（按 {@code key} 的类型换算成物品数）。 */
     public long typeEntryUnits(AEKey key) {
         long units = 0L;
@@ -198,7 +241,7 @@ public final class CellBuffer {
             if (stack.isEmpty()) {
                 continue;
             }
-            var cell = StorageCells.getCellInventory(stack, null);
+            var cell = StorageCells.getCellInventory(stack, saveProvider);
             if (cell != null) {
                 inventory.setHandler(i, cell);
                 cells[i] = cell;

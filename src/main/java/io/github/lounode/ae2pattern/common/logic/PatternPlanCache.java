@@ -29,9 +29,10 @@ import org.jetbrains.annotations.Nullable;
  * 是对样板实现的一个假设——余料经 {@code IInput.getRemainingKey} 读出，第三方样板若在那条路径上存可变状态
  * 就不安全。AE2 自家的合成/锻造/切石样板只在构造器里建字段，而入口闸门也只放这几种进来。</p>
  *
- * <p><b>三份数据都按样板实例的<b>引用</b>做键。</b>样板每次解码都是一个新实例，按值比较既贵又会把不同解码
- * 混成一个。三者同生共死：计划里存着产出量与余料，记号讲的是「这份样板的配方答案已经出过问题了」——样板
- * 一被重新解码，三者就都失去意义，必须一起清。</p>
+ * <p><b>四份数据都跟着样板实例走。</b>{@code plans} 按样板自己的 equals 做键（AE2 那几种以定义里的物品为
+ * 身份），其余三份按实例引用：记号要认的正是「同一个实例」，按值比较会把不同解码混成一个。四者同生共死：
+ * 计划里存着产出量与余料，记号讲的是「这份样板的配方答案已经出过问题了」——样板一被重新解码，四者就都
+ * 失去意义，必须一起清。</p>
  */
 public final class PatternPlanCache {
 
@@ -48,9 +49,20 @@ public final class PatternPlanCache {
     /** 同上，针对余料表。 */
     private static final int MAX_CACHED_REMAINDERS = 4096;
 
-    /** 同上，针对两类记号集合。 */
+    /** 同上，针对三份记号集合（两类警告 + 分析失败）。 */
     private static final int MAX_NOTES = 64;
 
+    /**
+     * 分析失败重试上限（按调用计，同一轮里 prepare 与 runLane 会各试一次，所以 3 大约等于两轮）。
+     * 第一次失败就该记住，但第三方样板可能只是暂时读不出来（配方还没就位），所以留几次重试；
+     * 到了上限才彻底停手，等记号被清掉。
+     */
+    private static final int MAX_ANALYSIS_ATTEMPTS = 3;
+
+    /**
+     * 各样板分析失败的次数。键是实例：重新解码后就是另一份样板，计数从头开始。
+     */
+    private final Map<IPatternDetails, Integer> analysisFailures = new IdentityHashMap<>();
     private final Map<IPatternDetails, PatternPlan> plans = new ConcurrentHashMap<>();
     private final Map<PatternPlan.Input, Map<AEKey, Optional<AEKey>>> remainders = new IdentityHashMap<>();
 
@@ -73,15 +85,33 @@ public final class PatternPlanCache {
     public @Nullable PatternPlan analyse(IPatternDetails pattern, FailureReporter reporter) {
         var plan = plans.get(pattern);
         if (plan != null) {
+            if (!analysisFailures.isEmpty()) {
+                // 计划已经有了，计数就不该留着：工作线程成功时计划是直接 put 进去的，之后 analyse 会从这条早退。
+                analysisFailures.remove(pattern);
+            }
             return plan;
+        }
+        int failures = analysisFailures.getOrDefault(pattern, 0);
+        if (failures >= MAX_ANALYSIS_ATTEMPTS) {
+            // Already given up on this one: do not pay the exception again every round. The caller keeps the
+            // job queued, which is the same outcome as a fresh failure - and a re-decode (disk change, reload)
+            // starts the count over, so a pattern that heals later is picked up again.
+            return null;
         }
         try {
             plan = PatternPlan.of(pattern);
         } catch (Exception e) {
+            if (analysisFailures.size() > MAX_NOTES) {
+                // Bounded like the note sets: a machine fed endless broken patterns must not grow a map forever.
+                analysisFailures.clear();
+            }
+            analysisFailures.put(pattern, failures + 1);
             reporter.report(pattern, e);
             return null;
         }
         plans.put(pattern, plan);
+        // 成功一次就把失败计数抹掉：计数只该反映「连续失败到停手」，不该成为以后再失败一次的余量。
+        analysisFailures.remove(pattern);
         return plan;
     }
 
@@ -96,7 +126,8 @@ public final class PatternPlanCache {
             @Nullable ExecutorService pool, FailureReporter reporter) {
         var missing = new ArrayList<IPatternDetails>();
         for (var pattern : patterns) {
-            if (!plans.containsKey(pattern)) {
+            if (!plans.containsKey(pattern)
+                    && analysisFailures.getOrDefault(pattern, 0) < MAX_ANALYSIS_ATTEMPTS) {
                 missing.add(pattern);
             }
         }
@@ -185,20 +216,42 @@ public final class PatternPlanCache {
         return computed;
     }
 
-    /** 记一笔「这份样板同时被多个变体服务」。 */
-    public void noteDamageFallback(IPatternDetails pattern) {
-        if (damageFallbackNoted.add(pattern) && damageFallbackNoted.size() > MAX_NOTES) {
-            damageFallbackNoted.clear();
-            damageFallbackNoted.add(pattern);
+    /**
+     * 记一笔「这份样板同时被多个变体服务」。
+     *
+     * @return 第一次为这份样板记账时返回 {@code true}：调用方据此只打一次日志，而不是每轮打一次
+     */
+    public boolean noteDamageFallback(IPatternDetails pattern) {
+        if (!damageFallbackNoted.add(pattern)) {
+            return false;
         }
+        trimNotes(damageFallbackNoted, pattern);
+        return true;
     }
 
-    /** 记一笔「这份样板的配方答案与声明对不上」。 */
-    public void noteWarned(IPatternDetails pattern) {
-        warned.add(pattern);
-        if (warned.size() > MAX_NOTES) {
-            // Bounded on purpose: a machine fed an endless variety of patterns must not grow a set forever.
-            warned.clear();
+    /**
+     * 记一笔「这份样板的配方答案与声明对不上」。
+     *
+     * @return 第一次为这份样板记账时返回 {@code true}：调用方据此只在这时打日志
+     */
+    public boolean noteWarned(IPatternDetails pattern) {
+        if (!warned.add(pattern)) {
+            return false;
+        }
+        trimNotes(warned, pattern);
+        return true;
+    }
+
+    /**
+     * 记号集合的共同上限：超了就整表清空，只留刚记下的这条。
+     *
+     * <p>有界是刻意的——机器被喂进无穷多种样板时，集合不能无限长。代价是清空之后旧样板会被重新记一次，
+     * 那只是一条多出来的日志。</p>
+     */
+    private static void trimNotes(Set<IPatternDetails> notes, IPatternDetails keep) {
+        if (notes.size() > MAX_NOTES) {
+            notes.clear();
+            notes.add(keep);
         }
     }
 
@@ -212,14 +265,15 @@ public final class PatternPlanCache {
     }
 
     /**
-     * 只丢两类记号（它们描述的是刚刚被重新解码的那些样板）。
+     * 丢掉全部记号（它们描述的是刚刚被重新解码的那些样板）。
      *
-     * <p>{@code warned} 也在这里清：样板被重新解码后是一个新实例，而记号集合是身份语义，旧条目再也
-     * 不会被命中，留着只会积压。</p>
+     * <p>三份都按实例记，而样板一被重新解码就是新实例：旧条目再也不会被命中，留着只会积压。
+     * 失败计数也在这里清——清完如果还是坏的，会重新试几次再报，那是对的。</p>
      */
     public void clearNotes() {
         warned.clear();
         damageFallbackNoted.clear();
+        analysisFailures.clear();
     }
 
     /**

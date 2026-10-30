@@ -163,6 +163,24 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     private boolean returnStalled;
 
     /**
+     * ticker 是否醒着。醒着时它按 {@code TickingRequest(1, 1)} 每 tick 被调一次；再 alert 只会让 AE2 把它的
+     * 队列项摘下来再插回去（{@code PriorityQueue.remove} 是线性扫描），到货越碎这笔越贵。
+     *
+     * <p>拿不准就置 {@code false}：多一次 alert 只是白跑一趟，漏一次就是机器睡着没人叫。</p>
+     */
+    private boolean tickerAwake = false;
+
+    /**
+     * 本 tick 的输入键快照与它对应的游戏时间。重建要遍历两条通道的整条队列，而同一 tick 里可能 drain 多次
+     * （外部还会经 {@code flushReturnsAfterCpuAccounting} 再叫一次）。
+     *
+     * <p>同 tick 内队列变了也不重算：这个集合只决定「哪些 key 跳过平滑直接交」，旧一步只影响交付节奏，
+     * 不影响记账。</p>
+     */
+    private Set<AEKey> queuedInputKeyCache = Set.of();
+    private long queuedInputKeyCacheTick = -1;
+
+    /**
      * 本机的样板优先级（AE2 供应器界面里那个）。
      *
      * <p>两处作用：一是 {@link #getPatternPriority()} 把它交给 AE2 的合成计算——同一产物的多条样板里优先
@@ -246,6 +264,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         // AENetworkedBlockEntity.onReady() aligns the block state once the node exists.
         if (state != appeng.api.networking.IGridNodeListener.State.GRID_BOOT) {
             markForUpdate();
+            tickerAwake = false;
         }
     }
 
@@ -272,7 +291,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     private final IActionSource actionSource = new MachineSource(this);
 
     /** 元件缓冲：解析、读写与「还剩多少」都在 {@link CellBuffer} 里，这里只持有它。 */
-    private final CellBuffer cellBuffer = new CellBuffer(cellInv, actionSource);
+    private final CellBuffer cellBuffer = new CellBuffer(cellInv, actionSource, this::saveChanges);
 
     private final BatchRecipePool recipePool = new BatchRecipePool();
     private final List<IPatternDetails> exposedPatterns = new ArrayList<>();
@@ -904,28 +923,29 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
      * Moves every pushed amount into the cell buffer, all-or-nothing. Cell capacity is shared across
      * keys (total bytes + bytes per type), so per-key simulation can over-estimate: the insert is
      * verified for real and anything short is rolled back before the push is rejected.
+     *
+     * <p>Inputs arrive one counter per crafting slot, and a single craft often fills several slots with the
+     * same item (a 9:1 compression recipe is nine slots of one thing). The totals are merged per key first:
+     * what gets booked is unchanged, but the cells are written - and re-bookkeep - once per key instead of
+     * once per slot.</p>
      */
     private boolean bufferInputs(KeyCounter[] inputs) {
+        var totals = CellBuffer.totalsByKey(inputs);
         var insertedKeys = new ArrayList<AEKey>();
         var insertedAmounts = new ArrayList<Long>();
         boolean complete = true;
 
-        for (var counter : inputs) {
-            for (var entry : counter) {
-                long amount = entry.getLongValue();
-                if (amount <= 0) {
-                    continue;
-                }
-                var key = entry.getKey();
-                long accepted = cellBuffer.insert(key, amount, Actionable.MODULATE);
-                insertedKeys.add(key);
-                insertedAmounts.add(accepted);
-                if (accepted < amount) {
-                    complete = false;
-                    break;
-                }
+        for (var entry : totals) {
+            long amount = entry.getLongValue();
+            if (amount <= 0) {
+                continue;
             }
-            if (!complete) {
+            var key = entry.getKey();
+            long accepted = cellBuffer.insert(key, amount, Actionable.MODULATE);
+            insertedKeys.add(key);
+            insertedAmounts.add(accepted);
+            if (accepted < amount) {
+                complete = false;
                 break;
             }
         }
@@ -951,6 +971,10 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         }
 
         for (var counter : inputs) {
+            if (counter == null) {
+                // 空槽在合并那步已跳过；这里同口径，否则第三方给的空槽会在这里炸。
+                continue;
+            }
             counter.removeZeros();
         }
         return true;
@@ -1004,9 +1028,9 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
             saveChanges();
         }
         if (!queueEmpty() || !returns.isEmpty()) {
-            return TickRateModulation.IDLE;
+            return modulated(TickRateModulation.IDLE);
         }
-        return TickRateModulation.SLEEP;
+        return modulated(TickRateModulation.SLEEP);
     }
 
     /**
@@ -1016,16 +1040,16 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
      */
     private TickRateModulation idleTick(long now) {
         if (idleFlushDone || !cellBuffer.hasContents()) {
-            return TickRateModulation.SLEEP;
+            return modulated(TickRateModulation.SLEEP);
         }
         if (now - lastActivityGameTime < IDLE_FLUSH_TICKS) {
-            return TickRateModulation.IDLE;
+            return modulated(TickRateModulation.IDLE);
         }
         idleFlushDone = true;
         if (flushCellsToNetwork()) {
             saveChanges();
         }
-        return TickRateModulation.SLEEP;
+        return modulated(TickRateModulation.SLEEP);
     }
 
     /**
@@ -1191,7 +1215,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         var grid = node.getGrid();
         var storage = grid.getStorageService().getInventory();
         // Read once per drain: the per-key check below would otherwise walk every queued plan again.
-        var queuedInputs = queuedInputKeys();
+        var queuedInputs = queuedInputKeysForTick(currentGameTime());
         returnStalled = returns.drain(new SmoothReturnQueue.Target() {
             @Override
             public long insert(AEKey key, long amount) {
@@ -1227,6 +1251,15 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
             }
         }
         return keys;
+    }
+
+    /** 本 tick 的输入键快照；同 tick 的多次 drain 复用它，跨 tick 重建。 */
+    private Set<AEKey> queuedInputKeysForTick(long now) {
+        if (queuedInputKeyCacheTick != now) {
+            queuedInputKeyCache = queuedInputKeys();
+            queuedInputKeyCacheTick = now;
+        }
+        return queuedInputKeyCache;
     }
 
     /**
@@ -1343,10 +1376,22 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
         for (var lane : lanes) {
             lane.clear();
         }
+        queuedInputKeyCache = Set.of();
+        queuedInputKeyCacheTick = -1;
     }
 
     private void alertTicker() {
-        this.getMainNode().ifPresent((grid, node) -> grid.getTickManager().alertDevice(node));
+        if (tickerAwake) {
+            return;
+        }
+        // 叫醒成功后立刻记上：同一 tick 里后续的到货就不用再各叫一次了。
+        this.getMainNode().ifPresent((grid, node) -> tickerAwake = grid.getTickManager().alertDevice(node));
+    }
+
+    /** 记下这一 tick 之后 ticker 醒不醒；返回原值，调用点照旧直接 return。 */
+    private TickRateModulation modulated(TickRateModulation modulation) {
+        tickerAwake = modulation != TickRateModulation.SLEEP;
+        return modulation;
     }
 
     // ---- batch window --------------------------------------------------------
@@ -1467,6 +1512,8 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     @Override
     public void onLoad() {
         super.onLoad();
+        // 刚读档时不知道 ticker 的旧状态是否还成立，放行下一次 alert。
+        tickerAwake = false;
         refreshRecipePool();
     }
 

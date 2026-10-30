@@ -348,7 +348,9 @@ public final class BatchSynthesisEngine {
      * for a buffer that holds tools of several damage levels.
      */
     public void notePartialFallback(IPatternDetails patternDetails) {
-        plans.noteDamageFallback(patternDetails);
+        if (!plans.noteDamageFallback(patternDetails)) {
+            return;
+        }
         if (LOGGER.isDebugEnabled()) {
             LOGGER.debug("Pattern {} at {} is served by several variants at once; the covered part runs as a "
                     + "batch and the rest one craft at a time", patternDetails.getClass().getName(), position.get());
@@ -357,7 +359,9 @@ public final class BatchSynthesisEngine {
 
     /** Warns once per pattern that its recipe disagrees with what it declares, then keeps the slow path. */
     private void noteWarned(IPatternDetails patternDetails) {
-        plans.noteWarned(patternDetails);
+        if (!plans.noteWarned(patternDetails)) {
+            return;
+        }
         if (LOGGER.isWarnEnabled()) {
             LOGGER.warn("Pattern {} at {} does not assemble to what it declares; running it one craft at a time",
                     patternDetails.getClass().getName(), position.get());
