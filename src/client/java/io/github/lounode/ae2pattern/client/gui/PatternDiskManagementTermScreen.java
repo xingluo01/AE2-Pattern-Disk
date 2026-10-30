@@ -703,7 +703,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
             switch (rows.get(rowIndex)) {
                 case HostRow host -> {
                     if (!host.icon().isEmpty()) {
-                        guiGraphics.renderItem(host.icon(), baseX + 1, rowY + ROW_TEXT_Y_INSET);
+                        guiGraphics.renderItem(host.icon(), baseX + 1, rowY + ROW_TEXT_Y_INSET - 1);
                     }
                     var label = host.diskCount() > 1
                             ? host.name() + " (" + host.diskCount() + ")"
