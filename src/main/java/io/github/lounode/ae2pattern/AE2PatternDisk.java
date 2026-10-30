@@ -396,6 +396,13 @@ public class AE2PatternDisk {
                 AEPatternRegistries.ITEM_MARKED_PROVIDER.get(),
                 AEPatternRegistries.ITEM_CABLE_MARKED_PROVIDER.get());
 
+        // 过载样板磁盘供应器同样缺这一句：它继承 AE2 的供应器逻辑，AppFlux 那一格本来就挂得上来，
+        // 只是没人给它登记过卡上限。机器的身份用它的终端图标物品，与 AppFlux 建库存时取的是同一个。
+        if (net.neoforged.fml.ModList.get().isLoaded("ae2lt")) {
+            AppFluxInductionCard.register(io.github.lounode.ae2pattern.integration.ae2lt.overloaded
+                    .OverloadedPatternDiskProviderRegistrations.ITEM.get());
+        }
+
         // AdvancedAE 的高级样板编码器：装上它，编码终端才多出高级编码模式。面板版走 AE2 的升级表，
         // 无线版（含 AE2WTLib 的通用终端）走它自己那一套。细节见 AdvancedPatternEncoder。
         AdvancedPatternEncoder.register(AEPatternRegistries.ITEM_PATTERN_DISK_ENCODING_TERMINAL.get());
