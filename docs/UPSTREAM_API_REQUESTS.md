@@ -1,8 +1,8 @@
-# 上游 API 请求（AE2 本体 / ECO / ECO Prototype / ExtendedAE Plus）
+# 上游 API 请求（AE2 本体 / ECO / ECO Prototype / ExtendedAE Plus / InsaneAE）
 
-> 状态：前两份、第四份、第五份与第六份**已提交**（前两份本地 2026-10-09 02:55 / UTC `2026-10-08T18:55Z`，第四份 UTC `2026-10-25T10:10Z`，第五份 UTC `2026-10-26T16:15Z`，第六份 2026-10-27 提了 PR #141，见文末「提交记录」）；**第四份已落地**——上游 issue #134 于 2026-10-25 关闭（提交 `ce67db49`），随 ECO **21.2.11** 发布；第六份**已合并、已发布、且本模组已收口**——PR #141 于 UTC `2026-10-27T13:43Z` 并进 `main`（merge `5c8c9f2e`，维护者另补 `7919d10b` 修正截断查询与库存展示的一致性），随 ECO **21.2.12**（2026-10-28，CF 构件 `9349859`）发出，`javap` 已在 jar 里确认这两个默认方法；第三份是 2026-10 发现的兜底缺陷，**尚未提交**。下面六份草稿保留原文，便于日后追进或修订时对照。
+> 状态：前两份、第四份、第五份与第六份**已提交**（前两份本地 2026-10-09 02:55 / UTC `2026-10-08T18:55Z`，第四份 UTC `2026-10-25T10:10Z`，第五份 UTC `2026-10-26T16:15Z`，第六份 2026-10-27 提了 PR #141，见文末「提交记录」）；**第四份已落地**——上游 issue #134 于 2026-10-25 关闭（提交 `ce67db49`），随 ECO **21.2.11** 发布；第六份**已合并、已发布、且本模组已收口**——PR #141 于 UTC `2026-10-27T13:43Z` 并进 `main`（merge `5c8c9f2e`，维护者另补 `7919d10b` 修正截断查询与库存展示的一致性），随 ECO **21.2.12**（2026-10-28，CF 构件 `9349859`）发出，`javap` 已在 jar 里确认这两个默认方法；第三份是 2026-10 发现的兜底缺陷，**尚未提交**；**第七份已提交**（InsaneAE issue **#19**，UTC `2026-10-30T10:24Z`，待回）。下面七份草稿保留原文，便于日后追进或修订时对照。
 > 提出方：AE2 Pattern Disks（`ae2_pattern_disk`，作者 `xingluo01`）。
-> 用例：前两份是**元件管理终端**——把网络里所有能装存储元件的东西列成一张表，并支持取出/放入元件、调整存储优先级；第三份是**样板磁盘供应器的样板上传**；第四份是**批处理装配室的极大数合成**——单次交接量被 int 容量契约封在 21.4 亿份，而 FastPath 的 long 容量面没有注册表可用；第五份是**AE2 本体的语义缺陷**——`hasComponents()` 的返回值与名字相反，会污染按物品的替换判定缓存；第六份是**ECO 大宗元件的压缩链查询**——元件管理终端要按链合并标记，现在只能反射遍历元件副本。
+> 用例：前两份是**元件管理终端**——把网络里所有能装存储元件的东西列成一张表，并支持取出/放入元件、调整存储优先级；第三份是**样板磁盘供应器的样板上传**；第四份是**批处理装配室的极大数合成**——单次交接量被 int 容量契约封在 21.4 亿份，而 FastPath 的 long 容量面没有注册表可用；第五份是**AE2 本体的语义缺陷**——`hasComponents()` 的返回值与名字相反，会污染按物品的替换判定缓存；第六份是**ECO 大宗元件的压缩链查询**——元件管理终端要按链合并标记，现在只能反射遍历元件副本；第七份是 **InsaneAE 的批量合成入口**——它的 `IBulkCraftingProvider` 只认 `instanceof`，而我们不能把可选依赖的类型写进总是加载的类，于是批量装配室在那台 CPU 下仍被逐份驱动。
 
 ## 为什么会有这些请求
 
@@ -362,9 +362,85 @@ AE2 Pattern Disk 的元件管理终端要把 ECO 大宗元件里的标记按压�
 
 ---
 
+## 草稿 7 → `taikun24/InsaneAE`（已提交：issue #19 @ UTC `2026-10-30T10:24Z`，待回）
+
+**标题**
+
+```text
+[1.21.1] IBulkCraftingProvider を implements できない MOD 向けのアダプタ登録口が欲しい (adapter registry for bulk crafting providers)
+```
+
+**正文**（提交原文，日英双语——该仓 issue 以日文为主）
+
+````text
+## 背景 / Context
+
+**[JA]** `ae2_pattern_disk`（AE2 アドオン / MC 1.21.1 + NeoForge 21.1.241 + AE2 19.2.18）をメンテしています。当アドオンの *batch molecular assembler* は「1 回の受け渡しで N クラフトぶんの材料を受け取り、1 バッチ = 1 操作として組み立てる」作りにしてあり、すでに NEO ECO AE Extension（`ECOParallelCraftingProvider` / `ECOFastPathDispatchProvider`）と OmniSequence Transfinite（`OmniBatchCraftingProvider`）のバッチ経路に適合済みです。
+
+**[EN]** I maintain `ae2_pattern_disk` (an AE2 addon, MC 1.21.1 / NeoForge 21.1.241 / AE2 19.2.18). Its *batch molecular assembler* takes a whole batch of crafts in one hand-over and executes it as a single operation. It already adapts to NEO ECO's parallel/FastPath entry points and to OmniSequence's batch provider API.
+
+InsaneAE の `IBulkCraftingProvider` は意味づけがぴったり一致するので使いたいのですが、**現状の判定方法では実装できません**。
+
+---
+
+## 現状の障壁 / The blocker
+
+`src/main/java/jp/main/taikun/insaneae/quantum/QuantumBulkCrafting.java`（branch `1.21.1`）:
+
+```java
+for (ICraftingProvider provider : craftingService.getProviders(details)) {
+    if (provider instanceof IBulkCraftingProvider bulk && !provider.isBusy()
+            && bulk.getBulkCapacity(details) > 0) {
+        return bulk;
+    }
+}
+```
+
+AE2 の `getProviders()` が呼ぶオブジェクトは、当方の場合は MOD 構築時に登録した BlockEntity そのものです。そのクラスへ `IBulkCraftingProvider` を `implements` させると、任意依存であるはず `insaneae` の型名が「常にロードされるクラス」に入り込み、**InsaneAE 未導入の統合パックで起動時に落ちます**（AE2 アドオン共通の制約です）。
+
+結果として、当マシンはバッチ受け口を持っていても `1 クラフト = 1 pushPattern` の経路でしか駆動されません。`IBulkCraftingProvider` の javadoc 自身が「100 万クラフト/tick のような規模ではそこが支配的になる」と書いており、まさにその支配的な部分がそのまま残ります。
+
+**[EN]** Our provider object is the block entity registered at mod-construction time, so it cannot `implements` your interface without leaking an optional dependency's type into an always-loaded class (crash at load when InsaneAE is absent). Today that means our machine is driven one craft per `pushPattern` even though it can accept a whole batch.
+
+---
+
+## 依頼 / The request
+
+**A.（推奨）バッチ経路のアダプタ登録口 / an adapter registry**
+
+`instanceof` が失敗したときだけ参照するレジストリを公開してください。形は OmniSequence が 2.0.7 で用意したもの（`OmniBatchProviderAdapterRegistry`）をそのまま参考にできます。
+
+- 例：`BulkCraftingProviderAdapters.register(Class<? extends ICraftingProvider>, Function<ICraftingProvider, IBulkCraftingProvider>)`
+- `findBulkProvider()` は `provider instanceof IBulkCraftingProvider` が **false のときだけ** レジストリを引く
+- `!provider.isBusy()` は元の provider に対して行う（現在のコードのまま）。忙碌判定とアイデンティティは元の provider に残したいので、解決されるアダプタは「容量と実行」だけ担当すれば足ります
+
+**B.（次善）子クラス差し替えが公式な使い方だと明記 / document the subclass route**
+
+現状でも「`insaneae` 導入時のみ BlockEntity を子クラスで登録し直す」で対応できますが、それは各アドオン側が登録を重複させる形になります。A が難しいなら、この方法がサポートされた使い方だということを一言あると助かります。
+
+**C.（契約の明文化 / document the contract）** — 実装を書く前に確認したい 3 点
+
+1. `pushPatternBulk()` の部分受領時の材料の扱い。javadoc の「1 回ぶんを取り出した残りは消費済みとして捨ててよい（呼び出し側は返さない）」と `pushBulk()` の `if (done <= 0) rollbackInputs(...)` を、**all-or-nothing の受け口は `times` か `0` を返す限り安全**という契約として明記してほしいです（当方はこの形で実装します）。
+2. `getBulkCapacity()` が 1 窓の中で 2 回（`findBulkProvider()` と `execute()` の limit 計算）呼ばれる点。実装側は tick 単位でメモ化すればよい前提か、意図どおりか確認したいです。
+3. `fusesOperations() == true` のプロバイダは「実装側が自分の予算で頭打ちにすること」が必要、と読めています。当方の予算（1 tick あたりの操作数上限 ＋ 元件バッファの実容量）はその想定と合っていますか。
+
+---
+
+## 参考 / References
+
+- 適合済みの 2 経路：当アドオン `integration/neoecoae/BatchAssemblerParallelIntake.java`、`integration/omnisequence/OmniBatchAdapter.java`
+- レジストリ方式のご意向が決まれば、そちらの規約に合わせて PR を出せます
+- 検証環境あり：9 層 9:1 圧縮丸石の大口（顶层 1e9 規模）で実測できます
+- 可能なら 1.20.1 線にも同じ口を（issue #9 / #10 の `[1.20.1]` `[1.21.1]` 二连と同じ扱いで）
+
+**[EN]** A registered adapter (A) would let addon machines that genuinely support batch execution use `IBulkCraftingProvider` without taking a hard load-time dependency on InsaneAE. Happy to send a PR matching your conventions, and I can validate it with a 9-tier 9:1 compressed-cobblestone order.
+````
+
+---
+
 ## 取证清单
 
-前三份的签名来自实际 jar 的 `javap`；第四份读的是上游 `main` 分支源码（本地克隆 `D:/Temp/NeoECOAEExtension`，`api/me/provider` 的七个文件与 21.2.10 逐个比对一致；未联网核对 blob sha）；第五份读的是 AE2 本地克隆（`D:/Temp/Applied-Energistics-2`，`1.21.1` @ `db17504`）；第六份读的是上游 `21.2.11` 源码（worktree `E:/GitHub/NeoECOAEExtension-api`）。三类来源的区别在表内分别标出。
+前三份的签名来自实际 jar 的 `javap`；第四份读的是上游 `main` 分支源码（本地克隆 `D:/Temp/NeoECOAEExtension`，`api/me/provider` 的七个文件与 21.2.10 逐个比对一致；未联网核对 blob sha）；第五份读的是 AE2 本地克隆（`D:/Temp/Applied-Energistics-2`，`1.21.1` @ `db17504`）；第六份读的是上游 `21.2.11` 源码（worktree `E:/GitHub/NeoECOAEExtension-api`）。各来源的区别在表内分别标出；第七份读的是上游分支 `1.21.1` 的仓库内容（`gh api contents` 直读，未本地克隆、未核对 blob sha）。
 
 | 事实 | 来源 |
 |---|---|
@@ -387,6 +463,11 @@ AE2 Pattern Disk 的元件管理终端要把 ECO 大宗元件里的标记按压�
 | **AE2**：`hasComponents()` 的 javadoc 说「true if this key has *any* components attached」，实现却是 `stack.getComponents().isEmpty()` | `AEKey.java:351-354`（javadoc 与抽象声明）、`AEItemKey.java:232`、`AEFluidKey.java:162`（本地克隆 `D:/Temp/Applied-Energistics-2`，`1.21.1` @ `db17504`） |
 | **AE2**：该方法的两个消费点就是 `getTestResult` / `setTestResult`，缓存键只取 `what.getItem()`（不含组件） | `AECraftingPattern.java:306-326`、`AEStonecuttingPattern.java:206-219`（同上） |
 | **AE2**：`ItemStack#getComponents()` 返回「物品原型 + patch」的**完整**组件集合（因此 `isEmpty()` 对几乎所有物品为 `false`）；判「有无附加组件」应看 `getComponentsPatch()` / `isComponentsPatchEmpty()` | `ItemStack.java:228-242`、`PatchedDataComponentMap.java:184-200`（NeoForge 21.1.241 源码 jar，`build/moddev/artifacts/neoforge-21.1.241-sources.jar`） |
+| **InsaneAE**：批量入口是它自家的 `IBulkCraftingProvider extends ICraftingProvider`，五个成员 `getBulkCapacity(IPatternDetails)`→`long`、`pushPatternBulk(details, KeyCounter[], times)`→`long`、`fusesOperations()`、`repeatsWindowsWithinTick()`、`settleCompletedOutputs()`（后三个是 default） | branch `1.21.1`（v1.1.2）`quantum/IBulkCraftingProvider.java` |
+| **InsaneAE**：发现面**只有** `provider instanceof IBulkCraftingProvider`，没有适配器注册表；`QuantumBulkCrafting.execute()` 找不到就 `continue`，`BulkCraftingHook.begin()` 返回 `-1` 把活儿交回 AE2 原生的逐份循环 | 同上 `quantum/QuantumBulkCrafting.java`、`quantum/BulkCraftingHook.java` |
+| **InsaneAE**：`findBulkProvider()` 与 `execute()` 的 limit 计算会在一个窗口里各问一次 `getBulkCapacity()`；`pushPatternBulk()` 返回 `done > 0` 时未用尽的材料由调用方**丢弃**（接口 javadoc 原文「1 回ぶんを取り出した残りは消費済みとして捨ててよい」），只有 `done <= 0` 才 `rollbackInputs` ⇒ all-or-nothing 的接收方只能答 `times` 或 `0` | `QuantumBulkCrafting.findBulkProvider` / `.pushBulk` |
+| **InsaneAE** 依赖地板：minecraft `[1.21.1,1.22)`、neoforge `[21.1.0,)`、**ae2 `[19.2.15,20)` 必需**、**megacells `[4.11,5)` 必需**（`ae2_crafting_optimizer` / `appmek` / `appflux` 可选）；v1.1.2 发布于 2026-10-18，更新说明的大意是「修掉与 AE2 19.2.18 一起时的崩溃」，原文只限定在合成 CPU 的选择画面 | 上游 `src/main/templates/META-INF/neoforge.mods.toml` + `gradle.properties`；我方开发运行期四条地板全满足（含 `build.gradle:527` 的 MEGA Cells 4.11.0） |
+| **三套整批入口互不相通**：ECO 的 `eco$getAvailableParallelSlots` / `eco$pushPatternBatch` 与 FastPath、OmniSequence 的 `prepareOmniBatch`、InsaneAE 的 `pushPatternBulk`。前两套本模组已用**适配器**接上，第三套要求 `implements` 在 AE2 交给 CPU 的那个对象本身 | 三家上游源码 + 本仓 `integration/neoecoae/BatchAssemblerParallelIntake.java`、`integration/omnisequence/OmniBatchAdapter.java` |
 
 ## 提交记录
 
@@ -397,10 +478,11 @@ AE2 Pattern Disk 的元件管理终端要把 ECO 大宗元件里的标记按压�
 | `DancingSnow0517/NeoECOAEExtension` | [#134](https://github.com/DancingSnow0517/NeoECOAEExtension/issues/134) | 2026-10-25T10:10Z（本地 10-25 18:10） | **已实现并已关闭**：ECO **21.2.11**（2026-10-26 发布，提交 `ce67db49`）让 `ECOFastPathFacade` 经 `ECOParallelCraftingProviders` 发现第三方 FastPath 适配器 |
 | `DancingSnow0517/NeoECOAEExtension` | [PR #141](https://github.com/DancingSnow0517/NeoECOAEExtension/pull/141) | 2026-10-27（本地） | **已合并**（UTC `2026-10-27T13:43Z`，merge `5c8c9f2e`）：给 `IECOBulkDisplayCell` 增加默认 `getCompressionChain` 与 `getCompressionCutoff`，让元件管理终端按链合并大宗元件标记、并显示这条链真正生效的截断层；默认方法，已有实现无需改动。**维护者合并前补了 `7919d10b`**：`getCompressionCutoff` 改走库存投影（配方重载后返回历史账户的基础单位、把失效的显示配置归一到当前链），签名不变、语义更准（当时用的本地快照 jar 停在 `8d0b028e`；现在构建直接吃发布件 `9349859`，不再需要重打）。**已随 21.2.12 发布**（构件 `9349859`）并完成收口：API 适配器移进 `src/main/java`（现名 `EcoBulkCells`），反射层 `EcoBulkCellsCompat` 与 `-PecoApiJar` 开关删除，`mods.toml` 的 ECO 地板抬到 `[21.2.12,)`（2026-10-28） |
 | `AppliedEnergistics/Applied-Energistics-2` | [#9040](https://github.com/AppliedEnergistics/Applied-Energistics-2/pull/9040) | 2026-10-26T16:15Z（本地 10-27 00:15） | **待审**：`hasComponents()` 改成基于 `getComponentsPatch()`（`isComponentsPatchEmpty()`），修掉「带组件变体按 Item 共享判定缓存」与 `AEFluidKey#toString` 的同一错误；附回归测试，未本地构建（本机拿不到 Gradle 8.12 发行包） |
+| `taikun24/InsaneAE` | [#19](https://github.com/taikun24/InsaneAE/issues/19) | 2026-10-30T10:24Z（本地 10-30 18:24） | **待回**：请求给批量合成入口加**适配器注册口**（`instanceof` 失败时才查注册表，`isBusy()` 仍旧问原 provider），形制照 OmniSequence 2.0.7 的 `OmniBatchProviderAdapterRegistry`；次善是把「按 mod id 门禁换子类型注册」写成官方支持的用法；并请求把「部分受领即丢料」「一窗内两次容量询问」「fused 由实现方自限」写进接口 javadoc。正文为日英双语 |
 
-提交账号：`xingluo01`。正文用中文（两个仓库既有 issue 以中文为主，见上方取证清单）。
+提交账号：`xingluo01`。正文语言随各仓既有 issue 的主流：ECO 与青春版用中文，AE2 #9040 用英文，InsaneAE #19 用日英双语。
 
-**为什么没给 issue 加标签**：标签需要仓库写权限；两条都是新提交，交由维护者自行归类。
+**为什么没给 issue 加标签**：标签需要仓库写权限；各条都是新提交，交由维护者自行归类。
 
 ### 补充评论（同日提交后补发，各一条）
 
