@@ -31,7 +31,7 @@
       "grid": "HORIZONTAL"
     },
     "ae2_pattern_disk:packaged_adapter_card": {
-      "left": 178,
+      "left": 179,
       "top": 96,
       "grid": "VERTICAL"
     }
@@ -89,7 +89,7 @@
       "height": 12
     },
     "adapterCard": {
-      "left": 173,
+      "left": 174,
       "top": 91
     }
   }
