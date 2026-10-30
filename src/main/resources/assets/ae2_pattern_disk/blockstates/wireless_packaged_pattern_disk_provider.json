@@ -1,0 +1,11 @@
+{
+  "variants": {
+    "push_direction=all": { "model": "ae2_pattern_disk:block/packaged_pattern_disk_provider" },
+    "push_direction=down": { "model": "ae2_pattern_disk:block/packaged_pattern_disk_provider" },
+    "push_direction=up": { "model": "ae2_pattern_disk:block/packaged_pattern_disk_provider" },
+    "push_direction=north": { "model": "ae2_pattern_disk:block/packaged_pattern_disk_provider" },
+    "push_direction=south": { "model": "ae2_pattern_disk:block/packaged_pattern_disk_provider" },
+    "push_direction=west": { "model": "ae2_pattern_disk:block/packaged_pattern_disk_provider" },
+    "push_direction=east": { "model": "ae2_pattern_disk:block/packaged_pattern_disk_provider" }
+  }
+}

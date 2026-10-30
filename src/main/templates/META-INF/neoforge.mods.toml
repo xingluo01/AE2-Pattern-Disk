@@ -170,3 +170,22 @@ type="optional"
 versionRange="*"
 ordering="AFTER"
 side="BOTH"
+
+
+# 闪电科技（ae2lt）与闪电科技封包（ae2ltpp）是编译期可选依赖：三台磁盘版供应器继承它们的方块实体、
+# 逻辑、方块与菜单。Floor 2.1.2 / 1.2.2：封包的样板栏大小从 1.2.2 起改由 host.getPatternSlotCount()
+# 提供，低于这个版本的封包无法把磁盘容量接进样板栏。装了低版本时 FML 会整包拒载，这是有意的地板，
+# 与 NEO ECO 那条同一口径。
+[[dependencies.${mod_id}]]
+modId="ae2lt"
+type="optional"
+versionRange="[2.1.2,3.0.0)"
+ordering="AFTER"
+side="BOTH"
+
+[[dependencies.${mod_id}]]
+modId="ae2ltpp"
+type="optional"
+versionRange="[1.2.2,2.0.0)"
+ordering="AFTER"
+side="BOTH"

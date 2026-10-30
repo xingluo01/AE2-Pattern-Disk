@@ -68,7 +68,7 @@ public final class DiskHostSupport implements InternalInventoryHost {
      * 延迟解析宿主那份逻辑：方块实体的 {@code createLogic()} 由父构造调用，那时宿主的字段（含本对象）还没赋值，
      * 所以这里只能存一个「到用的时候再问」的入口，构造期不调用。
      */
-    private final Supplier<PatternDiskProviderLogic> logicSupplier;
+    private final Supplier<? extends PatternsFromDisks> logicSupplier;
     private final AppEngInternalInventory diskInventory;
     private final PatternDiskTerminalView terminalView;
 
@@ -92,7 +92,7 @@ public final class DiskHostSupport implements InternalInventoryHost {
      * @param logicSupplier  解析宿主当前的供应器逻辑；构造期不会被调用，可以安全地读尚未初始化的字段
      * @param diskSlots      磁盘槽数
      */
-    public DiskHostSupport(Host host, Supplier<PatternDiskProviderLogic> logicSupplier, int diskSlots) {
+    public DiskHostSupport(Host host, Supplier<? extends PatternsFromDisks> logicSupplier, int diskSlots) {
         this.host = host;
         this.logicSupplier = logicSupplier;
         this.diskInventory = new AppEngInternalInventory(this, diskSlots);
@@ -224,7 +224,7 @@ public final class DiskHostSupport implements InternalInventoryHost {
 
     // ---- 内部 ------------------------------------------------------------------
 
-    private @Nullable PatternDiskProviderLogic logic() {
+    private @Nullable PatternsFromDisks logic() {
         return logicSupplier.get();
     }
 

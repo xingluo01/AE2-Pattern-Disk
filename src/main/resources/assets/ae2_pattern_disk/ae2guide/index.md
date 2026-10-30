@@ -20,3 +20,5 @@ AE2 Pattern Disks is an add-on for Applied Energistics 2 that provides pattern s
 * [ME Cell Management Terminal](items-blocks-machines/cell_management_terminal.md): puts every storage cell in the network on one table, wireless included.
 * [Efficient Molecular Assembler](items-blocks-machines/pattern_disk_assembler.md): a parallel molecular assembler with eight lanes.
 * [Batch Assembler](items-blocks-machines/batch_molecular_assembler.md): buffers a whole batch of crafting jobs before running it.
+* [Overloaded Pattern Disk Provider](items-blocks-machines/overloaded_pattern_disk_provider.md): a Lightning Tech overloaded provider fed by pattern disks.
+* [Packaged Pattern Disk Provider](items-blocks-machines/packaged_pattern_disk_provider.md): the packaged provider, wired or wireless, fed by pattern disks.

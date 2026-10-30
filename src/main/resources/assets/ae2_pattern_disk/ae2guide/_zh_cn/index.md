@@ -20,3 +20,5 @@ AE2 样板磁盘是 Applied Energistics 2 的附属模组，提供以样板磁�
 * [ME元件管理终端](items-blocks-machines/cell_management_terminal.md)：把网络里的存储元件集中到一张表上，含无线版。
 * [高效分子装配室](items-blocks-machines/pattern_disk_assembler.md)：八条独立线路的并行分子装配室。
 * [批处理装配室](items-blocks-machines/batch_molecular_assembler.md)：缓冲整批合成作业后集中加工。
+* [过载样板磁盘供应器](items-blocks-machines/overloaded_pattern_disk_provider.md)：以样板磁盘为来源的闪电科技过载供应器。
+* [封包样板磁盘供应器](items-blocks-machines/packaged_pattern_disk_provider.md)：以样板磁盘为来源的封包供应器，有线与无线两种形态。

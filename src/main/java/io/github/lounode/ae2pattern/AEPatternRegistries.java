@@ -426,6 +426,16 @@ public final class AEPatternRegistries {
                         output.accept(ITEM_CABLE_PATTERN_DISK_PROVIDER.get());
                         output.accept(ITEM_MARKED_PROVIDER.get());
                         output.accept(ITEM_CABLE_MARKED_PROVIDER.get());
+                        if (net.neoforged.fml.ModList.get().isLoaded("ae2lt")) {
+                            output.accept(io.github.lounode.ae2pattern.integration.ae2lt.overloaded
+                                    .OverloadedPatternDiskProviderRegistrations.ITEM.get());
+                        }
+                        if (net.neoforged.fml.ModList.get().isLoaded("ae2ltpp")) {
+                            output.accept(io.github.lounode.ae2pattern.integration.ae2lt.packaged
+                                    .PackagedPatternDiskProviderRegistrations.ITEM.get());
+                            output.accept(io.github.lounode.ae2pattern.integration.ae2lt.packaged
+                                    .PackagedPatternDiskProviderRegistrations.ITEM_WIRELESS.get());
+                        }
                         if (MeteoritePatternProviderRegistrations.isRegistered()) {
                             output.accept(MeteoritePatternProviderRegistrations.ITEM.get());
                             output.accept(MeteoritePatternProviderRegistrations.ITEM_PART.get());
@@ -521,6 +531,17 @@ public final class AEPatternRegistries {
         COMPONENTS.register(modBus);
         TABS.register(modBus);
         RECIPE_SERIALIZERS.register(modBus);
+
+        // 闪电科技（ae2lt）在场才注册过载样板磁盘供应器。用全限定名调用，主注册类不直接 import 该包，
+        // 缺席时这里不会触发那些类的加载。
+        if (net.neoforged.fml.ModList.get().isLoaded("ae2lt")) {
+            io.github.lounode.ae2pattern.integration.ae2lt.overloaded.OverloadedPatternDiskProviderRegistrations
+                    .register(modBus);
+        }
+        if (net.neoforged.fml.ModList.get().isLoaded("ae2ltpp")) {
+            io.github.lounode.ae2pattern.integration.ae2lt.packaged.PackagedPatternDiskProviderRegistrations
+                    .register(modBus);
+        }
 
         // 传方法引用而不是调用结果：物品要等登记回调触发时才构造——物品构造器会往注册表写 intrusive
         // holder，那只允许在注册表「正在注册」时进行，而这里的调用点在模组构造期（注册表已冻结，

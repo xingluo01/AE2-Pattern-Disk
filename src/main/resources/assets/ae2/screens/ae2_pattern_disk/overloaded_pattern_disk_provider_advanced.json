@@ -1,0 +1,59 @@
+{
+  "$schema": "../schema.json",
+  "includes": [
+    "../common/common.json"
+  ],
+  "generatedBackground": {
+    "width": 176,
+    "height": 202
+  },
+  "text": {
+    "dialog_title": {
+      "text": {
+        "translate": "ae2lt.gui.provider_advanced.title"
+      },
+      "position": {
+        "left": 8,
+        "top": 6
+      }
+    }
+  },
+  "widgets": {
+    "return": {
+      "left": 152,
+      "top": -5,
+      "width": 20,
+      "height": 20
+    },
+    "wirelessStrategy": {
+      "left": 14,
+      "top": 28
+    },
+    "wirelessSpeed": {
+      "left": 14,
+      "top": 52
+    },
+    "filteredImport": {
+      "left": 14,
+      "top": 76
+    },
+    "machineAdaptation": {
+      "left": 14,
+      "top": 100,
+      "width": 148,
+      "height": 20
+    },
+    "machineParallelism": {
+      "left": 14,
+      "top": 144,
+      "width": 92,
+      "height": 16
+    },
+    "applyParallelism": {
+      "left": 112,
+      "top": 142,
+      "width": 50,
+      "height": 20
+    }
+  }
+}

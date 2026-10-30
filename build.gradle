@@ -377,7 +377,9 @@ dependencies {
     // AE2 Lightning Tech ("闪电科技", modId ae2lt) + its required core library Thunderbolt Core, plus
     // AE2LT Packaged Pattern Provider ("闪电科技封包", modId ae2ltpp) - an addon of the former that routes
     // AE2/AE2LT autocrafting into other mods' special crafting systems. Dev-only (localRuntime): this mod
-    // neither imports nor bundles any of their classes, they are here to test that we coexist.
+    // compileOnly: the overloaded/packaged disk providers subclass their block entities, logic and
+    // blocks. localRuntime keeps the dev client loadable. Runtime stays optional: the three blocks are
+    // registered only when the matching mod is present, and every reference lives in integration/ae2lt.
     //
     // Version choice: Thunderbolt Core 2.0.1 declares AE2 19.2.17-19.2.x, which covers both the AE2 we
     // compile against and the latest 1.21.1 release (19.2.18). All three shipped 2026-10-01.
@@ -388,9 +390,22 @@ dependencies {
     // Note the AE2 lower bound is exactly 19.2.17 for ae2lt/thunderbolt, so dropping the runtime AE2
     // below that (or touching the AE2 localRuntime coordinate) trips the same FML dependency check.
     // 运行期 AE2 现为 19.2.18（升它的原因见上方 "Runtime-only development mods" 注释）：仍在 [19.2.17,19.3) 内。
-    localRuntime 'maven.modrinth:ae2-lightning-tech:2.1.1'
-    localRuntime 'maven.modrinth:thunderbolt-core:2.0.1'
-    localRuntime 'maven.modrinth:ae2lt-packaged-pattern-provider:1.2.1'
+    compileOnly 'maven.modrinth:ae2-lightning-tech:2.1.2'
+    clientCompileOnly 'maven.modrinth:ae2-lightning-tech:2.1.2'
+    localRuntime 'maven.modrinth:ae2-lightning-tech:2.1.2'
+    compileOnly 'maven.modrinth:thunderbolt-core:2.0.3'
+    clientCompileOnly 'maven.modrinth:thunderbolt-core:2.0.3'
+    localRuntime 'maven.modrinth:thunderbolt-core:2.0.3'
+    compileOnly 'maven.modrinth:ae2lt-packaged-pattern-provider:1.2.2'
+    clientCompileOnly 'maven.modrinth:ae2lt-packaged-pattern-provider:1.2.2'
+    localRuntime 'maven.modrinth:ae2lt-packaged-pattern-provider:1.2.2'
+
+    // 神秘农业（Mystical Agriculture）+ Cucumber：开发期用来验证封包供应器的 ma 适配（灌注祭坛 /
+    // 觉醒祭坛）。只进 localRuntime，不进编译类路径，也不进产物。
+    // Modrinth version id: 4Wc9oVPI = MysticalAgriculture 8.0.29 for 1.21.1 neoforge;
+    // 8421rqFF = Cucumber 8.0.16（神秘农业的必需前置）。
+    localRuntime 'maven.modrinth:mystical-agriculture:4Wc9oVPI'
+    localRuntime 'maven.modrinth:cucumber:8421rqFF'
 
     // Polymorph（多态合成）：开发环境装上用于集成测试，不进发布依赖——
     // 正式运行时它是可选前置（未装时本模组需完全不受影响）。

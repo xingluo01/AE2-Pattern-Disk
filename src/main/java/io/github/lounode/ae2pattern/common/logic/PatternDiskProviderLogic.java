@@ -77,7 +77,7 @@ import io.github.lounode.ae2pattern.integration.advancedae.AdvPatternSupport;
  * <p>The disk inventory is supplied lazily via a {@link Supplier} so this logic may be constructed during
  * the block-entity's parent constructor before the disk inventory field is initialized.</p>
  */
-public class PatternDiskProviderLogic extends PatternProviderLogic {
+public class PatternDiskProviderLogic extends PatternProviderLogic implements PatternsFromDisks {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(PatternDiskProviderLogic.class);
 

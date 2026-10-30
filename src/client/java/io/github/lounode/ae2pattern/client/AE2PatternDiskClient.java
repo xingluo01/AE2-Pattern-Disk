@@ -147,12 +147,73 @@ public class AE2PatternDiskClient {
         registerCellManagementTerminalScreen(event);
         registerWirelessTerminalScreens(event);
         registerMeteoriteProviderScreen(event);
+        registerLightningProviderScreens(event);
     }
 
     /**
      * 自装配样板磁盘供应器的屏幕：与样板磁盘供应器同一个屏幕类、同一份槽位布局，只换布局文档（设备字样写在
      * 文档里）。未装 AE2 Crystal Science 时它不存在，这里安静跳过。
      */
+    /**
+     * 闪电科技三台供应器的屏幕。未装对应模组时菜单类型不存在，这里安静跳过。
+     */
+    /**
+     * 闪电科技三台供应器的屏幕。未装对应模组时菜单类型不存在，这里安静跳过。
+     */
+    private void registerLightningProviderScreens(RegisterMenuScreensEvent event) {
+        if (net.neoforged.fml.ModList.get().isLoaded("ae2lt")) {
+            event.register(io.github.lounode.ae2pattern.integration.ae2lt.overloaded
+                            .OverloadedPatternDiskProviderRegistrations.MENU.get(),
+                    new net.minecraft.client.gui.screens.MenuScreens.ScreenConstructor<
+                            io.github.lounode.ae2pattern.integration.ae2lt.overloaded.OverloadedPatternDiskProviderMenu,
+                            io.github.lounode.ae2pattern.client.integration.ae2lt.OverloadedPatternDiskProviderScreen>() {
+                        @Override
+                        public io.github.lounode.ae2pattern.client.integration.ae2lt.OverloadedPatternDiskProviderScreen create(
+                                io.github.lounode.ae2pattern.integration.ae2lt.overloaded.OverloadedPatternDiskProviderMenu menu,
+                                net.minecraft.world.entity.player.Inventory playerInventory,
+                                net.minecraft.network.chat.Component title) {
+                            return new io.github.lounode.ae2pattern.client.integration.ae2lt
+                                    .OverloadedPatternDiskProviderScreen(menu, playerInventory, title);
+                        }
+                    });
+        }
+        if (net.neoforged.fml.ModList.get().isLoaded("ae2ltpp")) {
+            event.register(io.github.lounode.ae2pattern.integration.ae2lt.packaged
+                            .PackagedPatternDiskProviderRegistrations.MENU.get(),
+                    new net.minecraft.client.gui.screens.MenuScreens.ScreenConstructor<
+                            io.github.lounode.ae2pattern.integration.ae2lt.packaged.PackagedPatternDiskProviderMenu,
+                            io.github.lounode.ae2pattern.client.integration.ae2lt.PackagedPatternDiskProviderScreen<
+                                    io.github.lounode.ae2pattern.integration.ae2lt.packaged.PackagedPatternDiskProviderMenu>>() {
+                        @Override
+                        public io.github.lounode.ae2pattern.client.integration.ae2lt.PackagedPatternDiskProviderScreen<
+                                io.github.lounode.ae2pattern.integration.ae2lt.packaged.PackagedPatternDiskProviderMenu> create(
+                                io.github.lounode.ae2pattern.integration.ae2lt.packaged.PackagedPatternDiskProviderMenu menu,
+                                net.minecraft.world.entity.player.Inventory playerInventory,
+                                net.minecraft.network.chat.Component title) {
+                            return new io.github.lounode.ae2pattern.client.integration.ae2lt
+                                    .PackagedPatternDiskProviderScreen<>(menu, playerInventory, title);
+                        }
+                    });
+            event.register(io.github.lounode.ae2pattern.integration.ae2lt.packaged
+                            .PackagedPatternDiskProviderRegistrations.MENU_WIRELESS.get(),
+                    new net.minecraft.client.gui.screens.MenuScreens.ScreenConstructor<
+                            io.github.lounode.ae2pattern.integration.ae2lt.packaged.WirelessPackagedPatternDiskProviderMenu,
+                            io.github.lounode.ae2pattern.client.integration.ae2lt.PackagedPatternDiskProviderScreen<
+                                    io.github.lounode.ae2pattern.integration.ae2lt.packaged.WirelessPackagedPatternDiskProviderMenu>>() {
+                        @Override
+                        public io.github.lounode.ae2pattern.client.integration.ae2lt.PackagedPatternDiskProviderScreen<
+                                io.github.lounode.ae2pattern.integration.ae2lt.packaged.WirelessPackagedPatternDiskProviderMenu> create(
+                                io.github.lounode.ae2pattern.integration.ae2lt.packaged.WirelessPackagedPatternDiskProviderMenu menu,
+                                net.minecraft.world.entity.player.Inventory playerInventory,
+                                net.minecraft.network.chat.Component title) {
+                            return new io.github.lounode.ae2pattern.client.integration.ae2lt
+                                    .PackagedPatternDiskProviderScreen<>(menu, playerInventory, title);
+                        }
+                    });
+        }
+    }
+
+
     private void registerMeteoriteProviderScreen(RegisterMenuScreensEvent event) {
         if (!io.github.lounode.ae2pattern.MeteoritePatternProviderRegistrations.isRegistered()) {
             return;
