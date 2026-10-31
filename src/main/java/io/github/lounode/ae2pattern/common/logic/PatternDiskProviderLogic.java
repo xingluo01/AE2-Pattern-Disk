@@ -1287,7 +1287,11 @@ public class PatternDiskProviderLogic extends PatternProviderLogic implements Pa
         if (outputs.isEmpty()) {
             return false;
         }
-        var grid = mainNode.getNode().getGrid();
+        var node = mainNode.getNode();
+        if (node == null) {
+            return false;
+        }
+        var grid = node.getGrid();
         if (grid == null) {
             return false;
         }
