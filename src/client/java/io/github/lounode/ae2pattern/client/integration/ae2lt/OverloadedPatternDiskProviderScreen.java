@@ -6,6 +6,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
 
+import guideme.PageAnchor;
+
 import appeng.api.config.ActionItems;
 import appeng.client.gui.Icon;
 import appeng.client.gui.style.Blitter;
@@ -125,5 +127,11 @@ public class OverloadedPatternDiskProviderScreen
         return List.of(
                 tooltipTitle(title),
                 Component.translatable("gui.ae2_pattern_disk.overloaded.tooltip." + body));
+    }
+
+    @Override
+    protected PageAnchor getHelpTopic() {
+        return new PageAnchor(ResourceLocation.parse(
+                "ae2_pattern_disk:items-blocks-machines/overloaded_pattern_disk_provider.md"), null);
     }
 }

@@ -209,7 +209,9 @@ public class PatternDiskProviderScreen<T extends PatternDiskProviderMenu> extend
         // 自装配版（装了 AE2 Crystal Science 才有）指向它那台供应器的指南页：本设备就是照它做的，
         // 讲清来龙去脉比重复本模组的页面有用。普通版仍指向自己的页面。
         if (this.selfAssembling) {
-            return new PageAnchor(ResourceLocation.parse("ae2cs:meteorite_pattern_provider.md"), null);
+            return new PageAnchor(
+                    ResourceLocation.parse("ae2_pattern_disk:items-blocks-machines/meteorite_pattern_provider.md"),
+                    null);
         }
         return new PageAnchor(
                 ResourceLocation.parse("ae2_pattern_disk:items-blocks-machines/pattern_disk_provider.md"),

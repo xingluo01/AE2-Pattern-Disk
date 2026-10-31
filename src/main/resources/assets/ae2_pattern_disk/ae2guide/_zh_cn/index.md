@@ -14,6 +14,7 @@ AE2 样板磁盘是 Applied Energistics 2 的附属模组，提供以样板磁�
 * [样板磁盘](items-blocks-machines/pattern_disks.md)：把编码样板存入单个物品，共五级容量。
 * [ME样板磁盘供应器](items-blocks-machines/pattern_disk_provider.md)：以磁盘为后端提供样板，有方块与面板两种形态。
 * [自装配样板磁盘供应器](items-blocks-machines/meteorite_pattern_provider.md)：除了提供样板，分子装配室能做的样板它自己当场做完。
+* [标记式样板磁盘供应器](items-blocks-machines/marked_pattern_disk_provider.md)：按选定标记镜像同网络磁盘里的样板。
 * [ME样板转存器](items-blocks-machines/pattern_transferer.md)：在空白样板与样板磁盘之间转移样板。
 * [ME样板磁盘编码终端](items-blocks-machines/pattern_disk_encoding_terminal.md)：编码样板并写入磁盘。
 * [ME样板磁盘管理终端](items-blocks-machines/pattern_disk_management_terminal.md)：集中查看与整理网络中的样板磁盘。
@@ -22,3 +23,4 @@ AE2 样板磁盘是 Applied Energistics 2 的附属模组，提供以样板磁�
 * [批处理装配室](items-blocks-machines/batch_molecular_assembler.md)：缓冲整批合成作业后集中加工。
 * [过载样板磁盘供应器](items-blocks-machines/overloaded_pattern_disk_provider.md)：以样板磁盘为来源的闪电科技过载供应器。
 * [封包样板磁盘供应器](items-blocks-machines/packaged_pattern_disk_provider.md)：以样板磁盘为来源的封包供应器，有线与无线两种形态。
+* [谐振ME样板磁盘供应器](items-blocks-machines/resonating_pattern_disk_provider.md)：以样板磁盘为来源的 AECS 谐振供应器。

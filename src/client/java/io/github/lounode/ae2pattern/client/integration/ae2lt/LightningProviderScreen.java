@@ -100,12 +100,9 @@ public abstract class LightningProviderScreen<M extends PatternDiskProviderMenu>
         return lines;
     }
 
+    /** 子类各自指向自己的指南页：过载与封包不再共用普通供应器页。 */
     @Override
-    protected PageAnchor getHelpTopic() {
-        return new PageAnchor(
-                ResourceLocation.parse("ae2_pattern_disk:items-blocks-machines/pattern_disk_provider.md"),
-                null);
-    }
+    protected abstract PageAnchor getHelpTopic();
 
     @Override
     public void renderSlot(GuiGraphics guiGraphics, Slot slot) {

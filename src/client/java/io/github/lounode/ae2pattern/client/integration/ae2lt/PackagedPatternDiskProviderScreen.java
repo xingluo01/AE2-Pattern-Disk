@@ -6,6 +6,8 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
+
+import guideme.PageAnchor;
 import net.minecraft.world.inventory.Slot;
 
 
@@ -113,5 +115,11 @@ public class PackagedPatternDiskProviderScreen<M extends PackagedPatternDiskProv
             guiGraphics.drawString(this.font, hint,
                     (this.imageWidth - textWidth) / 2, WIRELESS_HINT_Y, PINK, true);
         }
+    }
+
+    @Override
+    protected PageAnchor getHelpTopic() {
+        return new PageAnchor(ResourceLocation.parse(
+                "ae2_pattern_disk:items-blocks-machines/packaged_pattern_disk_provider.md"), null);
     }
 }

@@ -3,6 +3,9 @@ navigation:
   parent: index.md
   title: Meteorite Pattern Disk Provider
   position: 1025
+item_ids:
+- ae2_pattern_disk:meteorite_pattern_provider
+- ae2_pattern_disk:cable_meteorite_pattern_provider
 categories:
 - devices
 ---

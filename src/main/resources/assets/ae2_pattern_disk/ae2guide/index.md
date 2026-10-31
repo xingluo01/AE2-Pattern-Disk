@@ -14,6 +14,7 @@ AE2 Pattern Disks is an add-on for Applied Energistics 2 that provides pattern s
 * [Pattern Disks](items-blocks-machines/pattern_disks.md): stores encoded patterns in a single item, in five tiers.
 * [ME Pattern Disk Provider](items-blocks-machines/pattern_disk_provider.md): offers patterns from disks, in block and panel forms.
 * [Meteorite Pattern Disk Provider](items-blocks-machines/meteorite_pattern_provider.md): the same, and it runs the patterns a molecular assembler could run by itself.
+* [Marked Pattern Disk Provider](items-blocks-machines/marked_pattern_disk_provider.md): mirrors the patterns of selected marks from disks on the same network.
 * [ME Pattern Transferer](items-blocks-machines/pattern_transferer.md): moves patterns between blank patterns and pattern disks.
 * [ME Pattern Disk Encoding Terminal](items-blocks-machines/pattern_disk_encoding_terminal.md): encodes patterns and writes them to disks.
 * [ME Pattern Disk Management Terminal](items-blocks-machines/pattern_disk_management_terminal.md): reviews and tidies the network's pattern disks in one table.
@@ -22,3 +23,4 @@ AE2 Pattern Disks is an add-on for Applied Energistics 2 that provides pattern s
 * [Batch Assembler](items-blocks-machines/batch_molecular_assembler.md): buffers a whole batch of crafting jobs before running it.
 * [Overloaded Pattern Disk Provider](items-blocks-machines/overloaded_pattern_disk_provider.md): a Lightning Tech overloaded provider fed by pattern disks.
 * [Packaged Pattern Disk Provider](items-blocks-machines/packaged_pattern_disk_provider.md): the packaged provider, wired or wireless, fed by pattern disks.
+* [Resonating Pattern Disk Provider](items-blocks-machines/resonating_pattern_disk_provider.md): a Crystal Science resonant provider fed by pattern disks.

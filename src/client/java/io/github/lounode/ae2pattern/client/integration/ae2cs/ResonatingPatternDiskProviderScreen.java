@@ -148,8 +148,9 @@ public class ResonatingPatternDiskProviderScreen extends AEBaseScreen<Resonating
 
     @Override
     protected PageAnchor getHelpTopic() {
-        // 设备照 AECS 的谐振供应器做，讲清来源比重复本模组页面有用。
-        return new PageAnchor(ResourceLocation.parse("ae2cs:resonating_pattern_provider.md"), null);
+        return new PageAnchor(
+                ResourceLocation.parse("ae2_pattern_disk:items-blocks-machines/resonating_pattern_disk_provider.md"),
+                null);
     }
 
     private List<Component> getCompatibleUpgrades() {
