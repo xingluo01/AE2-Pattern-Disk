@@ -2,9 +2,9 @@
   "parent": "ae2:part/pattern_provider_base",
   "textures": {
     "front": "ae2_pattern_disk:block/resonating_pattern_disk_provider",
-    "particle": "ae2_pattern_disk:block/resonating_pattern_disk_provider_back",
+    "particle": "ae2cs:block/resonating_pattern_provider/back",
     "sides": "ae2_pattern_disk:part/pattern_disk_provider_sides",
     "sidesStatus": "ae2_pattern_disk:part/pattern_disk_provider_sides_status",
-    "back": "ae2_pattern_disk:block/resonating_pattern_disk_provider_back"
+    "back": "ae2cs:block/resonating_pattern_provider/back"
   }
 }

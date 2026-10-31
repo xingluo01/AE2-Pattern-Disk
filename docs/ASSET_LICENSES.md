@@ -126,13 +126,14 @@ model's `front`, `textures/block/meteorite_pattern_provider.png` (used together 
 | File | Source |
 |------|--------|
 | `assets/ae2_pattern_disk/textures/block/resonating_pattern_disk_provider.png` | `assets/ae2cs/textures/block/resonating_pattern_provider/base.png` |
-| `assets/ae2_pattern_disk/textures/block/resonating_pattern_disk_provider_back.png` | `assets/ae2cs/textures/block/resonating_pattern_provider/back.png` |
 | `assets/ae2_pattern_disk/textures/block/resonating_pattern_disk_provider_alternate.png` | `assets/ae2cs/textures/block/resonating_pattern_provider/alternate.png` |
 | `assets/ae2_pattern_disk/textures/block/resonating_pattern_disk_provider_alternate_arrow.png` | `assets/ae2cs/textures/block/resonating_pattern_provider/alternate_arrow.png` |
 | `assets/ae2_pattern_disk/textures/block/resonating_pattern_disk_provider_alternate_front.png` | `assets/ae2cs/textures/block/resonating_pattern_provider/alternate_front.png` |
 
 These copies are redistributed under CC BY-NC-SA 3.0, not under this project's LGPL-3.0 grant. Attribution:
 Applied Energistics: Crystal Science - Frostbite, Lounode, QiuYe, MHanHanBing, TedXenon, LuckyBlock.
+The panel's `back` / `particle` faces reference `ae2cs:block/resonating_pattern_provider/back` at runtime
+instead of copying it, matching the self-assembling panel's strategy; that texture is not redistributed here.
 The block models use vanilla parents (`cube_all` / `cube`); the panel model mirrors the self-assembling
 provider's panel model and inherits AE2's `part/pattern_provider_base`, while the listing icon inherits
 `ae2:item/cable_interface`. Our panel model keeps this mod's own `pattern_disk_provider_sides*` for the
