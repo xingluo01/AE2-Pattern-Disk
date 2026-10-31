@@ -1,6 +1,6 @@
 {
   "parent": "minecraft:block/cube_all",
   "textures": {
-    "all": "ae2_pattern_disk:block/pattern_provider"
+    "all": "ae2_pattern_disk:block/marked_pattern_disk_provider"
   }
 }
