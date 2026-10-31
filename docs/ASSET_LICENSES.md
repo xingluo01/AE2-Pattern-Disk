@@ -125,11 +125,11 @@ model's `front`, `textures/block/meteorite_pattern_provider.png` (used together 
 
 | File | Source |
 |------|--------|
-| `assets/ae2_pattern_disk/textures/block/resonating_pattern_disk_provider/base.png` | `assets/ae2cs/textures/block/resonating_pattern_provider/base.png` |
-| `assets/ae2_pattern_disk/textures/block/resonating_pattern_disk_provider/back.png` | `assets/ae2cs/textures/block/resonating_pattern_provider/back.png` |
-| `assets/ae2_pattern_disk/textures/block/resonating_pattern_disk_provider/alternate.png` | `assets/ae2cs/textures/block/resonating_pattern_provider/alternate.png` |
-| `assets/ae2_pattern_disk/textures/block/resonating_pattern_disk_provider/alternate_arrow.png` | `assets/ae2cs/textures/block/resonating_pattern_provider/alternate_arrow.png` |
-| `assets/ae2_pattern_disk/textures/block/resonating_pattern_disk_provider/alternate_front.png` | `assets/ae2cs/textures/block/resonating_pattern_provider/alternate_front.png` |
+| `assets/ae2_pattern_disk/textures/block/resonating_pattern_disk_provider.png` | `assets/ae2cs/textures/block/resonating_pattern_provider/base.png` |
+| `assets/ae2_pattern_disk/textures/block/resonating_pattern_disk_provider_back.png` | `assets/ae2cs/textures/block/resonating_pattern_provider/back.png` |
+| `assets/ae2_pattern_disk/textures/block/resonating_pattern_disk_provider_alternate.png` | `assets/ae2cs/textures/block/resonating_pattern_provider/alternate.png` |
+| `assets/ae2_pattern_disk/textures/block/resonating_pattern_disk_provider_alternate_arrow.png` | `assets/ae2cs/textures/block/resonating_pattern_provider/alternate_arrow.png` |
+| `assets/ae2_pattern_disk/textures/block/resonating_pattern_disk_provider_alternate_front.png` | `assets/ae2cs/textures/block/resonating_pattern_provider/alternate_front.png` |
 
 These copies are redistributed under CC BY-NC-SA 3.0, not under this project's LGPL-3.0 grant. Attribution:
 Applied Energistics: Crystal Science - Frostbite, Lounode, QiuYe, MHanHanBing, TedXenon, LuckyBlock.
