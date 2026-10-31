@@ -228,7 +228,7 @@
 | AE2 WTLib | `integration/ae2wtlib` | `client/integration/ae2wtlib` | 两个无线终端 |
 | NEO ECO AE Extension | `integration/neoecoae` | `client/integration/neoecoae` | 上传按钮、整批并行入口、大宗元件截断调级（编译期公开契约） |
 | ExtendedAE Plus | `integration/extendedae_plus` | `client/integration/extendedae_plus` | 往供应器上传样板的链路 |
-| AE2 Crystal Science | `integration/ae2cs` | — | 自装配供应器的整套注册 |
+| AE2 Crystal Science | `integration/ae2cs` | `client/integration/ae2cs` | 自装配供应器 + 谐振样板磁盘供应器（方块/面板） |
 | Jade | `integration/jade` | — | 显示机器状态 |
 | Polymorph | `integration/polymorph` | `client/integration/polymorph` | 多结果配方由玩家选 |
 | JEI / EMI / IPN / JECH | — | `client/integration` | 配方导入、幽灵物品、整理、拼音搜索 |

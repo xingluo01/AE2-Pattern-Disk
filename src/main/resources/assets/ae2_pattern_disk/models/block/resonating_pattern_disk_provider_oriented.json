@@ -1,0 +1,12 @@
+{
+  "parent": "block/cube",
+  "textures": {
+    "particle": "ae2cs:block/resonating_pattern_provider/base",
+    "down": "ae2cs:block/resonating_pattern_provider/alternate",
+    "up": "ae2cs:block/resonating_pattern_provider/alternate_front",
+    "north": "ae2cs:block/resonating_pattern_provider/alternate_arrow",
+    "south": "ae2cs:block/resonating_pattern_provider/alternate_arrow",
+    "east": "ae2cs:block/resonating_pattern_provider/alternate_arrow",
+    "west": "ae2cs:block/resonating_pattern_provider/alternate_arrow"
+  }
+}

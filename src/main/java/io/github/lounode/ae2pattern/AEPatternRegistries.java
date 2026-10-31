@@ -440,6 +440,13 @@ public final class AEPatternRegistries {
                             output.accept(MeteoritePatternProviderRegistrations.ITEM.get());
                             output.accept(MeteoritePatternProviderRegistrations.ITEM_PART.get());
                         }
+                        if (io.github.lounode.ae2pattern.integration.ae2cs.resonating
+                                .ResonatingPatternDiskProviderRegistrations.isRegistered()) {
+                            output.accept(io.github.lounode.ae2pattern.integration.ae2cs.resonating
+                                    .ResonatingPatternDiskProviderRegistrations.ITEM.get());
+                            output.accept(io.github.lounode.ae2pattern.integration.ae2cs.resonating
+                                    .ResonatingPatternDiskProviderRegistrations.ITEM_PART.get());
+                        }
                         output.accept(ITEM_ASSEMBLER.get());
                         output.accept(ITEM_BATCH_ASSEMBLER.get());
                         output.accept(ITEM_PATTERN_DISK_ENCODING_TERMINAL.get());

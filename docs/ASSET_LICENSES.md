@@ -121,6 +121,12 @@ two forms are meant to look like that mod's block. The one face this mod still s
 model's `front`, `textures/block/meteorite_pattern_provider.png` (used together with the local
 `..._alternate*.png` by the block form's models).
 
+The resonant provider's two forms follow the same rule: `models/block/resonating_pattern_disk_provider.json`
+and `..._oriented.json` point their faces at AE2 Crystal Science's `ae2cs:block/resonating_pattern_provider/*`
+textures; `models/part/resonating_pattern_disk_provider_base.json` and
+`models/item/cable_resonating_pattern_disk_provider.json` inherit AE2 parents for geometry and use the same
+upstream textures. Our panel model keeps this mod's own `pattern_disk_provider_sides*` for the status light.
+
 The marked provider's panel form follows the same rule: `models/part/marked_pattern_disk_provider_base.json`
 copies the panel geometry of AE2's `part/pattern_provider_base` (by Sea_Kerman), and
 `models/item/cable_marked_pattern_disk_provider.json` inherits `ae2:item/cable_interface`. Both still point

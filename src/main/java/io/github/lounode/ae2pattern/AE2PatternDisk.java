@@ -30,6 +30,8 @@ import io.github.lounode.ae2pattern.common.block.entity.MeteoritePatternProvider
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskProviderBlockEntity;
 import io.github.lounode.ae2pattern.common.block.entity.PatternTransfererBlockEntity;
 import io.github.lounode.ae2pattern.integration.ae2cs.AecsSoftDep;
+import io.github.lounode.ae2pattern.integration.ae2cs.resonating.ResonatingPatternDiskProviderBlockEntity;
+import io.github.lounode.ae2pattern.integration.ae2cs.resonating.ResonatingPatternDiskProviderRegistrations;
 import io.github.lounode.ae2pattern.integration.ae2lt.OverloadPatterns;
 import io.github.lounode.ae2pattern.integration.advancedae.AdvancedPatternEncoder;
 import io.github.lounode.ae2pattern.integration.appflux.AppFluxInductionCard;
@@ -58,6 +60,7 @@ public class AE2PatternDisk {
         // 判定放在这里而不是静态字段上，是因为 ModList 要到 mod 构造期才可读。
         if (AecsSoftDep.isLoaded()) {
             MeteoritePatternProviderRegistrations.register(modBus);
+            ResonatingPatternDiskProviderRegistrations.register(modBus);
         }
 
         // 万象构序：只往它的两个适配器注册表里登记批处理装配室，不注册任何方块物品，所以不在场时整段都不
@@ -141,6 +144,18 @@ public class AE2PatternDisk {
                     (be, dir) -> MeteoritePatternProviderBlockEntity.class.cast(be).getLogic().getReturnInv());
         }
 
+        // 谐振样板磁盘供应器：与自装配那台同一套能力面，只在 AECS 带谐振供应器时存在。
+        if (ResonatingPatternDiskProviderRegistrations.isRegistered()) {
+            event.registerBlockEntity(
+                    appeng.api.AECapabilities.IN_WORLD_GRID_NODE_HOST,
+                    ResonatingPatternDiskProviderRegistrations.BE.get(),
+                    (be, dir) -> (appeng.api.networking.IInWorldGridNodeHost) be);
+            event.registerBlockEntity(
+                    appeng.api.AECapabilities.GENERIC_INTERNAL_INV,
+                    ResonatingPatternDiskProviderRegistrations.BE.get(),
+                    (be, dir) -> ResonatingPatternDiskProviderBlockEntity.class.cast(be).getLogic().getReturnInv());
+        }
+
         // Crafting machine: exposes the assembler so any AE2 provider can push patterns to it.
         event.registerBlockEntity(
                 appeng.api.AECapabilities.CRAFTING_MACHINE,
@@ -199,6 +214,15 @@ public class AE2PatternDisk {
                     (part, context) -> ((io.github.lounode.ae2pattern.common.part.MeteoritePatternProviderPart) part)
                             .getLogic().getReturnInv(),
                     io.github.lounode.ae2pattern.common.part.MeteoritePatternProviderPart.class);
+        }
+
+        // 谐振样板磁盘供应器的面板形态：同样把返回仓露给分子装配台。
+        if (ResonatingPatternDiskProviderRegistrations.isRegistered()) {
+            event.register(
+                    appeng.api.AECapabilities.GENERIC_INTERNAL_INV,
+                    (part, context) -> ((io.github.lounode.ae2pattern.integration.ae2cs.resonating.ResonatingPatternDiskProviderPart) part)
+                            .getLogic().getReturnInv(),
+                    io.github.lounode.ae2pattern.integration.ae2cs.resonating.ResonatingPatternDiskProviderPart.class);
         }
     }
 
@@ -263,6 +287,13 @@ public class AE2PatternDisk {
                         MeteoritePatternProviderRegistrations.BLOCK.get(),
                         MeteoritePatternProviderBlockEntity.class,
                         MeteoritePatternProviderRegistrations.BE.get());
+            }
+
+            if (ResonatingPatternDiskProviderRegistrations.isRegistered()) {
+                attachTickingBlockEntity(
+                        ResonatingPatternDiskProviderRegistrations.BLOCK.get(),
+                        ResonatingPatternDiskProviderBlockEntity.class,
+                        ResonatingPatternDiskProviderRegistrations.BE.get());
             }
         }
     }
@@ -336,6 +367,9 @@ public class AE2PatternDisk {
         required.add(AEPatternRegistries.BLOCK_TRANSFERER.get());
         if (MeteoritePatternProviderRegistrations.isRegistered()) {
             required.add(MeteoritePatternProviderRegistrations.BLOCK.get());
+        }
+        if (ResonatingPatternDiskProviderRegistrations.isRegistered()) {
+            required.add(ResonatingPatternDiskProviderRegistrations.BLOCK.get());
         }
         for (var block : required) {
             if (!TICKING_BLOCKS.contains(block)) {

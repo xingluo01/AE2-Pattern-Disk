@@ -54,7 +54,7 @@ CI 未就绪时的本地后备路径：`MODRINTH_TOKEN=... MODRINTH_PROJECT_ID=a
 - ExtendedAE Plus 改用 CurseForge 发布件（`curse.maven:extendedae-plus-1337639:8998231`，1.6.3），已带终端兼容层接口。
 - NEO ECO 自 2026-10-08 起走 CurseForge 发布件（`curse.maven:neo-eco-ae-extension-1460639`），不再走这条供给。
 
-`libs/` 下的 jar 现在只服务本地开发运行期：AECS 用 `localRuntime files('libs/ae2cs-<version>.jar')` 装进 dev 客户端（仅运行期；`files()` 对缺失文件静默跳过，CI 的 `compileJava` 不读它）。release `deps-v1` 上的旧件仅作历史留档，不再被任何步骤下载。
+`libs/` 下的 jar 只服务本地开发运行期：AECS 用 `localRuntime files('libs/ae2cs-<version>.jar')` 装进 dev 客户端。编译期另走 `compileOnly 'maven.modrinth:ae2-crystal-science:1.21.1-1.2.1'`（客户端源集同坐标），供谐振样板磁盘供应器引用它的公开类；该坐标由 CI 正常解析，不再依赖 libs jar。`files()` 对缺失文件静默跳过，CI 的 `compileJava` 不读它。release `deps-v1` 上的旧件仅作历史留档，不再被任何步骤下载。
 
 该 release 的 tag 落在 `v0.2.1^` 上，所以 changelog 步骤用 `--match 'v[0-9]*'` 避开它被 `git describe` 当成上一个版本、把发布说明截成一行。
 

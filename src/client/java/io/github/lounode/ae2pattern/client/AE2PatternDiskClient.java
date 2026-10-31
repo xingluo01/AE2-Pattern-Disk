@@ -40,6 +40,9 @@ import io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessEnco
 import io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessManagementTermMenu;
 import io.github.lounode.ae2pattern.integration.ae2wtlib.CellManagementWirelessTermMenu;
 import io.github.lounode.ae2pattern.AEPatternRegistries;
+import io.github.lounode.ae2pattern.client.integration.ae2cs.ResonatingPatternDiskProviderScreen;
+import io.github.lounode.ae2pattern.integration.ae2cs.resonating.ResonatingPatternDiskProviderMenu;
+import io.github.lounode.ae2pattern.integration.ae2cs.resonating.ResonatingPatternDiskProviderRegistrations;
 
 /**
  * Client-side entry point for AE2 Pattern Disk.
@@ -147,6 +150,7 @@ public class AE2PatternDiskClient {
         registerCellManagementTerminalScreen(event);
         registerWirelessTerminalScreens(event);
         registerMeteoriteProviderScreen(event);
+        registerResonatingProviderScreen(event);
         registerLightningProviderScreens(event);
     }
 
@@ -231,6 +235,28 @@ public class AE2PatternDiskClient {
                                 StyleManager.loadStyleDoc(
                                         "/screens/ae2_pattern_disk/meteorite_pattern_provider.json"),
                                 true);
+                    }
+                });
+    }
+
+    /**
+     * 谐振样板磁盘供应器：布局复用样板磁盘供应器那份，产物抽取挂本模组的三档按钮。
+     * 未装 AECS（或版本不含谐振供应器）时菜单类型不存在，这里安静跳过。
+     */
+    private void registerResonatingProviderScreen(RegisterMenuScreensEvent event) {
+        if (!ResonatingPatternDiskProviderRegistrations.isRegistered()) {
+            return;
+        }
+        event.register(ResonatingPatternDiskProviderRegistrations.MENU.get(),
+                new net.minecraft.client.gui.screens.MenuScreens.ScreenConstructor<
+                        ResonatingPatternDiskProviderMenu,
+                        ResonatingPatternDiskProviderScreen>() {
+                    @Override
+                    public ResonatingPatternDiskProviderScreen create(
+                            ResonatingPatternDiskProviderMenu menu,
+                            net.minecraft.world.entity.player.Inventory playerInventory,
+                            net.minecraft.network.chat.Component title) {
+                        return new ResonatingPatternDiskProviderScreen(menu, playerInventory, title);
                     }
                 });
     }

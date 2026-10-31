@@ -19,14 +19,17 @@ import net.minecraft.world.level.block.state.BlockState;
 import appeng.api.ids.AEComponents;
 import appeng.api.inventories.InternalInventory;
 import appeng.api.stacks.AEItemKey;
-import appeng.blockentity.crafting.PatternProviderBlockEntity;
 import appeng.blockentity.ServerTickingBlockEntity;
+import appeng.blockentity.crafting.PatternProviderBlockEntity;
+import appeng.helpers.patternprovider.PatternProviderLogic;
 import appeng.util.SettingsFrom;
 import appeng.util.inv.AppEngInternalInventory;
 import appeng.util.inv.InternalInventoryHost;
 
 import io.github.lounode.ae2pattern.common.logic.DiskHostSupport;
+import io.github.lounode.ae2pattern.common.logic.DiskProviderTicker;
 import io.github.lounode.ae2pattern.common.logic.PatternDiskProviderLogic;
+import io.github.lounode.ae2pattern.common.logic.PatternsFromDisks;
 
 /**
  * 两台「带样板磁盘的供应器方块」共用的那半：磁盘栏、镜像语义、掉落与内存卡的样板约定。
@@ -39,13 +42,15 @@ import io.github.lounode.ae2pattern.common.logic.PatternDiskProviderLogic;
  * </p>
  *
  * <p>
- * 子类只留不同的三样：方块实体类型、供应器逻辑类型（普通 / 自装配）、以及注册用的物品。自装配那台另外多一条
- * 服务端 tick，但那属于它自己的事，不在这里。
+ * 子类只留不同的三样：方块实体类型、供应器逻辑类型（普通 / 自装配 / 第三方供应器），以及注册用的物品。自装配那台
+ * 另外多一条服务端 tick，但那属于它自己的事，不在这里。
  * </p>
  *
- * @param <L> 该方块使用的供应器逻辑类型；磁盘那半只按 {@link PatternDiskProviderLogic} 用
+ * @param <L> 该方块使用的供应器逻辑类型；磁盘那半只按 {@link PatternsFromDisks} 用。上界是
+ *            {@link PatternProviderLogic} 而不是本模组的 {@link PatternDiskProviderLogic}，因为继承第三方
+ *            供应器逻辑的设备（闪电科技过载、AECS 谐振）也复用这套磁盘宿主。
  */
-public abstract class AbstractDiskPatternProviderBlockEntity<L extends PatternDiskProviderLogic>
+public abstract class AbstractDiskPatternProviderBlockEntity<L extends PatternProviderLogic>
         extends PatternProviderBlockEntity
         implements InternalInventoryHost, DiskHostSupport.Host, ServerTickingBlockEntity {
 
@@ -67,8 +72,8 @@ public abstract class AbstractDiskPatternProviderBlockEntity<L extends PatternDi
     protected abstract Item item();
 
     /** 父构造期 {@code disks} 还不存在，所以逻辑解析走 {@code getLogic()}，磁盘那半拿到逻辑前只做空转。 */
-    private @Nullable PatternDiskProviderLogic currentLogic() {
-        return getLogic() instanceof PatternDiskProviderLogic logic ? logic : null;
+    private @Nullable PatternsFromDisks currentLogic() {
+        return getLogic() instanceof PatternsFromDisks logic ? logic : null;
     }
 
     // ---- 磁盘那半（委托） -------------------------------------------------
@@ -112,11 +117,16 @@ public abstract class AbstractDiskPatternProviderBlockEntity<L extends PatternDi
      * <p>发配倍增的停交判据没有公开信号，只能靠一个每 tick 都会跑的地方兜底：AE2 自己的供应器 tick 里面那两个
      * 方法是私有的，外面接管不了；部件形态也没有可用的 tick，只能靠 {@code isBusy} 被询问时先发。
      * 方块形态在这里做，面板形态见 {@code PatternDiskProviderLogic#isBusy()}。</p>
+     *
+     * <p>继承第三方供应器逻辑的设备（闪电科技、AECS）不经过 {@code tickServer()}：它们的发送队列由自己的
+     * ticker 驱动，这里只做空转。</p>
      */
     @Override
     public void serverTick() {
         if (getLogic() instanceof PatternDiskProviderLogic logic) {
             logic.tickServer();
+        } else if (getLogic() instanceof DiskProviderTicker ticker) {
+            ticker.tickServer();
         }
     }
 

@@ -1,0 +1,27 @@
+{
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "bonus_rolls": 0.0,
+      "conditions": [
+        {
+          "condition": "minecraft:survives_explosion"
+        }
+      ],
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "ae2_pattern_disk:resonating_pattern_disk_provider"
+        }
+      ],
+      "rolls": 1.0
+    }
+  ],
+  "random_sequence": "ae2_pattern_disk:blocks/resonating_pattern_disk_provider",
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "ae2cs"
+    }
+  ]
+}

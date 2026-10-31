@@ -30,6 +30,7 @@ import appeng.api.parts.IPartModel;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.util.AECableType;
 import appeng.block.crafting.PushDirection;
+import appeng.helpers.patternprovider.PatternProviderLogic;
 import appeng.parts.AEBasePart;
 import appeng.util.InteractionUtil;
 import appeng.util.SettingsFrom;
@@ -38,7 +39,9 @@ import appeng.util.inv.InternalInventoryHost;
 
 import io.github.lounode.ae2pattern.config.AEPDCommonConfig;
 import io.github.lounode.ae2pattern.common.logic.DiskHostSupport;
+import io.github.lounode.ae2pattern.common.logic.DiskProviderTicker;
 import io.github.lounode.ae2pattern.common.logic.PatternDiskProviderLogic;
+import io.github.lounode.ae2pattern.common.logic.PatternsFromDisks;
 
 /**
  * 两台「带样板磁盘的面板供应器」共用的那半：磁盘栏、镜像语义、推入方向与几何尺寸。
@@ -54,9 +57,11 @@ import io.github.lounode.ae2pattern.common.logic.PatternDiskProviderLogic;
  * 菜单入口不用各写：{@code openMenu} 由各自的宿主接口默认方法决定，本类统一调它。
  * </p>
  *
- * @param <L> 该面板使用的供应器逻辑类型；磁盘那半只按 {@link PatternDiskProviderLogic} 用
+ * @param <L> 该面板使用的供应器逻辑类型；磁盘那半只按 {@link PatternsFromDisks} 用。上界是
+ *            {@link PatternProviderLogic} 而不是本模组的 {@link PatternDiskProviderLogic}，因为继承第三方
+ *            供应器逻辑的面板（AECS 谐振）也复用这套磁盘宿主。
  */
-public abstract class AbstractDiskPatternProviderPart<L extends PatternDiskProviderLogic> extends AEBasePart
+public abstract class AbstractDiskPatternProviderPart<L extends PatternProviderLogic> extends AEBasePart
         implements InternalInventoryHost, DiskHostSupport.Host {
 
     /** 推入方向的存档键。属存档协议面：改名字旧存档里的档位就读不回来，所以与磁盘栏的键（{@code DiskHostSupport.NBT_DISKS}）一样公开。 */
@@ -93,8 +98,8 @@ public abstract class AbstractDiskPatternProviderPart<L extends PatternDiskProvi
     protected abstract IPartModel models();
 
     /** 构造期 {@code logic} 还没赋值时返回 {@code null}；磁盘那半在拿到逻辑前只做空转。 */
-    private @Nullable PatternDiskProviderLogic currentLogic() {
-        return logic;
+    private @Nullable PatternsFromDisks currentLogic() {
+        return logic instanceof PatternsFromDisks patterns ? patterns : null;
     }
 
     // ---- 磁盘那半（委托） -------------------------------------------------
@@ -227,6 +232,8 @@ public abstract class AbstractDiskPatternProviderPart<L extends PatternDiskProvi
             }
             if (part.getLogic() instanceof PatternDiskProviderLogic logic) {
                 logic.tickServer();
+            } else if (part.getLogic() instanceof DiskProviderTicker ticker) {
+                ticker.tickServer();
             }
         }
     }
@@ -314,9 +321,12 @@ public abstract class AbstractDiskPatternProviderPart<L extends PatternDiskProvi
 
         if (mode == SettingsFrom.MEMORY_CARD) {
             // 本类继承的是 AEBasePart，不是 AE2 的 PatternProviderPart，所以设置不会自己走到逻辑那去。
-            logic.importSettings(cleanInput, player);
-            // 本模组自己的设置（阻挡/倍增/抽取/选中标记）不在 AE2 的 Settings 里，得单独搬。
-            logic.importCustomSettings(cleanInput);
+            // 第三方供应器逻辑（AECS 谐振）没有本模组的这组设置，跳过；它的默认目标由子类自己搬。
+            if (logic instanceof PatternDiskProviderLogic provider) {
+                provider.importSettings(cleanInput, player);
+                // 本模组自己的设置（阻挡/倍增/抽取/选中标记）不在 AE2 的 Settings 里，得单独搬。
+                provider.importCustomSettings(cleanInput);
+            }
             // 必须强制重建：磁盘没动，状态检查会跳过，镜像就停在 super.importSettings 留下的样子。
             disks.refreshFromDisks(true);
         }
@@ -328,8 +338,8 @@ public abstract class AbstractDiskPatternProviderPart<L extends PatternDiskProvi
     @Override
     public void exportSettings(SettingsFrom mode, DataComponentMap.Builder builder) {
         super.exportSettings(mode, builder);
-        if (mode == SettingsFrom.MEMORY_CARD) {
-            logic.exportCustomSettings(builder);
+        if (mode == SettingsFrom.MEMORY_CARD && logic instanceof PatternDiskProviderLogic provider) {
+            provider.exportCustomSettings(builder);
         }
     }
 

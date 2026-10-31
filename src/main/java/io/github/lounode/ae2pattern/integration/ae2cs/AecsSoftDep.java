@@ -10,21 +10,30 @@ import appeng.api.upgrades.Upgrades;
 
 import net.neoforged.fml.ModList;
 
+import org.apache.maven.artifact.versioning.ComparableVersion;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * AE2 Crystal Science ({@code ae2cs}) 的软依赖入口：这台「自装配样板磁盘供应器」只在它安装时存在。
+ * AE2 Crystal Science ({@code ae2cs}) 的软依赖入口。
  *
  * <p>
- * 本模组不编译期引用它的任何类型。设备的注册前提与它的超频卡都经这里取：前者是
- * {@link ModList#isLoaded(String)}，后者是在物品注册表里按 id 查 {@code ae2cs:overload_card}——与
- * {@code ExtendedAEPlusCompat} 同一套做法，只是那边连的是上传契约，这边连的是升级卡。
+ * 本模组有两台设备以它为前提：自装配样板磁盘供应器（只要它在场）与谐振样板磁盘供应器（还要它带谐振供应器，
+ * 即 1.2.1 起）。前者不编译期引用它的类型；后者编译期引用谐振逻辑，所以除了 {@link ModList#isLoaded(String)}
+ * 还要卡版本地板。
+ * </p>
+ *
+ * <p>
+ * 超频卡仍按 id 在物品注册表里查——与 {@code ExtendedAEPlusCompat} 同一套做法，只是那边连的是上传契约，
+ * 这边连的是升级卡。
  * </p>
  */
 public final class AecsSoftDep {
 
     /** 目标模组 id。产品代码只认这个字符串，不认它的类。 */
     public static final String MOD_ID = "ae2cs";
+
+    /** 谐振供应器首次出现的公开发布版本；低于它的 AECS 没有本设备编译期引用的那些类。 */
+    private static final String RESONATING_PROVIDER_MIN_VERSION = "1.2.1";
 
     /** 陨石超频卡：它自己的升级卡物品，这里只有一个 id。 */
     private static final ResourceLocation OVERLOAD_CARD_ID = ResourceLocation.parse("ae2cs:overload_card");
@@ -37,7 +46,7 @@ public final class AecsSoftDep {
 
     private AecsSoftDep() {}
 
-    /** 目标模组是否在场。设备的整套注册都以它为前提，见 {@code MeteoritePatternProviderRegistrations}。 */
+    /** 目标模组是否在场。自装配设备的整套注册都以它为前提，见 {@code MeteoritePatternProviderRegistrations}。 */
     public static boolean isLoaded() {
         var cached = present;
         if (cached == null) {
@@ -45,6 +54,29 @@ public final class AecsSoftDep {
             present = cached;
         }
         return cached;
+    }
+
+    /**
+     * AECS 是否带谐振样板供应器（1.2.1 起）。
+     *
+     * <p>谐振设备编译期引用 AECS 的谐振逻辑，只判 {@link #isLoaded()} 不够：老版本缺类，注册照过、开界面时才
+     * 炸。版本串按 Maven 语义比较，取不到版本时安静退场。</p>
+     */
+    public static boolean supportsResonatingProvider() {
+        if (!isLoaded()) {
+            return false;
+        }
+        var container = ModList.get().getModContainerById(MOD_ID).orElse(null);
+        if (container == null) {
+            return false;
+        }
+        try {
+            var version = container.getModInfo().getVersion().toString();
+            return new ComparableVersion(version)
+                    .compareTo(new ComparableVersion(RESONATING_PROVIDER_MIN_VERSION)) >= 0;
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     /**

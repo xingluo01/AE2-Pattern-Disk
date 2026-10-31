@@ -66,6 +66,7 @@ public class PatternDiskProviderMenu extends AEBaseMenu {
     public boolean boostEnabled = false;
     @GuiSync(9)
     public int boostLimit = 0;
+    /** 仅对本模组的 {@code PatternDiskProviderLogic} 有意义；第三方逻辑派生设备用自己的同步字段。 */
     @GuiSync(10)
     public ProviderExtractionMode extractionMode = ProviderExtractionMode.OFF;
 
@@ -115,23 +116,39 @@ public class PatternDiskProviderMenu extends AEBaseMenu {
     }
 
     private void cycleProviderBlocking() {
-        providerLogic().cycleBlockingMode();
+        var logic = providerLogic();
+        if (logic != null) {
+            logic.cycleBlockingMode();
+        }
     }
 
     private void cycleProviderExtraction() {
-        providerLogic().cycleExtractionMode();
+        var logic = providerLogic();
+        if (logic != null) {
+            logic.cycleExtractionMode();
+        }
     }
 
     private void setProviderBoost(boolean enabled) {
-        providerLogic().setBoostEnabled(enabled);
+        var logic = providerLogic();
+        if (logic != null) {
+            logic.setBoostEnabled(enabled);
+        }
     }
 
     private void setProviderBoostLimit(int limit) {
-        providerLogic().setBoostLimit(limit);
+        var logic = providerLogic();
+        if (logic != null) {
+            logic.setBoostLimit(limit);
+        }
     }
 
-    private PatternDiskProviderLogic providerLogic() {
-        return (PatternDiskProviderLogic) host.getLogic();
+    /**
+     * 只有本模组的供应器逻辑才有这三档动作。继承第三方逻辑的设备（AECS 谐振）也复用这份菜单，客端若误发
+     * 这些动作，强转会 CCE；统一在这里返回 null，由各动作安静跳过。
+     */
+    private @Nullable PatternDiskProviderLogic providerLogic() {
+        return host.getLogic() instanceof PatternDiskProviderLogic logic ? logic : null;
     }
 
     /**

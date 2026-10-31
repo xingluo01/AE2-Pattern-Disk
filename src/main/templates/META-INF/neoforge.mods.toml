@@ -112,12 +112,12 @@ versionRange="*"
 ordering="AFTER"
 side="CLIENT"
 
-# AE2 Crystal Science is optional, and we do not compile against it: the self-assembling pattern disk
-# provider registers only while that mod is present, so a pack without it simply has no such device. The
-# relationship is otherwise by mod id alone - its overload card is looked up in the item registry at runtime
-# (see AecsSoftDep), never referenced as a class - so no version bound of our own is needed, same reasoning
-# ExtendedAE Plus uses for `extendedae`. BEFORE keeps us loaded first, so our setup-time presence probe does
-# not race its construction.
+# AE2 Crystal Science is optional. The self-assembling provider registers only while it is present and reaches
+# it by mod id alone (its overload card is looked up at runtime). The resonant provider additionally needs
+# 1.2.1+ and is compiled against that mod's resonant provider types; AecsSoftDep gates both the presence and
+# the version floor at runtime, so an older AECS stays loadable for the self-assembling device. No versionRange
+# here on purpose: a hard bound would reject packs that only want the older device. BEFORE keeps us loaded
+# first, so our setup-time presence probe does not race its construction.
 [[dependencies.${mod_id}]]
 modId="ae2cs"
 type="optional"

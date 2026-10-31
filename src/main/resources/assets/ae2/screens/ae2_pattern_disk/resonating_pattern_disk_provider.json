@@ -1,0 +1,18 @@
+{
+  "$schema": "../schema.json",
+  "includes": [
+    "pattern_disk_provider_base.json"
+  ],
+  "helpTopic": "ae2cs:resonating_pattern_provider.md",
+  "text": {
+    "dialog_title": {
+      "text": {
+        "translate": "gui.ae2_pattern_disk.resonating_pattern_disk_provider"
+      },
+      "position": {
+        "left": 8,
+        "top": 6
+      }
+    }
+  }
+}

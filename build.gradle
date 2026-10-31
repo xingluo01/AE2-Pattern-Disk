@@ -257,6 +257,12 @@ dependencies {
     // actually exercise it.
     localRuntime files('libs/ae2cs-1.21.1-1.3.0.jar')
 
+    // 谐振样板磁盘供应器：编译期需要 AECS 的谐振供应器逻辑/宿主/菜单设置类型。1.2.1 是首个含谐振
+    // 供应器的公开发布件；1.3.0 与本坐标的关键类签名已用 javap 逐条对过（只差私有字段）。
+    // 运行时仍由 ModList 门控：没装 AECS 或低于 1.2.1 时整套设备不注册。
+    compileOnly 'maven.modrinth:ae2-crystal-science:1.21.1-1.2.1'
+    clientCompileOnly 'maven.modrinth:ae2-crystal-science:1.21.1-1.2.1'
+
     // AE2WTLib: the two wireless terminals this mod adds build on it (item base, host, screens, terminal
     // registration), so the dev runtime needs both the mod and its api.
     // 19.5.1（而不是 19.5.0）：Applied Enhancements 只支持 ae2wtlib 19.5.1 及以上，低于它就拒绝加载。
