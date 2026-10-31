@@ -121,14 +121,22 @@ two forms are meant to look like that mod's block. The one face this mod still s
 model's `front`, `textures/block/meteorite_pattern_provider.png` (used together with the local
 `..._alternate*.png` by the block form's models).
 
-The resonant provider's two forms follow the same rule and deliberately reference, rather than copy,
-AE2 Crystal Science's textures (`ae2cs:block/resonating_pattern_provider/*`). Crystal Science licenses its
-assets under CC BY-NC-SA 3.0, which is not compatible with this project's LGPL-3.0 distribution, so those
-PNGs never enter this mod's jar; a pack without Crystal Science simply has no such device. The model files
-here are written against vanilla parents (`cube_all` / `cube`) and AE2 parents for the panel and listing
-icon (`ae2:part/pattern_provider_base`, `ae2:item/cable_pattern_provider`), so no Crystal Science model
-geometry is redistributed either. Our panel model keeps this mod's own `pattern_disk_provider_sides*` for
-the status light.
+**The following assets are copied from AE2 Crystal Science (CC BY-NC-SA 3.0):**
+
+| File | Source |
+|------|--------|
+| `assets/ae2_pattern_disk/textures/block/resonating_pattern_disk_provider/base.png` | `assets/ae2cs/textures/block/resonating_pattern_provider/base.png` |
+| `assets/ae2_pattern_disk/textures/block/resonating_pattern_disk_provider/back.png` | `assets/ae2cs/textures/block/resonating_pattern_provider/back.png` |
+| `assets/ae2_pattern_disk/textures/block/resonating_pattern_disk_provider/alternate.png` | `assets/ae2cs/textures/block/resonating_pattern_provider/alternate.png` |
+| `assets/ae2_pattern_disk/textures/block/resonating_pattern_disk_provider/alternate_arrow.png` | `assets/ae2cs/textures/block/resonating_pattern_provider/alternate_arrow.png` |
+| `assets/ae2_pattern_disk/textures/block/resonating_pattern_disk_provider/alternate_front.png` | `assets/ae2cs/textures/block/resonating_pattern_provider/alternate_front.png` |
+
+These copies are redistributed under CC BY-NC-SA 3.0, not under this project's LGPL-3.0 grant. Attribution:
+Applied Energistics: Crystal Science - Frostbite, Lounode, QiuYe, MHanHanBing, TedXenon, LuckyBlock.
+The block models use vanilla parents (`cube_all` / `cube`); the panel model mirrors the self-assembling
+provider's panel model and inherits AE2's `part/pattern_provider_base`, while the listing icon inherits
+`ae2:item/cable_interface`. Our panel model keeps this mod's own `pattern_disk_provider_sides*` for the
+status light; no Crystal Science model geometry is copied.
 
 The marked provider's panel form follows the same rule: `models/part/marked_pattern_disk_provider_base.json`
 copies the panel geometry of AE2's `part/pattern_provider_base` (by Sea_Kerman), and
