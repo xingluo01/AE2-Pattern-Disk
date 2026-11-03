@@ -6,6 +6,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.LinkedHashMap;
 
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -15,6 +17,9 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 
+import appeng.api.implementations.blockentities.IChestOrDrive;
+import appeng.api.implementations.blockentities.IMEChest;
+import appeng.api.inventories.InternalInventory;
 import appeng.api.networking.IGrid;
 import appeng.api.networking.IGridNode;
 import appeng.api.storage.MEStorage;
@@ -37,17 +42,25 @@ import io.github.lounode.ae2pattern.network.CellHostListPayload;
  * 而且只做精确键查。于是 {@code getMachines(DriveBlockEntity.class)} 找不到子类（ExtendedAE 的
  * {@code TileExDrive} 正是它的子类），{@code getMachines(接口)} 更是恒空。只能遍历节点自己判。</p>
  *
- * <h2>四类来源怎么认</h2>
+ * <h2>两类格式怎么认</h2>
  *
  * <ul>
- *   <li><b>AE2 本体驱动器与 ExtendedAE 扩展驱动器</b>：{@code instanceof DriveBlockEntity}。EAE 的扩展驱动器
- *       就是这个类的子类，格数由它覆写的 {@link DriveBlockEntity#getCellCount()} 给（本体 10、EAE 20），
- *       所以格数一律动态读，不写死。</li>
+ *   <li><b>AE2 标准驱动器格式</b>：{@link IChestOrDrive}——AE2 公开的驱动器契约。本体驱动器与 ExtendedAE 的
+ *       扩展驱动器（{@link DriveBlockEntity} 的子类）都在里面，第三方按同一条契约注册的设备不用点名就认得；
+ *       格数一律现读，不写死 10/20。逐格物品与写入另问 {@code getInternalInventory()}，理由见
+ *       {@link #driveViewOf(Object)}（只按契约上的物品列表会把元件配空，所以读不到逐格物品就不列）。</li>
  *   <li><b>NEO ECO 的各级存储、以及 ECO 青春版的 L1 驱动器</b>：这两个的驱动器类不在我们的编译面里
  *       （ECO 是 compileOnly 且版本地板在动，青春版是纯运行时可选），而且青春版的 L1 驱动器连 ECO 的
  *       {@code ICellHost} 都不实现。所以按<b>方法名探</b>：有 {@code getCellStack()} 就当作单格元件座，
  *       能探到 {@code getStorageController()/getCluster()} 就再读一次存储优先级。</li>
  * </ul>
+ *
+ * <h2>准入按格式双向收口</h2>
+ *
+ * <p>「这台是哪一格式」与「这张元件是哪一格式」要对上才写得进去：驱动器格式只收 {@link #isDriveFormatCell}
+ * 认得的元件，单格元件座只收 {@link #isMatrixFormatCell} 认得的存储矩阵。两边的写入口都不自带这道闸——
+ * AE2 的 {@code setItemDirect} 按定义绕过库存 filter，ECO 那边只有它自己的 {@code isItemValid}。不挡的结果是
+ * 矩阵停在 ME 驱动器的格子里、元件停在矩阵座里，而两边的存储 Provider 都不认那张栈。</p>
  *
  * <p>探不到就少一列（优先级显示为 {@code —}），不抛异常、不连坐——与全模组「可选依赖缺失只降级」的
  * 口径一致。</p>
@@ -60,6 +73,9 @@ public final class CellDriveScanner {
             return new ConcurrentHashMap<>();
         }
     };
+
+    /** 读不动的宿主与抛异常的邻居都要留痕，否则「这台为什么不在表里」只能靠猜。 */
+    private static final Logger LOGGER = LoggerFactory.getLogger("ae2_pattern_disk.cell");
 
     /** 探不到优先级时列上显示的字样。 */
     public static final String PRIORITY_UNKNOWN = "—";
@@ -75,7 +91,7 @@ public final class CellDriveScanner {
      * @param priority 存储优先级；读不到时是 {@link #PRIORITY_UNKNOWN}
      * @param cells    这一组里所有驱动器的格位（稠密，同一台的格连续排在一起）
      * @param priorityValue 同一个优先级的数值形式；读不到时 null（显示口径仍用 {@link #priority}）
-     * @param ecoHost 这一组是不是 ECO 的存储主机（否则是 AE2 / ExtendedAE 的驱动器）
+     * @param ecoHost 这一组是不是 ECO 的存储主机（否则是 AE2 标准驱动器格式的设备）
      */
     public record DriveEntry(String key, String name, ItemStack icon, String priority,
             List<CellHostListPayload.CellSlot> cells, @Nullable Integer priorityValue, boolean ecoHost) {}
@@ -107,8 +123,9 @@ public final class CellDriveScanner {
                 continue;
             }
             try {
-                if (owner instanceof DriveBlockEntity drive) {
-                    DriveEntry single = ae2Drive(drive, usage);
+                DriveView drive = driveViewOf(owner);
+                if (drive != null) {
+                    DriveEntry single = driveEntry(owner, drive, usage);
                     byType.computeIfAbsent(typeKeyOf(single), key -> new TypeGroup(single)).merge(single);
                     continue;
                 }
@@ -119,6 +136,7 @@ public final class CellDriveScanner {
                 }
             } catch (RuntimeException broken) {
                 // 一台读不动就跳过这一台：不认识的第三方存储方块不该让整张表空掉。
+                LOGGER.debug("[cell-mgmt] 宿主读不动，跳过：{}", owner.getClass().getName(), broken);
             }
         }
         var out = new ArrayList<DriveEntry>();
@@ -197,25 +215,113 @@ public final class CellDriveScanner {
         return cells;
     }
 
-    /** AE2 本体与 ExtendedAE 的驱动器（后者是前者的子类，格数用 getCellCount 现读，不写死 10/20）。 */
-    private static DriveEntry ae2Drive(DriveBlockEntity drive, @Nullable CellUsageCache usage) {
-        String hostKey = keyOf(drive);
-        return new DriveEntry(hostKey, nameOf(drive), iconOf(drive),
-                Integer.toString(drive.getPriority()), driveCells(drive, hostKey, usage), drive.getPriority(), false);
+    /**
+     * 一台「AE2 标准驱动器格式」宿主的读写视图。
+     *
+     * <p>AE2 本体、ExtendedAE 的扩展驱动器与任何实现 {@link IChestOrDrive} 的第三方设备共用这一条路：
+     * 格数与元件库存问 AE2 的公开契约（{@code getCellCount()} / {@code getCellInventory(int)}），逐格物品栈
+     * 与写入问宿主自己的内部库存。</p>
+     */
+    private record DriveView(IChestOrDrive cellHost, InternalInventory inventory) {
+
+        int cellCount() {
+            return cellHost.getCellCount();
+        }
+
+        ItemStack stackInSlot(int slot) {
+            return inventory.getStackInSlot(slot);
+        }
+
+        @Nullable
+        MEStorage cellInventory(int slot) {
+            return cellHost.getCellInventory(slot);
+        }
+
+        /** 这一格收不收这张元件：问宿主自己的过滤（AE2 驱动器那条就是 {@code StorageCells.isCellHandled}）。 */
+        boolean accepts(int slot, ItemStack stack) {
+            return inventory.isItemValid(slot, stack);
+        }
+
+        /** 直写一格的物品栈。AE2 的元件库存会在写之前把这一格原有元件的改动落盘，取件不必另存。 */
+        void setStackDirect(int slot, ItemStack stack) {
+            inventory.setItemDirect(slot, stack);
+        }
+    }
+
+    /** 报来离谱格数的设备不当驱动器收：一张被撑爆的表比少一列难受。 */
+    private static final int MAX_DRIVE_SLOTS = 256;
+
+    /**
+     * 这台机器是不是 AE2 标准驱动器格式；不是、或读不到逐格物品时返回 null（交回单格元件座那条路）。
+     *
+     * <p>AE2 本体驱动器与 ExtendedAE 的 {@code TileExDrive}（{@link DriveBlockEntity} 的子类）都在这个接口里，
+     * 第三方按同一条契约注册的设备因此不用点名就能认出来。为什么还要另问 {@code getInternalInventory()}：
+     * 契约上只有 {@code getCellItem(int)}，它只给物品：照它能把表列出来，但取件交还给玩家的是一张没配置
+     * 的空白盘（分区、升级卡与元件自己的账本全丢），所以宁可整台不列。</p>
+     *
+     * <p>格数现读不写死：本体 10 格，EAE 的覆写成 20 格。</p>
+     *
+     * <p>{@link IMEChest}（ME 箱子那类）实现的虽是同一条契约，库存却把元件格与输入缓存格串在一起，
+     * 格序与 {@code getCellCount()} 对不上——照驱动器去写会把元件塞进料口，AE2 自己的漏斗都拿不出
+     * 那张盘。它不是驱动器格式，整台不列。</p>
+     */
+    @Nullable
+    private static DriveView driveViewOf(Object owner) {
+        // ME 箱子那类也挂在这条契约下面（IMEChest 继承它），但它不是驱动器格式，理由见上面的 javadoc。
+        if (!(owner instanceof IChestOrDrive cellHost) || owner instanceof IMEChest) {
+            return null;
+        }
+        int cellCount = cellHost.getCellCount();
+        if (cellCount <= 0 || cellCount > MAX_DRIVE_SLOTS) {
+            return null;
+        }
+        Object inventory = invoke(owner, "getInternalInventory");
+        // 库存长度要与契约格数逐一相等：短了逐格读会越界，长了意味着第 0 格不一定是元件格——按错位的
+        // 下标取放会把东西写进别的格子，那是丢东西而不是少一列。
+        if (!(inventory instanceof InternalInventory internal) || internal.size() != cellCount) {
+            return null;
+        }
+        return new DriveView(cellHost, internal);
     }
 
     /**
-     * 一台 AE2 系驱动器的格表。那一台驱动器自己就是一个首格单，所以首格键就是它的宿主键。
+     * 这台驱动器格式宿主的存储优先级：AE2 与 ExtendedAE 读自己的 {@link IPriorityHost}，
+     * 没实现那个接口的新驱动器退回按控制器探；都读不到就是表上的「—」，不硬凑一个 0 出来。
      */
-    private static List<CellHostListPayload.CellSlot> driveCells(DriveBlockEntity drive, String hostKey,
+    @Nullable
+    private static Integer drivePriority(Object owner) {
+        if (owner instanceof IPriorityHost host) {
+            return host.getPriority();
+        }
+        return readStoragePriority(owner);
+    }
+
+    /** 一台驱动器格式宿主在表格里的一组：它自己就是一个首格单。 */
+    private static DriveEntry driveEntry(Object owner, DriveView drive, @Nullable CellUsageCache usage) {
+        String hostKey = keyOf(owner);
+        Integer priority = drivePriority(owner);
+        return new DriveEntry(hostKey, nameOf(owner), iconOf(owner),
+                priority != null ? Integer.toString(priority) : PRIORITY_UNKNOWN,
+                driveCells(drive, hostKey, usage), priority, false);
+    }
+
+    /**
+     * 一台驱动器格式宿主的格表。它自己就是一个首格单，所以首格键就是它的宿主键。
+     *
+     * <p><b>有意识不按契约上那句「先查 {@code isPowered()} 再提供其它信息」做</b>：那句是给指示灯与视觉
+     * 状态的口径，而这张表的正事是把断电驱动器里的元件取回来——元件库存与格位都挂在方块实体上，与
+     * 通电无关，照那句做会让离线那台整台消失。代价是离线驱动器那些格的两根占用条都是 0（与空盘同形）。
+     * 读不动的那一台由 {@code scan} 的逐台收口跳过。</p>
+     */
+    private static List<CellHostListPayload.CellSlot> driveCells(DriveView drive, String hostKey,
             @Nullable CellUsageCache usage) {
-        var cells = new ArrayList<CellHostListPayload.CellSlot>(drive.getCellCount());
-        for (int slot = 0; slot < drive.getCellCount(); slot++) {
-            ItemStack stack = drive.getInternalInventory().getStackInSlot(slot);
+        var cells = new ArrayList<CellHostListPayload.CellSlot>(drive.cellCount());
+        for (int slot = 0; slot < drive.cellCount(); slot++) {
+            ItemStack stack = drive.stackInSlot(slot);
             // 空格也占一条：稠密表下「列表下标 == 物理格位」，显示列号才能直接当格位用；
             // 只装有元件的格会在有间隔时错位，取放会落到另一格上。
             cells.add(isStorageCell(stack)
-                    ? describeCell(stack, usage != null ? drive.getCellInventory(slot) : null, hostKey, slot, hostKey,
+                    ? describeCell(stack, usage != null ? drive.cellInventory(slot) : null, hostKey, slot, hostKey,
                             usage)
                     : emptySlot(hostKey, slot, hostKey));
         }
@@ -304,25 +410,74 @@ public final class CellDriveScanner {
     }
 
     /**
-     * 这个物品是不是「存储」元件。
+     * 这个物品是不是「存储」元件——两种格式之一。
      *
      * <p>必须过滤：ECO 与青春版的闪存晶阵（计算单元）同样长着 {@code getCellStack()}，不筛就会把计算元件
-     * 当成存储元件列出来。判定用类型而不是物品 id：AE2 系认 {@link IBasicCellItem} 与它的元存处理器，
-     * ECO 系认名字里的 {@code IECOStorageCellItem}（可选依赖，不能直接引用那个接口）。</p>
+     * 当成存储元件列出来。判定一律用类型而不是物品 id：AE2 系认 {@link IBasicCellItem} 与它的元存处理器，
+     * ECO 系先问注册进来的探针、探针缺席才兜底认名字（可选依赖，不能直接引用那个接口），见
+     * {@link #isMatrixFormatCell}。</p>
+     *
+     * <p>这一条只回答「能不能当存储显示」。往格子里放东西要按格式对上，用
+     * {@link #isDriveFormatCell} 与 {@link #isMatrixFormatCell}，见 {@link #insertCell}。</p>
      */
     public static boolean isStorageCell(ItemStack stack) {
+        return isDriveFormatCell(stack) || isMatrixFormatCell(stack);
+    }
+
+    /**
+     * AE2 标准驱动器格式的元件——AE2 自己的 cell handler 认得的那一批。
+     *
+     * <p>判据与 AE2 驱动器库存的 filter 逐字相同（{@code IBasicCellItem} 或 {@code StorageCells.isCellHandled}），
+     * 所以我们的闸门与驱动器自己的闸门不会给出两种答案。</p>
+     */
+    public static boolean isDriveFormatCell(ItemStack stack) {
         if (stack.isEmpty()) {
             return false;
         }
-        if (stack.getItem() instanceof IBasicCellItem || StorageCells.isCellHandled(stack)) {
+        return stack.getItem() instanceof IBasicCellItem || StorageCells.isCellHandled(stack);
+    }
+
+    /**
+     * ECO 家族认得的存储矩阵。
+     *
+     * <p>先问集成层注册的 {@link CellFormatProbe}（ECO 侧的回答就是它自己的 {@code ECOStorageCells.isCellHandled}），
+     * 没注册时才退回按接口名探——青春版的元件不在我们的编译面上，只能按名字认。两条都不成立就不算矩阵：
+     * 多拒一格不丢东西，错收一张谁也读不出内容的元件才是真麻烦。</p>
+     */
+    public static boolean isMatrixFormatCell(ItemStack stack) {
+        if (stack.isEmpty()) {
+            return false;
+        }
+        CellFormatProbe probe = matrixProbe;
+        if (probe != null && probe.isMatrix(stack)) {
             return true;
         }
-        // ECO 系：认 api.storage.IBasicECOCellItem——它自己继承 AE2 的 ICellWorkbenchItem 与 ECO 的
-        // IECOStorageCellItem。连接口与它们的父接口一起比，免得某个元件只是继承了其中一条名字。
+        // 兜底按接口名：ECO 系元件的 IBasicECOCellItem 继承 AE2 的 ICellWorkbenchItem 与 ECO 的
+        // IECOStorageCellItem，连接口与父接口一起比，免得某个元件只继承了其中一条名字。
         return implementsAny(stack.getItem().getClass(), ECO_CELL_INTERFACES);
     }
 
-    /** ECO 系存储元件的接口名（按名字比：ECO 是可选依赖，不能直接引用它的接口）。 */
+    /**
+     * 「存储矩阵格式」的探针，由 {@code integration/} 层在邻居模组在场时注册进来。
+     *
+     * <p>本类在总是加载的 {@code main} 源集里，不能出现邻居模组的类型名——缺那个模组时连这个类都加载不了。
+     * 注册 {@link PriorityAdapter} 用的是同一套路子。按上游的 handler 名单问比按名字猜准：ECO 搬过包也改过名，
+     * 名字匹配整批漏认时，矩阵会被自己的闸门挡在矩阵座外面。</p>
+     */
+    public interface CellFormatProbe {
+
+        /** 这张栈是不是该家族认得的存储矩阵。 */
+        boolean isMatrix(ItemStack stack);
+    }
+
+    private static volatile CellFormatProbe matrixProbe;
+
+    /** 由集成层注册一次；重复注册以最后一次为准，传 null 表示撤掉探针（退回按接口名的兜底）。 */
+    public static void registerMatrixProbe(@Nullable CellFormatProbe probe) {
+        matrixProbe = probe;
+    }
+
+    /** ECO 系存储元件的接口名（{@link #isMatrixFormatCell} 的兜底：青春版没有编译期契约，只能按名字比）。 */
     private static final java.util.Set<String> ECO_CELL_INTERFACES = java.util.Set.of(
             "IBasicECOCellItem", "IECOStorageCellItem");
 
@@ -439,19 +594,34 @@ public final class CellDriveScanner {
      * <p>AE2 与 EAE 走驱动器库存；ECO 家族是单格元件座，只有第 0 格，且只能整格取走。</p>
      */
     public static ItemStack extractCell(Object owner, int slot, AtomicReference<ExtractResult> reason) {
+        try {
+            return doExtractCell(owner, slot, reason);
+        } catch (RuntimeException broken) {
+            // 认出来的宿主可能来自任何模组，读它的格位就会抛：抛了只是这一台取不动，不进点击链。
+            LOGGER.debug("[cell-mgmt] 取件时宿主抛了：{}", owner.getClass().getName(), broken);
+            if (reason != null) {
+                reason.set(ExtractResult.REFUSED);
+            }
+            return ItemStack.EMPTY;
+        }
+    }
+
+    /** 取件的实际过程；异常收口在 {@link #extractCell} 那一层。 */
+    private static ItemStack doExtractCell(Object owner, int slot, AtomicReference<ExtractResult> reason) {
         if (reason != null) {
             reason.set(ExtractResult.EMPTY);
         }
-        if (owner instanceof DriveBlockEntity drive) {
-            if (slot < 0 || slot >= drive.getCellCount()) {
+        DriveView drive = driveViewOf(owner);
+        if (drive != null) {
+            if (slot < 0 || slot >= drive.cellCount()) {
                 return ItemStack.EMPTY;
             }
-            ItemStack current = drive.getInternalInventory().getStackInSlot(slot);
+            ItemStack current = drive.stackInSlot(slot);
             if (current.isEmpty()) {
                 return ItemStack.EMPTY;
             }
-            drive.getInternalInventory().setItemDirect(slot, ItemStack.EMPTY);
-            boolean taken = drive.getInternalInventory().getStackInSlot(slot).isEmpty();
+            drive.setStackDirect(slot, ItemStack.EMPTY);
+            boolean taken = drive.stackInSlot(slot).isEmpty();
             if (reason != null) {
                 // 格里有东西却没变空同样是「取不出来」，不能报成「这一格没有元件」。
                 reason.set(taken ? ExtractResult.OK : ExtractResult.REFUSED);
@@ -511,42 +681,71 @@ public final class CellDriveScanner {
         invoke(owner, "removeCell");
     }
 
-    /** 把元件放回驱动器原来的格位；放不下或对方没收下返回 false。 */
-    public static boolean insertCell(Object owner, int slot, ItemStack stack) {
+    /**
+     * 这台宿主收不收这一类元件到这一格：只看格式与宿主自己的过滤，<b>不</b>看这一格空不空。纯探，不写。
+     *
+     * <p>给「先取出、改写、再放回」的批量操作用（压缩统一管理就是这么走的）：那种地方目标格在放回前
+     * 必然已被自己腾空，要问的是「这一类东西它到底收不收」——取出来放不回去就是丢东西。</p>
+     *
+     * <p>它只保证「格式对得上、宿主自己的过滤也没说不收」这一层，<b>不</b>保证那一格此刻仍空、也不保证
+     * 里面仍是这张栈：写入侧 {@link #insertCell} 还会再问一次格位并回读确认。预探通过不等于写回必然成功。</p>
+     */
+    public static boolean canAcceptCell(Object owner, int slot, ItemStack stack) {
         if (stack.isEmpty()) {
             return false;
         }
-        if (owner instanceof DriveBlockEntity drive) {
-            // 写前先判：驱动器只收存储元件，绕过它的过滤会把任意物品停在元件格里。
-            if (slot < 0 || slot >= drive.getCellCount() || !isStorageCell(stack)
-                    || !drive.getInternalInventory().getStackInSlot(slot).isEmpty()) {
+        try {
+            DriveView drive = driveViewOf(owner);
+            if (drive != null) {
+                // 驱动器格式只收 AE2 认得的元件。写入要用 setItemDirect（写完能原样回读），而它按定义绕过
+                // 宿主库存的 filter；ECO 的存储矩阵同样过得了 isStorageCell——不在这里挡一次，矩阵就停在
+                // ME 驱动器的格子里，两边的存储 Provider 都不认它，谁也读不出那格里放着什么。
+                return slot >= 0 && slot < drive.cellCount() && isDriveFormatCell(stack)
+                        && drive.accepts(slot, stack);
+            }
+            // 反选：单格元件座只收它那一族认得的存储矩阵。判据落在 ECO 的公开 API 上（见 registerMatrixProbe），
+            // 不靠对方恰好报了 isItemValid——青春版那条没报，而 AE2 的元件一旦停进矩阵座同样是读不出来的东西。
+            // 对方报了就听它的（ECO 用它挡无限模式的成员矩阵）；问不到才放行，写完仍然要回读确认。
+            return slot == 0 && isMatrixFormatCell(stack) && acceptsCell(owner, stack);
+        } catch (RuntimeException broken) {
+            // 读第三方格位就会抛：抛了按「不收」处理，不把异常送进点击链，也不让预探变成一次写入的邀请。
+            LOGGER.debug("[cell-mgmt] 问宿主收不收这张元件时它抛了：{}", owner.getClass().getName(), broken);
+            return false;
+        }
+    }
+
+    /** 把元件放进指定的格位；这一格已被占、格式不对或对方没收下返回 false。 */
+    public static boolean insertCell(Object owner, int slot, ItemStack stack) {
+        if (!canAcceptCell(owner, slot, stack)) {
+            return false;
+        }
+        try {
+            DriveView drive = driveViewOf(owner);
+            if (drive != null) {
+                if (!drive.stackInSlot(slot).isEmpty()) {
+                    return false;
+                }
+                drive.setStackDirect(slot, stack);
+                return ItemStack.isSameItemSameComponents(drive.stackInSlot(slot), stack);
+            }
+            Object current = invoke(owner, "getCellStack");
+            // 空位在 ECO 那边是 null（它的字段初值就是 null，清格也用 null），空栈只是另一位面的口径：
+            // 两者都算空，只有「真有一个元件」时才拒。
+            if (current instanceof ItemStack existing && !existing.isEmpty()) {
                 return false;
             }
-            drive.getInternalInventory().setItemDirect(slot, stack);
-            return ItemStack.isSameItemSameComponents(drive.getInternalInventory().getStackInSlot(slot), stack);
-        }
-        if (slot != 0) {
-            return false;
-        }
-        Object current = invoke(owner, "getCellStack");
-        // 空位在 ECO 那边是 null（它的字段初值就是 null，清格也用 null），空栈只是另一位面的口径：
-        // 两者都算空，只有「真有一个元件」时才拒。
-        if (current instanceof ItemStack existing && !existing.isEmpty()) {
-            return false;
-        }
-        // 写前先问对方收不收（ECO 有 public isItemValid(ItemStack)）：它拒收是静默的，不回读就会
-        // 「光标被清空、驱动器还是空的」——东西直接没了。
-        if (!acceptsCell(owner, stack)) {
-            return false;
-        }
-        if (!setCellStack(owner, stack)) {
-            // 青春版的 L1 驱动器用 insertCell(ItemStack)；它收下返回 true，拒收返回 false。
-            if (!Boolean.TRUE.equals(invokeItem(owner, "insertCell", stack))) {
+            // 写完必须回读：ECO 的 setCellStack 返回 void 且会静默拒收，只看返回值会把东西弄丢。
+            if (!setCellStack(owner, stack)
+                    && !Boolean.TRUE.equals(invokeItem(owner, "insertCell", stack))) {
+                // 青春版的 L1 驱动器没有 setCellStack，用的是 insertCell(ItemStack)：收下返回 true。
                 return false;
             }
+            Object after = invoke(owner, "getCellStack");
+            return after instanceof ItemStack placed && ItemStack.isSameItemSameComponents(placed, stack);
+        } catch (RuntimeException broken) {
+            LOGGER.debug("[cell-mgmt] 放入时宿主抛了：{}", owner.getClass().getName(), broken);
+            return false;
         }
-        Object after = invoke(owner, "getCellStack");
-        return after instanceof ItemStack placed && ItemStack.isSameItemSameComponents(placed, stack);
     }
 
     /** 这台单格座收不收这张元件：问它自己的校验方法，问不到（第三方换名字）就放行。 */

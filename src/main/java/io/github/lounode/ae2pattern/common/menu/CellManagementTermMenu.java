@@ -548,9 +548,10 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         // 只交一份：元件本身不可堆叠，而对方若在内部 copyWithCount(1)（青春版就是这么写的），
         // 整栈交过去会让多出来的份数静默消失。
         if (!CellDriveScanner.insertCell(owner, driveSlot, carried.copyWithCount(1))) {
-            // 失败原因就那三种（格位已被占、驱动器不收这类东西、写完被回读判为没生效）。AE2 原生的驱动器槽
-            // 也是静默拒收（槽位 filter 直接挡掉，不提示玩家），这里跟着不出声；该拦的仍然拦。
-            LOGGER.debug("[cell-mgmt] 这台主机不收这张元件，丢弃这次放入");
+            // 失败原因就那四种（格式不符、宿主自己的过滤拒收、这一格已被占、写完回读判为没生效）。AE2 原生
+            // 的驱动器槽也是静默拒收（filter 直接挡掉，不提示玩家），这里跟着不出声；该拦的仍然拦。
+            LOGGER.debug("[cell-mgmt] 放入被拒：宿主 {} 格 {}，原因是「格式不符 / 宿主不收 / 格位已占 / 回读不等」之一"
+                    + "，丢弃这次放入", driveKey, driveSlot);
             return;
         }
         // 光标上还剩更多份时只减一份（当前元件不可堆叠，走不到，但不能在这埋一个吞东西的写法）。
@@ -816,7 +817,11 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
      * 谁都没东西的链先给主矩阵，按它的格数上限收，装不下的再回落到第一个列出它的矩阵。主矩阵自己列出的链
      * 排在吸收的前面，不会被外来链挤掉。一台矩阵内部抄了两遍的也一并并掉。</p>
      *
-     * <p>改动走终端已有的取放路：从宿主取出、改副本、放回原格；放不回去就把原件塞回去，宁可什么都不改。</p>
+     * <p>改动走终端已有的取放路：先问这台宿主收不收这一类元件，收才动手；取出、改副本、放回原格，
+     * 写回失败就把原件塞回去，连原件都塞不回则掉在玩家脚下，宁可什么都不改。</p>
+     *
+     * <p>收不下的站点（宿主不收这一类元件）在收集阶段就被排除，不参与归属分配：表里照样列，但一条链
+     * 都不会被判给它——否则回执数与实际写入会分家。</p>
      */
     public void consolidateEcoBulkMarkers() {
         if (!onServerSide()) {
@@ -881,13 +886,24 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         var sites = new ArrayList<BulkSite>();
         var grid = gridOrNull();
         if (grid != null) {
+            // 宿主按键回读，同一台下面几十格：记一次就够，别每格重扫一遍网络。
+            var ownerByKey = new java.util.HashMap<String, Object>();
             for (var entry : CellDriveScanner.scan(grid, false)) {
                 for (var cell : entry.cells()) {
-                    var site = siteOf(cell.hostKey(), cell.hostSlot(), cell.stack(), entry.priorityValue(), entry.ecoHost());
-                    if (site != null && !entry.ecoHost() && MISPLACED.add(cell.hostKey() + "|" + cell.stack().getItem())) {
-                        LOGGER.warn("[cell-mgmt] 大宗元件 {} 放在非 ECO 主机 {} 里：它不在 ECO 存储系统内，聚合仍按该驱动器的优先级排序",
-                                cell.stack().getItem(), cell.hostKey());
+                    var owner = ownerByKey.computeIfAbsent(cell.hostKey(),
+                            key -> CellDriveScanner.findOwner(grid, key));
+                    if (owner == null || !CellDriveScanner.canAcceptCell(owner, cell.hostSlot(), cell.stack())) {
+                        // 写不回去的站点不进聚合名单（ECO 的矩阵躺在 AE2 驱动器里就是这样）。留着它，计划会
+                        // 把链判给一台必定收不下的宿主、别处的重复标记照删，账面报了条数而实际一格没改。
+                        // 先问这一句再开 Site：读一张矩阵的账不便宜。
+                        if (MISPLACED.add(cell.hostKey() + "|" + cell.stack().getItem())) {
+                            LOGGER.warn("[cell-mgmt] 大宗元件 {} 放在宿主 {} 里：这台宿主不收这一类元件，"
+                                    + " 它只出现在表里，不作为聚合目标", cell.stack().getItem(), cell.hostKey());
+                        }
+                        continue;
                     }
+                    var site = siteOf(cell.hostKey(), cell.hostSlot(), cell.stack(),
+                            entry.priorityValue(), entry.ecoHost());
                     if (site != null) {
                         sites.add(site);
                     }
@@ -1074,6 +1090,11 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         if (owner == null) {
             return ApplyResult.FAILED;
         }
+        if (!CellDriveScanner.canAcceptCell(owner, site.driveSlot(), site.stack())) {
+            // 这台宿主不收这一类元件（ECO 的矩阵躺在 AE2 驱动器里就是这样）：一动就是「取出来放不回去」，
+            // 所以连这次往返都不开始。
+            return ApplyResult.FAILED;
+        }
         var taken = CellDriveScanner.extractCell(owner, site.driveSlot(), null);
         if (taken.isEmpty()) {
             // 这台现在不让动（无限存储迁移中、矩阵还没成型），跳过它而不是硬来。
@@ -1083,7 +1104,11 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         var replacement = CellBulkCutoffCompat.open(modified);
         if (replacement == null || !replacement.setMarkers(markers)
                 || !CellDriveScanner.insertCell(owner, site.driveSlot(), modified)) {
-            CellDriveScanner.insertCell(owner, site.driveSlot(), taken);
+            // 写回失败就原样塞回去；连原件都塞不回（宿主刚被拆、或口径变了）也不能凭空吞掉——掉在玩家脚下。
+            if (!CellDriveScanner.insertCell(owner, site.driveSlot(), taken)) {
+                LOGGER.info("[cell-mgmt] 大宗矩阵写回失败且原件放不回去，已掉在玩家脚下：{}", site.stack().getItem());
+                getPlayer().drop(taken, false);
+            }
             return ApplyResult.FAILED;
         }
         return ApplyResult.APPLIED;

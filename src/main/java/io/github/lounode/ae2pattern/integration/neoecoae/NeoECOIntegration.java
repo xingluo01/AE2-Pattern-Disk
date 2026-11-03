@@ -56,6 +56,9 @@ public class NeoECOIntegration {
         guarded("the encoding terminal upload", NeoECOIntegration::wireEncodingTerminalUpload);
         guarded("the parallel intake registration", NeoECOIntegration::registerParallelIntake);
         guarded("the bulk cell cutoff bridge", NeoECOIntegration::registerBulkCutoff);
+        // 存储矩阵的归属问 ECO 自己的 handler 名单（api.storage.ECOStorageCells），不靠接口名猜；
+        // 缺 ECO 时这段不执行，扫描器留在按接口名的兜底上。
+        guarded("the storage matrix format probe", () -> EcoCellFormat.register());
         // issue #119 落地后优先级读写走公开契约；本类由 ECO 的 IntegrationManager 调起，ECO 不在场时这段不执行，
         // 所以直接引用契约类型即可，不再按类名探。地板 [21.2.12,) 由 mods.toml 保证：ECO 太旧时整包停在加载
         // 阶段并报出区间，ECO 不在场时这段根本不执行。
