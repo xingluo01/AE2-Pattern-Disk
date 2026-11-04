@@ -67,12 +67,6 @@ import io.github.lounode.ae2pattern.network.CellHostListPayload;
  */
 public final class CellDriveScanner {
 
-    /** 节点扫描也会遇到大量非存储机器，按类缓存缺失方法，避免每轮为它们重复创建异常。 */
-    private static final ClassValue<ConcurrentMap<String, Optional<Method>>> METHODS = new ClassValue<>() {
-        @Override protected ConcurrentMap<String, Optional<Method>> computeValue(Class<?> type) {
-            return new ConcurrentHashMap<>();
-        }
-    };
 
     /** 读不动的宿主与抛异常的邻居都要留痕，否则「这台为什么不在表里」只能靠猜。 */
     private static final Logger LOGGER = LoggerFactory.getLogger("ae2_pattern_disk.cell");
@@ -275,7 +269,7 @@ public final class CellDriveScanner {
         if (cellCount <= 0 || cellCount > MAX_DRIVE_SLOTS) {
             return null;
         }
-        Object inventory = invoke(owner, "getInternalInventory");
+        Object inventory = CellProbe.invoke(owner, "getInternalInventory");
         // 库存长度要与契约格数逐一相等：短了逐格读会越界，长了意味着第 0 格不一定是元件格——按错位的
         // 下标取放会把东西写进别的格子，那是丢东西而不是少一列。
         if (!(inventory instanceof InternalInventory internal) || internal.size() != cellCount) {
@@ -339,19 +333,19 @@ public final class CellDriveScanner {
      * <p>返回 null 表示这台机器不是这个家族的存储驱动器；返回它本身表示它就是个单格元件座、没有子系统。</p>
      */
     private static Object storageSubsystemOf(Object owner) {
-        Object controller = invoke(owner, "getStorageController");
+        Object controller = CellProbe.invoke(owner, "getStorageController");
         if (controller != null) {
             return controller;
         }
-        Object cluster = invoke(owner, "getCluster");
-        return cluster != null ? invoke(cluster, "getController") : null;
+        Object cluster = CellProbe.invoke(owner, "getCluster");
+        return cluster != null ? CellProbe.invoke(cluster, "getController") : null;
     }
 
     /** 主机下所有存储矩阵驱动器;的顺序读不出来时退回空表（只丢那个子系统的格，不影响其它驱动器）。 */
     @SuppressWarnings("unchecked")
     private static List<Object> drivesOfSubsystem(Object subsystem) {
-        Object cluster = invoke(subsystem, "getCluster");
-        Object drives = cluster != null ? invoke(cluster, "getDrives") : null;
+        Object cluster = CellProbe.invoke(subsystem, "getCluster");
+        Object drives = cluster != null ? CellProbe.invoke(cluster, "getDrives") : null;
         return drives instanceof List<?> list ? (List<Object>) list : List.of();
     }
 
@@ -400,12 +394,12 @@ public final class CellDriveScanner {
     private static void appendCellOf(List<CellHostListPayload.CellSlot> out, Object drive, String leaderKey,
             @Nullable CellUsageCache usage) {
         String hostKey = keyOf(drive);
-        Object cell = invoke(drive, "getCellStack");
+        Object cell = CellProbe.invoke(drive, "getCellStack");
         if (!(cell instanceof ItemStack stack) || !isStorageCell(stack)) {
             out.add(emptySlot(hostKey, 0, leaderKey));
             return;
         }
-        Object storage = usage != null ? asStorage(invoke(drive, "getCellInventory")) : null;
+        Object storage = usage != null ? asStorage(CellProbe.invoke(drive, "getCellInventory")) : null;
         out.add(describeCell(stack, (MEStorage) storage, hostKey, 0, leaderKey, usage));
     }
 
@@ -539,7 +533,7 @@ public final class CellDriveScanner {
         if (stack.getItem() instanceof IBasicCellItem basic) {
             return Math.max(0, basic.getTotalTypes(stack));
         }
-        Object value = invoke(stack.getItem(), "getTotalTypes");
+        Object value = CellProbe.invoke(stack.getItem(), "getTotalTypes");
         return value instanceof Integer types ? Math.max(0, types) : 0;
     }
 
@@ -548,7 +542,7 @@ public final class CellDriveScanner {
         if (stack.getItem() instanceof IBasicCellItem basic) {
             return Math.max(0, basic.getBytes(stack));
         }
-        Object value = invoke(stack.getItem(), "getBytes");
+        Object value = CellProbe.invoke(stack.getItem(), "getBytes");
         return value instanceof Long bytes ? Math.max(0, bytes) : 0;
     }
 
@@ -631,14 +625,14 @@ public final class CellDriveScanner {
         if (slot != 0) {
             return ItemStack.EMPTY;
         }
-        Object current = invoke(owner, "getCellStack");
+        Object current = CellProbe.invoke(owner, "getCellStack");
         if (!(current instanceof ItemStack stack) || stack.isEmpty()) {
             return ItemStack.EMPTY;
         }
         // 单格座：清格用 null——ECO 的 setCellStack 对空栈会静默拒收（它的 isCellHandled(EMPTY) 是 false），
         // 它自己清格用的就是 null。清完必须回读：没真变空就是没取到（不能算「取了但原件还在」的复制）。
         clearCellStack(owner);
-        Object after = invoke(owner, "getCellStack");
+        Object after = CellProbe.invoke(owner, "getCellStack");
         if (after instanceof ItemStack left && !left.isEmpty()) {
             // 回读发现格子里还是原来那张：格里有东西却没取走。能问到锁的（ECO 无限存储迁移/成型）报 LOCKED，
             // 问不到的报 REFUSED——两者都比默认的 EMPTY 诚实：默认值会让玩家听到「这一格没有元件」，而格
@@ -662,7 +656,7 @@ public final class CellDriveScanner {
      * ——静默拒收，回读只能看出「没取到」，看不出「为什么」。纯探测，不做任何写入。</p>
      */
     public static boolean canExtract(Object owner) {
-        Object value = invoke(owner, "canExtractCell");
+        Object value = CellProbe.invoke(owner, "canExtractCell");
         return !(value instanceof Boolean allowed) || allowed;
     }
 
@@ -678,7 +672,7 @@ public final class CellDriveScanner {
     private static void clearCellStack(Object owner) {
         setCellStack(owner, null);
         setCellStack(owner, ItemStack.EMPTY);
-        invoke(owner, "removeCell");
+        CellProbe.invoke(owner, "removeCell");
     }
 
     /**
@@ -728,7 +722,7 @@ public final class CellDriveScanner {
                 drive.setStackDirect(slot, stack);
                 return ItemStack.isSameItemSameComponents(drive.stackInSlot(slot), stack);
             }
-            Object current = invoke(owner, "getCellStack");
+            Object current = CellProbe.invoke(owner, "getCellStack");
             // 空位在 ECO 那边是 null（它的字段初值就是 null，清格也用 null），空栈只是另一位面的口径：
             // 两者都算空，只有「真有一个元件」时才拒。
             if (current instanceof ItemStack existing && !existing.isEmpty()) {
@@ -740,7 +734,7 @@ public final class CellDriveScanner {
                 // 青春版的 L1 驱动器没有 setCellStack，用的是 insertCell(ItemStack)：收下返回 true。
                 return false;
             }
-            Object after = invoke(owner, "getCellStack");
+            Object after = CellProbe.invoke(owner, "getCellStack");
             return after instanceof ItemStack placed && ItemStack.isSameItemSameComponents(placed, stack);
         } catch (RuntimeException broken) {
             LOGGER.debug("[cell-mgmt] 放入时宿主抛了：{}", owner.getClass().getName(), broken);
@@ -817,128 +811,36 @@ public final class CellDriveScanner {
         boolean write(Object owner, int value);
     }
 
-    private static volatile PriorityAdapter priorityAdapter;
-
     /** 由集成层在邻居模组在场时调用一次；重复注册以最后一次为准。 */
     public static void registerPriorityAdapter(PriorityAdapter adapter) {
-        priorityAdapter = adapter;
+        CellStoragePriority.register(adapter);
     }
 
-    /**
-     * 存储优先级：ECO 挂在存储控制器上（不是像 AE2 那样挂在单个驱动器上），青春版挂在它自己的 L1 宿主上。
-     * 两条路都按方法名探，探不到就认不出。
-     *
-     * <p>邻居模组把契约公开之后（ECO 21.2.6 的 {@code api.storage.IECOStoragePriorityHost}），集成层可以注册
-     * 一个 {@link PriorityAdapter} 抢先接管；没注册（或缺那个模组）时继续走方法名反射，行为与从前一致。</p>
-     *
-     * @return 读不到返回 null（表格那列就是「—」）
-     */
+    /** 存储优先级；读不到返回 null（表格那列就是「—」）。 */
     @Nullable
     public static Integer readStoragePriority(Object owner) {
-        PriorityAdapter adapter = priorityAdapter;
-        if (adapter != null && adapter.handles(owner)) {
-            Integer contracted = adapter.read(owner);
-            if (contracted != null) {
-                return contracted;
-            }
-        }
-        Object controller = storageController(owner);
-        Object priority = controller != null ? invoke(controller, "getStoragePriority") : null;
-        return priority instanceof Integer value ? value : null;
+        return CellStoragePriority.read(owner);
     }
 
-    /** 这台设备的优先级**写不写得进去**：只有读没有写时不给入口。 */
+    /** 这台设备的优先级写不写得进去。 */
     public static boolean canSetStoragePriority(Object owner) {
-        if (owner instanceof IPriorityHost) {
-            return true;
-        }
-        PriorityAdapter adapter = priorityAdapter;
-        if (adapter != null && adapter.handles(owner)) {
-            // 接口在手：它有抽象 setter，编译期就能确认写得进去。
-            return true;
-        }
-        return hasIntSetter(owner) || hasIntSetter(storageController(owner));
+        return CellStoragePriority.canSet(owner);
     }
 
-    /**
-     * 探 {@code setStoragePriority(int)}。
-     *
-     * <p>为什么入口判据是“可写”而不是“可读”：AE2 的优先级界面只把值交给宿主，不读回也不报错，所以对着一个
-     * 只有 getter 的设备（ECO 21.2.1–21.2.5 就是：它的 setter 是私有的、还要玩家参数）确认下去只会让玩家以为改成了。</p>
-     */
-    private static boolean hasIntSetter(@Nullable Object target) {
-        if (target == null) {
-            return false;
-        }
-        try {
-            target.getClass().getMethod("setStoragePriority", int.class);
-            return true;
-        } catch (ReflectiveOperationException | RuntimeException absent) {
-            return false;
-        }
+    /** 写优先级；写不进去返回 false（调用方据此报「只读」，不假装成功）。 */
+    public static boolean setStoragePriority(Object owner, int value) {
+        return CellStoragePriority.write(owner, value);
+    }
+
+    /** 这台设备的存储控制器（集成层的适配器要拿它做 {@code instanceof}）。 */
+    @Nullable
+    public static Object storageController(Object owner) {
+        return CellStoragePriority.controller(owner);
     }
 
     /** 表格里那列优先级显示什么：读不到就是「—」。 */
     private static String storagePriority(Object owner) {
-        Integer value = readStoragePriority(owner);
-        return value != null ? Integer.toString(value) : PRIORITY_UNKNOWN;
-    }
-
-    /**
-     * 把存储优先级写进这台设备的存储控制器；写不进去返回 false。
-     *
-     * <p>**不是每家都能写**：青春版的 L1 宿主一直是 public 的 {@code setStoragePriority(int)}；ECO 本体自
-     * 21.2.6 起把它公开并抽成了 {@code api.storage.IECOStoragePriorityHost}（更早的版本只有 getter，写必失败）。
-     * 写不进去就返回 false，调用方据此报一句「只读」，而不是假装写成功。</p>
-     */
-    public static boolean setStoragePriority(Object owner, int value) {
-        PriorityAdapter adapter = priorityAdapter;
-        if (adapter != null && adapter.handles(owner)) {
-            return adapter.write(owner, value);
-        }
-        Object controller = storageController(owner);
-        if (controller == null) {
-            return false;
-        }
-        try {
-            Method method = controller.getClass().getMethod("setStoragePriority", int.class);
-            method.invoke(controller, value);
-            return true;
-        } catch (ReflectiveOperationException | RuntimeException absent) {
-            return false;
-        }
-    }
-
-    /**
-     * 这台设备的存储控制器：ECO 本体在驱动器自己身上（{@code getStorageController()}），青春版在
-     * {@code getCluster().getController()}（驱动器没有前者，但继承了 {@code NEBlockEntity.getCluster()}）。
-     *
-     * <p>公开是给集成层的 {@link PriorityAdapter} 用：拿到它才能 {@code instanceof} 邻居那个优先级接口。</p>
-     */
-    @Nullable
-    public static Object storageController(Object owner) {
-        Object controller = invoke(owner, "getStorageController");
-        if (controller != null) {
-            return controller;
-        }
-        Object cluster = invoke(owner, "getCluster");
-        return cluster != null ? invoke(cluster, "getController") : null;
-    }
-
-    /** 无参方法按名字调；没有这个方法或调用失败都返回 null（可选依赖的常态）。 */
-    private static Object invoke(Object target, String name) {
-        try {
-            var method = METHODS.get(target.getClass()).computeIfAbsent(name, key -> {
-                try {
-                    return Optional.of(target.getClass().getMethod(key));
-                } catch (ReflectiveOperationException | RuntimeException absent) {
-                    return Optional.empty();
-                }
-            });
-            return method.isPresent() ? method.get().invoke(target) : null;
-        } catch (ReflectiveOperationException | RuntimeException absent) {
-            return null;
-        }
+        return CellStoragePriority.display(owner);
     }
 
     private static String nameOf(Object owner) {
