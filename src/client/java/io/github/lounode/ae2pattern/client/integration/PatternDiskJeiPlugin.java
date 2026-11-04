@@ -17,6 +17,9 @@ import io.github.lounode.ae2pattern.client.gui.AbstractPatternDiskTermScreen;
 import io.github.lounode.ae2pattern.client.gui.CellManagementTermScreen;
 import io.github.lounode.ae2pattern.client.gui.PatternDiskEncodingTermScreen;
 import io.github.lounode.ae2pattern.client.gui.PatternDiskManagementTermScreen;
+import io.github.lounode.ae2pattern.client.integration.ae2wtlib.CellManagementWirelessTermScreen;
+import io.github.lounode.ae2pattern.client.integration.ae2wtlib.PatternDiskWirelessEncodingTermScreen;
+import io.github.lounode.ae2pattern.client.integration.ae2wtlib.PatternDiskWirelessManagementTermScreen;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
 import io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessEncodingTermMenu;
@@ -63,20 +66,27 @@ public class PatternDiskJeiPlugin implements IModPlugin {
 
     @Override
     public void registerGuiHandlers(IGuiHandlerRegistration registration) {
-        // 拖拽入口在幽灵物品处理器里（见 JeiEncodingGhostHandler）：每个活动的 FakeSlot 各是一个目标。
-        // 管理终端是编码终端的子类，处理器表按屏幕 class 查、父类登记也能命中，但这里的实例只依赖
-        // getMenu()/getGuiLeft()，多登一条零成本，还能避免“最近的一层”被别家（比如 AE2 的 JEI 集成给
-        // AEBaseScreen 登的那条）抢在前头。
-        // 一条父类登记就够：JEI 查处理器会回溯父类，而本模组六个终端屏都在 AbstractPatternDiskTermScreen 之下。
-        registration.addGhostIngredientHandler(AbstractPatternDiskTermScreen.class,
-                sameHandler(new JeiEncodingGhostHandler()));
+        // 从 JEI 的物品列表 / 书签列表拖物品到标记分区，落点由幽灵处理器给出（见 JeiEncodingGhostHandler）。
+        //
+        // 逐「具体屏类」登记，不再只登 AbstractPatternDiskTermScreen 这一层：JEI 的处理器表按屏幕 class 查，
+        // 别的模组（AE2 自己的 JEI 集成、itemlists 那套）也会给 AEBaseScreen / MEStorageScreen 登处理器，
+        // 只靠父类回溯时，具体屏上谁先命中取决于登记顺序与 JEI 版本——表现就是「别的屏能拖，元件管理终端
+        // 拖不进去」。每个具体屏都点名一遍，兼容性不再赌别人的登记顺序；父类那条留作兜底。
+        var handler = new JeiEncodingGhostHandler();
+        registerGhost(registration, AbstractPatternDiskTermScreen.class, handler);
+        registerGhost(registration, PatternDiskEncodingTermScreen.class, handler);
+        registerGhost(registration, PatternDiskManagementTermScreen.class, handler);
+        registerGhost(registration, CellManagementTermScreen.class, handler);
+        registerGhost(registration, PatternDiskWirelessEncodingTermScreen.class, handler);
+        registerGhost(registration, PatternDiskWirelessManagementTermScreen.class, handler);
+        registerGhost(registration, CellManagementWirelessTermScreen.class, handler);
     }
 
-    /** 处理器不依赖具体屏类型，一个实例够所有屏用；JEI 的注册键要求泛型贴合每一层的类，这里按需转一道。 */
+    /** 处理器不依赖具体屏类型，一个实例够所有屏用；注册键的泛型按每一层的类转一道。 */
     @SuppressWarnings({ "unchecked", "rawtypes" })
-    private static <T extends net.minecraft.client.gui.screens.Screen> IGhostIngredientHandler<T> sameHandler(
+    private static void registerGhost(IGuiHandlerRegistration registration, Class<?> screenClass,
             IGhostIngredientHandler<AbstractPatternDiskTermScreen<?>> handler) {
-        return (IGhostIngredientHandler) handler;
+        registration.addGhostIngredientHandler((Class) screenClass, (IGhostIngredientHandler) handler);
     }
 
     @Override

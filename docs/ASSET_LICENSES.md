@@ -139,20 +139,25 @@ provider's panel model and inherits AE2's `part/pattern_provider_base`, while th
 `ae2:item/cable_interface`. Our panel model keeps this mod's own `pattern_disk_provider_sides*` for the
 status light; no Crystal Science model geometry is copied.
 
-**The marked provider now carries independent copies of this mod's provider textures:**
+**The marked provider uses its own block textures on both forms:**
 
 | File | Source |
 |------|--------|
-| `assets/ae2_pattern_disk/textures/block/marked_pattern_disk_provider.png` | byte-identical copy of `assets/ae2_pattern_disk/textures/block/pattern_provider.png` |
-| `assets/ae2_pattern_disk/textures/block/marked_pattern_disk_provider_alternate.png` | byte-identical copy of `assets/ae2_pattern_disk/textures/block/pattern_provider_alternate.png` |
-| `assets/ae2_pattern_disk/textures/block/marked_pattern_disk_provider_alternate_arrow.png` | byte-identical copy of `assets/ae2_pattern_disk/textures/block/pattern_provider_alternate_arrow.png` |
-| `assets/ae2_pattern_disk/textures/block/marked_pattern_disk_provider_alternate_front.png` | byte-identical copy of `assets/ae2_pattern_disk/textures/block/pattern_provider_alternate_front.png` |
+| `assets/ae2_pattern_disk/textures/block/marked_pattern_disk_provider.png` | this mod's own new marked-provider texture (no longer a copy) |
+| `assets/ae2_pattern_disk/textures/block/marked_pattern_disk_provider_alternate.png` | this mod's own new marked-provider texture (no longer a copy) |
+| `assets/ae2_pattern_disk/textures/block/marked_pattern_disk_provider_alternate_arrow.png` | this mod's own new marked-provider texture (no longer a copy) |
+| `assets/ae2_pattern_disk/textures/block/marked_pattern_disk_provider_alternate_front.png` | this mod's own new marked-provider texture (no longer a copy) |
 | `assets/ae2_pattern_disk/textures/part/marked_pattern_disk_provider.png` | byte-identical copy of `assets/ae2_pattern_disk/textures/part/pattern_disk_provider.png` |
 | `assets/ae2_pattern_disk/textures/part/marked_pattern_disk_provider_back.png` | byte-identical copy of `assets/ae2_pattern_disk/textures/part/pattern_disk_provider_back.png` |
 | `assets/ae2_pattern_disk/textures/part/marked_pattern_disk_provider_sides.png` | byte-identical copy of `assets/ae2_pattern_disk/textures/part/pattern_disk_provider_sides.png` |
 | `assets/ae2_pattern_disk/textures/part/marked_pattern_disk_provider_sides_status.png` | byte-identical copy of `assets/ae2_pattern_disk/textures/part/pattern_disk_provider_sides_status.png` |
 
-The sources are this mod's own AE2-derived textures, so these copies remain LGPL-3.0. The panel model still
-copies the geometry of AE2's `part/pattern_provider_base` (by Sea_Kerman), and the listing icon inherits
-`ae2:item/cable_interface`. Its GUI sheet is separately named
+The four `part/marked_pattern_disk_provider*.png` files above are still byte-identical copies of this mod's
+AE2-derived part textures and remain LGPL-3.0. The marked panel model and its cable-item model now point at
+the new `block/marked_pattern_disk_provider*` textures instead; only `sidesStatus` still uses its part copy,
+because the status-light strip is a functional overlay rather than a machine face. The other three part copies
+are kept in the repository but are no longer referenced by the marked provider.
+
+The panel model still copies the geometry of AE2's `part/pattern_provider_base` (by Sea_Kerman), and the
+listing icon inherits `ae2:item/cable_interface`. Its GUI sheet is separately named
 `textures/guis/marked_pattern_disk_provider.png`.

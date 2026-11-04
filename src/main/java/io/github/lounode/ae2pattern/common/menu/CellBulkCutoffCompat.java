@@ -52,6 +52,19 @@ public final class CellBulkCutoffCompat {
          */
         int storagePriority();
 
+        /**
+         * 这个键所在的可压缩链（含自身）；链成员多于一个才算「符合压缩链」，否则返回空表。
+         *
+         * <p>给<b>标记管理域</b>用：它要判断网络里某个还没被标记的物品该不该优先送进 ECO 压缩矩阵。
+         * 与 {@link #rawMarkers()} 的区别是那份只回答「这张盘已经标了什么」，这里要能问任意物品。
+         * 默认空表让没有压缩链查询能力的适配器（如 MEGA 那侧）自然退化成「都不是可压缩物品」。</p>
+         *
+         * <p>查询必须走副本、且要接住上游异常：ECO 查链会顺带做历史账户恢复并落盘。</p>
+         */
+        default List<AEKey> chainOf(AEKey key) {
+            return List.of();
+        }
+
         /** 现在能标多少条（含空位），随已装的扩容卡变。 */
         int capacity();
 

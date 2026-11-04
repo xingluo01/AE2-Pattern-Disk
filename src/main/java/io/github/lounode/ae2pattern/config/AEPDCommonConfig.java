@@ -58,11 +58,13 @@ public final class AEPDCommonConfig {
         MESSAGES.define(builder, "encoding_terminal.disk_refused.unknown",
                 "Shown when a disk refused the pattern for a reason without its own message.");
 
-        // ---- 元件管理终端：唯一一条服务端直发的回执（标记收藏的计数，且只在真有件没写进去时发） ----
+        // ---- 元件管理终端：两条服务端直发的回执（只在真有件没写进去或有跳过项时发） ----
         // 同终端的其余反馈走 CellNoticePayload 由客户端显示，那些开关在客户端配置里。
         builder.comment("Cell management terminal.");
         MESSAGES.define(builder, "cell_management_terminal.notice.mark_bookmarks",
                 "Shown after 'mark bookmarks' only when something could not be written (no room) or was skipped (not an item); the numbers say how many were marked / duplicated / had no room / were not items.");
+        MESSAGES.define(builder, "cell_management_terminal.notice.quick_mark",
+                "Shown after 'quick mark' only when something could not be written (no room) or was skipped (not an item); the numbers say how many were marked / duplicated / had no room / were not items.");
 
         // ---- 部件：扳手切换推送方向（动作栏） ----
         builder.comment("Provider part - wrench changes the push direction.");

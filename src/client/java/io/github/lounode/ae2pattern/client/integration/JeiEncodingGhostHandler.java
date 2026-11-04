@@ -14,6 +14,7 @@ import appeng.api.stacks.GenericStack;
 import appeng.menu.slot.FakeSlot;
 
 import io.github.lounode.ae2pattern.client.gui.AbstractPatternDiskTermScreen;
+import io.github.lounode.ae2pattern.common.menu.CellManagementTermMenu;
 
 /**
  * JEI 的幽灵物品处理器：把 JEI 里的物品拖进样板编辑区。
@@ -22,7 +23,9 @@ import io.github.lounode.ae2pattern.client.gui.AbstractPatternDiskTermScreen;
  * EMI 集成给 AE2 屏幕的通用拖放同一套规则（那边也是遍历 {@code menu.slots}、只认 {@code isActive()} 的
  * {@code FakeSlot}），所以两条路的手感一致。</p>
  *
- * <p>只设值、不自动编码写盘：是否写盘由玩家按「编写样板」决定。</p>
+ * <p>只设值、不自动编码写盘：是否写盘由玩家按「编写样板」决定。同一条通路也服务<b>元件管理终端的标记
+ * 分区</b>——那里每个活动着的 {@code FakeSlot} 背后是元件自己的 {@code ConfigInventory}，拖进来的物品
+ * 由 {@code SET_FILTER} 包落到服务端写成一格标记。</p>
  *
  * <p>曾接过 JEI 的 {@code quickMove}（「Shift+点击物品 → 用它的一条「产物是它」的配方填满编辑区」），两轮都
  * 没能稳定触发（JEI 只在鼠标下有可拖拽物品时才走这条路），已整体移除：连同那条配方查找链与 {@code runtime}
@@ -36,6 +39,12 @@ public class JeiEncodingGhostHandler implements IGhostIngredientHandler<Abstract
         // 只认得出来的类型：转换不了的东西（能量之类）不给目标，免得拖上去没反应还高亮一片。化学品等
         // 自定义 AEKeyType 由 AE2 的 JEI 桥提供，见 JeiIngredientConverters。
         if (JeiIngredientConverters.toGenericStack(ingredient) == null) {
+            return List.of();
+        }
+        // 元件管理终端的标记分区：编码槽里没有可编辑的元件时，槽底还画着但一格都收不下东西。
+        // 这时不给目标，免得从物品列表拖过来时高亮一片、松手却什么都没发生（与屏幕上槽底淡化的口径一致）。
+        if (screen.getMenu() instanceof CellManagementTermMenu cellMenu
+                && !cellMenu.isMarkerAreaEditable()) {
             return List.of();
         }
 

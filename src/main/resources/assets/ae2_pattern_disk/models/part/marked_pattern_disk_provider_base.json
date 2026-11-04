@@ -1,11 +1,11 @@
 {
-  "credit": "Panel geometry copied from AE2's part/pattern_provider_base model (by Sea_Kerman, LGPL-3.0); textures copied to this mod's namespace.",
+  "credit": "Panel geometry copied from AE2's part/pattern_provider_base model (by Sea_Kerman, LGPL-3.0). The machine faces use this mod's own marked-provider block textures (the new orange set); only the status-light strip stays on the generic part texture.",
   "textures": {
-    "sides": "ae2_pattern_disk:part/marked_pattern_disk_provider_sides",
+    "sides": "ae2_pattern_disk:block/marked_pattern_disk_provider",
     "sidesStatus": "ae2_pattern_disk:part/marked_pattern_disk_provider_sides_status",
-    "particle": "ae2_pattern_disk:part/marked_pattern_disk_provider_back",
-    "back": "ae2_pattern_disk:part/marked_pattern_disk_provider_back",
-    "front": "ae2_pattern_disk:part/marked_pattern_disk_provider"
+    "particle": "ae2_pattern_disk:block/marked_pattern_disk_provider",
+    "back": "ae2_pattern_disk:block/marked_pattern_disk_provider_alternate",
+    "front": "ae2_pattern_disk:block/marked_pattern_disk_provider_alternate_front"
   },
   "elements": [
     {

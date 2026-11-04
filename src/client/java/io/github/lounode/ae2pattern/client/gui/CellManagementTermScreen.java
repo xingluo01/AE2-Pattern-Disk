@@ -141,6 +141,10 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
     /** 「压缩统一管理」的图标（states.png 80,48）。 */
     private static final Blitter ICON_ECO_BULK_CONSOLIDATE = states(80, 48);
 
+    /** 「快捷标记」的图标：项目内 states.png 96,48，不是 ae2 那份。 */
+    private static final Blitter ICON_QUICK_MARK = states(96, 48);
+
+
     /** 「物质聚合模式」三档的图标，从左到右：虚空 / 物质球 / 奇点（states.png 一条 48x16）。序号就是模式的枚举序号。
      * 固定三格：EAE 将来加第四档时图标会重复最后一格（提示语仍按枚举名取键，不会指错人）——那时补一格贴图即可。 */
     private static final Blitter[] ICON_VOID_MODES = { states(0, 80), states(16, 80), states(32, 80) };
@@ -206,8 +210,9 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
     private int selectedEcoBulkSlot = -1;
     /** 上一次低频重算标记的客户端 tick；压缩链数据是异步同步的，不能只按元件内容失效。 */
     private long lastEcoBulkRefreshTick = Long.MIN_VALUE;
-    /** 「标记收藏」与「物质聚合模式」；后者只在编码槽里是 EAE 虚空元件时出现。 */
+    /** 「标记收藏」「快捷标记」与「物质聚合模式」；后者只在编码槽里是 EAE 虚空元件时出现。 */
     private StatesIconButton markBookmarksButton;
+    private StatesIconButton quickMarkButton;
     private StatesIconButton voidModeButton;
     /** 上一次给模式按钮设的提示对应哪一档（-1 = 还没设过）；只在它变了时重设，省得每帧造 Component。 */
     private int lastVoidMode = -1;
@@ -296,18 +301,31 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
                     () -> ICON_ECO_BULK_CONSOLIDATE, this::onEcoBulkConsolidatePressed);
             this.ecoBulkConsolidateButton.setBackground(BUTTON_BG_NORMAL, BUTTON_BG_HOVER);
             this.ecoBulkConsolidateButton.setTooltip(List.of(
-                    Component.translatable(
-                            "gui.ae2_pattern_disk.cell_management_terminal.eco_bulk_consolidate")));
+                    Component.translatable("gui.ae2_pattern_disk.cell_management_terminal.eco_bulk_consolidate"),
+                    Component.translatable("gui.ae2_pattern_disk.cell_management_terminal.eco_bulk_consolidate.desc"),
+                    Component.translatable("gui.ae2_pattern_disk.cell_management_terminal.mark_targets"),
+                    Component.translatable("gui.ae2_pattern_disk.cell_management_terminal.mark_target_eco")));
             this.ecoBulkConsolidateButton.setVisibility(false);
             addToLeftToolbar(this.ecoBulkConsolidateButton);
         }
 
-        // 两枚项目自己的图标按钮（states.png）。都做成“图标每帧现取”的那种：模式那枚的图标要跟着当前模式走。
+        // 三枚项目自己的图标按钮（states.png）。都做成“图标每帧现取”的那种：模式那枚的图标要跟着当前模式走。
         this.markBookmarksButton = new StatesIconButton(() -> ICON_MARK_BOOKMARKS, this::onMarkBookmarksPressed);
         this.markBookmarksButton.setBackground(BUTTON_BG_NORMAL, BUTTON_BG_HOVER);
         this.markBookmarksButton.setTooltip(List.of(
                 Component.translatable("gui.ae2_pattern_disk.cell_management_terminal.mark_bookmarks")));
         addToLeftToolbar(this.markBookmarksButton);
+
+        this.quickMarkButton = new StatesIconButton(() -> ICON_QUICK_MARK, this::onQuickMarkPressed);
+        this.quickMarkButton.setBackground(BUTTON_BG_NORMAL, BUTTON_BG_HOVER);
+        this.quickMarkButton.setTooltip(List.of(
+                Component.translatable("gui.ae2_pattern_disk.cell_management_terminal.quick_mark"),
+                Component.translatable("gui.ae2_pattern_disk.cell_management_terminal.quick_mark.desc"),
+                Component.translatable("gui.ae2_pattern_disk.cell_management_terminal.mark_targets"),
+                Component.translatable("gui.ae2_pattern_disk.cell_management_terminal.mark_target_eco"),
+                Component.translatable("gui.ae2_pattern_disk.cell_management_terminal.mark_target_bigger")));
+        this.quickMarkButton.setVisibility(false);
+        addToLeftToolbar(this.quickMarkButton);
 
         this.voidModeButton = new StatesIconButton(this::voidModeIcon, this::onVoidModePressed);
         this.voidModeButton.setBackground(BUTTON_BG_NORMAL, BUTTON_BG_HOVER);
@@ -364,7 +382,7 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
      */
     private static final List<String> TOOLBAR = List.of(
             "guide", "sortOrder", "terminalStyle", "partition", "clear", "copyMode",
-            "markBookmarks", "voidMode", "terminalSwitch", "frequencyCard", "frequencyAutoConnect",
+            "markBookmarks", "quickMark", "voidMode", "terminalSwitch", "frequencyCard", "frequencyAutoConnect",
             "megaCutoff", "ecoBulkCutoff", "ecoBulkCutoffSwitch", "ecoBulkConsolidate");
 
     @Override
@@ -396,6 +414,9 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
         }
         if (button == this.markBookmarksButton) {
             return "markBookmarks";
+        }
+        if (button == this.quickMarkButton) {
+            return "quickMark";
         }
         if (button == this.voidModeButton) {
             return "voidMode";
@@ -474,6 +495,11 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
         getMenu().markBookmarks(bookmarks.items(), bookmarks.nonItems());
     }
 
+    /** 「快捷标记」：整个标记管理域的分配在服务端算，这里只发一个无参动作。 */
+    private void onQuickMarkPressed(Button button) {
+        getMenu().quickMark();
+    }
+
     /** 「物质聚合模式」：往前循环，Shift 往回（与 MEGA 那枚同一手势）。 */
     private void onVoidModePressed(Button button) {
         getMenu().cycleVoidMode(Screen.hasShiftDown());
@@ -484,6 +510,21 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
         var stack = getMenu().getCellHost().getEncodeCellInventory().getStackInSlot(0);
         int mode = VoidCellCompat.modeOrdinal(stack);
         return ICON_VOID_MODES[Math.clamp(mode, 0, ICON_VOID_MODES.length - 1)];
+    }
+
+    /**
+     * 「快捷标记」的显隐：只在元件编码槽空着时出现。
+     *
+     * <p>编码槽里放着元件时，玩家是在编辑那一张；这两枚按钮动的却是网络里所有目标元件，摆在一起容易误按。
+     * 「统一压缩管理」同口径，见 {@link #updateEcoBulkButtons()}。</p>
+     */
+    private void syncQuickMarkButton() {
+        this.quickMarkButton.setVisibility(encodeSlotEmpty());
+    }
+
+    /** 元件编码槽里有没有元件：两枚全网批量按钮共用的判据。 */
+    private boolean encodeSlotEmpty() {
+        return getMenu().getCellHost().getEncodeCellInventory().getStackInSlot(0).isEmpty();
     }
 
     /**
@@ -548,8 +589,8 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
      * <p>标记列表随元件内容变（换元件、调级、别处改了这个元件），另外每 100 tick 重算一次：压缩链数据是
      * 客户端异步同步的，元件不变时也要能把刚到的链补上。选中槽在列表重建后仍按配置槽号保留。</p>
      *
-     * <p>显隐：装了 ECO 就常驻「压缩统一管理」；截断物与切换两枚只在编码槽那张元件有可压缩链时出现
-     * （不是大宗元件、或一条可压缩链都没有时，这两枚藏起来）。</p>
+     * <p>显隐：「统一压缩管理」只在 ECO 在场且编码槽空着时出现（与「快捷标记」同口径）；截断物与切换两枚
+     * 只在编码槽那张元件有可压缩链时出现（不是大宗元件、或一条可压缩链都没有时，这两枚藏起来）。</p>
      */
     private void syncEcoBulkButtons() {
         if (this.ecoBulkCutoffButton == null || this.ecoBulkCutoffSwitchButton == null
@@ -594,9 +635,10 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
         }
         int index = indexOfSelectedEcoMarker();
         boolean compressible = index >= 0 && this.ecoBulkMarkers.get(index).compressible();
-        // 空盘（没有标记）也留着统一管理：把网络里散着的标记压实到刚放进去的这张盘，正是它的用法。
-        // 「压缩统一管理」只看 ECO 在不在：装着 ECO 就一直显示，编码槽空着也能按（那时它整理的是网络里的矩阵）。
-        this.ecoBulkConsolidateButton.setVisibility(CellBulkCutoffCompat.isAvailable());
+        // 与「快捷标记」同口径：编码槽空着才显示。这两枚都是全网批量动作，编码槽里放着元件时
+        // 玩家是在编辑那一张，藏起来免得误按（快捷标记那枚见 syncQuickMarkButton）。
+        this.ecoBulkConsolidateButton.setVisibility(
+                CellBulkCutoffCompat.isAvailable() && encodeSlotEmpty());
         if (!compressible) {
             this.ecoBulkCutoffButton.setVisible(false);
             this.ecoBulkCutoffSwitchButton.setVisibility(false);
@@ -618,9 +660,8 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
         return result;
     }
 
-    /** 压缩统一管理：按链聚合去重，并按元件自己的读取顺序把标记压实。 */
+    /** 统一压缩管理：只整理网络里已装好的大宗矩阵，不碰元件编码槽。 */
     private void onEcoBulkConsolidatePressed(Button button) {
-        // 空盘也能按：服务端会把网络里散着的标记压实到编码槽这张。
         getMenu().consolidateEcoBulkMarkers();
     }
 
@@ -633,6 +674,7 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
         syncMegaCutoffButton();
         // ECO 大宗元件的两枚按钮同理。
         syncEcoBulkButtons();
+        syncQuickMarkButton();
         syncMarkBookmarksButton();
         syncVoidModeButton();
         syncScrollbar();
@@ -1280,18 +1322,21 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
     }
 
     /**
-     * 背包里 Shift+左键**存储元件**：存进「右键选中那台驱动器」的第一个空位。
+     * 背包里 Shift+左键**存储元件**：选中了驱动器就存进它第一个空位；没选中就交回基类，由菜单按槽位语义
+     * 把元件放进元件编码槽（编码槽里的元件 Shift 则回背包）。
      *
      * <p>玩家侧 Shift+左键的整体口径（不进 ME 网络、没去处就提示）在基类
-     * {@link AbstractPatternDiskTermScreen} 里，这里只回答「元件有没有去处」。不是元件就交回基类。
+     * {@link AbstractPatternDiskTermScreen} 里，这里只回答「元件有没有自己的去处」。不是元件就交回基类。</p>
      */
     @Override
     protected boolean onPlayerInventoryQuickMove(Slot slot) {
         if (!CellDriveScanner.isStorageCell(slot.getItem())) {
-            return false; // 不是存储元件：本屏没它的去处，交给基类提示
+            return false; // 不是存储元件：本屏没它的去处，交给基类
         }
         if (selectedLeaderKey.isEmpty()) {
-            return true;
+            // 没有选中的驱动器：不再把这一下静默吞掉。交回基类走标准快捷移动——
+            // 背包里的元件进元件编码槽，编码槽里的元件 Shift 回背包。
+            return false;
         }
         getMenu().storeCellIntoDrive(selectedLeaderKey, slot.getContainerSlot());
         return true;

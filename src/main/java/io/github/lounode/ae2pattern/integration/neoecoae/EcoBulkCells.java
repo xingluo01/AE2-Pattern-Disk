@@ -179,6 +179,29 @@ public final class EcoBulkCells implements CellBulkCutoffCompat.Adapter {
         }
 
         @Override
+        public List<AEKey> chainOf(AEKey key) {
+            if (!(key instanceof AEItemKey itemKey)) {
+                return List.of();
+            }
+            try {
+                IECOBulkDisplayCell display = probe();
+                if (display == null) {
+                    return List.of();
+                }
+                List<AEItemKey> chain = display.getCompressionChain(itemKey);
+                // 单成员 = 这个物品没有可压缩链；上游对查不到的键就给一份只含它自己的表。
+                if (chain == null || chain.size() <= 1) {
+                    return List.of();
+                }
+                return List.copyOf(chain);
+            } catch (RuntimeException | LinkageError broken) {
+                report("the ECO compression chain lookup", broken);
+                degraded = true;
+                return List.of();
+            }
+        }
+
+        @Override
         public int storagePriority() {
             return probe() instanceof IECOStorageCell cell ? cell.getStoragePriority() : 0;
         }

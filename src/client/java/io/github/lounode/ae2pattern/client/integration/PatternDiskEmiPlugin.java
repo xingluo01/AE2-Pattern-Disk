@@ -19,6 +19,7 @@ import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
 
 import io.github.lounode.ae2pattern.client.gui.AbstractPatternDiskTermScreen;
+import io.github.lounode.ae2pattern.common.menu.CellManagementTermMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
 import io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessEncodingTermMenu;
@@ -29,7 +30,8 @@ import io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessMana
  * 与原版 AE2 编码终端一致，EMI 会自动扫描 {@code @EmiEntrypoint} 注解并调用。
  *
  * <p>拖放这一条为什么本模组要自己写：EMI 那侧给 AE2 屏幕的支持是按 <b>AE2 自己的屏</b>挂的，本模组的屏不在
- * 其中，标记区那批 {@code FakeSlot} 于是接不到拖进来的东西。JEI 那条在
+ * 其中，标记区那批 {@code FakeSlot} 于是接不到拖进来的东西。元件管理终端（含无线版）也在同一张通用登记表里，
+ * 从 EMI 的物品索引 / 收藏列表拖物品到标记分区走的就是这一条。JEI 那条在
  * {@link JeiEncodingGhostHandler} 里，两边规则一致：拖放目标都取当前活动着的假槽，能不能收由槽自己回答。</p>
  *
  * <p><b>EMI 与 JEI 的一处机制差异</b>：JEI 查处理器会回溯父类，EMI 的拖放表按<b>精确类</b>查；所以这里用通用
@@ -62,6 +64,12 @@ public class PatternDiskEmiPlugin implements EmiPlugin {
     /** 拖放目标：当前活动的那些假槽（标记区的每一格都是一个 {@code FakeSlot}）。 */
     private static List<Slot> markerSlots(AbstractContainerScreen<?> screen) {
         if (!(screen instanceof AbstractPatternDiskTermScreen<?> terminal)) {
+            return List.of();
+        }
+        // 元件管理终端的标记分区按它自己的判据收口：编码槽里没有可编辑的元件时不给目标，
+        // 否则 EMI 会高亮一片拖不进去的格子。
+        if (terminal.getMenu() instanceof CellManagementTermMenu cellMenu
+                && !cellMenu.isMarkerAreaEditable()) {
             return List.of();
         }
         var out = new ArrayList<Slot>();

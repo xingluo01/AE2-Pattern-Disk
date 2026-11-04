@@ -30,12 +30,12 @@
   - 旧 MEGA 大宗矩阵保留读取兼容并显示 `tooltip.neoecoae.bulk.moved` / `bulk.deprecated`，组装与拆解配方已撤。
   - 上游新增硬语义：**同一网络内矩阵共享已标记条目，同一压缩链不得在其他矩阵重复标记**。
 - ⬜ 实机确认三枚按钮的**三档显隐**：编码槽不是大宗元件→全隐；是大宗元件但没有可压缩链（含出厂空盘）→只留「压缩统一管理」；有可压缩链→三枚都在，截断物钮画选中链那一级。再验 ① 数字奇点物品存储矩阵 ② 旧 MEGA 大宗矩阵 ③ 青春版 L1 小宗仓 各自落在哪一档，以及调级写回标记槽。青春版 1.4.1→1.4.3 没有任何 `IECOBulk*` 实现，L1 小宗仓能不能算压缩站点只能实测。
-- ⬜ 聚合归属的实测：**归属只看优先级**——编码槽那张最先，其后按控制器存储优先级降序（`IECOStoragePriorityHost` 读不到排最后），同级按扫描顺序；每条链归顺序里第一个还有格位的那台，同链其余标记被去重，**库存本身不动**（低优先级矩阵上的库存会变成无标记库存）。摆两台不同优先级的 ECO 主机验：高优先级那台应当收满，低优先级只接溢出；再看日志 `[cell-mgmt] bulk consolidation: … target order:` 里 `p?` 是否出现（`p?` = 优先级没读到，顺序会退化成扫描顺序）。
+- ⬜ 聚合归属的实测：**归属只看优先级**——按矩阵自身元件级优先级、控制器存储优先级降序（`IECOStoragePriorityHost` 读不到排最后），同级按扫描顺序；每条链归顺序里第一个还有格位的那台，同链其余标记被去重，**库存本身不动**（低优先级矩阵上的库存会变成无标记库存）。摆两台不同优先级的 ECO 主机验：高优先级那台应当收满，低优先级只接溢出；再看日志 `[cell-mgmt] bulk consolidation: … target order:` 里 `p?` 是否出现（`p?` = 优先级没读到，顺序会退化成扫描顺序）。
 - ⬜ **空的高优先级矩阵必须能接收**：曾在 `siteOf` 里加过「网络里的空盘不参与聚合」的守卫，结果标记只能在已有标记的矩阵之间去重、搬不进空矩阵——已删除。实测：给一台矩阵设较高优先级但留空（0 标记），按一次统一管理，链应当**搬过去**而不是原地去重。
 - ⬜ 优先级取两级：`IECOStorageCell.getStoragePriority()`（矩阵自身，ECO 元件界面里调的那个）优先，其次宿主控制器 `IECOStoragePriorityHost`，最后扫描顺序；日志每站点打 `/q<自身>` `/p<宿主>`，`p?` 表示控制器优先级没读到。
 - ⬜ 宿主类型与优先级来源：ECO 主机（`storage_system_*`）取控制器 `IECOStoragePriorityHost`；AE2 驱动器与 **ExtendedAE 的 `ex_drive`**（`TileExDrive extends DriveBlockEntity`，同一条枚举）取驱动器自己的 `getPriority()`——两者都是 AE2 存储优先级，同尺度可比。存档实证：`ae2:drive` 里躺着 2 处 `neoecoae:eco_mega_long_bulk_cell`，所以「盘放进普通 ME 驱动器」不是假设。聚合日志每个站点带 `/eco` 或 `/drive`；非 ECO 主机里的可标记元件会打一次性 WARN。不是假设。这类盘的口径本轮已定：表格照常列出、能取出、但只读不写——准入闸门挡新放入，`collectBulkSites` 又把写不回去的站点排除出聚合目标（WARN 同步为「只出现在表里，不作为聚合目标」）。
 - ⬜ 显示口径变更要现场定性：生效截断现在取 `getCompressionCutoff`（上游账本优先），不再是配置槽里的标记物；两者分歧时首轮「压缩统一管理」可能把截断层写回标记槽，那是一次静默归一，要看回执条数对不对。
-- ⬜ 归并边界：`EcoBulkCells.rewrite` 在名单超出格数时整份不写，而 `CellManagementTermMenu` 的 `room` 会把主矩阵的接收量压到 `capacity()`、剩下的回落到原站点，所以 25 格 → 5 格不会整份拒绝；真正会「什么都没发生且无回执」的是 `touched == 0`（没有可搬的链，或链全部已有库存）。实测时把这两种情形分开看，必要时给一句「没有需要整理的标记」回执。
+- ⬜ 归并边界：`EcoBulkCells.rewrite` 在名单超出格数时整份不写，而 `CellManagementTermMenu` 的 `room` 会把每台矩阵的接收量压到 `capacity()`、剩下的回落到原站点，所以 25 格 → 5 格不会整份拒绝；真正会「什么都没发生且无回执」的是 `touched == 0`（没有可搬的链，或链全部已有库存）。实测时把这两种情形分开看，必要时给一句「没有需要整理的标记」回执。
 - ⬜ 抬地板的现场形状：装 21.2.1–21.2.11 时应当是**整包停在加载阶段**，报错屏点名「Mod ae2_pattern_disk only supports neoecoae [21.2.12,)」（`ModSorter.sort` 命中已安装可选依赖越界后只用 systemMods 构加载列表）。实测一次再对外说。
 - ⬜ MEGA 分支（`MegaCellsCompat` + 客户端 `MegaCutoffButtonFactory`）按用户口径**保留**：它反射的是 megacells 自己的类，与 ECO 版本无关；上游真撤那侧接口时再动。
 - ⬜ 上游附属对 21.2.12 的跟进：`ecomorecell` 1.0.0 按 `impl/storage/**` 编译、启动即崩，已从开发运行期摘掉；`some-useless-things` 2.4.6.2 的 `CompactL9BlockEntity` 仍命名 `impl.storage.infinite.ECOStorageHostMode`，属潜伏炸点。等各自重发再挂回。

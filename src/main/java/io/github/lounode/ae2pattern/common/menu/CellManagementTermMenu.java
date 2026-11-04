@@ -56,6 +56,11 @@ import io.github.lounode.ae2pattern.network.CellNoticePayload;
 /**
  * 元件管理终端的菜单：列出网络里各驱动器的存储元件，右侧标记区编辑编码槽里那个元件的分区。
  *
+ * <p><b>两个管理域</b>：{@code collectBulkSites()} 是<b>压缩管理域</b>，只收 ECO 大宗压缩矩阵，按压缩链
+ * 聚合去重（「压缩统一管理」）；{@link CellMarkDomain} 是<b>标记管理域</b>，收网络里所有能写标记的元件，
+ * 只按单个键判重（「快捷标记」）。两域共用同一道准入闸与同一套取放写回，但集合与判重单位不同，别合并；
+ * 两域都只收网络里已装好的元件，不交互元件编码槽里那张元件的标记槽。</p>
+ *
  * <p><b>为什么不继承两个样板终端的菜单</b>：它们的槽位全在构造器里一次性 {@code addSlot}（合成网格、
  * 处理输入输出、雕凿输入……），没有可覆写的分槽钩子；而本终端的右下角是元件编码槽，与样板编码区不共存。
  * 继承过来只能靠「建了再删」绕，那会把不存在的槽位留在 {@code menu.slots} 里——{@code slots} 与 AE2 的
@@ -85,7 +90,7 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
     private static final org.slf4j.Logger LOGGER = org.slf4j.LoggerFactory
             .getLogger(CellManagementTermMenu.class);
 
-    /** 非 ECO 主机里发现大宗元件时的去重键（每次开终端的聚合只提醒一次）。 */
+    /** 非 ECO 主机里发现大宗元件时的去重键（每次开终端的压缩管理域聚合只提醒一次）。 */
     private static final java.util.Set<String> MISPLACED = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     /** 标记窗：21 格槽位挂在它上面，滚动只撼它的起点。 */
@@ -127,6 +132,7 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         registerClientAction(ACTION_CYCLE_ECO_BULK_CUTOFF, EcoBulkCutoffRequest.class,
                 request -> cycleEcoBulkCutoff(request.slot, request.delta));
         registerClientAction(ACTION_CONSOLIDATE_ECO_BULK, this::consolidateEcoBulkMarkers);
+        registerClientAction(ACTION_QUICK_MARK, this::quickMark);
         registerClientAction(ACTION_MARK_BOOKMARKS, String.class, this::applyBookmarks);
         registerClientAction(ACTION_CYCLE_VOID_MODE, Boolean.class, this::cycleVoidMode);
         this.encodeCellUpgrades = new EncodeCellUpgrades(host);
@@ -210,8 +216,20 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
     private static final String ACTION_CYCLE_COMPRESSION_CUTOFF = "cycleCompressionCutoff";
     /** 调编码槽里 ECO 大宗元件的压缩截断；载荷是「标记槽 + 方向」。 */
     private static final String ACTION_CYCLE_ECO_BULK_CUTOFF = "cycleEcoBulkCutoff";
-    /** 压缩统一管理：按链聚合去重并按读取顺序压实标记。 */
+    /** 压缩管理域的「压缩统一管理」：按链聚合去重并按读取顺序压实标记。 */
     private static final String ACTION_CONSOLIDATE_ECO_BULK = "consolidateEcoBulkMarkers";
+
+    /** 标记管理域的「快捷标记」：把网络里不在域内的物品补写进空标记格。 */
+    private static final String ACTION_QUICK_MARK = "quickMark";
+
+    /**
+     * 快捷标记的数量阈值：与 ECO 21.2.12 的 {@code megaBulkAutoMarkThreshold} 默认值对齐，
+     * 口径同样是「数量<b>严格大于</b>此值才标」。
+     *
+     * <p>不读上游配置：那份在 ECO 自己的 {@code config} 包里，不是公开 API，引到总是加载的 common 代码里
+     * 会在缺 ECO 时炸。这里固定成同一个默认值；要让玩家可调，再加本模组的配置项。</p>
+     */
+    private static final long QUICK_MARK_MIN_AMOUNT = 20_000L;
 
     /** AE2 的客户端动作按 JSON 传参：公开字段 + 无参构造器，不依赖 GSON 对 record 的支持。 */
     public static final class EcoBulkCutoffRequest {
@@ -290,6 +308,9 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
      *
      * <p>左键必须放行：它是把元件放进编码槽/拿出来的正常手势，挡了的话这一格就完全不可交互。
      * 上上轮的写法用 {@code ClickType.PICKUP} 当挡板，而 PICKUP 左右键共用，把左键一起挡住了。</p>
+     *
+     * <p>Shift 点击（{@code QUICK_MOVE}）现已放行：没有选中驱动器时，元件编码槽与玩家背包就靠这一下互相搬
+     * （目标槽见 {@link #getQuickMoveDestinationSlots}）。只挡右键取件，免得与「右键上传到选中的驱动器」撞车。</p>
      */
     @Override
     public void clicked(int slotId, int button, ClickType clickType, Player player) {
@@ -299,15 +320,46 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         super.clicked(slotId, button, clickType, player);
     }
 
-    /** 编码槽要挡下的手势：Shift 点击（QUICK_MOVE）与右键取件。 */
+    /** 编码槽只挡右键取件；Shift 点击已放行，用来在编码槽与背包之间快捷搬运。 */
     private boolean clickIsEncodingSlot(int slotId, int button, ClickType clickType) {
         if (!isEncodingSlotAt(slotId)) {
             return false;
         }
-        if (clickType == ClickType.QUICK_MOVE) {
-            return true;
-        }
         return clickType == ClickType.PICKUP && button == 1;
+    }
+
+    /**
+     * 背包里 Shift+左键存储元件、且没有选中驱动器时，把空的元件编码槽排到快捷移动目标的最前。
+     *
+     * <p>服务端拿不到客户端「选中了哪台驱动器」这一状态，所以这里只按「编码槽空不空、这东西能不能放」判：
+     * 选中了驱动器的那一支由屏幕侧自己发 {@code storeCell} 动作，根本不走快捷移动。
+     * AE2 的 {@code mayPlace} 不看槽里有没有东西，编码槽被占时照样会被算成目标；这里只在它空着时抢一次
+     * 优先级，免得背包里的元件被塞进一个已经装了元件的格子。</p>
+     *
+     * <p>反向那一侧（编码槽里的元件 Shift 回背包）由 AE2 父类按玩家侧槽分派，无需在这里补目标。</p>
+     */
+    @Override
+    protected List<Slot> getQuickMoveDestinationSlots(ItemStack stackToMove, boolean fromPlayerSide) {
+        var destinations = super.getQuickMoveDestinationSlots(stackToMove, fromPlayerSide);
+        if (!fromPlayerSide || !CellDriveScanner.isStorageCell(stackToMove)) {
+            return destinations;
+        }
+        var encodeSlots = slotsOf(AEPatternRegistries.CELL_ENCODE);
+        if (encodeSlots.size() != 1) {
+            return destinations;
+        }
+        var encode = encodeSlots.get(0);
+        if (!encode.getItem().isEmpty() || !encode.mayPlace(stackToMove)) {
+            return destinations;
+        }
+        var reordered = new ArrayList<Slot>(destinations.size() + 1);
+        reordered.add(encode);
+        for (var slot : destinations) {
+            if (slot != encode) {
+                reordered.add(slot);
+            }
+        }
+        return reordered;
     }
 
     /**
@@ -811,14 +863,14 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
     }
 
     /**
-     * 压缩统一管理：把网络里所有大宗矩阵的标记按链聚合去重，并优先归到编码槽里那张主矩阵。
+     * 压缩管理域 · 统一压缩管理：把网络里所有大宗矩阵的标记按链聚合去重，按优先级归属。
      *
-     * <p>归属规则：一条链在某台矩阵里真有东西，它就留在那台（删了等于把存着的东西标没了），别处的同链标记算重复；
-     * 谁都没东西的链先给主矩阵，按它的格数上限收，装不下的再回落到第一个列出它的矩阵。主矩阵自己列出的链
-     * 排在吸收的前面，不会被外来链挤掉。一台矩阵内部抄了两遍的也一并并掉。</p>
+     * <p>归属规则：每条链归目标顺序里第一个还有格位的那台，同链其余标记算重复并清掉；所有目标都满员时，
+     * 链留在第一个列出它的矩阵，宁可不并也不丢。一台矩阵内部抄了两遍的也一并并掉。</p>
      *
-     * <p>改动走终端已有的取放路：先问这台宿主收不收这一类元件，收才动手；取出、改副本、放回原格，
-     * 写回失败就把原件塞回去，连原件都塞不回则掉在玩家脚下，宁可什么都不改。</p>
+     * <p><b>不碰元件编码槽</b>：只整理已经装在网络驱动器 / 矩阵座里的大宗元件，不读写编码槽里那张元件的
+     * 标记槽（按钮也只在编码槽空着时出现）。所有站点一律走「取出 → 改副本 → 放回」，写回失败回填原件，
+     * 连原件都放不回则掉在玩家脚下，宁可什么都不改。</p>
      *
      * <p>收不下的站点（宿主不收这一类元件）在收集阶段就被排除，不参与归属分配：表里照样列，但一条链
      * 都不会被判给它——否则回执数与实际写入会分家。</p>
@@ -833,55 +885,183 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
             return;
         }
         var plan = planConsolidation(sites);
-        // 主矩阵（编码槽那张）先写：它直接写 live config，失败时其它站点还没被清空。
-        int primary = primarySite(sites);
-        var primaryResult = primary >= 0
-                ? applyMarkers(sites.get(primary), plan.wanted().get(primary))
-                : ApplyResult.UNCHANGED;
-        if (primaryResult == ApplyResult.FAILED) {
-            return;
-        }
-        int touched = primaryResult == ApplyResult.APPLIED ? 1 : 0;
+        int touched = 0;
         var owners = new ArrayList<Object>();
         for (int index = 0; index < sites.size(); index++) {
-            if (index == primary) {
-                continue;
-            }
             if (applyMarkers(sites.get(index), plan.wanted().get(index)) != ApplyResult.APPLIED) {
                 continue;
             }
             touched++;
-            var driveKey = sites.get(index).driveKey();
-            if (driveKey != null) {
-                var owner = ownerOf(driveKey);
-                if (owner != null) {
-                    owners.add(owner);
-                }
+            var owner = ownerOf(sites.get(index).driveKey());
+            if (owner != null) {
+                owners.add(owner);
             }
         }
         if (touched == 0) {
             return;
         }
-        host.getEncodeCellInventory().sendChangeNotification(0);
         afterCellMoved(owners.toArray());
         noticeWith(NOTICE + "bulk_consolidated", String.valueOf(plan.cleared()));
     }
 
-    /** 一个参与聚合的大宗矩阵；{@code driveKey} 为 null 表示编码槽里那一张（主矩阵）。 */
-    private record BulkSite(@Nullable String driveKey, int driveSlot, ItemStack stack,
+    /**
+     * 标记管理域 · 快捷标记：把 ME 网络里<b>不在标记管理域</b>的物品补写进域内元件的空标记格。
+     *
+     * <p>「不在域内」的判据是 {@link CellMarkDomain#coveredKeys(List)}：所有站点已标记键的并集，压缩矩阵
+     * 按整条链展开，所以链上任意形态都算已覆盖。分配按 {@link CellMarkDomain#targetOrder(List)}：属于
+     * ECO 压缩链的先找压缩矩阵、找不到才回落到普通分区元件；非压缩物品只找普通分区元件，不占压缩矩阵
+     * 那几格。每个键只写一次，天然满足上游「同一压缩链不得在多张矩阵重复标记」。</p>
+     *
+     * <p>默认口径：只写标记、不迁移库存；候选是网络里数量严格大于 {@link #QUICK_MARK_MIN_AMOUNT}、且不是
+     * 2.1G / 9.2E 两档哨兵数量的物品键（见 {@link CellMarkDomain#acceptsAmount}）；
+     * 按目标顺序收，装不下的计入「未写入」，不按数量排序。写回沿用压缩管理域那套
+     * 「取出 → 改副本 → 放回 → 失败回填」。</p>
+     */
+    public void quickMark() {
+        if (!onServerSide()) {
+            sendClientAction(ACTION_QUICK_MARK);
+            return;
+        }
+        var grid = gridOrNull();
+        if (grid == null) {
+            return;
+        }
+        var sites = CellMarkDomain.collect(grid);
+        if (sites.isEmpty()) {
+            return;
+        }
+        var covered = new HashSet<AEKey>(CellMarkDomain.coveredKeys(sites));
+        var order = CellMarkDomain.targetOrder(sites);
+        var room = new int[sites.size()];
+        var additions = new ArrayList<List<AEKey>>(sites.size());
+        for (int index = 0; index < sites.size(); index++) {
+            room[index] = Math.max(0, sites.get(index).capacity() - sites.get(index).markers().size());
+            additions.add(new ArrayList<>());
+        }
+        int written = 0;
+        int duplicate = 0;
+        int noRoom = 0;
+        int skippedNonItems = 0;
+        for (var entry : grid.getStorageService().getInventory().getAvailableStacks()) {
+            // 数量口径集中在 CellMarkDomain.acceptsAmount：严格大于阈值，且跳过 2.1G / 9.2E 两档哨兵数量。
+            // 被筛掉的既不算「未写入」（那是容量不足）也不是「跳过非物品」，静默略过、不进回执计数。
+            if (!CellMarkDomain.acceptsAmount(entry.getLongValue(), QUICK_MARK_MIN_AMOUNT)) {
+                continue;
+            }
+            AEKey key = entry.getKey();
+            if (!(key instanceof AEItemKey)) {
+                skippedNonItems++;
+                continue;
+            }
+            if (covered.contains(key)) {
+                duplicate++;
+                continue;
+            }
+            var chain = CellMarkDomain.compressionChain(sites, key);
+            boolean compressible = !chain.isEmpty();
+            int target = compressible ? firstMarkTarget(order, sites, room, true) : -1;
+            if (target < 0) {
+                target = firstMarkTarget(order, sites, room, false);
+            }
+            if (target < 0) {
+                noRoom++;
+                continue;
+            }
+            additions.get(target).add(key);
+            room[target]--;
+            covered.add(key);
+            if (compressible) {
+                // 压缩矩阵标一格等于标住整条链，链上其它形态不再另找格子。
+                covered.addAll(chain);
+            }
+            written++;
+        }
+        var owners = new ArrayList<Object>();
+        for (int index : order) {
+            var added = additions.get(index);
+            if (added.isEmpty()) {
+                continue;
+            }
+            var site = sites.get(index);
+            var wanted = new ArrayList<AEKey>(site.markers());
+            wanted.addAll(added);
+            if (wanted.size() > site.capacity() || !applyMark(site, wanted)) {
+                written -= added.size();
+                noRoom += added.size();
+                continue;
+            }
+            var owner = ownerOf(site.hostKey());
+            if (owner != null) {
+                owners.add(owner);
+            }
+        }
+        afterCellMoved(owners.toArray());
+        var noticeKey = NOTICE + "quick_mark";
+        if ((noRoom > 0 || skippedNonItems > 0)
+                && getPlayer() instanceof ServerPlayer serverPlayer
+                && AEPDCommonConfig.isMessageShown(noticeKey)) {
+            serverPlayer.sendSystemMessage(Component.translatable(noticeKey,
+                    written, duplicate, noRoom, skippedNonItems));
+        }
+    }
+
+    /** 目标顺序里第一台「格式相符且还有空格」的站点；{@code bulk} 决定只找压缩矩阵还是只找普通元件。 */
+    private static int firstMarkTarget(List<Integer> order, List<CellMarkDomain.Site> sites,
+            int[] room, boolean bulk) {
+        for (int index : order) {
+            if (room[index] > 0 && sites.get(index).bulk() == bulk) {
+                return index;
+            }
+        }
+        return -1;
+    }
+
+    /** 标记管理域：按目标名单改写一台元件，取放与失败回填与压缩管理域同一套。 */
+    private boolean applyMark(CellMarkDomain.Site site, List<AEKey> markers) {
+        if (!site.view().trusted()) {
+            return false;
+        }
+        var owner = ownerOf(site.hostKey());
+        if (owner == null || !CellDriveScanner.canAcceptCell(owner, site.hostSlot(), site.stack())) {
+            return false;
+        }
+        var taken = CellDriveScanner.extractCell(owner, site.hostSlot(), null);
+        if (taken.isEmpty()) {
+            return false;
+        }
+        var modified = taken.copy();
+        if (!site.view().write(modified, markers)
+                || !CellDriveScanner.insertCell(owner, site.hostSlot(), modified)) {
+            if (!CellDriveScanner.insertCell(owner, site.hostSlot(), taken)) {
+                LOGGER.info("[cell-mgmt] 快捷标记写回失败且原件放不回去，已掉在玩家脚下：{}",
+                        site.stack().getItem());
+                getPlayer().drop(taken, false);
+            }
+            return false;
+        }
+        return true;
+    }
+
+    /** 压缩管理域里的一个站点：网络里一格放得回去的大宗压缩矩阵。 */
+    private record BulkSite(String driveKey, int driveSlot, ItemStack stack,
                             CellBulkCutoffCompat.Site cell,
                             List<CellBulkCutoffCompat.Marker> markers, int capacity,
                             int cellPriority, @Nullable Integer priority, boolean ecoHost) {
     }
 
-    /** 一次聚合的产物：每台矩阵该留的名单，与被清掉的重复标记条数。 */
+    /** 压缩管理域的一次聚合：每台矩阵该留的名单，与被清掉的重复标记条数。 */
     /** 一次站点写回的结果：没变、写了、写不动（读不可信 / 换格失败 / 元件被挪走）。 */
     private enum ApplyResult { UNCHANGED, APPLIED, FAILED }
 
     private record ConsolidationPlan(List<List<ItemStack>> wanted, int cleared) {
     }
 
-    /** 网络里所有大宗矩阵，按扫描顺序；编码槽那一张排在最后。名单取未去重的那份。 */
+    /**
+     * <b>压缩管理域</b>：网络里所有大宗压缩矩阵，按扫描顺序。名单取未去重的那份。
+     *
+     * <p>只认 {@link CellBulkCutoffCompat} 能打开的元件，<b>不收元件编码槽里那张</b>——本动作不交互
+     * 编码槽的标记槽。要连普通 AE2 分区元件一起收，走 {@link CellMarkDomain#collect} 那套标记管理域。</p>
+     */
     private List<BulkSite> collectBulkSites() {
         var sites = new ArrayList<BulkSite>();
         var grid = gridOrNull();
@@ -910,16 +1090,12 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
                 }
             }
         }
-        var primary = siteOf(null, 0, host.getEncodeCellInventory().getStackInSlot(0), null, false);
-        if (primary != null) {
-            sites.add(primary);
-        }
         return sites;
     }
 
-    /** 读一台矩阵的名单、格数与库存；只要是大宗元件就返回（空盘也有格数，能当聚合目标）。 */
+    /** 压缩管理域的站点：读一台矩阵的名单、格数与库存；只要是大宗元件就返回（空盘也有格数，能当聚合目标）。 */
     @Nullable
-    private static BulkSite siteOf(@Nullable String driveKey, int driveSlot, ItemStack stack,
+    private static BulkSite siteOf(String driveKey, int driveSlot, ItemStack stack,
             @Nullable Integer priority, boolean ecoHost) {
         var cell = CellBulkCutoffCompat.open(stack);
         if (cell == null) {
@@ -927,7 +1103,7 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         }
         var markers = cell.rawMarkers();
         if (!cell.trusted()) {
-            // 读失败不能当空盘：那会让主矩阵位把真实标记整份覆盖。
+            // 读失败不能当空盘：那会把这台真实的标记整份覆盖。
             return null;
         }
         return new BulkSite(driveKey, driveSlot, stack, cell, markers, cell.capacity(),
@@ -953,7 +1129,7 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
             var order = new StringBuilder();
             for (int target : targets) {
                 var site = sites.get(target);
-                order.append(target).append('=').append(site.driveKey() == null ? "encode" : site.driveKey())
+                order.append(target).append('=').append(site.driveKey())
                         .append("/q").append(site.cellPriority())
                         .append("/p").append(site.priority() == null ? "?" : site.priority().toString())
                         .append("/m").append(site.markers().size())
@@ -1015,44 +1191,25 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         return new ConsolidationPlan(wanted, cleared);
     }
 
-    /** 编码槽里那一张在主矩阵位上的下标；没有时 -1。 */
-    private static int primarySite(List<BulkSite> sites) {
-        for (int index = 0; index < sites.size(); index++) {
-            if (sites.get(index).driveKey() == null) {
-                return index;
-            }
-        }
-        return -1;
-    }
-
     /**
-     * 填充顺序：编码槽那张最先，其后按控制器的存储优先级降序（读不到的排最后），同优先级按扫描顺序。
+     * 压缩管理域的填充顺序：按控制器的存储优先级降序（读不到的排最后），同优先级按扫描顺序。
      *
      * <p>优先级来自扫描时的 {@code DriveEntry.priorityValue()}：ECO 走 {@code IECOStoragePriorityHost}，
-     * AE2 驱动器走 {@code getPriority()}；编码槽那张没有控制器，靠「排最前」拿到固定位置。</p>
+     * AE2 驱动器走 {@code getPriority()}。先按矩阵自己的元件级优先级，再按宿主控制器优先级；
+     * {@code List.sort} 稳定，同级保持扫描顺序。不再有「编码槽那张排最前」的特例。</p>
      */
     private static List<Integer> targetOrder(List<BulkSite> sites) {
         var order = new ArrayList<Integer>(sites.size());
         for (int index = 0; index < sites.size(); index++) {
-            if (sites.get(index).driveKey() == null) {
-                order.add(index);
-            }
+            order.add(index);
         }
-        var rest = new ArrayList<Integer>();
-        for (int index = 0; index < sites.size(); index++) {
-            if (sites.get(index).driveKey() != null) {
-                rest.add(index);
-            }
-        }
-        // 先按矩阵自己的优先级（元件级），再按宿主控制器优先级，最后按扫描顺序（List.sort 稳定）。
-        rest.sort(Comparator
+        order.sort(Comparator
                 .comparingInt((Integer index) -> sites.get(index).cellPriority())
                 .thenComparingInt((Integer index) -> {
                     Integer priority = sites.get(index).priority();
                     return priority == null ? Integer.MIN_VALUE : priority;
                 })
                 .reversed());
-        order.addAll(rest);
         return order;
     }
 
@@ -1066,25 +1223,13 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         return null;
     }
 
-    /** 按目标名单改写这一台；返回是否真的动了它。 */
+    /** 压缩管理域：按目标名单改写这一台；返回是否真的动了它。 */
     private ApplyResult applyMarkers(BulkSite site, List<ItemStack> markers) {
         if (!site.cell().trusted()) {
             return ApplyResult.FAILED;
         }
         if (sameMarkers(site.markers(), markers)) {
             return ApplyResult.UNCHANGED;
-        }
-        if (site.driveKey() == null) {
-            if (markers.size() > site.capacity()) {
-                // 计划是按扫描时的格数算的；元件被换过/扩容卡变过就别硬写。
-                return ApplyResult.FAILED;
-            }
-            boolean changed = site.cell().setMarkers(markers);
-            if (!changed && !sameMarkers(site.cell().rawMarkers(), markers)) {
-                // setMarkers 只有「没变」和「写失败」两种 false；计划本来就与现状不同时，只能是后者。
-                return ApplyResult.FAILED;
-            }
-            return changed ? ApplyResult.APPLIED : ApplyResult.UNCHANGED;
         }
         var owner = ownerOf(site.driveKey());
         if (owner == null) {
