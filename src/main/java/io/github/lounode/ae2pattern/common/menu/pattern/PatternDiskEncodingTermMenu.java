@@ -232,8 +232,10 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
     private final FakeSlot smithingTableBaseSlot;
     private final FakeSlot smithingTableAdditionSlot;
     private final PatternTermSlot craftOutputSlot;
-    private final BlankPatternSlot blankPatternSlot;
-    private final RestrictedInputSlot encodedPatternSlot;
+    /** 空白样板槽：存盘回退时先还回这里。 */
+    final BlankPatternSlot blankPatternSlot;
+    /** 编码槽那张成品/空白样板；同包的 PatternDiskTransfer 要读写它，故不设 private。 */
+    final RestrictedInputSlot encodedPatternSlot;
 
     private RecipeHolder<CraftingRecipe> currentRecipe;
     private EncodingMode currentMode;
@@ -337,7 +339,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
      * 机器」的答案，编码模式只是四个粗类。为空则退回编码模式。
      */
     @Nullable
-    private String pendingRecipeCategory;
+    String pendingRecipeCategory;
 
     /** 支持流体替换的合成网格槽位（用于 CraftingEncodingPanel 高亮）。 */
     public IntSet slotsSupportingFluidSubstitution = new IntArraySet();
@@ -351,7 +353,13 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
     private long diskListRevision;
 
     /** serial → 磁盘槽的反查与序列号沿用都在 {@link DiskIndex} 里，这里只持有它。 */
-    private final DiskIndex diskIndex = new DiskIndex();
+    final DiskIndex diskIndex = new DiskIndex();
+
+    /** 磁盘写入与取出：这一段的状态都在菜单上，逻辑在它自己那个类里。 */
+    private final PatternDiskTransfer transfer;
+
+    /** 标记绑定：三个来源的取舍在它那里。 */
+    private final DiskMarkBinder binder;
 
     private final List<RecipeHolder<StonecutterRecipe>> stonecuttingRecipes = new java.util.ArrayList<>();
 
@@ -368,6 +376,8 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
             IPatternDiskTerminalHost host) {
         super(menuType, id, ip, host);
         this.host = host;
+        this.transfer = new PatternDiskTransfer(this);
+        this.binder = new DiskMarkBinder(this);
         this.encodingLogic = host.getLogic();
         this.encodedInputsInv = encodingLogic.getEncodedInputInv();
         this.encodedOutputsInv = encodingLogic.getEncodedOutputInv();
@@ -616,7 +626,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
             if (autoDisks.length > 0) {
                 // 写进去了才顺手把标记写成它的工作方块：写盘被拒（容量/重复产出/类型锁定）时盘里没这份
                 // 样板，再去改标记只会让盘与样板对不上。
-                if (transferToFirstWritable(autoDisks) && autoDisks.length == 1) {
+                if (transfer.transferTo(autoDisks) && autoDisks.length == 1) {
                     bindMarkIfUnmarked(autoDisks[0]);
                 }
             }
@@ -629,7 +639,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
                 if (autoDisks.length > 0) {
                     // 走既有的写盘路径：写进去、清空编码槽、退回空白样板，一处口径。
                     // 同样只在真写进去之后才绑标记（理由见上一处调用点）。
-                    if (transferToFirstWritable(autoDisks) && autoDisks.length == 1) {
+                    if (transfer.transferTo(autoDisks) && autoDisks.length == 1) {
                         bindMarkIfUnmarked(autoDisks[0]);
                     }
                 }
@@ -648,7 +658,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
      *
      * <p>非服务端（客户端手上的菜单没有收发这包的那一线）自然不发，与各调用点原来的写法一致。</p>
      */
-    private void tell(String key, Object... args) {
+    void tell(String key, Object... args) {
         if (!AEPDCommonConfig.isMessageShown(key)) {
             return;
         }
@@ -715,7 +725,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
      * 取一张空白样板：先扣槽里的，槽空了才向网络要（槽本身就由网络补满，这一层让“编出来的第一张”
      * 用玩家看得见的那一份）。两处都没有就返回 false。
      */
-    private boolean consumeBlankPattern() {
+    boolean consumeBlankPattern() {
         var inSlot = blankPatternSlot.getItem();
         if (isBlankPattern(inSlot)) {
             var remaining = inSlot.copyWithCount(inSlot.getCount() - 1);
@@ -817,6 +827,9 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
 
     // ---- Disk list interactions ---------------------------------------------
 
+    /** 候选为空时的哨兵：直接拿空数组当值传，不必每处新建。 */
+    private static final long[] NO_DISKS = new long[0];
+
     /**
      * 把改好的磁盘写回槽位，并立即把列表推给客户端。
      *
@@ -824,102 +837,28 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
      * 而玩家刚刚标记完磁盘、眼里却没变化时，只会得出「这次右键没生效」的结论。传入调用方已经解析好的
      * 库存，免得写回时再解析一次。</p>
      */
-    private void writeDiskSlot(InternalInventory inv, int slot, ItemStack updated) {
+    void writeDiskSlot(InternalInventory inv, int slot, ItemStack updated) {
         inv.setItemDirect(slot, updated); // triggers host refresh
         syncDiskList(true);
     }
 
-    /**
-     * Writes the currently encoded pattern into the disk identified by its serial.
-     * The disk lives in a PatternDiskProvider's disk inventory; after the write the provider
-     * re-decodes its patterns, so the newly stored pattern becomes available to autocrafting.
-     */
+    // ---- 磁盘写入与取出：客户端发动作，服务端交给 PatternDiskTransfer ----------------------
+
+    /** 把当前编码好的样板写进指定序列号的磁盘（客户端只发动作，判定全在服务端）。 */
     public void transferToDisk(long serial) {
         if (isClientSide()) {
             sendClientAction(ACTION_TRANSFER_TO_DISK, serial);
             return;
         }
-        transferToFirstWritable(new long[] { serial });
+        transfer.transferTo(new long[] { serial });
     }
-
-    /** 候选为空时的哨兵：直接拿空数组当值传，不必每处新建。 */
-    private static final long[] NO_DISKS = new long[0];
-
-    /**
-     * 按顺序把编码槽里的样板写进候选磁盘，写进第一张能收的就停。
-     *
-     * <p>候选与顺序都由客户端给出，顺序就是玩家的意图顺序：编码终端是搜索栏筛出的列表，管理终端是
-     * 右键选中的那张盘加上同一容器内的其他盘。全部写不进时只报**第一张被拒**（已过期的候选会被跳过）的原因，
-     * 而不是逐张刷屏；一张盘都没碰到（列表过期）时才报「目标已不在列表里」。</p>
-     */
-    private boolean transferToFirstWritable(long[] serials) {
-        var encoded = encodedPatternSlot.getItem();
-        if (encoded.isEmpty() || !PatternDetailsHelper.isEncodedPattern(encoded)) {
-            return false;
-        }
-
-        var level = getPlayer().level();
-        boolean stale = false;
-        Component refusedName = null;
-        PatternDiskItem.InsertFailure refusedReason = null;
-        for (long serial : serials) {
-            var ref = diskIndex.refOf(serial);
-            if (ref == null) {
-                // 客户端列表可能比服务端旧：那张盘已经被拿走了。全部失败时再一起说，免得顺位中途刷屏。
-                stale = true;
-                continue;
-            }
-            var inv = ref.host().getDiskInventory();
-            var stack = inv.getStackInSlot(ref.slot());
-            if (stack.isEmpty() || !(stack.getItem() instanceof PatternDiskItem disk)) {
-                stale = true;
-                continue;
-            }
-
-            // 接收判据（容量/锁定类型/主产物互斥）统一由 PatternDiskItem.canInsert/tryInsert 负责
-            var updated = stack.copy();
-            if (disk.tryInsert(updated, encoded, level)) {
-                writeDiskSlot(inv, ref.slot(), updated);
-                // 样板已存入磁盘：编码槽清空，原编码样板回退为空白样板并按 空白样板槽→ME网络→玩家背包→编码槽 优先级落位
-                this.encodedPatternSlot.set(ItemStack.EMPTY);
-                returnBlankPatternToStorage();
-                return true;
-            }
-            if (refusedName == null) {
-                refusedName = stack.getHoverName();
-                refusedReason = disk.whyCannotInsert(stack, encoded, level);
-            }
-        }
-
-        if (refusedName != null) {
-            notifyDiskRefused(refusedName, refusedReason);
-        } else if (stale) {
-            // 顺位里的盘全没了（客户端列表滞后）：AE2 原生对「目标已经不在」也是静默的（界面直接关/列表刷新），
-            // 这里不出声，留一条 debug 线头。
-            LOGGER.debug("[encoding] 顺位写盘时目标磁盘都已不在（客户端列表滞后）");
-        }
-        return false;
-    }
-
-    /** 样板写不进磁盘时说明理由。原因与写入路径共用同一套判据（见 whyCannotInsert）。 */
-    private void notifyDiskRefused(Component diskName, @Nullable PatternDiskItem.InsertFailure reason) {
-        var key = reason == null ? "unknown" : switch (reason) {
-            case FULL -> "full";
-            case TYPE_LOCKED -> "type_locked";
-            case DUPLICATE_OUTPUT -> "duplicate_output";
-            case UNRESOLVABLE -> "unresolvable";
-        };
-        tell("gui.ae2_pattern_disk.encoding_terminal.disk_refused." + key, diskName);
-    }
-
-    // ---- 从磁盘取东西（管理终端的左键/Shift+左键/右键）--------------------------------------
 
     /** 把某张磁盘整张取出来（管理终端左键）。 */
     public void extractDisk(long serial, ExtractTarget target) {
         requestExtract(serial, WHOLE_DISK, target);
     }
 
-    /** 把某张盘里第 {@code index} 张样板取出来（管理终端左键 / Shift+左键 / 右键）。 */
+    /** 把某张盘里第 {@code index} 张样板取出来（左键 / Shift+左键 / 右键）。 */
     public void extractPattern(long serial, int index, ExtractTarget target) {
         requestExtract(serial, index, target);
     }
@@ -927,97 +866,14 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
     private void requestExtract(long serial, int index, ExtractTarget target) {
         if (isClientSide()) {
             sendClientAction(ACTION_EXTRACT_FROM_DISK, new ExtractRequest(serial, index, target));
-        } else {
-            handleExtractFromDisk(new ExtractRequest(serial, index, target));
+            return;
         }
+        transfer.extract(new ExtractRequest(serial, index, target));
     }
 
-    /**
-     * 服务端：从磁盘里取出一张样板，或者整张磁盘。
-     *
-     * <p>样板是「物化」出来的：按本模组一贯口径，把一张样板带出磁盘要消耗网络里的一张空白样板（与样板访问
-     * 终端取走同一个账）；磁盘本身只是件物品，不扣。落点腾不出位置、或网络里没有空白样板时，整件事都不做：
-     * 既不扣空白样板，也不动磁盘。</p>
-     */
+    /** 服务端入口（注册给 AE2 的客户端动作）。 */
     private void handleExtractFromDisk(ExtractRequest request) {
-        // 畸形的客户端可能送来缺字段的请求；这里不报错也不改任何东西。
-        if (request == null || request.target == null) {
-            return;
-        }
-        var ref = diskIndex.refOf(request.serial);
-        if (ref == null) {
-            LOGGER.debug("[encoding] 目标磁盘已不在列表（客户端滞后），丢弃这次请求");
-            return;
-        }
-        var inv = ref.host().getDiskInventory();
-        var stack = inv.getStackInSlot(ref.slot());
-        if (stack.isEmpty() || !(stack.getItem() instanceof PatternDiskItem disk)) {
-            LOGGER.debug("[encoding] 槽里已不是样板磁盘（客户端滞后），丢弃这次请求");
-            return;
-        }
-
-        if (request.index == WHOLE_DISK) {
-            // 编辑槽只收样板，整张磁盘不进它（客户端不会这么请，防的是改造过的客户端）。
-            if (request.target == ExtractTarget.ENCODED_SLOT || !hasRoomFor(request.target)) {
-                return;
-            }
-            inv.setItemDirect(ref.slot(), ItemStack.EMPTY);
-            syncDiskList(true);
-            deliverExtracted(stack.copy(), request.target);
-            return;
-        }
-
-        var patterns = disk.contents(stack).patterns();
-        if (request.index < 0 || request.index >= patterns.size()) {
-            // 盘里的张数与客户端看到的不一致（刚被写入/取走）。不是「落点」也不是「网络缺料」，说清楚。
-            notifyContentChanged();
-            return;
-        }
-        if (patterns.get(request.index).isEmpty()) {
-            return;
-        }
-        if (!hasRoomFor(request.target)) {
-            return;
-        }
-        if (!consumeBlankPattern()) {
-            return;
-        }
-
-        var extracted = patterns.get(request.index).copy();
-        var updated = stack.copy();
-        disk.removeAt(updated, request.index);
-        writeDiskSlot(inv, ref.slot(), updated);
-        deliverExtracted(extracted, request.target);
-    }
-
-    /** 取出来的东西有没有地方放。 */
-    private boolean hasRoomFor(ExtractTarget target) {
-        return switch (target) {
-            case CURSOR -> getCarried().isEmpty();
-            case INVENTORY -> getPlayer().getInventory().getFreeSlot() >= 0;
-            case ENCODED_SLOT -> encodedPatternSlot.getItem().isEmpty();
-        };
-    }
-
-    private void deliverExtracted(ItemStack stack, ExtractTarget target) {
-        switch (target) {
-            case CURSOR -> setCarried(stack);
-            case INVENTORY -> {
-                // 预检过有空位；万一还是整件塞不下，丢在玩家脚下也不让它凭空消失。
-                if (!getPlayer().getInventory().add(stack)) {
-                    getPlayer().drop(stack, false);
-                }
-            }
-            // 走到这里的只能是样板：handler 已挡住「整张磁盘进编辑槽」，取出来的单张也必定是编码样板。
-            case ENCODED_SLOT -> encodedPatternSlot.set(stack);
-        }
-        // 推一次：槽位内容与光标上的东西都靠这一个包到客户端（光标的同步在 broadcastChanges 里，见原版菜单）。
-        broadcastChanges();
-    }
-
-    /** 盘里那张样板的序号已经无效（内容刚变过）时记一条：不是落点问题，也不是网络缺料。 */
-    private void notifyContentChanged() {
-        LOGGER.info("[encoding] 客户端列表滞后：盘里的样板序号已失效，丢弃这次取样板");
+        transfer.extract(request);
     }
 
     /**
@@ -1083,124 +939,32 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
 
 
     /**
-     * 自动写盘成功后顺手把标记绑成当前工作方块——**只在盘上还没有标记时**。
-     *
-     * <p>这两条（编码后写盘、拿编码槽里现成的样板写盘）是系统替玩家办的事，不该顺手改掉玩家的组织意图，
-     * 所以盘上已有的标记一律保留：无论是导入配方留下的 {@code #<类别>}，还是玩家自己写的文本。
-     * 手动打标（{@link #bindPrefix(long)} / {@link #bindSearchMark(long)}）是玩家明确要改那张盘的标记，
-     * 那才覆盖。</p>
+     * 自动写盘成功后顺手把标记绑成当前工作方块——只在盘上还没有标记时（理由见 {@link DiskMarkBinder}）。
      */
     private void bindMarkIfUnmarked(long serial) {
-        var ref = diskIndex.refOf(serial);
-        if (ref == null) {
-            return;
-        }
-        var stack = ref.host().getDiskInventory().getStackInSlot(ref.slot());
-        if (stack.isEmpty()) {
-            return;
-        }
-        // 与分组侧的判据保持一致（{@code tierTypeOf}）：空串当「没标记」，免得两边对同一张盘
-        // 一个说有、一个说没有。（正常路径不会写出空串标记：bindSearchMark 在空文本时是 remove。）
-        var existing = stack.get(AEPatternRegistries.DISK_PREFIX.get());
-        if (existing != null && !existing.isEmpty()) {
-            return;
-        }
-        bindPrefix(serial, uploadMark());
+        binder.bindIfUnmarked(serial);
     }
 
     public void bindPrefix(long serial) {
         bindPrefix(serial, null);
     }
 
-    /**
-     * @param markOverride 非 null 时直接用它当作要写的标记、跳过 {@link #deriveMarkId()}。编码上传路径用它
-     *                     给雕凿档指定固定标记（雕凿不在 {@link EncodingMode} 里、也不对应任何配方类别）；
-     *                     右键打标那条手势传 null，沿用「光标上工作方块的类别 / 当前模式」那一套。
-     */
     private void bindPrefix(long serial, @Nullable String markOverride) {
         if (isClientSide()) {
-            // The mark depends on the imported recipe's category, which only the client knows, so it travels
-            // as its own action just ahead of the bind.
-            //
-            // 这条分支会丢掉 markOverride：带它进来的只有 encode() 的服务端段（雕凿的固定标记在那里算），
-            // 客户端永远不带。将来真要客户端带标记的话，得照转发类别那样多送一个 action。
+            // 标记取决于导入的配方类别，只有客户端知道，所以在 bind 之前单独送一趟。
             var category = pendingRecipeCategory;
             sendClientAction("setPendingRecipeCategory", category == null ? "" : category);
             sendClientAction(ACTION_BIND_PREFIX, serial);
             return;
         }
-
-        var ref = diskIndex.refOf(serial);
-        if (ref == null) {
-            // 客户端列表可能比服务端旧：那张盘已经被拿走了。不出声（AE2 原生对目标消失也是静默的），
-            // 留一条 debug 线头。
-            LOGGER.debug("[encoding] 打标记时目标磁盘已不在列表（客户端滞后）");
-            return;
-        }
-
-        var inv = ref.host().getDiskInventory();
-        var stack = inv.getStackInSlot(ref.slot());
-        if (stack.isEmpty() || !(stack.getItem() instanceof PatternDiskItem)) {
-            // 同一个理由：列表里还有它，槽里已经不是了。
-            LOGGER.debug("[encoding] 打标记时槽里已不是样板磁盘（客户端滞后）");
-            return;
-        }
-
-        // 光标上没有可识别的工作方块、也没有刚导入的配方时，deriveMarkId() 给出的只是当前模式标记——那不是玩家
-        // 对这张盘的判断，写下去只会把盘上原有的标记冲成「处理样板」。这种右键不写，并且跟上传链路一样把结果
-        // 说进聊天栏：写没写成，玩家得看得到。
-        //
-        // 带着 markOverride 进来时不适用这条：雕凿的标记本来就是固定的，不需要「导入过类别」这个前提。
-        if (markOverride == null && (pendingRecipeCategory == null || pendingRecipeCategory.isEmpty())) {
-            LOGGER.info("Bind skipped for disk {}: nothing on the cursor and nothing imported", serial);
-            return;
-        }
-
-        var mark = markOverride != null ? markOverride : deriveMarkId();
-        LOGGER.info("Binding mark {} to disk {}", mark, serial);
-
-        var updated = stack.copy();
-        updated.set(AEPatternRegistries.DISK_PREFIX, mark);
-        writeDiskSlot(inv, ref.slot(), updated);
+        binder.bind(serial, markOverride);
     }
 
-    /**
-     * 要绑到磁盘上的标记：导入过配方就用它自己的类别（同一台机器下的不同类别分得开），否则回退到编码模式。
-     * 两者都存成 {@code #} 开头的标识符。
-     *
-     * <p>{@code #mode:} 那一支在绑盘链路上通常出不来：{@link #bindPrefix(long)} 会先判掉空的类别。例外是
-     * 编码上传路径（{@link #uploadMark()}）——雕凿不在 {@link EncodingMode} 里、也没有配方类别，它带着
-     * 一个固定标记进 {@link #bindPrefix(long, String)}，绕过了那个判断。要刻意给磁盘打模式标记
-     * 还可以走右键打标（管理终端为 Shift+右键；{@link #bindSearchMark(long)}，它把搜索栏文本原样存下）。</p>
-     *
-     * <p>两套写法看起来是两种标记，但显示与搜索会把模式标记归一成对应的类别（见
-     * {@link DiskMarkRules#categoryForMode}），所以玩家看到的、搜到的名字是一致的。</p>
-     *
-     * <p><b>已知行为（不是缺陷）</b>：高级档（{@code advancedMode}）不在 {@link EncodingMode} 里、切进去时也不改
-     * {@code mode}，所以它<b>没有专属标记</b>——读到的 {@code mode} 是「进入高级档之前那个常规档」，
-     * 写出来就是那个常规档的标记（从处理档进去就是处理档的）。
-     * 这是已知行为，后续审查不必再把它当新问题报。雕凿档因为样板语义不同
-     * （记「把谁雕成谁」，与导入的配方类别无关），单独走 {@link #uploadMark()} 给了固定标记；若日后要给高级档
-     * 补一个，照 {@link DiskMarkRules#CHISELING_MARK} 那一套加，且同样<b>只加在上传路径上</b>。</p>
-     */
+    /** 要绑到磁盘上的标记，口径见 {@link DiskMarkBinder}。 */
     public String deriveMarkId() {
-        return DiskMarkRules.deriveMarkId(pendingRecipeCategory, this.mode);
+        return binder.deriveMarkId();
     }
 
-    /**
-     * 从磁盘编码上传（顺位写盘）时该绑的标记：雕凿档用固定的模式标记——它的样板记的是「把谁雕成谁」，
-     * 与导入的类别无关；其它档沿用 {@link #deriveMarkId()}。
-     *
-     * <p>这个雕凿分支只在**上传路径**上生效，没有写进 {@code deriveMarkId()}：标记的常规来源是
-     * 「导入配方」与「右键打标的搜索栏文本」两条，它们各按各的口径走，不经过这里。</p>
-     *
-     * <p>只给雕凿开分支，是因为它的样板语义与常规档不同（记的是「把谁雕成谁」，与导入的配方类别无关）。
-     * <b>高级档没有专属标记</b>——它继承进入本档之前那个常规档的，属已知行为；
-     * 不要顺手在这里补一个：那会改变磁盘上现有标记的含义，不是修复。</p>
-     */
-    private String uploadMark() {
-        return this.chiselingMode ? DiskMarkRules.CHISELING_MARK : deriveMarkId();
-    }
 
     /** The mark standing for an encoding mode, for disks marked without an imported recipe. */
     public void setPendingRecipeCategory(@Nullable String categoryId) {
@@ -1330,7 +1094,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
      * 样板存入磁盘后，把回退产生的空白样板还回去：先进终端自己的那格空白样板槽，槽满才入网；网络不在
      * 或满了就落玩家背包；背包也满则留在编码槽由玩家手动取走（不丢失）。
      */
-    private void returnBlankPatternToStorage() {
+    void returnBlankPatternToStorage() {
         returnPatternToStorage(AEPatternRegistries.blankPattern());
     }
 
@@ -1450,7 +1214,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
      *              reading a disk's components for an action, because a mark written a moment ago may not
      *              have reached it yet.
      */
-    private void syncDiskList(boolean force) {
+    void syncDiskList(boolean force) {
         var entries = diskIndex.rebuild(collectDiskHosts(), force);
         if (entries == null) {
             return; // unchanged: skip full resend
