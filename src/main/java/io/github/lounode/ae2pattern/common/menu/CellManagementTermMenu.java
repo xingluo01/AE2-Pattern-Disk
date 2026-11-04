@@ -1,77 +1,54 @@
 package io.github.lounode.ae2pattern.common.menu;
 
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.nbt.NbtOps;
-import net.minecraft.nbt.TagParser;
-import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.MenuType;
+import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 
 import appeng.api.config.CopyMode;
-import appeng.api.stacks.AEItemKey;
-import appeng.api.stacks.AEKey;
-import appeng.api.stacks.GenericStack;
+import appeng.core.network.ClientboundPacket;
+import appeng.api.networking.IGrid;
 import appeng.api.storage.ITerminalHost;
-import appeng.api.storage.StorageCells;
 import appeng.api.storage.cells.ICellWorkbenchItem;
-import appeng.helpers.IPriorityHost;
-import appeng.menu.MenuOpener;
 import appeng.menu.SlotSemantic;
 import appeng.menu.guisync.GuiSync;
 import appeng.menu.implementations.MenuTypeBuilder;
-import appeng.menu.implementations.PriorityMenu;
-import appeng.menu.locator.MenuHostLocator;
-import appeng.menu.locator.MenuLocators;
-import appeng.menu.me.common.MEStorageMenu;
-import appeng.util.ConfigInventory;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.inventory.ClickType;
-import net.minecraft.world.inventory.Slot;
-
 import appeng.menu.slot.AppEngSlot;
 import appeng.menu.slot.FakeSlot;
+import appeng.util.ConfigInventory;
 
 import org.jetbrains.annotations.Nullable;
 
 import io.github.lounode.ae2pattern.AEPatternRegistries;
-import io.github.lounode.ae2pattern.config.AEPDCommonConfig;
 import io.github.lounode.ae2pattern.common.menu.slot.StorageCellSlot;
 import io.github.lounode.ae2pattern.common.part.CellManagementTerminalPart;
-import io.github.lounode.ae2pattern.integration.extendedae.VoidCellCompat;
-import io.github.lounode.ae2pattern.integration.megacells.MegaCellsCompat;
 import io.github.lounode.ae2pattern.network.CellHostListPayload;
-import io.github.lounode.ae2pattern.network.CellHostUpdatePayload;
 import io.github.lounode.ae2pattern.network.CellNoticePayload;
 
 /**
  * 元件管理终端的菜单：列出网络里各驱动器的存储元件，右侧标记区编辑编码槽里那个元件的分区。
  *
- * <p><b>两个管理域</b>：{@code collectBulkSites()} 是<b>压缩管理域</b>，只收 ECO 大宗压缩矩阵，按压缩链
- * 聚合去重（「压缩统一管理」）；{@link CellMarkDomain} 是<b>标记管理域</b>，收网络里所有能写标记的元件，
- * 只按单个键判重（「快捷标记」）。两域共用同一道准入闸与同一套取放写回，但集合与判重单位不同，别合并；
- * 两域都只收网络里已装好的元件，不交互元件编码槽里那张元件的标记槽。</p>
+ * <p><b>两个管理域</b>：{@link CellBulkDomain} 是<b>压缩管理域</b>（只收 ECO 大宗压缩矩阵，按压缩链聚合
+ * 去重）；{@link CellMarkDomain} 是<b>标记管理域</b>（收两款奇点元件，按单个键判重）。两域共用同一道准入闸
+ * 与同一套取放写回，但集合与判重单位不同，别合并。</p>
+ *
+ * <p><b>职责边界</b>：本类只管槽位、同步与动作分流。搬运在 {@link CellTermMoves}，分区编辑在
+ * {@link EncodeCellEditor}，两个管理域各自在自己的类里，收藏夹在 {@link CellBookmarks}。每个动作的
+ * 「客户端发 / 服务端做」分流都留在本类，因为只有这里拿得到 {@code sendClientAction}。</p>
  *
  * <p><b>为什么不继承两个样板终端的菜单</b>：它们的槽位全在构造器里一次性 {@code addSlot}（合成网格、
- * 处理输入输出、雕凿输入……），没有可覆写的分槽钩子；而本终端的右下角是元件编码槽，与样板编码区不共存。
- * 继承过来只能靠「建了再删」绕，那会把不存在的槽位留在 {@code menu.slots} 里——{@code slots} 与 AE2 的
- * 语义簿记、原版的槽位镜像不是一个可以随便动的列表，删格必须走 AE2 的 API。所以这里直接建在
- * {@link MEStorageMenu} 上：终端该有的网格访问、链接状态都还在，样板那套一件不带。</p>
+ * 处理输入输出……），没有可覆写的分槽钩子；而本终端的右下角是元件编码槽，与样板编码区不共存。继承过来只能
+ * 靠「建了再删」绕，那会把不存在的槽位留在 {@code menu.slots} 里。所以直接建在 AE2 的 {@code MEStorageMenu} 上。</p>
  *
- * <p><b>升级槽是元件的，不是终端的。</b>宿主（{@link ICellManagementHost}）的 {@code getUpgrades()}
- * 交空，父类因此一格 {@code UPGRADE} 都不建；面板上那六格是挂在编码槽里那张元件上的
- * {@link EncodeCellUpgrades}（语义 {@code ae2_pattern_disk:cell_upgrade}）。这样卡插的是元件本身，
- * 元件从编码槽拿走时卡跟着走，与 AE2 元件工作台同一个语义。</p>
+ * <p><b>升级槽是元件的，不是终端的。</b>宿主（{@link ICellManagementHost}）的 {@code getUpgrades()} 交空，
+ * 父类因此一格 {@code UPGRADE} 都不建；面板上那六格是挂在编码槽里那张元件上的 {@link EncodeCellUpgrades}
+ * （语义 {@code ae2_pattern_disk:cell_upgrade}）。卡插的是元件本身，元件从编码槽拿走时卡跟着走。</p>
  */
 public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
 
@@ -79,26 +56,53 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
             .create((id, ip, host) -> new CellManagementTermMenu(id, ip, host), CellManagementTerminalPart.class)
             .buildUnregistered(ResourceLocation.parse("ae2_pattern_disk:cell_management_terminal"));
 
-    /** 标记区每页的行数：贴图上能画下 3 行，71.5 里先给 3。 */
+    /** 标记区每页的行数：贴图上能画下 3 行。 */
     public static final int VISIBLE_MARKER_ROWS = 3;
 
     /** 标记区总行数。63 = 7 列 &times; 9 行，正好是 AE2 元件的分区上限。 */
     public static final int TOTAL_MARKER_ROWS = 9;
 
-    private final ICellManagementHost host;
+    /** 反馈文案的语言键前缀（这些串只在服务端拼键，未尾化由客户端做）。 */
+    static final String NOTICE = "gui.ae2_pattern_disk.cell_management_terminal.notice.";
 
-    /** 诊断用：动作是否真的到达服务端、以及在哪一步被拒（见 {@code withDriveSlot} 与 {@code ownerOf}）。 */
     private static final org.slf4j.Logger LOGGER = org.slf4j.LoggerFactory
             .getLogger(CellManagementTermMenu.class);
 
-    /** 非 ECO 主机里发现大宗元件时的去重键（每次开终端的压缩管理域聚合只提醒一次）。 */
-    private static final java.util.Set<String> MISPLACED = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private static final String ACTION_SET_MARKER_ROW = "setMarkerRow";
+    private static final String ACTION_PARTITION = "partition";
+    private static final String ACTION_CLEAR = "clear";
+    private static final String ACTION_CYCLE_COPY_MODE = "nextCopyMode";
+    private static final String ACTION_MOVE_CELL = "moveCell";
+    private static final String ACTION_TAKE_CELL = "takeCell";
+    private static final String ACTION_PUT_CELL = "putCell";
+    private static final String ACTION_QUICK_MOVE_CELL = "quickMoveCell";
+    private static final String ACTION_STORE_CELL = "storeCell";
+    private static final String ACTION_MOVE_TO_SELECTED = "moveCellToSelected";
+    private static final String ACTION_STORE_ENCODE_CELL = "storeEncodeCell";
+    private static final String ACTION_OPEN_PRIORITY = "openPriority";
+    private static final String ACTION_CYCLE_COMPRESSION_CUTOFF = "cycleCompressionCutoff";
+    private static final String ACTION_CYCLE_ECO_BULK_CUTOFF = "cycleEcoBulkCutoff";
+    private static final String ACTION_CONSOLIDATE_ECO_BULK = "consolidateEcoBulkMarkers";
+    private static final String ACTION_QUICK_MARK = "quickMark";
+    private static final String ACTION_MARK_BOOKMARKS = "markBookmarks";
+    private static final String ACTION_CYCLE_VOID_MODE = "cycleVoidMode";
+
+    private final ICellManagementHost host;
 
     /** 标记窗：21 格槽位挂在它上面，滚动只撼它的起点。 */
     private final SlidingInventoryWindow markerWindow;
 
     /** 标记区的数据源：编码槽里那张元件的分区（不是部件自己的库存）。 */
     private final EncodeCellPartitions markerPartitions;
+
+    /** 元件升级槽的库存：跟着编码槽里那张元件走，不是跟着终端走。 */
+    private final EncodeCellUpgrades encodeCellUpgrades;
+
+    private final EncodeCellEditor editor;
+    private final CellTermMoves moves;
+    private final CellBulkDomain bulkDomain;
+    private final CellQuickMark quickMarker;
+    private final CellBookmarks bookmarks;
 
     /**
      * 标记窗起点（行）：0..{@code TOTAL_MARKER_ROWS - VISIBLE_MARKER_ROWS}。
@@ -108,6 +112,18 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
     @GuiSync(301)
     public int markerRowOffset;
 
+    /**
+     * 复制模式，语义与 AE2 元件工作台完全一致。
+     *
+     * <p>{@code CLEAR_ON_REMOVE}：把元件从编码槽里拿走时它的分区跟着清掉；
+     * {@code KEEP_ON_REMOVE}：分区留在元件上，换一张元件继续编辑。</p>
+     */
+    @GuiSync(302)
+    public CopyMode copyMode = CopyMode.CLEAR_ON_REMOVE;
+
+    /** 驱动器清单的收发（屏幕每帧读的那份数据）。 */
+    private final CellDriveListSync driveList;
+
     public CellManagementTermMenu(int id, Inventory playerInventory, CellManagementTerminalPart host) {
         this(TYPE, id, playerInventory, host);
     }
@@ -116,14 +132,22 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
             ICellManagementHost host) {
         super(menuType, id, playerInventory, (ITerminalHost) host);
         this.host = host;
+        this.encodeCellUpgrades = new EncodeCellUpgrades(host);
+        this.markerPartitions = new EncodeCellPartitions(host);
+        this.editor = new EncodeCellEditor(this, markerPartitions);
+        this.moves = new CellTermMoves(this);
+        this.bulkDomain = new CellBulkDomain(this);
+        this.quickMarker = new CellQuickMark(this);
+        this.bookmarks = new CellBookmarks(this);
+        this.driveList = new CellDriveListSync(this);
 
         registerClientAction(ACTION_SET_MARKER_ROW, Integer.class, this::setMarkerRowOffset);
-        registerClientAction(ACTION_MOVE_CELL, String.class, this::moveCellToEncodeSlotEncoded);
-        registerClientAction(ACTION_TAKE_CELL, String.class, this::takeCellEncoded);
-        registerClientAction(ACTION_PUT_CELL, String.class, this::putCellEncoded);
-        registerClientAction(ACTION_QUICK_MOVE_CELL, String.class, this::quickMoveCellEncoded);
-        registerClientAction(ACTION_STORE_CELL, String.class, this::storeCellIntoDriveEncoded);
-        registerClientAction(ACTION_MOVE_TO_SELECTED, String.class, this::moveCellToSelectedEncoded);
+        registerClientAction(ACTION_MOVE_CELL, String.class, moves::moveToEncodeSlotEncoded);
+        registerClientAction(ACTION_TAKE_CELL, String.class, moves::takeCellEncoded);
+        registerClientAction(ACTION_PUT_CELL, String.class, moves::putCellEncoded);
+        registerClientAction(ACTION_QUICK_MOVE_CELL, String.class, moves::quickMoveCellEncoded);
+        registerClientAction(ACTION_STORE_CELL, String.class, moves::storeCellIntoDriveEncoded);
+        registerClientAction(ACTION_MOVE_TO_SELECTED, String.class, moves::moveToSelectedEncoded);
         registerClientAction(ACTION_STORE_ENCODE_CELL, String.class, this::storeEncodeCellIntoDrive);
         registerClientAction(ACTION_OPEN_PRIORITY, String.class, this::openPriorityGui);
         registerClientAction(ACTION_PARTITION, this::partition);
@@ -136,129 +160,57 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         registerClientAction(ACTION_QUICK_MARK, this::quickMark);
         registerClientAction(ACTION_MARK_BOOKMARKS, String.class, this::applyBookmarks);
         registerClientAction(ACTION_CYCLE_VOID_MODE, Boolean.class, this::cycleVoidMode);
-        this.encodeCellUpgrades = new EncodeCellUpgrades(host);
 
-        // 元件编码槽：一格，正在被编辑的那个元件。标记区改的就是它的分区。只收存储元件与存储矩阵，
-        // 其余物品（木棍、计算元件……）一律挡在槽外，免得界面全亮却点不动。
+        // 元件编码槽：一格，正在被编辑的那个元件。标记区改的就是它的分区。只收存储元件与存储矩阵。
         this.addSlot(new StorageCellSlot(host.getEncodeCellInventory(), 0), AEPatternRegistries.CELL_ENCODE);
 
-        // 元件升级槽：跟着编码槽里那张元件走，用元件自己的 getUpgrades 实现，终端物品上不登记任何卡种。
+        // 元件升级槽：跟着编码槽里那张元件走，用元件自己的 getUpgrades 实现。
         for (int i = 0; i < EncodeCellUpgrades.SIZE; i++) {
             this.addSlot(new AppEngSlot(encodeCellUpgrades, i), AEPatternRegistries.CELL_UPGRADE);
         }
-        // 标记窗：7 列各一语义、每列 3 格，摆出 7x3 的可见窗口。后备 63 格 = 编码槽里那张元件的分区，
-        // 滚动时整窗平移。槽位用幽灵槽：分区是「标记」，放进去只是记下这个类型，不是把实物扣下。
-        this.markerPartitions = new EncodeCellPartitions(host);
-        this.markerWindow = new SlidingInventoryWindow(this.markerPartitions,
+        // 标记窗：7 列各一语义、每列 3 格，摆出 7x3 的可见窗口。后备 63 格 = 编码槽里那张元件的分区。
+        // 槽位用幽灵槽：分区是「标记」，放进去只是记下这个类型，不是把实物扣下。
+        this.markerWindow = new SlidingInventoryWindow(markerPartitions,
                 AEPatternRegistries.CELL_MARKER_COLUMN.length * VISIBLE_MARKER_ROWS);
         for (int column = 0; column < AEPatternRegistries.CELL_MARKER_COLUMN.length; column++) {
             var semantic = AEPatternRegistries.CELL_MARKER_COLUMN[column];
             for (int row = 0; row < VISIBLE_MARKER_ROWS; row++) {
                 this.addSlot(new FakeSlot(markerWindow, column * VISIBLE_MARKER_ROWS + row), semantic);
             }
-        }    }
-
+        }
+    }
 
     /**
      * 不显示 AE2 的 view cell 面板。
      *
-     * <p>宿主是 {@code AbstractTerminalPart}，它实现 {@code IViewCellStorage}，于是 {@code MEStorageMenu} 会建
-     * VIEW_CELL 槽、{@code MEStorageScreen} 会去取名为 {@code viewCells} 的 widget——而那个 widget 的位置来自样式
-     * 文档，缺节点时是抛异常，不是不画。本终端右上角是表格，没有它的位置，所以直接关掉：一行同时解决「widget
-     * 必需」与「槽没地方摆、会堆在面板 (0,0)」两件事。</p>
+     * <p>宿主是 {@code AbstractTerminalPart}，实现 {@code IViewCellStorage}，于是 {@code MEStorageMenu} 会建
+     * VIEW_CELL 槽、{@code MEStorageScreen} 会去取名为 {@code viewCells} 的 widget——缺节点时是抛异常，不是
+     * 不画。本终端右上角是表格，没有它的位置，所以直接关掉。</p>
      */
     @Override
     protected boolean hideViewCells() {
         return true;
     }
 
-    /** 标记区滚动请求用的 AE2 客户端动作名。 */
-    private static final String ACTION_SET_MARKER_ROW = "setMarkerRow";
-
-    /** 元件工作台那三个按钮的动作名：分区存储 / 清除 / 复制模式。 */
-    private static final String ACTION_PARTITION = "partition";
-    private static final String ACTION_CLEAR = "clear";
-    private static final String ACTION_CYCLE_COPY_MODE = "nextCopyMode";
-
-    /**
-     * 复制模式，语义与 AE2 元件工作台完全一致。
-     *
-     * <p>{@code CLEAR_ON_REMOVE}：把元件从编码槽里拿走时它的分区跟着清掉（分区是「为这张元件配的」）；
-     * {@code KEEP_ON_REMOVE}：分区留在元件上，换一张元件继续编辑。</p>
-     */
-    @GuiSync(302)
-    public CopyMode copyMode = CopyMode.CLEAR_ON_REMOVE;
-
-    /** 元件升级槽的库存：跟着编码槽里那张元件走，不是跟着终端走。 */
-    private final EncodeCellUpgrades encodeCellUpgrades;
-
-    /** 「把驱动器某一格的元件收进元件编码槽」用的 AE2 客户端动作名。 */
-    private static final String ACTION_MOVE_CELL = "moveCell";
-
-    /** 左键把元件取到光标 / 把光标上的元件放进这一格。 */
-    private static final String ACTION_TAKE_CELL = "takeCell";
-    private static final String ACTION_PUT_CELL = "putCell";
-
-    /** Shift+左键：把元件收进玩家背包（光标上有东西时先收光标那个）。 */
-    private static final String ACTION_QUICK_MOVE_CELL = "quickMoveCell";
-
-    /** Shift+左键背包里的存储元件：存进选中的那台驱动器。 */
-    private static final String ACTION_STORE_CELL = "storeCell";
-
-    /** 右键一个元件格：把它移到选中的那台驱动器（源格空着也不抱手）。 */
-    private static final String ACTION_MOVE_TO_SELECTED = "moveCellToSelected";
-
-    /** 右键元件编码槽里的元件：把它上传到选中的那台驱动器。 */
-    private static final String ACTION_STORE_ENCODE_CELL = "storeEncodeCell";
-
-    /** 中键驱动器首格：打开那一台自己的存储优先级界面。 */
-    private static final String ACTION_OPEN_PRIORITY = "openPriority";
-    /** 切编码槽那张元件的压缩截断物（MEGA 大宗元件专有）；参数是「是否反向」。 */
-    private static final String ACTION_CYCLE_COMPRESSION_CUTOFF = "cycleCompressionCutoff";
-    /** 调编码槽里 ECO 大宗元件的压缩截断；载荷是「标记槽 + 方向」。 */
-    private static final String ACTION_CYCLE_ECO_BULK_CUTOFF = "cycleEcoBulkCutoff";
-    /** 压缩管理域的「压缩统一管理」：按链聚合去重并按读取顺序压实标记。 */
-    private static final String ACTION_CONSOLIDATE_ECO_BULK = "consolidateEcoBulkMarkers";
-
-    /** 标记管理域的「快捷标记」：把网络里不在域内的物品补写进空标记格。 */
-    private static final String ACTION_QUICK_MARK = "quickMark";
-
-    /**
-     * 快捷标记的数量阈值：与 ECO 21.2.12 的 {@code megaBulkAutoMarkThreshold} 默认值对齐，
-     * 口径同样是「数量<b>严格大于</b>此值才标」。
-     *
-     * <p>不读上游配置：那份在 ECO 自己的 {@code config} 包里，不是公开 API，引到总是加载的 common 代码里
-     * 会在缺 ECO 时炸。这里固定成同一个默认值；要让玩家可调，再加本模组的配置项。</p>
-     */
-    private static final long QUICK_MARK_MIN_AMOUNT = 20_000L;
-
-    /** AE2 的客户端动作按 JSON 传参：公开字段 + 无参构造器，不依赖 GSON 对 record 的支持。 */
-    public static final class EcoBulkCutoffRequest {
-        public int slot;
-        public int delta;
-
-        public EcoBulkCutoffRequest() {
-        }
-
-        public EcoBulkCutoffRequest(int slot, int delta) {
-            this.slot = slot;
-            this.delta = delta;
-        }
+    /** 元件终端没有可合成物品网格，不让父类每拍收集全网配方。 */
+    @Override
+    protected boolean showsCraftables() {
+        return false;
     }
 
-    private static final String ACTION_MARK_BOOKMARKS = "markBookmarks";
-    private static final String ACTION_CYCLE_VOID_MODE = "cycleVoidMode";
-
     /**
-     * 「标记收藏」载荷的字符预算（留出余量）：AE2 客户端动作的字符串上限是 32767，而 {@code writeUtf}
-     * 超限就直接抛，所以这里先自己截。
+     * 本屏没有物品网格，所以要掉「配置可见类型」那枚按钮。
+     *
+     * <p>它出现与否由 AE2 按「菜单主机是不是 {@code KeyTypeSelectionHost}」决定，本终端的主机不是，所以现在
+     * 压根不会出现——这一句防着以后主机多实现了那个接口。</p>
      */
-    private static final int MAX_PAYLOAD_CHARS = 16000;
+    @Override
+    public boolean canConfigureTypeFilter() {
+        return false;
+    }
 
-    /** 聊天栏上报的计数上限（载荷来自客户端，夹一下免得出现负数或离谱的数）。 */
-    private static final int MAX_REPORTED_COUNT = 1_000_000;
+    // ---- 标记区：滚动与几何 ----
 
-    /** 标记窗当前挂在哪一段后备库存上，供屏幕画滚动条与内容。 */
     public int getMarkerRowOffset() {
         return markerRowOffset;
     }
@@ -266,8 +218,7 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
     /**
      * 把标记区滚到某一行。
      *
-     * <p>客户端调它时只把意图发上去，不自己改本地值：偏移量是两侧共用的状态，由服务端改完随同步回来，
-     * 免得两边各滚各的。</p>
+     * <p>客户端调它时只把意图发上去，不自己改本地值：偏移量是两侧共用的状态，由服务端改完随同步回来。</p>
      */
     public void setMarkerRowOffset(int row) {
         if (!onServerSide()) {
@@ -285,8 +236,7 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
     /**
      * 编码槽那张元件实际能标记多少格；没元件时 0。
      *
-     * <p>不能假定 63：分区库存是元件自己建的，部分元件给的上限比 63 小——屏那边按这个数决定画几格与
-     * 能滚多远。两侧都能算（元件栈是同步的），所以不必另开一条同步字段。</p>
+     * <p>不能假定 63：分区库存是元件自己建的。两侧都能算（元件栈是同步的），所以不必另开同步字段。</p>
      */
     public int markerSlotCount() {
         return markerPartitions.slotCount();
@@ -300,44 +250,86 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
     }
 
     /** 按语义取槽位：屏幕要用它们的实际位置画覆盖层（位置是 AE2 按样式文档摆的）。 */
-    public List<net.minecraft.world.inventory.Slot> slotsOf(SlotSemantic semantic) {
+    public List<Slot> slotsOf(SlotSemantic semantic) {
         return getSlots(semantic);
     }
 
+    /** 这一格是不是元件编码槽（屏幕用它挡下同一个手势）。 */
+    public boolean isEncodingSlot(Slot slot) {
+        return slotsOf(AEPatternRegistries.CELL_ENCODE).contains(slot);
+    }
+
+    /** 这个槽位是不是分区标记格。 */
+    public boolean isMarkerSlot(Slot slot) {
+        var semantic = getSlotSemantic(slot);
+        for (var marker : AEPatternRegistries.CELL_MARKER_COLUMN) {
+            if (semantic == marker) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 这个槽位是不是元件升级格（本模组自己建的那批，不是 AE2 的 UPGRADE 语义）。 */
+    public boolean isCellUpgradeSlot(Slot slot) {
+        return getSlotSemantic(slot) == AEPatternRegistries.CELL_UPGRADE;
+    }
+
+    /** 元件升级库存（跟着编码槽那张元件走）：屏幕的模糊卡按钮读它。 */
+    public EncodeCellUpgrades getEncodeCellUpgrades() {
+        return encodeCellUpgrades;
+    }
+
+    /** 供屏幕读取宿主（编码槽、元件分区/升级库存等）。 */
+    public ICellManagementHost getCellHost() {
+        return host;
+    }
+
     /**
-     * 编码槽只挡「会把元件直接挪走」的两类手势：Shift 点击（快捷移动）与右键（取到光标）。
+     * 标记区现在能不能编辑。
      *
-     * <p>左键必须放行：它是把元件放进编码槽/拿出来的正常手势，挡了的话这一格就完全不可交互。
-     * 上上轮的写法用 {@code ClickType.PICKUP} 当挡板，而 PICKUP 左右键共用，把左键一起挡住了。</p>
+     * <p>没有元件就没有「谁的分区」这回事：槽底仍画，但按元件工作台的做法淡到 0.2 并拒收点击。</p>
+     */
+    public boolean isMarkerAreaEditable() {
+        if (!hasWorkbenchCell()) {
+            return false;
+        }
+        if (copyMode == CopyMode.KEEP_ON_REMOVE) {
+            return true;
+        }
+        // CLEAR_ON_REMOVE：元件能装多少种就开多少格，多余的格淡化——与 AE2 元件工作台同一判据。
+        var config = markerPartitions.config();
+        return config != null && config.size() > 0;
+    }
+
+    /** 编码槽里那张物品是不是元件工作台元件（标记格与升级格都按这条判据亮不亮）。 */
+    public boolean hasWorkbenchCell() {
+        ItemStack cell = host.getEncodeCellInventory().getStackInSlot(0);
+        return !cell.isEmpty() && cell.getItem() instanceof ICellWorkbenchItem;
+    }
+
+    // ---- 点击与快捷移动 ----
+
+    /**
+     * 编码槽只挡「会把元件直接挪走」的一类手势：右键取到光标。
      *
-     * <p>Shift 点击（{@code QUICK_MOVE}）现已放行：没有选中驱动器时，元件编码槽与玩家背包就靠这一下互相搬
-     * （目标槽见 {@link #getQuickMoveDestinationSlots}）。只挡右键取件，免得与「右键上传到选中的驱动器」撞车。</p>
+     * <p>左键必须放行，它是把元件放进/拿出的正常手势；Shift 点击也放行，没有选中驱动器时编码槽与背包就靠
+     * 这一下互相搬（目标槽见 {@link #getQuickMoveDestinationSlots}）。</p>
      */
     @Override
     public void clicked(int slotId, int button, ClickType clickType, Player player) {
-        if (clickIsEncodingSlot(slotId, button, clickType)) {
+        if (isEncodingSlotAt(slotId) && clickType == ClickType.PICKUP && button == 1) {
             return;
         }
         super.clicked(slotId, button, clickType, player);
-    }
-
-    /** 编码槽只挡右键取件；Shift 点击已放行，用来在编码槽与背包之间快捷搬运。 */
-    private boolean clickIsEncodingSlot(int slotId, int button, ClickType clickType) {
-        if (!isEncodingSlotAt(slotId)) {
-            return false;
-        }
-        return clickType == ClickType.PICKUP && button == 1;
     }
 
     /**
      * 背包里 Shift+左键存储元件、且没有选中驱动器时，把空的元件编码槽排到快捷移动目标的最前。
      *
      * <p>服务端拿不到客户端「选中了哪台驱动器」这一状态，所以这里只按「编码槽空不空、这东西能不能放」判：
-     * 选中了驱动器的那一支由屏幕侧自己发 {@code storeCell} 动作，根本不走快捷移动。
-     * AE2 的 {@code mayPlace} 不看槽里有没有东西，编码槽被占时照样会被算成目标；这里只在它空着时抢一次
-     * 优先级，免得背包里的元件被塞进一个已经装了元件的格子。</p>
-     *
-     * <p>反向那一侧（编码槽里的元件 Shift 回背包）由 AE2 父类按玩家侧槽分派，无需在这里补目标。</p>
+     * AE2 的 {@code mayPlace} 不看槽里有没有东西，编码槽被占时照样会被算成目标，这里只在它空着时抢一次
+     * 优先级。反向那一侧由 AE2 父类按玩家侧槽分派，无需补目标。</p>
      */
     @Override
     protected List<Slot> getQuickMoveDestinationSlots(ItemStack stackToMove, boolean fromPlayerSide) {
@@ -363,109 +355,30 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         return reordered;
     }
 
-    /**
-     * 这次调用是不是发生在服务端。
-     *
-     * <p>用玩家真实类型判而不是父类的 {@code isClientSide()}：两者语义相同（AE2 那份就是读玩家所在侧），
-     * 但这里要的只是「服务端那份菜单在跑吗」，客户端手上那份的 getPlayer() 永远是 LocalPlayer，
-     * 判据与语义一一对应，不必绕着父类约定走。</p>
-     */
-    private boolean onServerSide() {
-        return getPlayer() instanceof net.minecraft.server.level.ServerPlayer;
-    }
-
     /** 这个槽位号是不是元件编码槽。 */
     private boolean isEncodingSlotAt(int slotId) {
         return slotId >= 0 && slotId < this.slots.size()
                 && slotsOf(AEPatternRegistries.CELL_ENCODE).contains(this.slots.get(slotId));
     }
 
-    /** 这一格是不是元件编码槽（屏幕用它挡下同一个手势）。 */
-    public boolean isEncodingSlot(Slot slot) {
-        return slotsOf(AEPatternRegistries.CELL_ENCODE).contains(slot);
-    }
-
-    /** 元件升级库存（跟着编码槽那张元件走）：屏幕的模糊卡按钮读它。 */
-    public EncodeCellUpgrades getEncodeCellUpgrades() {
-        return encodeCellUpgrades;
-    }
-
     /**
-     * 标记区现在能不能编辑。
+     * 这次调用是不是发生在服务端。
      *
-     * <p>没有元件就没有「谁的分区」这回事：槽底仍画，但按元件工作台的做法淡到 0.2 并拒收点击。</p>
+     * <p>判据与父类的 {@code isClientSide()} 一一对应，这里要的只是「服务端那份菜单在跑吗」。</p>
      */
-    public boolean isMarkerAreaEditable() {
-        ItemStack cell = host.getEncodeCellInventory().getStackInSlot(0);
-        if (cell.isEmpty() || !(cell.getItem() instanceof ICellWorkbenchItem)) {
-            return false;
-        }
-        if (copyMode == CopyMode.KEEP_ON_REMOVE) {
-            return true;
-        }
-        // CLEAR_ON_REMOVE：元件能装多少种就开多少格，多余的格淡化——与 AE2 元件工作台同一判据。
-        var config = markerPartitions.config();
-        return config != null && config.size() > 0;
+    private boolean onServerSide() {
+        return getPlayer() instanceof net.minecraft.server.level.ServerPlayer;
     }
 
-    /**
-     * 编码槽里那张物品是不是元件工作台元件：不是的话标记格与升级格都不接受操作（同 AE2 元件工作台）。
-     *
-     * <p>编码槽已经由 {@code StorageCellSlot} 收口到「存储元件 / 存储矩阵」；但存储元件不全是元件工作台
-     * 元件，所以这一层判据仍要跟服务端 {@code EncodeCellUpgrades}、{@code EncodeCellPartitions} 一致
-     * （它们要的就是 {@link ICellWorkbenchItem}），否则会出现「界面全亮、点下去什么也没发生」。</p>
-     */
-    public boolean hasWorkbenchCell() {
-        ItemStack cell = host.getEncodeCellInventory().getStackInSlot(0);
-        return !cell.isEmpty() && cell.getItem() instanceof ICellWorkbenchItem;
-    }
+    // ---- 编码槽那张元件的分区与属性 ----
 
-    /** 这个槽位是不是分区标记格。 */
-    public boolean isMarkerSlot(Slot slot) {
-        var semantic = getSlotSemantic(slot);
-        for (var marker : AEPatternRegistries.CELL_MARKER_COLUMN) {
-            if (semantic == marker) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /** 这个槽位是不是元件升级格（本模组自己建的那批，不是 AE2 的 UPGRADE 语义）。 */
-    public boolean isCellUpgradeSlot(Slot slot) {
-        return getSlotSemantic(slot) == AEPatternRegistries.CELL_UPGRADE;
-    }
-
-    /** 「分区存储」：把元件里现有的东西写成它的分区（元件工作台同款）。 */
+    /** 「分区存储」：把元件里现有的东西写成它的分区。 */
     public void partition() {
         if (!onServerSide()) {
             sendClientAction(ACTION_PARTITION);
             return;
         }
-        ItemStack cell = host.getEncodeCellInventory().getStackInSlot(0);
-        if (cell.isEmpty() || !(cell.getItem() instanceof ICellWorkbenchItem)) {
-            return;
-        }
-        var config = markerConfigForWrite();
-        if (config == null) {
-            return;
-        }
-        var storage = StorageCells.getCellInventory(cell, null);
-        if (storage == null) {
-            return;
-        }
-        int index = 0;
-        for (var entry : storage.getAvailableStacks()) {
-            if (index >= config.size()) {
-                break;
-            }
-            config.setStack(index, new GenericStack(entry.getKey(), 1));
-            index++;
-        }
-        // ConfigInventory 的改动写在元件栈的组件里，元件栈本身得被标记变了才会落盘。
-        host.getEncodeCellInventory().sendChangeNotification(0);
-        host.markForSave();
-        broadcastChanges();
+        editor.partition();
     }
 
     /** 「清除」：把编码槽里那张元件的分区全部清空。 */
@@ -474,376 +387,28 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
             sendClientAction(ACTION_CLEAR);
             return;
         }
-        ItemStack cell = host.getEncodeCellInventory().getStackInSlot(0);
-        if (cell.isEmpty() || !(cell.getItem() instanceof ICellWorkbenchItem)) {
-            return;
-        }
-        var config = markerConfigForWrite();
-        if (config == null) {
-            return;
-        }
-        config.clear();
-        // 与分区存储 / 标记收藏同一口径：分区的改动写在元件栈的组件里，元件栈本身得被通知变了才会落盘。
-        host.getEncodeCellInventory().sendChangeNotification(0);
-        host.markForSave();
-        broadcastChanges();
+        editor.clear();
     }
 
-    /** 「复制模式」：两档循环，与元件工作台同一个枚举、同一个含义。 */
+    /** 「复制模式」：两档循环。 */
     public void cycleCopyMode() {
         if (!onServerSide()) {
             sendClientAction(ACTION_CYCLE_COPY_MODE);
             return;
         }
-        copyMode = copyMode == CopyMode.CLEAR_ON_REMOVE ? CopyMode.KEEP_ON_REMOVE : CopyMode.CLEAR_ON_REMOVE;
-        host.markForSave();
-        broadcastChanges();
+        editor.cycleCopyMode();
     }
 
-    /**
-     * 把驱动器某一格上的元件收进元件编码槽：右键表格里的元件就是这个动作。
-     *
-     * <p>编码槽已经有东西时不换：得先把当前那个放回去，否则另一个元件就被挤没了。格位由客户端报下标，
-     * 服务端拿当下的栈再取一次——两次点击之间玩家可能已经把元件挪走了。</p>
-     */
-    public void moveCellToEncodeSlot(String driveKey, int driveSlot) {
-        if (!onServerSide()) {
-            // 动作参数用一个串传：AE2 的客户端动作只支持单参数，两个值只能自己编码。
-            // 与视图状态那条（applyViewStateEncoded）同一口径，不再多开一种自定义类型的序列化面。
-            sendClientAction(ACTION_MOVE_CELL, encodeMoveCell(driveKey, driveSlot));
-            return;
-        }
-        var encodeInv = host.getEncodeCellInventory();
-        if (!encodeInv.getStackInSlot(0).isEmpty()) {
-            return;
-        }
-        Object owner = ownerOf(driveKey);
-        if (owner == null) {
-            return;
-        }
-        var reason = new java.util.concurrent.atomic.AtomicReference<CellDriveScanner.ExtractResult>();
-        ItemStack taken = CellDriveScanner.extractCell(owner, driveSlot, reason);
-        if (taken.isEmpty()) {
-            notifyTakeFailure(reason.get());
-            return;
-        }
-        encodeInv.setItemDirect(0, taken);
-        host.markForSave();
-        driveListDirty = true;
-        broadcastChanges();
-    }
-
-    /** 把「驱动器键 + 格位」编成一个串（两者都不含分隔符：键是维度@坐标的数字串）。 */
-    private static String encodeMoveCell(String driveKey, int driveSlot) {
-        return driveKey + "|" + driveSlot;
-    }
-
-    /** 解不开的串一律当没点：协议错配不该把服务端带进越界取值。 */
-    private void moveCellToEncodeSlotEncoded(String encoded) {
-        int separator = encoded.lastIndexOf('|');
-        if (separator <= 0) {
-            return;
-        }
-        try {
-            moveCellToEncodeSlot(encoded.substring(0, separator),
-                    Integer.parseInt(encoded.substring(separator + 1)));
-        } catch (NumberFormatException broken) {
-            // 不是我们发的串，丢弃。
-        }
-    }
-
-    /**
-     * 左键一格元件：光标空就把元件取到光标上，光标有元件就把它放进这一格。
-     *
-     * <p>驱动器里的元件不在菜单的槽位表里（表格是自绘的），所以取放走客户端动作，服务端拿当下的栈再确认
-     * 一次；两次点击之间玩家可能已经把那一格挪走了。</p>
-     *
-     * <p>两个参数是「格位宿主键 + 宿主内格位」，不是行键：ECO 家族的一行代表整个子系统，格位分散在
-     * 多台元件座上，拿行键（主机）去找是找不到能写的那一台的。</p>
-     */
-    public void takeCell(String driveKey, int driveSlot) {
-        if (!onServerSide()) {
-            sendClientAction(ACTION_TAKE_CELL, encodeMoveCell(driveKey, driveSlot));
-            return;
-        }
-        // 光标上有东西就不取：取来的元件没地方放，硬顶上去会把玩家手上的东西弄丢。
-        if (!getCarried().isEmpty()) {
-            return;
-        }
-        Object owner = ownerOf(driveKey);
-        if (owner == null) {
-            return;
-        }
-        var reason = new java.util.concurrent.atomic.AtomicReference<CellDriveScanner.ExtractResult>();
-        ItemStack taken = CellDriveScanner.extractCell(owner, driveSlot, reason);
-        if (taken.isEmpty()) {
-            notifyTakeFailure(reason.get());
-            return;
-        }
-        setCarried(taken);
-        afterCellMoved(owner);
-    }
-
-    /** 左键一格空格：把光标上的元件放进去（驱动器拒收就不动）。 */
-    public void putCell(String driveKey, int driveSlot) {
-        if (!onServerSide()) {
-            sendClientAction(ACTION_PUT_CELL, encodeMoveCell(driveKey, driveSlot));
-            return;
-        }
-        ItemStack carried = getCarried();
-        if (carried.isEmpty()) {
-            return;
-        }
-        Object owner = ownerOf(driveKey);
-        if (owner == null) {
-            return;
-        }
-        // 只交一份：元件本身不可堆叠，而对方若在内部 copyWithCount(1)（青春版就是这么写的），
-        // 整栈交过去会让多出来的份数静默消失。
-        if (!CellDriveScanner.insertCell(owner, driveSlot, carried.copyWithCount(1))) {
-            // 失败原因就那四种（格式不符、宿主自己的过滤拒收、这一格已被占、写完回读判为没生效）。AE2 原生
-            // 的驱动器槽也是静默拒收（filter 直接挡掉，不提示玩家），这里跟着不出声；该拦的仍然拦。
-            LOGGER.debug("[cell-mgmt] 放入被拒：宿主 {} 格 {}，原因是「格式不符 / 宿主不收 / 格位已占 / 回读不等」之一"
-                    + "，丢弃这次放入", driveKey, driveSlot);
-            return;
-        }
-        // 光标上还剩更多份时只减一份（当前元件不可堆叠，走不到，但不能在这埋一个吞东西的写法）。
-        ItemStack rest = carried.copy();
-        rest.shrink(1);
-        setCarried(rest);
-        afterCellMoved(owner);
-    }
-
-    /**
-     * Shift+左键：把这一格的元件直收进玩家背包；光标上有东西时先收光标那个。
-     *
-     * <p>背包装不下就把取出来的元件放回原格，不丢东西。</p>
-     */
-    public void quickMoveCell(String driveKey, int driveSlot) {
-        if (!onServerSide()) {
-            sendClientAction(ACTION_QUICK_MOVE_CELL, encodeMoveCell(driveKey, driveSlot));
-            return;
-        }
-        ItemStack carried = getCarried();
-        if (!carried.isEmpty()) {
-            if (getPlayer().getInventory().add(carried)) {
-                setCarried(ItemStack.EMPTY);
-                broadcastChanges();
-            }
-            return;
-        }
-        Object owner = ownerOf(driveKey);
-        if (owner == null) {
-            return;
-        }
-        var reason = new java.util.concurrent.atomic.AtomicReference<CellDriveScanner.ExtractResult>();
-        ItemStack taken = CellDriveScanner.extractCell(owner, driveSlot, reason);
-        if (taken.isEmpty()) {
-            notifyTakeFailure(reason.get());
-            return;
-        }
-        if (!getPlayer().getInventory().add(taken)) {
-            // 背包满：先试着放回原格；驱动器可能刚被拆、或被拒收，那也不能凭空吞掉——掉在玩家脚下。
-            // 这一条虽不出声，但元件已经离开了驱动器（放回或掉地上），属真实状态变化，留一条日志。
-            LOGGER.info("[cell-mgmt] 背包满：取出的元件已放回原格或掉在玩家脚下");
-            if (!CellDriveScanner.insertCell(owner, driveSlot, taken)) {
-                getPlayer().drop(taken, false);
-            }
-            return;
-        }
-        afterCellMoved(owner);
-    }
-
-    /**
-     * 把背包里的一张存储元件存进选中那个首格单的第一个空位（Shift+左键背包里的元件就是这个动作）。
-     *
-     * <p>目标由客户端报出它的首格键（一台 AE2 / EAE 驱动器，或一个 ECO 主机），服务端只认现在还在表里的那一个；
-     * 要的是空位的格位与宿主，而它们只向那一个首格单现读。</p>
-     */
-    public void storeCellIntoDrive(String leaderKey, int inventorySlot) {
-        if (!onServerSide()) {
-            sendClientAction(ACTION_STORE_CELL, encodeMoveCell(leaderKey, inventorySlot));
-            return;
-        }
-        var inventory = getPlayer().getInventory();
-        if (inventorySlot < 0 || inventorySlot >= inventory.getContainerSize()) {
-            // 客户端报来的格位在当前容器里不存在：多半是两次点击之间背包变了。玩家侧只看到"没反应"，
-            // 这条留给排障（与本类里找不到 owner 那条同一个口径）。
-            LOGGER.info("[cell-mgmt] 存入的源格位已失效（报来 {}，当前 {} 格），丢弃这次存入",
-                    inventorySlot, inventory.getContainerSize());
-            return;
-        }
-        ItemStack source = inventory.getItem(inventorySlot);
-        if (!CellDriveScanner.isStorageCell(source)) {
-            LOGGER.info("[cell-mgmt] 源格位里不是存储元件（{}），丢弃这次存入", source.getItem());
-            return;
-        }
-        var grid = gridOrNull();
-        if (grid == null) {
-            return;
-        }
-        var slots = CellDriveScanner.slotsOfBlock(grid, leaderKey);
-        if (slots.isEmpty()) {
-            return;
-        }
-        for (CellHostListPayload.CellSlot slot : slots) {
-            if (!slot.stack().isEmpty()) {
-                continue;
-            }
-            Object owner = CellDriveScanner.findOwner(grid, slot.hostKey());
-            // 存入的是快照的副本：源栈接下来要减一，不能让驱动器里那份跟着变。
-            if (owner == null || !CellDriveScanner.insertCell(owner, slot.hostSlot(), source.copyWithCount(1))) {
-                continue;
-            }
-            ItemStack remaining = source.copy();
-            remaining.shrink(1);
-            // 背包那份是活的 Inventory 对象，不在槽位包自动同步的范围里，得主动推一次。
-            inventory.setItem(inventorySlot, remaining.isEmpty() ? ItemStack.EMPTY : remaining);
-            inventory.setChanged();
-            afterCellMoved(owner);
-            return;
-        }
-    }
-
-    /**
-     * 把一个元件格里的元件移到选中的那台驱动器（右键元件格就是这个动作）。
-     *
-     * <p>目标先确认有空位才去取源：取出来再发现放不进去，那一下已经把元件抱在手里了，多一次回填就多一次
-     * 出错的机会。真到插入失败（格位在两次循环之间被占）时也回填原处，不吞东西。</p>
-     */
-    public void moveCellToSelectedDrive(String hostKey, int hostSlot, String targetLeaderKey) {
-        if (!onServerSide()) {
-            sendClientAction(ACTION_MOVE_TO_SELECTED, encodeMoveCell3(hostKey, hostSlot, targetLeaderKey));
-            return;
-        }
-        var grid = gridOrNull();
-        if (grid == null) {
-            return;
-        }
-        Object source = CellDriveScanner.findOwner(grid, hostKey);
-        if (source == null) {
-            return;
-        }
-        var slots = CellDriveScanner.slotsOfBlock(grid, targetLeaderKey);
-        if (slots.isEmpty()) {
-            return;
-        }
-        if (slots.stream().noneMatch(slot -> slot.stack().isEmpty())) {
-            return;
-        }
-        var reason = new java.util.concurrent.atomic.AtomicReference<CellDriveScanner.ExtractResult>();
-        ItemStack taken = CellDriveScanner.extractCell(source, hostSlot, reason);
-        if (taken.isEmpty()) {
-            notifyTakeFailure(reason.get());
-            return;
-        }
-        for (CellHostListPayload.CellSlot slot : slots) {
-            if (!slot.stack().isEmpty()) {
-                continue;
-            }
-            Object owner = CellDriveScanner.findOwner(grid, slot.hostKey());
-            if (owner == null || !CellDriveScanner.insertCell(owner, slot.hostSlot(), taken)) {
-                continue;
-            }
-            afterCellMoved(source, owner);
-            return;
-        }
-        if (!CellDriveScanner.insertCell(source, hostSlot, taken)) {
-            // 回填也失败（驱动器可能刚被拆）：不能把元件凭空吞掉，掉在玩家脚下。
-            getPlayer().drop(taken, false);
-        }
-        notice(NOTICE + "move_failed");
-    }
-
-    /**
-     * 把元件编码槽里那张元件上传到选中的那一台驱动器（右键编码槽就是这个动作）。
-     *
-     * <p>槽位的取件手势在 {@code clicked} 里被挡着，这条是它的正规出口：元件不是被「拿走」，而是换个地方放。
-     * 先放进去、成功了才清编码槽——反过来的话插入失败就把元件弄丢了。</p>
-     */
-    public void storeEncodeCellIntoDrive(String leaderKey) {
-        if (!onServerSide()) {
-            sendClientAction(ACTION_STORE_ENCODE_CELL, leaderKey);
-            return;
-        }
-        var encodeInv = host.getEncodeCellInventory();
-        ItemStack cell = encodeInv.getStackInSlot(0);
-        if (cell.isEmpty()) {
-            return;
-        }
-        var grid = gridOrNull();
-        if (grid == null) {
-            return;
-        }
-        var slots = CellDriveScanner.slotsOfBlock(grid, leaderKey);
-        if (slots.isEmpty()) {
-            return;
-        }
-        for (CellHostListPayload.CellSlot slot : slots) {
-            if (!slot.stack().isEmpty()) {
-                continue;
-            }
-            Object owner = CellDriveScanner.findOwner(grid, slot.hostKey());
-            if (owner == null || !CellDriveScanner.insertCell(owner, slot.hostSlot(), cell)) {
-                continue;
-            }
-            encodeInv.setItemDirect(0, ItemStack.EMPTY);
-            host.markForSave();
-            afterCellMoved(owner);
-            return;
-        }
-    }
-
-    /**
-     * 终端所在的那张网；**现在连不上时返回 null**（动作与列表同步共用这一道门）。
-     *
-     * <p>判据取 AE2 自家网络交互的那一条 {@code canInteractWithGrid()}（= 宿主给的 link status 是否 connected），
-     * 而不是只看节点在不在：<b>无线终端电量耗尽</b>（仍在接入点范围内）与 <b>面板终端所在网络未通电/未启动</b>
-     * 这两种情况下，节点都在、{@code getActionableNode()} 也不为空，但此刻对网络的一切读写都该被拦住——
-     * AE2 的物品网格同一时刻用的就是这条判据（{@code MEStorageMenu} 里三处 {@code canInteractWithGrid}）。</p>
-     */
-    @Nullable
-    private appeng.api.networking.IGrid gridOrNull() {
-        // 断链（超距 / 未链接 / 终端没电 / 网络未通电）时不分动作与列表同步，一律当作没有网。
-        if (!canInteractWithGrid()) {
-            // 这种状态下各调用点一律静默收手（AE2 原生终端离网时也没有提示，界面本身就是空的），
-            // 只在 debug 留一条线头，方便对着「点了没反应」的反馈分辨是断路还是别的原因。
-            LOGGER.debug("[cell-mgmt] 终端此刻连不上网络，本次操作按空网处理");
-            return null;
-        }
-        var gridNode = getGridNode();
-        return gridNode != null ? gridNode.getGrid() : null;
-    }
-
-    /**
-     * 切编码槽里那张元件的压缩截断物（MEGA 的大宗元件专有）。
-     *
-     * <p>只对「接在压缩链上且已启用压缩」的元件有意义，而那个判据由客户端每帧现算（它决定按钮显不显示），
-     * 所以这里再来一次兜底：不是那种元件就什么都不做，不报错。
-     *
-     * <p>元件是原地改的（截断物存在元件自己的组件里），改完得让宿主把这一格重新落盘——面板写部件 NBT、
-     * 无线写物品组件，两个形态共用这一条。</p>
-     */
+    /** 切编码槽里那张元件的压缩截断物（MEGA 的大宗元件专有）；参数是「是否反向」。 */
     public void cycleCompressionCutoff(boolean reverse) {
         if (!onServerSide()) {
             sendClientAction(ACTION_CYCLE_COMPRESSION_CUTOFF, reverse);
             return;
         }
-        ItemStack cell = host.getEncodeCellInventory().getStackInSlot(0);
-        Object bulk = MegaCellsCompat.bulkInventoryOf(cell);
-        if (bulk == null || !MegaCellsCompat.switchCutoff(bulk, reverse)) {
-            return;
-        }
-        host.markForSave();
-        broadcastChanges();
+        editor.cycleCompressionCutoff(reverse);
     }
 
-    /**
-     * 调编码槽里 ECO 大宗元件的压缩截断物。
-     *
-     * <p>与 MEGA 那枚同一形状：客户端只发标记槽与方向，服务端改元件配置里的那一格。ECO 21.2.11 起标记物
-     * 本身就是截断层，所以写回的是 {@code cycleCompressionCutoff} 返回的新一级，而不是只改显示值。</p>
-     */
+    /** 调编码槽里 ECO 大宗元件的压缩截断；参数是「标记槽 + 方向」。 */
     public void cycleEcoBulkCutoff(int markerSlot, int delta) {
         if (delta != -1 && delta != 1) {
             return;
@@ -852,774 +417,164 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
             sendClientAction(ACTION_CYCLE_ECO_BULK_CUTOFF, new EcoBulkCutoffRequest(markerSlot, delta));
             return;
         }
-        ItemStack cell = host.getEncodeCellInventory().getStackInSlot(0);
-        var site = CellBulkCutoffCompat.open(cell);
-        if (site == null || !site.cycleCutoff(markerSlot, delta)) {
-            return;
-        }
-        host.getEncodeCellInventory().sendChangeNotification(0);
-        host.markForSave();
-        // broadcastChanges 里会复核标记窗口缓存，标记槽换级后窗口不会停在旧内容上。
-        broadcastChanges();
+        editor.cycleEcoBulkCutoff(markerSlot, delta);
     }
 
-    /**
-     * 压缩管理域 · 统一压缩管理：把网络里所有大宗矩阵的标记按链聚合去重，按优先级归属。
-     *
-     * <p>归属规则：每条链归目标顺序里第一个还有格位的那台，同链其余标记算重复并清掉；所有目标都满员时，
-     * 链留在第一个列出它的矩阵，宁可不并也不丢。一台矩阵内部抄了两遍的也一并并掉。</p>
-     *
-     * <p><b>不碰元件编码槽</b>：只整理已经装在网络驱动器 / 矩阵座里的大宗元件，不读写编码槽里那张元件的
-     * 标记槽（按钮也只在编码槽空着时出现）。所有站点一律走「取出 → 改副本 → 放回」，写回失败回填原件，
-     * 连原件都放不回则掉在玩家脚下，宁可什么都不改。</p>
-     *
-     * <p>收不下的站点（宿主不收这一类元件）在收集阶段就被排除，不参与归属分配：表里照样列，但一条链
-     * 都不会被判给它——否则回执数与实际写入会分家。</p>
-     */
-    public void consolidateEcoBulkMarkers() {
-        if (!onServerSide()) {
-            sendClientAction(ACTION_CONSOLIDATE_ECO_BULK);
-            return;
-        }
-        var sites = collectBulkSites();
-        if (sites.isEmpty()) {
-            return;
-        }
-        var plan = planConsolidation(sites);
-        int touched = 0;
-        var owners = new ArrayList<Object>();
-        for (int index = 0; index < sites.size(); index++) {
-            if (applyMarkers(sites.get(index), plan.wanted().get(index)) != ApplyResult.APPLIED) {
-                continue;
-            }
-            touched++;
-            var owner = ownerOf(sites.get(index).driveKey());
-            if (owner != null) {
-                owners.add(owner);
-            }
-        }
-        if (touched == 0) {
-            return;
-        }
-        afterCellMoved(owners.toArray());
-        noticeWith(NOTICE + "bulk_consolidated", String.valueOf(plan.cleared()));
-    }
-
-    /**
-     * 标记管理域 · 快捷标记：把 ME 网络里<b>不在标记管理域</b>的物品补写进域内元件的空标记格。
-     *
-     * <p>「不在域内」的判据是 {@link CellMarkDomain#coveredKeys(List)}：所有站点已标记键的并集，压缩矩阵
-     * 按整条链展开，所以链上任意形态都算已覆盖。分配按 {@link CellMarkDomain#targetOrder(List)} 与
-     * {@link CellMarkDomain#firstTarget(List, int[])}：顺着优先级把第一台有空位的元件填满，再轮到下一台。</p>
-     *
-     * <p><b>不看 ECO 压缩链</b>：候选只按数量阈值与「是否已在域内」筛，不反查压缩链、不按链分组。
-     * 早期版本把过阈值的物品先判一遍链，非链成员一律只找普通分区元件，而 Bigger AE2 那张只有 1 格且
-     * 常常没插，结果 ECO 矩阵始终 0 / 5。上游对非链成员允许作为普通标记，写进矩阵是安全的。</p>
-     *
-     * <p>默认口径：只写标记、不迁移库存；候选是网络里数量严格大于 {@link #QUICK_MARK_MIN_AMOUNT}、且不是
-     * 2.1G / 9.2E 两档哨兵数量的物品键（见 {@link CellMarkDomain#acceptsAmount}）；
-     * 按目标顺序收，装不下的计入「未写入」，不按数量排序。写回沿用压缩管理域那套
-     * 「取出 → 改副本 → 放回 → 失败回填」。</p>
-     *
-     * <p><b>每次按下都留痕</b>：早退分支（没连上网、域里没有目标元件）与正常结束都走
-     * {@link #reportQuickMark}，聊天栏给六个计数、日志给逐环诊断。以前这几条分支完全静默，
-     * 「按了没反应」和「矩阵还是 0/5」在现场无从区分。</p>
-     */
-    public void quickMark() {
-        if (!onServerSide()) {
-            sendClientAction(ACTION_QUICK_MARK);
-            return;
-        }
-        var grid = gridOrNull();
-        if (grid == null) {
-            reportQuickMark(0, 0, 0, 0, 0, 0, "grid=null（终端此刻没连上网络）");
-            return;
-        }
-        var sites = CellMarkDomain.collect(grid);
-        // 诊断：把「扫描器看见了」与「进了标记管理域」分开数。两者不等就卡在准入闸或白名单上。
-        int scannedCells = 0;
-        int namedTargets = 0;
-        for (var entry : CellDriveScanner.scan(grid, false)) {
-            for (var cell : entry.cells()) {
-                if (cell.stack().isEmpty()) {
-                    continue;
-                }
-                scannedCells++;
-                if (CellMarkDomain.isMarkTarget(
-                        BuiltInRegistries.ITEM.getKey(cell.stack().getItem()).toString())) {
-                    namedTargets++;
-                }
-            }
-        }
-        if (sites.isEmpty()) {
-            reportQuickMark(0, 0, 0, 0, 0, 0,
-                    "no-target: scanned=" + scannedCells + " named=" + namedTargets
-                            + "（元件被准入闸 / 白名单 / 可信度挡在域外）");
-            return;
-        }
-        int bulkSites = 0;
-        int totalRoom = 0;
-        var covered = new HashSet<AEKey>(CellMarkDomain.coveredKeys(sites));
-        var order = CellMarkDomain.targetOrder(sites);
-        var room = new int[sites.size()];
-        var additions = new ArrayList<List<AEKey>>(sites.size());
-        var siteDesc = new StringBuilder();
-        for (int index = 0; index < sites.size(); index++) {
-            var site = sites.get(index);
-            room[index] = Math.max(0, site.capacity() - site.markers().size());
-            totalRoom += room[index];
-            if (site.bulk()) {
-                bulkSites++;
-            }
-            additions.add(new ArrayList<>());
-            siteDesc.append(index).append(':')
-                    .append(site.bulk() ? "bulk" : "plain").append('/')
-                    .append(site.capacity()).append('-').append(site.markers().size());
-            if (index + 1 < sites.size()) {
-                siteDesc.append(' ');
-            }
-        }
-        int written = 0;
-        int duplicate = 0;
-        int noRoom = 0;
-        int skippedNonItems = 0;
-        int candidates = 0;
-        int skippedBelowThreshold = 0;
-        int skippedSentinel = 0;
-        int assigned = 0;
-        for (var entry : grid.getStorageService().getInventory().getAvailableStacks()) {
-            long amount = entry.getLongValue();
-            if (!CellMarkDomain.acceptsAmount(amount, QUICK_MARK_MIN_AMOUNT)) {
-                // 分两档记账：ECO 的 BigInteger 压缩库存在 KeyCounter 里会饱和到 9.2E，
-                // 上一轮按玩家要求排除了这档；日志里要能看出「候选全被它筛光」这种情形。
-                if (CellMarkDomain.isSentinelAmount(amount)) {
-                    skippedSentinel++;
-                } else {
-                    skippedBelowThreshold++;
-                }
-                continue;
-            }
-            candidates++;
-            AEKey key = entry.getKey();
-            if (!(key instanceof AEItemKey)) {
-                skippedNonItems++;
-                continue;
-            }
-            if (covered.contains(key)) {
-                duplicate++;
-                continue;
-            }
-            int target = CellMarkDomain.firstTarget(order, room);
-            if (target < 0) {
-                noRoom++;
-                continue;
-            }
-            additions.get(target).add(key);
-            room[target]--;
-            assigned++;
-            covered.add(key);
-            written++;
-        }
-        var owners = new ArrayList<Object>();
-        int writeOk = 0;
-        int writeFailed = 0;
-        for (int index : order) {
-            var added = additions.get(index);
-            if (added.isEmpty()) {
-                continue;
-            }
-            var site = sites.get(index);
-            var wanted = new ArrayList<AEKey>(site.markers());
-            wanted.addAll(added);
-            if (wanted.size() > site.capacity() || !applyMark(site, wanted)) {
-                written -= added.size();
-                noRoom += added.size();
-                writeFailed++;
-                LOGGER.info("[cell-mgmt] quick mark: 站点 {} 写回失败（名单 {} 格 / 容量 {}），已回填原件",
-                        index, wanted.size(), site.capacity());
-                continue;
-            }
-            writeOk++;
-            var owner = ownerOf(site.hostKey());
-            if (owner != null) {
-                owners.add(owner);
-            }
-        }
-        if (!owners.isEmpty()) {
-            afterCellMoved(owners.toArray());
-        }
-        reportQuickMark(written, duplicate, noRoom, skippedNonItems, sites.size(), candidates,
-                "sites=" + sites.size() + " bulk=" + bulkSites + " room=" + totalRoom
-                        + " [" + siteDesc + "] scanned=" + scannedCells + " named=" + namedTargets
-                        + " | below20k=" + skippedBelowThreshold + " sentinel=" + skippedSentinel
-                        + " candidates=" + candidates + " assigned=" + assigned
-                        + " writeOk=" + writeOk + " writeFailed=" + writeFailed);
-    }
-
-    /**
-     * 快捷标记的统一出口：聊天栏给六个计数，日志给逐环诊断。
-     *
-     * <p>两处都受同一个配置开关约束；日志只在 INFO 级别打一条，一次按键一条，不随终端刷新重复。</p>
-     */
-    private void reportQuickMark(int written, int duplicate, int noRoom, int skippedNonItems,
-            int targets, int candidates, String detail) {
-        LOGGER.info("[cell-mgmt] quick mark: {} | written={} duplicate={} noRoom={} nonItems={} targets={} candidates={}",
-                detail, written, duplicate, noRoom, skippedNonItems, targets, candidates);
-        var noticeKey = NOTICE + "quick_mark";
-        if (getPlayer() instanceof ServerPlayer serverPlayer
-                && AEPDCommonConfig.isMessageShown(noticeKey)) {
-            serverPlayer.sendSystemMessage(Component.translatable(noticeKey,
-                    written, duplicate, noRoom, skippedNonItems, targets, candidates));
-        }
-    }
-
-    /** 标记管理域：按目标名单改写一台元件，取放与失败回填与压缩管理域同一套。 */
-    private boolean applyMark(CellMarkDomain.Site site, List<AEKey> markers) {
-        // 不在这里问收集阶段那份视图的 trusted()：读名单 / 查链会触发上游 probe，失败时那份视图会被
-        // 标成不可信，于是本来能写的站点被这一句整批拒掉，表现就是「按了按钮、矩阵还是 0 / 5」。
-        // 写回会重新打开句柄（见 View#write），可信度在那一层判。
-        var owner = ownerOf(site.hostKey());
-        if (owner == null || !CellDriveScanner.canAcceptCell(owner, site.hostSlot(), site.stack())) {
-            return false;
-        }
-        var taken = CellDriveScanner.extractCell(owner, site.hostSlot(), null);
-        if (taken.isEmpty()) {
-            return false;
-        }
-        var modified = taken.copy();
-        if (!site.view().write(modified, markers)
-                || !CellDriveScanner.insertCell(owner, site.hostSlot(), modified)) {
-            if (!CellDriveScanner.insertCell(owner, site.hostSlot(), taken)) {
-                LOGGER.info("[cell-mgmt] 快捷标记写回失败且原件放不回去，已掉在玩家脚下：{}",
-                        site.stack().getItem());
-                getPlayer().drop(taken, false);
-            }
-            return false;
-        }
-        return true;
-    }
-
-    /** 压缩管理域里的一个站点：网络里一格放得回去的大宗压缩矩阵。 */
-    private record BulkSite(String driveKey, int driveSlot, ItemStack stack,
-                            CellBulkCutoffCompat.Site cell,
-                            List<CellBulkCutoffCompat.Marker> markers, int capacity,
-                            int cellPriority, @Nullable Integer priority, boolean ecoHost) {
-    }
-
-    /** 压缩管理域的一次聚合：每台矩阵该留的名单，与被清掉的重复标记条数。 */
-    /** 一次站点写回的结果：没变、写了、写不动（读不可信 / 换格失败 / 元件被挪走）。 */
-    private enum ApplyResult { UNCHANGED, APPLIED, FAILED }
-
-    private record ConsolidationPlan(List<List<ItemStack>> wanted, int cleared) {
-    }
-
-    /**
-     * <b>压缩管理域</b>：网络里所有大宗压缩矩阵，按扫描顺序。名单取未去重的那份。
-     *
-     * <p>只认 {@link CellBulkCutoffCompat} 能打开的元件，<b>不收元件编码槽里那张</b>——本动作不交互
-     * 编码槽的标记槽。要连普通 AE2 分区元件一起收，走 {@link CellMarkDomain#collect} 那套标记管理域。</p>
-     */
-    private List<BulkSite> collectBulkSites() {
-        var sites = new ArrayList<BulkSite>();
-        var grid = gridOrNull();
-        if (grid != null) {
-            // 宿主按键回读，同一台下面几十格：记一次就够，别每格重扫一遍网络。
-            var ownerByKey = new java.util.HashMap<String, Object>();
-            for (var entry : CellDriveScanner.scan(grid, false)) {
-                for (var cell : entry.cells()) {
-                    var owner = ownerByKey.computeIfAbsent(cell.hostKey(),
-                            key -> CellDriveScanner.findOwner(grid, key));
-                    if (owner == null || !CellDriveScanner.canAcceptCell(owner, cell.hostSlot(), cell.stack())) {
-                        // 写不回去的站点不进聚合名单（ECO 的矩阵躺在 AE2 驱动器里就是这样）。留着它，计划会
-                        // 把链判给一台必定收不下的宿主、别处的重复标记照删，账面报了条数而实际一格没改。
-                        // 先问这一句再开 Site：读一张矩阵的账不便宜。
-                        if (MISPLACED.add(cell.hostKey() + "|" + cell.stack().getItem())) {
-                            LOGGER.warn("[cell-mgmt] 大宗元件 {} 放在宿主 {} 里：这台宿主不收这一类元件，"
-                                    + " 它只出现在表里，不作为聚合目标", cell.stack().getItem(), cell.hostKey());
-                        }
-                        continue;
-                    }
-                    var site = siteOf(cell.hostKey(), cell.hostSlot(), cell.stack(),
-                            entry.priorityValue(), entry.ecoHost());
-                    if (site != null) {
-                        sites.add(site);
-                    }
-                }
-            }
-        }
-        return sites;
-    }
-
-    /** 压缩管理域的站点：读一台矩阵的名单、格数与库存；只要是大宗元件就返回（空盘也有格数，能当聚合目标）。 */
-    @Nullable
-    private static BulkSite siteOf(String driveKey, int driveSlot, ItemStack stack,
-            @Nullable Integer priority, boolean ecoHost) {
-        var cell = CellBulkCutoffCompat.open(stack);
-        if (cell == null) {
-            return null;
-        }
-        var markers = cell.rawMarkers();
-        if (!cell.trusted()) {
-            // 读失败不能当空盘：那会把这台真实的标记整份覆盖。
-            return null;
-        }
-        return new BulkSite(driveKey, driveSlot, stack, cell, markers, cell.capacity(),
-                cell.storagePriority(), priority, ecoHost);
-    }
-
-    private ConsolidationPlan planConsolidation(List<BulkSite> sites) {
-        // 链 → 列出它的站点集合（同一台里抄了两遍也只算它一次）
-        var listed = new LinkedHashMap<Set<AEKey>, LinkedHashSet<Integer>>();
-        for (int index = 0; index < sites.size(); index++) {
-            for (var marker : sites.get(index).markers()) {
-                listed.computeIfAbsent(marker.chain(), key -> new LinkedHashSet<>()).add(index);
-            }
-        }
-        // 归属只看目标顺序：每条链归顺序里第一个还有格位的那台，不管库存现在在谁那里（库存本身不动）。
-        var keepers = new LinkedHashMap<Set<AEKey>, List<Integer>>();
-        var targets = targetOrder(sites);
-        var room = new int[sites.size()];
-        for (int index = 0; index < sites.size(); index++) {
-            room[index] = sites.get(index).capacity();
-        }
-        if (LOGGER.isInfoEnabled()) {
-            var order = new StringBuilder();
-            for (int target : targets) {
-                var site = sites.get(target);
-                order.append(target).append('=').append(site.driveKey())
-                        .append("/q").append(site.cellPriority())
-                        .append("/p").append(site.priority() == null ? "?" : site.priority().toString())
-                        .append("/m").append(site.markers().size())
-                        .append("/c").append(site.capacity())
-                        .append(site.ecoHost() ? "/eco" : "/drive").append(' ');
-            }
-            LOGGER.info("[cell-mgmt] bulk consolidation: {} sites, target order: {}", sites.size(), order);
-        }
-        for (var entry : listed.entrySet()) {
-            for (int target : targets) {
-                if (room[target] <= 0) {
-                    continue;
-                }
-                keepers.put(entry.getKey(), List.of(target));
-                room[target]--;
-                break;
-            }
-        }
-
-        // 所有目标都满员：这条链留在第一个列出它的矩阵，宁可不并也不丢。
-        for (var entry : listed.entrySet()) {
-            keepers.putIfAbsent(entry.getKey(), List.of(List.copyOf(entry.getValue()).get(0)));
-        }
-        var wanted = new ArrayList<List<ItemStack>>(sites.size());
-        int cleared = 0;
-        for (int index = 0; index < sites.size(); index++) {
-            var site = sites.get(index);
-            var mine = new ArrayList<ItemStack>();
-            var taken = new HashSet<Set<AEKey>>();
-            for (var marker : site.markers()) {
-                var chain = marker.chain();
-                if (!keepers.get(chain).contains(index) || !taken.add(chain)) {
-                    continue;
-                }
-                mine.add(marker.item());
-            }
-            cleared += site.markers().size() - taken.size();
-            // 归到这台、但它原本没列出的链：取来源那台的标记物。
-            for (var entry : listed.entrySet()) {
-                var chain = entry.getKey();
-                if (taken.contains(chain) || !keepers.get(chain).contains(index)) {
-                    continue;
-                }
-                var source = markerOf(sites.get(entry.getValue().iterator().next()), chain);
-                if (source != null) {
-                    mine.add(source.item());
-                    taken.add(chain);
-                }
-            }
-            wanted.add(mine);
-        }
-        if (LOGGER.isInfoEnabled()) {
-            var sizes = new StringBuilder();
-            for (int index = 0; index < wanted.size(); index++) {
-                sizes.append(index).append('=').append(wanted.get(index).size()).append(' ');
-            }
-            LOGGER.info("[cell-mgmt] bulk consolidation: wanted per site: {}, cleared={}", sizes, cleared);
-        }
-        return new ConsolidationPlan(wanted, cleared);
-    }
-
-    /**
-     * 压缩管理域的填充顺序：按控制器的存储优先级降序（读不到的排最后），同优先级按扫描顺序。
-     *
-     * <p>优先级来自扫描时的 {@code DriveEntry.priorityValue()}：ECO 走 {@code IECOStoragePriorityHost}，
-     * AE2 驱动器走 {@code getPriority()}。先按矩阵自己的元件级优先级，再按宿主控制器优先级；
-     * {@code List.sort} 稳定，同级保持扫描顺序。不再有「编码槽那张排最前」的特例。</p>
-     */
-    private static List<Integer> targetOrder(List<BulkSite> sites) {
-        var order = new ArrayList<Integer>(sites.size());
-        for (int index = 0; index < sites.size(); index++) {
-            order.add(index);
-        }
-        order.sort(Comparator
-                .comparingInt((Integer index) -> sites.get(index).cellPriority())
-                .thenComparingInt((Integer index) -> {
-                    Integer priority = sites.get(index).priority();
-                    return priority == null ? Integer.MIN_VALUE : priority;
-                })
-                .reversed());
-        return order;
-    }
-
-    @Nullable
-    private static CellBulkCutoffCompat.Marker markerOf(BulkSite site, Set<AEKey> chain) {
-        for (var marker : site.markers()) {
-            if (marker.chain().equals(chain)) {
-                return marker;
-            }
-        }
-        return null;
-    }
-
-    /** 压缩管理域：按目标名单改写这一台；返回是否真的动了它。 */
-    private ApplyResult applyMarkers(BulkSite site, List<ItemStack> markers) {
-        if (!site.cell().trusted()) {
-            return ApplyResult.FAILED;
-        }
-        if (sameMarkers(site.markers(), markers)) {
-            return ApplyResult.UNCHANGED;
-        }
-        var owner = ownerOf(site.driveKey());
-        if (owner == null) {
-            return ApplyResult.FAILED;
-        }
-        if (!CellDriveScanner.canAcceptCell(owner, site.driveSlot(), site.stack())) {
-            // 这台宿主不收这一类元件（ECO 的矩阵躺在 AE2 驱动器里就是这样）：一动就是「取出来放不回去」，
-            // 所以连这次往返都不开始。
-            return ApplyResult.FAILED;
-        }
-        var taken = CellDriveScanner.extractCell(owner, site.driveSlot(), null);
-        if (taken.isEmpty()) {
-            // 这台现在不让动（无限存储迁移中、矩阵还没成型），跳过它而不是硬来。
-            return ApplyResult.FAILED;
-        }
-        var modified = taken.copy();
-        var replacement = CellBulkCutoffCompat.open(modified);
-        if (replacement == null || !replacement.setMarkers(markers)
-                || !CellDriveScanner.insertCell(owner, site.driveSlot(), modified)) {
-            // 写回失败就原样塞回去；连原件都塞不回（宿主刚被拆、或口径变了）也不能凭空吞掉——掉在玩家脚下。
-            if (!CellDriveScanner.insertCell(owner, site.driveSlot(), taken)) {
-                LOGGER.info("[cell-mgmt] 大宗矩阵写回失败且原件放不回去，已掉在玩家脚下：{}", site.stack().getItem());
-                getPlayer().drop(taken, false);
-            }
-            return ApplyResult.FAILED;
-        }
-        return ApplyResult.APPLIED;
-    }
-
-    /** 名单是否逐格相同：聚合会既删又加，条数相同不代表内容没变。 */
-    private static boolean sameMarkers(List<CellBulkCutoffCompat.Marker> current, List<ItemStack> markers) {
-        if (current.size() != markers.size()) {
-            return false;
-        }
-        for (int slot = 0; slot < current.size(); slot++) {
-            if (!ItemStack.isSameItemSameComponents(current.get(slot).item(), markers.get(slot))) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /**
-     * 「标记收藏」：把 JEI / EMI 收藏夹里的物品追加到编码槽那张元件的标记里。
-     *
-     * <p>发之前先<b>探一遍</b>再截：逐条问这张元件的标记容器「有没有哪一格收得下它」——AE2 的
-     * {@code isAllowedIn} 是纯查询（自己只说「支持这种键类型 + 槽过滤器放行」），问一遍不会动元件。
-     * 探有两层用处：一是元件不支持的条目根本不用发；二是**部分元件自己给标记数量设了上限**，格数不是
-     * 真上限，探得到的可落格数才是——不限制的话载荷会白白大一大截（而且客户端动作的字符串上限只有
-     * 32767 字符，超了直接抛异常）。</p>
-     *
-     * <p>写入与最终的「能不能写进去」判定仍在服务端（见 {@link #applyBookmarks}）。</p>
-     */
-    public void markBookmarks(List<ItemStack> items, int skippedNonItems) {
-        var config = markerConfig();
-        var allowed = new ArrayList<ItemStack>();
-        int rejected = 0;
-        for (ItemStack stack : items) {
-            if (config != null && accepts(config, stack)) {
-                allowed.add(stack);
-            } else {
-                rejected++;
-            }
-        }
-        int capacity = config == null ? 0 : config.size();
-        sendClientAction(ACTION_MARK_BOOKMARKS,
-                encodeBookmarks(allowed, skippedNonItems, rejected, capacity));
-    }
-
-    /**
-     * 编码槽那张元件的标记容器；没有可标记元件时 null。
-     *
-     * <p>拿的是标记窗口自己那份缓存实例（见 {@link EncodeCellPartitions#config()}）：分区库是「建时读进
-     * 内存、改动时整份写回」的，另开一个实例去写会把窗口那份留在旧内容上。</p>
-     */
-    @Nullable
-    private ConfigInventory markerConfig() {
-        return markerPartitions.config();
-    }
-
-    /**
-     * 批量写入前拿分区库：先按元件组件复核一次缓存，再交给调用方写。
-     *
-     * <p>与 {@link #markerConfig()} 分开是有意的：这两个都是服务端的批量写入口，而分区库是「整份写回」的，
-     * 拿旧内容去写会把别的菜单实例刚做的改动盖掉。槽位那条写入路径在
-     * {@link EncodeCellPartitions#setItemDirect(int, ItemStack)} 里已经自行复核了。</p>
-     */
-    @Nullable
-    private ConfigInventory markerConfigForWrite() {
-        markerPartitions.refreshIfStale();
-        return markerPartitions.config();
-    }
-
-    /** 这张元件的标记容器里有没有哪一格收得下这个键；纯查询，不改元件。 */
-    private static boolean accepts(ConfigInventory config, ItemStack stack) {
-        AEKey key = AEItemKey.of(stack);
-        if (key == null) {
-            return false;
-        }
-        for (int i = 0; i < config.size(); i++) {
-            if (config.isAllowedIn(i, key)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * 载荷首行是「收藏夹里跳过的非物品项数 | 发之前就注定写不下的项数」，其余每行一个物品栈的 SNBT；
-     * 解不开的行直接丢。
-     *
-     * <p>发之前就得截断：客户端动作的字符串上限是 32767 字符（AE2 的 {@code sendClientAction} 超了就抛
-     * 异常），而收藏夹可以大得多——不截断的话点一下就是一个客户端异常。条数按标记格数收，另给一个字节
-     * 预算兜底（单件带大组件时一行就能很长）。</p>
-     */
-    private void applyBookmarks(String encoded) {
-        if (encoded == null || encoded.isEmpty()) {
-            return;
-        }
-        var lines = encoded.split("\n", -1);
-        int skippedNonItems;
-        int noRoom;
-        try {
-            var header = lines[0].split("\\|", -1);
-            // 夹一下：这两个数只是给玩家看的，但载荷完全来自客户端——不夹就能把计数推成负数。
-            skippedNonItems = Math.clamp(Integer.parseInt(header[0]), 0, MAX_REPORTED_COUNT);
-            noRoom = header.length > 1 ? Math.clamp(Integer.parseInt(header[1]), 0, MAX_REPORTED_COUNT) : 0;
-        } catch (RuntimeException malformed) {
-            // 协议错配不该把服务端带进越界取值：宁可什么都不做。
-            return;
-        }
-        ItemStack cell = host.getEncodeCellInventory().getStackInSlot(0);
-        if (cell.isEmpty() || !(cell.getItem() instanceof ICellWorkbenchItem)) {
-            return;
-        }
-        // 与窗口、与「分区存储/清除」用同一个实例（理由见 EncodeCellPartitions.config()）。
-        var config = markerConfigForWrite();
-        if (config == null) {
-            return;
-        }
-        var marked = new HashSet<AEKey>(config.keySet());
-        int written = 0;
-        int duplicate = 0;
-        int cursor = 0;
-        // 元件自己给标记数量设了上限时（部分元件如此），写到量之后每次都会失败——那时不再逐条试。
-        boolean exhausted = false;
-        for (int line = 1; line < lines.length; line++) {
-            ItemStack stack = parseStack(lines[line]);
-            if (stack == null || stack.isEmpty()) {
-                continue;
-            }
-            AEKey key = AEItemKey.of(stack);
-            // 未注册的物品（或者空栈）给 null：标记只能装键，直接塞进去会在下游炸。
-            if (key == null) {
-                noRoom++;
-                continue;
-            }
-            if (marked.contains(key)) {
-                duplicate++;
-                continue;
-            }
-            // 找一格「空着且收这个键」的：收不收由元件说了算（与客户端那遍探测同一判据）。
-            int slot = -1;
-            if (!exhausted) {
-                for (int i = cursor; i < config.size(); i++) {
-                    if (config.getKey(i) == null && config.isAllowedIn(i, key)) {
-                        slot = i;
-                        break;
-                    }
-                }
-            }
-            if (slot < 0) {
-                noRoom++;
-                continue;
-            }
-            config.setStack(slot, new GenericStack(key, 1));
-            if (config.getKey(slot) == null) {
-                // 过滤器放行却写不进去：这张元件自己的上限到了（或者不肯收这个键）——不再逐条白试，
-                // 剩下的全计「未写入」。
-                exhausted = true;
-                noRoom++;
-                continue;
-            }
-            marked.add(key);
-            cursor = slot + 1;
-            written++;
-        }
-        if (written > 0) {
-            // ConfigInventory 的改动写在元件栈的组件里，元件栈本身得被标记变了才会落盘。
-            host.getEncodeCellInventory().sendChangeNotification(0);
-            host.markForSave();
-        }
-        broadcastChanges();
-        // 这一条是元管终端唯一走服务端直发的回执（其余都是发「键 + 参数」的包、由客户端显示），
-        // 所以它的开关在同终端的其他消息隔壁的 common 配置里。
-        // 只在真有东西没写进去或被跳过时才说：全部写入成功是玩家预期内的结果，不必再回执一句
-        // （AE2 的 MissingBlankPatterns 也只在缺料时出声）；重复项不算问题——重复打标本来就是无害的。
-        var noticeKey = NOTICE + "mark_bookmarks";
-        if ((noRoom > 0 || skippedNonItems > 0)
-                && getPlayer() instanceof ServerPlayer serverPlayer
-                && AEPDCommonConfig.isMessageShown(noticeKey)) {
-            serverPlayer.sendSystemMessage(Component.translatable(noticeKey,
-                    written, duplicate, noRoom, skippedNonItems));
-        }
-    }
-
-    /** 「物质聚合模式」：循环切编码槽那张 EAE 虚空元件的输出（销毁 / 物质球 / 奇点）。 */
+    /** 「物质聚合模式」：循环切编码槽那张 EAE 虚空元件的输出。 */
     public void cycleVoidMode(boolean reverse) {
         if (!onServerSide()) {
             sendClientAction(ACTION_CYCLE_VOID_MODE, reverse);
             return;
         }
-        ItemStack cell = host.getEncodeCellInventory().getStackInSlot(0);
-        if (!VoidCellCompat.cycleMode(cell, reverse)) {
+        editor.cycleVoidMode(reverse);
+    }
+
+    /** 批量写入前拿分区库（先复核缓存）。 */
+    @Nullable
+    ConfigInventory markerConfigForWrite() {
+        return editor.configForWrite();
+    }
+
+    /** AE2 的客户端动作按 JSON 传参：公开字段 + 无参构造器，不依赖 GSON 对 record 的支持。 */
+    public static final class EcoBulkCutoffRequest {
+        public int slot;
+        public int delta;
+
+        public EcoBulkCutoffRequest() {
+        }
+
+        public EcoBulkCutoffRequest(int slot, int delta) {
+            this.slot = slot;
+            this.delta = delta;
+        }
+    }
+
+    // ---- 元件搬运：客户端发 / 服务端做 ----
+
+    /** 把驱动器某一格上的元件收进元件编码槽。 */
+    public void moveCellToEncodeSlot(String driveKey, int driveSlot) {
+        if (!onServerSide()) {
+            sendClientAction(ACTION_MOVE_CELL, CellTermMoves.encode(new CellTermMoves.DriveSlot(driveKey, driveSlot)));
             return;
         }
-        host.getEncodeCellInventory().sendChangeNotification(0);
-        host.markForSave();
-        broadcastChanges();
+        moves.moveToEncodeSlot(driveKey, driveSlot);
     }
 
-    /** 载荷编码：条数与字节双重截断，超出的都算进「未写入」，读回去由首行报出。 */
-    private static String encodeBookmarks(List<ItemStack> items, int skippedNonItems, int overflow, int capacity) {
-        var body = new StringBuilder();
-        int written = 0;
-        for (ItemStack stack : items) {
-            if (stack == null || stack.isEmpty()) {
-                continue;
-            }
-            var encoded = ItemStack.CODEC.encodeStart(NbtOps.INSTANCE, stack).result().orElse(null);
-            if (encoded == null) {
-                overflow++;
-                continue;
-            }
-            var snbt = encoded.toString();
-            if (written >= capacity || body.length() + snbt.length() + 1 > MAX_PAYLOAD_CHARS) {
-                overflow++;
-                continue;
-            }
-            body.append('\n').append(snbt);
-            written++;
+    /** 左键一格元件：光标空就取到光标上，光标有元件就放进这一格。 */
+    public void takeCell(String driveKey, int driveSlot) {
+        if (!onServerSide()) {
+            sendClientAction(ACTION_TAKE_CELL, CellTermMoves.encode(new CellTermMoves.DriveSlot(driveKey, driveSlot)));
+            return;
         }
-        return Math.max(0, skippedNonItems) + "|" + overflow + body;
+        moves.takeCell(driveKey, driveSlot);
     }
 
-    @Nullable
-    private static ItemStack parseStack(String line) {
-        try {
-            return ItemStack.CODEC.parse(NbtOps.INSTANCE, TagParser.parseTag(line)).result().orElse(null);
-        } catch (Exception malformed) {
-            return null;
+    /** 左键一格空格：把光标上的元件放进去（驱动器拒收就不动）。 */
+    public void putCell(String driveKey, int driveSlot) {
+        if (!onServerSide()) {
+            sendClientAction(ACTION_PUT_CELL, CellTermMoves.encode(new CellTermMoves.DriveSlot(driveKey, driveSlot)));
+            return;
         }
+        moves.putCell(driveKey, driveSlot);
     }
 
-    /**
-     * 中键某一台驱动器首格：打开 AE2 自己的存储优先级界面配那一台。
-     *
-     * <p>能不能单独调优先级由 AE2 的接口判定：只有那一台自己实现了 {@link IPriorityHost}（AE2 与 ExtendedAE
-     * 的驱动器都算）才有这个界面。ECO 家族的优先级记在存储控制器上、不在单格元件座上，这里交不出
-     * 界面，只说一句不支持。</p>
-     *
-     * <p>两个形态的界面宿主不同：面板形态指本部件（AE2 那面的返回键会把玩家送回本终端），无线形态用本菜单
-     * 自己的 locator——宿主是物品，AE2WTLib 自家的无线终端开子菜单也是这条。locator 解析出来的是宿主类的
-     * <b>另一个实例</b>，所以目标键得先写进物品组件（见 {@code WirelessCellManagementTerminalHost}）。</p>
-     */
+    /** Shift+左键：把这一格的元件直收进玩家背包。 */
+    public void quickMoveCell(String driveKey, int driveSlot) {
+        if (!onServerSide()) {
+            sendClientAction(ACTION_QUICK_MOVE_CELL,
+                    CellTermMoves.encode(new CellTermMoves.DriveSlot(driveKey, driveSlot)));
+            return;
+        }
+        moves.quickMoveCell(driveKey, driveSlot);
+    }
+
+    /** Shift+左键背包里的存储元件：存进选中的那台驱动器。 */
+    public void storeCellIntoDrive(String leaderKey, int inventorySlot) {
+        if (!onServerSide()) {
+            sendClientAction(ACTION_STORE_CELL,
+                    CellTermMoves.encode(new CellTermMoves.DriveSlot(leaderKey, inventorySlot)));
+            return;
+        }
+        moves.storeCellIntoDrive(leaderKey, inventorySlot);
+    }
+
+    /** 右键一个元件格：把它移到选中的那台驱动器。 */
+    public void moveCellToSelectedDrive(String hostKey, int hostSlot, String targetLeaderKey) {
+        if (!onServerSide()) {
+            sendClientAction(ACTION_MOVE_TO_SELECTED,
+                    CellTermMoves.encode(new CellTermMoves.Triple(hostKey, hostSlot, targetLeaderKey)));
+            return;
+        }
+        moves.moveToSelectedDrive(hostKey, hostSlot, targetLeaderKey);
+    }
+
+    /** 右键元件编码槽里的元件：把它上传到选中的那台驱动器。 */
+    public void storeEncodeCellIntoDrive(String leaderKey) {
+        if (!onServerSide()) {
+            sendClientAction(ACTION_STORE_ENCODE_CELL, leaderKey);
+            return;
+        }
+        moves.storeEncodeCellIntoDrive(leaderKey);
+    }
+
+    /** 中键驱动器首格：打开那一台自己的存储优先级界面。 */
     public void openPriorityGui(String leaderKey) {
         if (!onServerSide()) {
             sendClientAction(ACTION_OPEN_PRIORITY, leaderKey);
             return;
         }
-        var grid = gridOrNull();
-        if (grid == null) {
+        moves.openPriorityGui(leaderKey);
+    }
+
+    // ---- 两个管理域与收藏夹 ----
+
+    /** 压缩管理域 · 统一压缩管理：把网络里所有大宗矩阵的标记按链聚合去重。 */
+    public void consolidateEcoBulkMarkers() {
+        if (!onServerSide()) {
+            sendClientAction(ACTION_CONSOLIDATE_ECO_BULK);
             return;
         }
-        Object owner = CellDriveScanner.findOwner(grid, leaderKey);
-        if (owner == null) {
+        bulkDomain.consolidate();
+    }
+
+    /** 标记管理域 · 快捷标记：把网络里不在域内的物品补写进空标记格。 */
+    public void quickMark() {
+        if (!onServerSide()) {
+            sendClientAction(ACTION_QUICK_MARK);
             return;
         }
-        // 只要能**写**优先级就放行：AE2/EAE 驱动器走 IPriorityHost，NEO ECO 各级存储与青春版的 L1 驱动器
-        // 走它们存储控制器上的 setStoragePriority(int)。只有读、没有写的不放行（ECO 本体就是）：AE2 那个
-        // 优先级界面不读回也不报错，放进去只会让玩家以为改成了。
-        if (!CellDriveScanner.canSetStoragePriority(owner)) {
-            notice(NOTICE + "priority_unsupported");
-            return;
-        }
-        host.setPriorityTarget(leaderKey);
-        MenuHostLocator locator = host instanceof CellManagementTerminalPart part
-                ? MenuLocators.forPart(part)
-                : getLocator();
-        if (!MenuOpener.open(PriorityMenu.TYPE, getPlayer(), locator)) {
-            // 宿主解析不出来时 AE2 那边只是静默返回 false（不报错也不开屏），这里补一句，免得玩家以为点坏了。
-            notice(NOTICE + "priority_unsupported");
-        }
+        quickMarker.run();
     }
 
-    /** 「宿主键 | 宿主内格位 | 目标首格键」编成一个串（三个值都不含分隔符）。 */
-    private static String encodeMoveCell3(String hostKey, int hostSlot, String targetLeaderKey) {
-        return hostKey + "|" + hostSlot + "|" + targetLeaderKey;
+    /** 「标记收藏」：把 JEI / EMI 收藏夹里的物品追加到编码槽那张元件的标记里。 */
+    public void markBookmarks(List<ItemStack> items, int skippedNonItems) {
+        String payload = CellBookmarks.encode(markerPartitions.config(), items, skippedNonItems);
+        sendClientAction(ACTION_MARK_BOOKMARKS, payload);
     }
 
-    private void storeCellIntoDriveEncoded(String encoded) {
-        withDriveSlot(encoded, this::storeCellIntoDrive);
-    }
+    // ---- 网络与宿主 ----
 
-    /** 解三段串；解不开就当没点（协议错配不该把服务端带进越界取值）。 */
-    private void moveCellToSelectedEncoded(String encoded) {
-        int first = encoded.indexOf('|');
-        int second = first < 0 ? -1 : encoded.indexOf('|', first + 1);
-        if (first <= 0 || second <= 0 || second >= encoded.length() - 1) {
-            return;
+    /**
+     * 终端所在的那张网；<b>现在连不上时返回 null</b>（动作与列表同步共用这一道门）。
+     *
+     * <p>判据取 AE2 自家网络交互的那一条 {@code canInteractWithGrid()}，而不是只看节点在不在：
+     * <b>无线终端电量耗尽</b>（仍在接入点范围内）与 <b>网络未通电</b> 这两种情况下节点都在，
+     * 但此刻对网络的一切读写都该被拦住。</p>
+     */
+    @Nullable
+    IGrid gridOrNull() {
+        // 断链（超距 / 未链接 / 终端没电 / 网络未通电）时不分动作与列表同步，一律当作没有网。
+        if (!canInteractWithGrid()) {
+            LOGGER.debug("[cell-mgmt] 终端此刻连不上网络，本次操作按空网处理");
+            return null;
         }
-        try {
-            moveCellToSelectedDrive(encoded.substring(0, first),
-                    Integer.parseInt(encoded.substring(first + 1, second)), encoded.substring(second + 1));
-        } catch (NumberFormatException broken) {
-            // 不是我们发的串，丢弃。
-        }
+        var gridNode = getGridNode();
+        return gridNode != null ? gridNode.getGrid() : null;
     }
 
-    /** 格子变动后的收口：落盘 + 立刻重算一次要推给客户端的表与光标。 */
-    private void afterCellMoved(Object... owners) {
-        for (Object owner : owners) {
-            if (owner instanceof net.minecraft.world.level.block.entity.BlockEntity blockEntity) {
-                blockEntity.setChanged();
-            }
-        }
-        host.markForSave();
-        driveListDirty = true;
-        broadcastChanges();
-    }
-
-    /** 按身份键找驱动器本体（驱动器可能在两次点击之间被拆了）；找不到时返回 null，界面上那一行也已经消失。 */
-    private Object ownerOf(String driveKey) {
+    /** 按身份键找驱动器本体（可能在两次点击之间被拆了）；找不到时返回 null，界面上那一行也已消失。 */
+    @Nullable
+    Object ownerOf(String driveKey) {
         var grid = gridOrNull();
         if (grid == null) {
             return null;
@@ -1631,88 +586,44 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         return owner;
     }
 
-    /** 反馈文案的语言键前缀（这些串只在服务端拼键，未尾化由客户端做）。 */
-    private static final String NOTICE = "gui.ae2_pattern_disk.cell_management_terminal.notice.";
+    /** 格子变动后的收口：落盘 + 立刻重算一次要推给客户端的表与光标。 */
+    void afterCellMoved(Object... owners) {
+        for (Object owner : owners) {
+            if (owner instanceof net.minecraft.world.level.block.entity.BlockEntity blockEntity) {
+                blockEntity.setChanged();
+            }
+        }
+        host.markForSave();
+        driveList.dirty();
+        broadcastChanges();
+    }
+
+    /** 客户端报来的动作改动了网络里的元件，下一次同步要重扫。 */
+    void markDriveListDirty() {
+        driveList.dirty();
+    }
+
+    /** 「标记收藏」的服务端入口（注册给 AE2 的那个回调只到得了服务端）。 */
+    private void applyBookmarks(String encoded) {
+        bookmarks.apply(encoded);
+    }
+
+    /** 推包给客户端：AE2 的发送口是 protected，同包的同步类走这一条。 */
+    void sendToClient(ClientboundPacket packet) {
+        sendPacketToClient(packet);
+    }
 
     /** 给玩家一句聊天栏反馈（无参数）。只在服务端调。 */
-    private void notice(String key) {
-        noticeWith(key, "");
+    void notice(String key) {
+        sendPacketToClient(new CellNoticePayload(key, ""));
     }
 
     /** 给玩家一句带参数的聊天栏反馈。只在服务端调：客户端手上的菜单没有收发这包的那一线。 */
-    private void noticeWith(String key, String arg) {
+    void noticeWith(String key, String arg) {
         sendPacketToClient(new CellNoticePayload(key, arg));
     }
 
-    /**
-     * 取不到元件时该报哪一句；**真的空着时不出声**（AE2 原生点空格也是静默的），返回 {@code null}。
-     *
-     * <p>两态出声：格里有东西但被锁住时说锁，格里有东西却不知为何没取走时照实说「取不出来」。</p>
-     */
-    @Nullable
-    private static String takeFailureKey(CellDriveScanner.ExtractResult result) {
-        return switch (result) {
-            case LOCKED -> "cell_locked";
-            case REFUSED -> "cell_refused";
-            default -> null;
-        };
-    }
-
-    /** 取件失败的回执；没有话说时（点到空格）只留一条 debug 日志，不打扰玩家。 */
-    private void notifyTakeFailure(CellDriveScanner.ExtractResult result) {
-        var key = takeFailureKey(result);
-        if (key == null) {
-            // 正常误点也会走到这里（点到空格），所以是 debug：排障时能看出「两端视图不一致」这种异常。
-            LOGGER.debug("[cell-mgmt] 取件时目标格为空，客户端与服务端视图可能不一致");
-            return;
-        }
-        notice(NOTICE + key);
-    }
-
-    private void takeCellEncoded(String encoded) {
-        withDriveSlot(encoded, this::takeCell);
-    }
-
-    private void putCellEncoded(String encoded) {
-        withDriveSlot(encoded, this::putCell);
-    }
-
-    private void quickMoveCellEncoded(String encoded) {
-        withDriveSlot(encoded, this::quickMoveCell);
-    }
-
-    /** 把「驱动器键|格位」解回两个参数；解不开就当没点（协议错配不该把服务端带进越界取值）。 */
-    private void withDriveSlot(String encoded, java.util.function.ObjIntConsumer<String> action) {
-        int separator = encoded.lastIndexOf('|');
-        if (separator <= 0) {
-            LOGGER.warn("[cell-mgmt] 收到解不开的动作参数：{}", encoded);
-            return;
-        }
-        try {
-            String driveKey = encoded.substring(0, separator);
-            int driveSlot = Integer.parseInt(encoded.substring(separator + 1));
-            LOGGER.debug("[cell-mgmt] 收到动作：host={} slot={}", driveKey, driveSlot);
-            action.accept(driveKey, driveSlot);
-        } catch (NumberFormatException broken) {
-            LOGGER.warn("[cell-mgmt] 收到非数字格位：{}", encoded);
-        }
-    }
-
-    /** 客户端侧：服务端推送的驱动器清单（屏幕每帧读）。 */
-    private List<CellHostListPayload.HostGroup> hostList = List.of();
-
-    private List<CellHostListPayload.HostGroup> lastPushedGroups = List.of();
-    private final CellUsageCache usageCache = new CellUsageCache();
-    private boolean sentDriveListOnce;
-    private boolean driveListDirty = true;
-    private static final int DRIVE_SCAN_INTERVAL_TICKS = 10;
-    private int driveScanCooldown;
-
-    /** 元件终端没有可合成物品网格，不让父类每拍收集全网配方。 */
-    @Override
-    protected boolean showsCraftables() {
-        return false;
-    }
+    // ---- 驱动器清单同步 ----
 
     @Override
     public void broadcastChanges() {
@@ -1721,64 +632,22 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         markerPartitions.refreshIfStale();
         markerRowOffset = Math.max(0, Math.min(markerRowOffset, maxMarkerRowOffset()));
         markerWindow.setOffset(markerRowOffset * AEPatternRegistries.CELL_MARKER_COLUMN.length);
-        if (isServerSide()) syncDriveList();
-    }
-
-    private void syncDriveList() {
-        // 打开界面与本菜单取放绕过轮询间隔，其他玩家/自动化的变化仍定期检查。
-        if (sentDriveListOnce && !driveListDirty && --driveScanCooldown > 0) return;
-        var grid = gridOrNull();
-        if (grid == null) return;
-        usageCache.beginScan(getPlayer().level().getGameTime(), sentDriveListOnce && !driveListDirty);
-        var groups = toGroups(CellDriveScanner.scan(grid, usageCache));
-        if (!sentDriveListOnce || !CellHostList.sameLayout(lastPushedGroups, groups)) {
-            sendPacketToClient(new CellHostListPayload(groups));
-            lastPushedGroups = CellHostList.snapshot(groups);
-        } else {
-            var changes = CellHostList.changes(lastPushedGroups, groups);
-            if (!changes.isEmpty()) {
-                sendPacketToClient(new CellHostUpdatePayload(containerId, changes));
-                lastPushedGroups = CellHostList.snapshot(groups);
-            }
+        if (isServerSide()) {
+            driveList.sync();
         }
-        sentDriveListOnce = true;
-        driveListDirty = false;
-        driveScanCooldown = DRIVE_SCAN_INTERVAL_TICKS;
-    }
-
-    private static List<CellHostListPayload.HostGroup> toGroups(List<CellDriveScanner.DriveEntry> entries) {
-        return entries.stream().map(entry -> new CellHostListPayload.HostGroup(entry.key(), entry.name(),
-                entry.icon(), entry.priority(), List.copyOf(entry.cells()))).toList();
     }
 
     /** 客户端侧：服务端最近一次推的驱动器清单。 */
     public List<CellHostListPayload.HostGroup> getDriveList() {
-        return hostList;
+        return driveList.getDriveList();
     }
 
     /** 客户端侧：接收推送（由 payload 调）。 */
     public void setDriveList(List<CellHostListPayload.HostGroup> groups) {
-        this.hostList = List.copyOf(groups);
+        driveList.setDriveList(groups);
     }
 
     public void updateDriveList(List<CellHostListPayload.CellSlot> changes) {
-        this.hostList = CellHostList.apply(this.hostList, changes);
-    }
-
-    /** 供屏幕读取宿主（编码槽、元件分区/升级库存等）。 */
-    public ICellManagementHost getCellHost() {
-        return host;
-    }
-
-    /**
-     * 本屏没有物品网格，所以要掉「配置可见类型」那枚按钮。
-     *
-     * <p>它出现与否由 AE2 按「菜单主机是不是 {@code KeyTypeSelectionHost}」决定，本终端的主机不是，所以现在
-     * 压根不会出现——这一句是防着以后：哪天主机多实现了那个接口，它就会自己冒出来，而本屏那枚按钮按下去没有
-     * 任何东西可筛。排按钮那一段只认得出「终端设置」与两枚 setting，拦不住它。</p>
-     */
-    @Override
-    public boolean canConfigureTypeFilter() {
-        return false;
+        driveList.updateDriveList(changes);
     }
 }
