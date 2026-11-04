@@ -69,15 +69,46 @@
 - `integration/<邻居>` 只写那个邻居的适配，**邻居的类型不得漏进总是加载的类**（这才是红线，见 §6）。核心代码引用 `integration` 包自己写的门禁与契约类是允许的，现在是 7 个文件共 19 处 import：入口 `AE2PatternDisk`（5，五个软依赖门禁）、`AEPatternRegistries`（4，NeoForge 延迟注册必须在物品注册处拿到无线终端的类型 + EAE+ 契约）、`PatternDiskEncodingTermMenu`（6，高级/雕凿/过载/polymorph）、`PatternEncodingLogic`、`PatternDiskProviderLogic`、`PatternDiskProviderMenu`、`SelfAssemblingPatternDiskProviderLogic` 各 1。客户端侧 `client` 核心包对 `client/integration` 是 **0 处 import**，比主源集更严。
 - `common/menu` 与 `common/logic` 的归属按内容判、不按"能不能单独测"判：`DiskEncodingLogic`、`PatternEncodingLogic`、`DiskIndex`、`DiskMarkRules`、`ProcessingOutputMath` 都不碰菜单服务，看着像 logic，但它们读写的是菜单的 `@GuiSync` 项与宿主接口，留在 `common/menu` 是和协议同位置，不要搬。
 
-### 文件规模
+### 文件规模与拆分深度
 
-一个类只装一件能一句话讲清的事；**目标 ≤ 650 行，超过 800 行必须按职责拆**。拆法固定：动作入口（客户端发 / 服务端做）留在菜单类，干活的那一段搬进同包的 `final class`，构造参数收菜单引用，只调用菜单的包内访问器（`gridOrNull()`、`ownerOf()`、`afterCellMoved()`、`notice()`）。不为了拆而拆——共享同一份状态、共享同一套失败回填的代码留在原地。
+**基线来自 AE2 自己**（`D://Temp//Applied-Energistics-2`，分支 `1.21.1`，`appeng/menu` 合计 11316 行）：
+
+| AE2 的类 | 行数 | 性质 |
+|---|---:|---|
+| `AEBaseMenu` | 1032 | 框架基类，唯一的四位数 |
+| `MEStorageMenu` | 750 | 存储终端基类 |
+| `PatternEncodingTermMenu` | 704 | 具体终端（编码） |
+| `PatternAccessTermMenu` | 499 | 具体终端（样板访问） |
+| `appeng/parts/encoding/PatternEncodingLogic` | 316 | 编码状态机，被菜单持有 |
+
+结论：**AE2 的具体终端没有超过 750 行的**。它把「状态 + 处理」压进一个 logic 对象（`PatternEncodingLogic`，
+316 行），菜单只留 `@GuiSync` 字段、槽位与动作登记，而且动作直接绑到逻辑对象上：
+`registerClientAction(ACTION_SET_MODE, EncodingMode.class, encodingLogic::setMode)`。菜单不是中转站。
+
+据此定两条规矩：
+
+1. **一个类只装一件能一句话讲清的事；>800 行必须拆，具体菜单目标 ≤650 行。**
+2. **拆的是「状态 + 它的不变量」，不是方法分组。** 只有方法搬走、状态还留在菜单的拆法（叫它门面拆分）
+   会把菜单变成上下文对象：协作类反过来通过 `menu.xxx` 摸一堆成员，再为它们把 `private` 放宽到包内。
+   行数散了，耦合没散。判据是：协作类的构造参数里，**菜单引用应当被快照、窄接口或回调取代**；
+   如果它需要菜单上超过 5 个成员，说明这块的状态还没搬干净，先搬状态。
+
+两种合格的拆法，按优先级：
+
+- **状态先行**：把「谁拥有这份状态」整体搬到新类（如空白样板记账与两个样板槽合成一个 dock），菜单持有它并转调。
+- **窄接口/快照**：确实需要菜单服务时，传一个 3–6 个方法的接口或一个 record 快照，不传整个菜单。
+  样本：`pattern/DiskMarkBinder` 收 `Source(category, mode, chiseling)` 快照 + `DiskSlots` 回调（菜单传
+  `this::writeDiskSlot`）与 `DiskIndex`，**对菜单零引用**。
 
 包也按功能分区，不按「都是菜单」堆一层：`common/menu` 只留共用骨架，元件终端在 `common/menu/cell`，
 样板终端与供应器在 `common/menu/pattern`，两个装配室在 `common/menu/assembler`。子包之间可以互相 import，
 但**包内访问器不跨包**——需要跨包复用的东西提升成 public（如 `cell.CellHostSwap`），不要靠往同一个包里塞文件来省事。
 
-`CellManagementTermMenu` 是最早按这条规矩拆的样本：动作入口留在菜单，搬运 / 分区编辑 / 两个管理域 / 收藏夹 / 清单同步各一个类，菜单本体 653 行。新增功能按同一张图放位置，不要往菜单里再堆。
+`CellManagementTermMenu` 是按这两条规矩拆的样本：动作入口留在菜单，搬运 / 分区编辑 / 两个管理域 / 收藏夹 /
+清单同步各一个类，菜单本体 653 行。编码终端（2299 行）还在拆：`PatternDiskTransfer`、`DiskMarkBinder` 已独立，
+剩编码主流程、档位状态、列表同步三块（见 `docs/TODO.md`）。
+
+**不要为了行数拆**：没有独立不变量、只是被调用几次的方法留在原地；拆到「贫血模型 + 一堆 getter」比不拆更糟。
 
 ---
 
