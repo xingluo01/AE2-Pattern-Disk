@@ -64,7 +64,7 @@ public final class AEPDCommonConfig {
         MESSAGES.define(builder, "cell_management_terminal.notice.mark_bookmarks",
                 "Shown after 'mark bookmarks' only when something could not be written (no room) or was skipped (not an item); the numbers say how many were marked / duplicated / had no room / were not items.");
         MESSAGES.define(builder, "cell_management_terminal.notice.quick_mark",
-                "Shown after 'quick mark' only when something could not be written (no room) or was skipped (not an item); the numbers say how many were marked / duplicated / had no room / were not items.");
+                "Shown after every 'quick mark' press (also when there is no grid or no target cell); the six numbers are written / duplicated / no room / non-items / target cells / candidates.");
 
         // ---- 部件：扳手切换推送方向（动作栏） ----
         builder.comment("Provider part - wrench changes the push direction.");

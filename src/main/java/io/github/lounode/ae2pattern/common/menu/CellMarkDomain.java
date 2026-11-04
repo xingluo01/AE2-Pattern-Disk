@@ -39,11 +39,17 @@ import appeng.util.ConfigInventory;
  * <p>本类只做<b>收集、读取与对副本改写</b>，不碰菜单服务：从宿主里取出元件、写回、失败掉在玩家脚下那一套
  * 留在菜单侧（{@code applyMarkers} 的形状），因为它要用 {@code getPlayer()} 与 {@code broadcastChanges()}。
  * 「快捷标记」按钮接的是本域的 {@link #coveredKeys(List)}（判断物品在不在域内）、
- * {@link #targetOrder(List)}（挑先填哪一台）与 {@link View#chainOf(AEKey)}（判断该物品属不属于压缩链）。</p>
+ * {@link #targetOrder(List)}（挑先填哪一台）与 {@link #firstTarget(List, int[])}（找还有空位的那一台）。</p>
  *
- * <p><b>为什么先问 ECO 大宗</b>：ECO 的存储矩阵同样长着 {@link ICellWorkbenchItem}，先按普通分区元件认，
- * 就会把「一条链占一格」压成「一个物品占一格」，压缩链信息整个丢掉，写回去还会盖掉生效截断层。所以
- * {@link #open(ItemStack)} 的顺序是压缩矩阵优先，认出来了就不再往下走。</p>
+ * <p><b>与 ECO 压缩链无关</b>：快捷标记只按「数量过阈值、且域里还没管住」挑物品，不问它在不在某条
+ * 压缩链上，也不按链分组。早期版本拿 {@code getCompressionChain} 反查，结果绝大多数过阈值的物品
+ * 都被判成「非压缩」而只往普通元件塞，ECO 矩阵一格没动——这张矩阵本来就能给任意物品当标记位
+ * （上游对非链成员给一条单成员链，只是不参与压缩）。压缩链只在<b>压缩管理域</b>用于去重。</p>
+ *
+ * <p><b>为什么先问 ECO 大宗</b>：ECO 的存储矩阵同样长着 {@link ICellWorkbenchItem}，但它的标记槽要走
+ * ECO 自己的 {@code setMarkers}（落盘口径与 AE2 的 {@code ConfigInventory} 不同）；先按普通分区元件认，
+ * 写回去会盖掉生效截断层。所以 {@link #open(ItemStack)} 的顺序是压缩矩阵优先，认出来了就不再往下走。
+ * 这是<b>元件类型</b>的区分，不是拿物品的压缩链去筛候选。</p>
  *
  * <p><b>目标严格限定</b>：标记管理域只认 {@link #MARK_TARGETS} 里的两款元件——ECO 的数字奇点物品存储矩阵
  * （压缩链）与 Bigger AE2 的数字奇点物品存储元件（单格分区）。收「所有 {@link ICellWorkbenchItem}」会把网络里
@@ -111,16 +117,6 @@ public final class CellMarkDomain {
          */
         Set<AEKey> coveredKeys();
 
-        /**
-         * 这个键所在的可压缩链（含自身），链成员多于一个才算「符合压缩链」；不是压缩矩阵、
-         * 或该键没有可压缩链时返回空表。
-         *
-         * <p>只问域里第一台可信的压缩矩阵即可：链是网络级的配方表，与具体元件无关。</p>
-         */
-        default List<AEKey> chainOf(AEKey key) {
-            return List.of();
-        }
-
         /** 现在能写多少格（含空位），随扩容卡变。 */
         int capacity();
 
@@ -160,10 +156,6 @@ public final class CellMarkDomain {
 
         public Set<AEKey> coveredKeys() {
             return view.coveredKeys();
-        }
-
-        public List<AEKey> chainOf(AEKey key) {
-            return view.chainOf(key);
         }
 
         public int capacity() {
@@ -256,25 +248,11 @@ public final class CellMarkDomain {
         return Set.copyOf(covered);
     }
 
-    /** 域里第一个可信压缩矩阵给出的链；没有压缩矩阵时返回空表（= 没有可压缩链）。 */
-    public static List<AEKey> compressionChain(List<Site> sites, AEKey key) {
-        for (var site : sites) {
-            if (!site.bulk()) {
-                continue;
-            }
-            var chain = site.chainOf(key);
-            if (chain.size() > 1) {
-                return chain;
-            }
-        }
-        return List.of();
-    }
-
     /**
      * 填充顺序：压缩矩阵优先，其后按元件级 / 宿主级存储优先级降序，同级按扫描顺序。
      *
-     * <p>「压缩矩阵优先」对应「符合压缩链的优先填到 ECO 矩阵」；非压缩物品由上层按自己的规则落到
-     * 普通分区元件。优先级来源与压缩管理域一致：ECO 走 {@code IECOStoragePriorityHost}，
+     * <p>「压缩矩阵优先」只看<b>元件类型</b>（大容量矩阵先填），与物品属不属于 ECO 压缩链无关。
+     * 优先级来源与压缩管理域一致：ECO 走 {@code IECOStoragePriorityHost}，
      * AE2 驱动器走 {@code getPriority()}，读不到的排最后。{@code List.sort} 稳定，同级保持扫描顺序。</p>
      */
     public static List<Integer> targetOrder(List<Site> sites) {
@@ -291,6 +269,21 @@ public final class CellMarkDomain {
                 })
                 .reversed());
         return order;
+    }
+
+    /**
+     * 目标顺序里第一台还有空位的站点；全满时 -1。
+     *
+     * <p>不区分站点类型、也不问物品的压缩链：顺序本身（见 {@link #targetOrder(List)}）已经把
+     * 该先填谁定好了，这里只负责跳过装满的。一台填满了自然轮到下一台，两类元件都能被用到。</p>
+     */
+    public static int firstTarget(List<Integer> order, int[] room) {
+        for (int index : order) {
+            if (room[index] > 0) {
+                return index;
+            }
+        }
+        return -1;
     }
 
     /** ECO 大宗压缩矩阵：一格一条链，标记物是生效截断层那一级。 */
@@ -315,11 +308,6 @@ public final class CellMarkDomain {
                 covered.addAll(marker.chain());
             }
             return Set.copyOf(covered);
-        }
-
-        @Override
-        public List<AEKey> chainOf(AEKey key) {
-            return cell.chainOf(key);
         }
 
         @Override

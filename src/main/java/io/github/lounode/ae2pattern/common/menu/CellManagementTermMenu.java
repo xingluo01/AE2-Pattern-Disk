@@ -8,6 +8,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.TagParser;
 import net.minecraft.network.chat.Component;
@@ -908,14 +909,21 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
      * 标记管理域 · 快捷标记：把 ME 网络里<b>不在标记管理域</b>的物品补写进域内元件的空标记格。
      *
      * <p>「不在域内」的判据是 {@link CellMarkDomain#coveredKeys(List)}：所有站点已标记键的并集，压缩矩阵
-     * 按整条链展开，所以链上任意形态都算已覆盖。分配按 {@link CellMarkDomain#targetOrder(List)}：属于
-     * ECO 压缩链的先找压缩矩阵、找不到才回落到普通分区元件；非压缩物品只找普通分区元件，不占压缩矩阵
-     * 那几格。每个键只写一次，天然满足上游「同一压缩链不得在多张矩阵重复标记」。</p>
+     * 按整条链展开，所以链上任意形态都算已覆盖。分配按 {@link CellMarkDomain#targetOrder(List)} 与
+     * {@link CellMarkDomain#firstTarget(List, int[])}：顺着优先级把第一台有空位的元件填满，再轮到下一台。</p>
+     *
+     * <p><b>不看 ECO 压缩链</b>：候选只按数量阈值与「是否已在域内」筛，不反查压缩链、不按链分组。
+     * 早期版本把过阈值的物品先判一遍链，非链成员一律只找普通分区元件，而 Bigger AE2 那张只有 1 格且
+     * 常常没插，结果 ECO 矩阵始终 0 / 5。上游对非链成员允许作为普通标记，写进矩阵是安全的。</p>
      *
      * <p>默认口径：只写标记、不迁移库存；候选是网络里数量严格大于 {@link #QUICK_MARK_MIN_AMOUNT}、且不是
      * 2.1G / 9.2E 两档哨兵数量的物品键（见 {@link CellMarkDomain#acceptsAmount}）；
      * 按目标顺序收，装不下的计入「未写入」，不按数量排序。写回沿用压缩管理域那套
      * 「取出 → 改副本 → 放回 → 失败回填」。</p>
+     *
+     * <p><b>每次按下都留痕</b>：早退分支（没连上网、域里没有目标元件）与正常结束都走
+     * {@link #reportQuickMark}，聊天栏给六个计数、日志给逐环诊断。以前这几条分支完全静默，
+     * 「按了没反应」和「矩阵还是 0/5」在现场无从区分。</p>
      */
     public void quickMark() {
         if (!onServerSide()) {
@@ -924,30 +932,74 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
         }
         var grid = gridOrNull();
         if (grid == null) {
+            reportQuickMark(0, 0, 0, 0, 0, 0, "grid=null（终端此刻没连上网络）");
             return;
         }
         var sites = CellMarkDomain.collect(grid);
+        // 诊断：把「扫描器看见了」与「进了标记管理域」分开数。两者不等就卡在准入闸或白名单上。
+        int scannedCells = 0;
+        int namedTargets = 0;
+        for (var entry : CellDriveScanner.scan(grid, false)) {
+            for (var cell : entry.cells()) {
+                if (cell.stack().isEmpty()) {
+                    continue;
+                }
+                scannedCells++;
+                if (CellMarkDomain.isMarkTarget(
+                        BuiltInRegistries.ITEM.getKey(cell.stack().getItem()).toString())) {
+                    namedTargets++;
+                }
+            }
+        }
         if (sites.isEmpty()) {
+            reportQuickMark(0, 0, 0, 0, 0, 0,
+                    "no-target: scanned=" + scannedCells + " named=" + namedTargets
+                            + "（元件被准入闸 / 白名单 / 可信度挡在域外）");
             return;
         }
+        int bulkSites = 0;
+        int totalRoom = 0;
         var covered = new HashSet<AEKey>(CellMarkDomain.coveredKeys(sites));
         var order = CellMarkDomain.targetOrder(sites);
         var room = new int[sites.size()];
         var additions = new ArrayList<List<AEKey>>(sites.size());
+        var siteDesc = new StringBuilder();
         for (int index = 0; index < sites.size(); index++) {
-            room[index] = Math.max(0, sites.get(index).capacity() - sites.get(index).markers().size());
+            var site = sites.get(index);
+            room[index] = Math.max(0, site.capacity() - site.markers().size());
+            totalRoom += room[index];
+            if (site.bulk()) {
+                bulkSites++;
+            }
             additions.add(new ArrayList<>());
+            siteDesc.append(index).append(':')
+                    .append(site.bulk() ? "bulk" : "plain").append('/')
+                    .append(site.capacity()).append('-').append(site.markers().size());
+            if (index + 1 < sites.size()) {
+                siteDesc.append(' ');
+            }
         }
         int written = 0;
         int duplicate = 0;
         int noRoom = 0;
         int skippedNonItems = 0;
+        int candidates = 0;
+        int skippedBelowThreshold = 0;
+        int skippedSentinel = 0;
+        int assigned = 0;
         for (var entry : grid.getStorageService().getInventory().getAvailableStacks()) {
-            // 数量口径集中在 CellMarkDomain.acceptsAmount：严格大于阈值，且跳过 2.1G / 9.2E 两档哨兵数量。
-            // 被筛掉的既不算「未写入」（那是容量不足）也不是「跳过非物品」，静默略过、不进回执计数。
-            if (!CellMarkDomain.acceptsAmount(entry.getLongValue(), QUICK_MARK_MIN_AMOUNT)) {
+            long amount = entry.getLongValue();
+            if (!CellMarkDomain.acceptsAmount(amount, QUICK_MARK_MIN_AMOUNT)) {
+                // 分两档记账：ECO 的 BigInteger 压缩库存在 KeyCounter 里会饱和到 9.2E，
+                // 上一轮按玩家要求排除了这档；日志里要能看出「候选全被它筛光」这种情形。
+                if (CellMarkDomain.isSentinelAmount(amount)) {
+                    skippedSentinel++;
+                } else {
+                    skippedBelowThreshold++;
+                }
                 continue;
             }
+            candidates++;
             AEKey key = entry.getKey();
             if (!(key instanceof AEItemKey)) {
                 skippedNonItems++;
@@ -957,26 +1009,20 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
                 duplicate++;
                 continue;
             }
-            var chain = CellMarkDomain.compressionChain(sites, key);
-            boolean compressible = !chain.isEmpty();
-            int target = compressible ? firstMarkTarget(order, sites, room, true) : -1;
-            if (target < 0) {
-                target = firstMarkTarget(order, sites, room, false);
-            }
+            int target = CellMarkDomain.firstTarget(order, room);
             if (target < 0) {
                 noRoom++;
                 continue;
             }
             additions.get(target).add(key);
             room[target]--;
+            assigned++;
             covered.add(key);
-            if (compressible) {
-                // 压缩矩阵标一格等于标住整条链，链上其它形态不再另找格子。
-                covered.addAll(chain);
-            }
             written++;
         }
         var owners = new ArrayList<Object>();
+        int writeOk = 0;
+        int writeFailed = 0;
         for (int index : order) {
             var added = additions.get(index);
             if (added.isEmpty()) {
@@ -988,39 +1034,50 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
             if (wanted.size() > site.capacity() || !applyMark(site, wanted)) {
                 written -= added.size();
                 noRoom += added.size();
+                writeFailed++;
+                LOGGER.info("[cell-mgmt] quick mark: 站点 {} 写回失败（名单 {} 格 / 容量 {}），已回填原件",
+                        index, wanted.size(), site.capacity());
                 continue;
             }
+            writeOk++;
             var owner = ownerOf(site.hostKey());
             if (owner != null) {
                 owners.add(owner);
             }
         }
-        afterCellMoved(owners.toArray());
-        var noticeKey = NOTICE + "quick_mark";
-        if ((noRoom > 0 || skippedNonItems > 0)
-                && getPlayer() instanceof ServerPlayer serverPlayer
-                && AEPDCommonConfig.isMessageShown(noticeKey)) {
-            serverPlayer.sendSystemMessage(Component.translatable(noticeKey,
-                    written, duplicate, noRoom, skippedNonItems));
+        if (!owners.isEmpty()) {
+            afterCellMoved(owners.toArray());
         }
+        reportQuickMark(written, duplicate, noRoom, skippedNonItems, sites.size(), candidates,
+                "sites=" + sites.size() + " bulk=" + bulkSites + " room=" + totalRoom
+                        + " [" + siteDesc + "] scanned=" + scannedCells + " named=" + namedTargets
+                        + " | below20k=" + skippedBelowThreshold + " sentinel=" + skippedSentinel
+                        + " candidates=" + candidates + " assigned=" + assigned
+                        + " writeOk=" + writeOk + " writeFailed=" + writeFailed);
     }
 
-    /** 目标顺序里第一台「格式相符且还有空格」的站点；{@code bulk} 决定只找压缩矩阵还是只找普通元件。 */
-    private static int firstMarkTarget(List<Integer> order, List<CellMarkDomain.Site> sites,
-            int[] room, boolean bulk) {
-        for (int index : order) {
-            if (room[index] > 0 && sites.get(index).bulk() == bulk) {
-                return index;
-            }
+    /**
+     * 快捷标记的统一出口：聊天栏给六个计数，日志给逐环诊断。
+     *
+     * <p>两处都受同一个配置开关约束；日志只在 INFO 级别打一条，一次按键一条，不随终端刷新重复。</p>
+     */
+    private void reportQuickMark(int written, int duplicate, int noRoom, int skippedNonItems,
+            int targets, int candidates, String detail) {
+        LOGGER.info("[cell-mgmt] quick mark: {} | written={} duplicate={} noRoom={} nonItems={} targets={} candidates={}",
+                detail, written, duplicate, noRoom, skippedNonItems, targets, candidates);
+        var noticeKey = NOTICE + "quick_mark";
+        if (getPlayer() instanceof ServerPlayer serverPlayer
+                && AEPDCommonConfig.isMessageShown(noticeKey)) {
+            serverPlayer.sendSystemMessage(Component.translatable(noticeKey,
+                    written, duplicate, noRoom, skippedNonItems, targets, candidates));
         }
-        return -1;
     }
 
     /** 标记管理域：按目标名单改写一台元件，取放与失败回填与压缩管理域同一套。 */
     private boolean applyMark(CellMarkDomain.Site site, List<AEKey> markers) {
-        if (!site.view().trusted()) {
-            return false;
-        }
+        // 不在这里问收集阶段那份视图的 trusted()：读名单 / 查链会触发上游 probe，失败时那份视图会被
+        // 标成不可信，于是本来能写的站点被这一句整批拒掉，表现就是「按了按钮、矩阵还是 0 / 5」。
+        // 写回会重新打开句柄（见 View#write），可信度在那一层判。
         var owner = ownerOf(site.hostKey());
         if (owner == null || !CellDriveScanner.canAcceptCell(owner, site.hostSlot(), site.stack())) {
             return false;

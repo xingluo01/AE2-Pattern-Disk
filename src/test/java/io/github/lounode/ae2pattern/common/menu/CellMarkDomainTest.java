@@ -16,9 +16,9 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * 标记管理域的纯逻辑：覆盖键并集、压缩链反查与填充顺序。
+ * 标记管理域的纯逻辑：目标白名单、数量筛选、覆盖键并集、填充顺序与空位查找。
  *
- * <p>视图用替身，不构造真的元件栈：这三条只关心站点上的名单与标记，与宿主取放无关。
+ * <p>视图用替身，不构造真的元件栈：这些只关心站点上的名单与标记，与宿主取放无关。
  * 真正的取放写回要实机验证，不在这份测试里。</p>
  */
 class CellMarkDomainTest {
@@ -27,13 +27,11 @@ class CellMarkDomainTest {
         return mock(AEKey.class);
     }
 
-    private static CellMarkDomain.Site site(boolean bulk, Integer hostPriority,
-            Set<AEKey> covered, List<AEKey> chain) {
+    private static CellMarkDomain.Site site(boolean bulk, Integer hostPriority, Set<AEKey> covered) {
         var view = mock(CellMarkDomain.View.class);
         when(view.coveredKeys()).thenReturn(covered);
         when(view.bulk()).thenReturn(bulk);
         when(view.trusted()).thenReturn(true);
-        when(view.chainOf(org.mockito.ArgumentMatchers.any())).thenReturn(chain);
         return new CellMarkDomain.Site("host", 0, mock(ItemStack.class),
                 view, 0, hostPriority, false);
     }
@@ -78,9 +76,9 @@ class CellMarkDomainTest {
         var c = key();
         // 压缩矩阵按整条链展开；普通元件只报自己标过的那几个键。
         var sites = List.of(
-                site(true, 10, Set.of(a, b), List.of()),
-                site(false, 5, Set.of(b, c), List.of()),
-                site(false, null, Set.of(c), List.of()));
+                site(true, 10, Set.of(a, b)),
+                site(false, 5, Set.of(b, c)),
+                site(false, null, Set.of(c)));
 
         assertEquals(Set.of(a, b, c), CellMarkDomain.coveredKeys(sites));
     }
@@ -88,27 +86,22 @@ class CellMarkDomainTest {
     @Test
     void targetOrderPutsBulkFirstThenHigherPriority() {
         var sites = List.of(
-                site(false, 100, Set.of(), List.of()),  // 0：普通元件，优先级最高
-                site(true, 1, Set.of(), List.of()),    // 1：压缩矩阵，优先级最低
-                site(false, null, Set.of(), List.of()), // 2：普通元件，优先级读不到
-                site(true, 50, Set.of(), List.of()),   // 3：压缩矩阵，优先级高
-                site(false, 5, Set.of(), List.of()));  // 4：普通元件
+                site(false, 100, Set.of()),  // 0：普通元件，优先级最高
+                site(true, 1, Set.of()),    // 1：压缩矩阵，优先级最低
+                site(false, null, Set.of()), // 2：普通元件，优先级读不到
+                site(true, 50, Set.of()),   // 3：压缩矩阵，优先级高
+                site(false, 5, Set.of()));  // 4：普通元件
 
         assertEquals(List.of(3, 1, 0, 4, 2), CellMarkDomain.targetOrder(sites));
     }
 
     @Test
-    void compressionChainOnlyAsksBulkSitesAndNeedsMoreThanOneMember() {
-        var k = key();
-        var chain = List.of(k, key(), key());
-        var withChain = List.of(
-                site(false, 10, Set.of(), List.of(k)),  // 普通元件不该被问到链
-                site(true, 10, Set.of(), chain));
-
-        assertEquals(chain, CellMarkDomain.compressionChain(withChain, k));
-        assertTrue(CellMarkDomain.compressionChain(
-                List.of(site(false, 10, Set.of(), chain)), k).isEmpty());
-        assertTrue(CellMarkDomain.compressionChain(
-                List.of(site(true, 10, Set.of(), List.of(k))), k).isEmpty());
+    void firstTargetFollowsOrderAndSkipsFullSites() {
+        var order = List.of(2, 0, 1);
+        assertEquals(2, CellMarkDomain.firstTarget(order, new int[] { 0, 0, 3 }));
+        // 第一台装满后自然轮到下一台，不按元件类型挑。
+        assertEquals(0, CellMarkDomain.firstTarget(order, new int[] { 2, 0, 0 }));
+        assertEquals(1, CellMarkDomain.firstTarget(order, new int[] { 0, 1, 0 }));
+        assertEquals(-1, CellMarkDomain.firstTarget(order, new int[] { 0, 0, 0 }));
     }
 }

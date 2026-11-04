@@ -179,29 +179,6 @@ public final class EcoBulkCells implements CellBulkCutoffCompat.Adapter {
         }
 
         @Override
-        public List<AEKey> chainOf(AEKey key) {
-            if (!(key instanceof AEItemKey itemKey)) {
-                return List.of();
-            }
-            try {
-                IECOBulkDisplayCell display = probe();
-                if (display == null) {
-                    return List.of();
-                }
-                List<AEItemKey> chain = display.getCompressionChain(itemKey);
-                // 单成员 = 这个物品没有可压缩链；上游对查不到的键就给一份只含它自己的表。
-                if (chain == null || chain.size() <= 1) {
-                    return List.of();
-                }
-                return List.copyOf(chain);
-            } catch (RuntimeException | LinkageError broken) {
-                report("the ECO compression chain lookup", broken);
-                degraded = true;
-                return List.of();
-            }
-        }
-
-        @Override
         public int storagePriority() {
             return probe() instanceof IECOStorageCell cell ? cell.getStoragePriority() : 0;
         }
@@ -280,6 +257,12 @@ public final class EcoBulkCells implements CellBulkCutoffCompat.Adapter {
             // 目标名单超出格数时整份不写：写一半等于静默丢标记。
             return false;
         }
+        // 先留一份原值：任何一格写不进去时把前面几格整份回滚，不能报「改过了」却只改了一半。
+        var before = new ArrayList<GenericStack>(config.size());
+        for (int slot = 0; slot < config.size(); slot++) {
+            AEKey have = config.getKey(slot);
+            before.add(have == null ? null : new GenericStack(have, 0L));
+        }
         boolean changed = false;
         for (int slot = 0; slot < config.size(); slot++) {
             GenericStack target = targetAt(markers, slot);
@@ -287,6 +270,14 @@ public final class EcoBulkCells implements CellBulkCutoffCompat.Adapter {
                 continue;
             }
             config.setStack(slot, target);
+            // setStack 可能被上游的过滤器静默拒收；回读不等就当作整份写失败。
+            // 以前只凭「调过一次」就返回 true，元件被放回宿主后标记其实还是空的。
+            if (!sameMarker(config.getKey(slot), target)) {
+                for (int done = 0; done < slot; done++) {
+                    config.setStack(done, before.get(done));
+                }
+                return false;
+            }
             changed = true;
         }
         return changed;
