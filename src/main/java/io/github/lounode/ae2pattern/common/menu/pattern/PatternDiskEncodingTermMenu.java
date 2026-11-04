@@ -232,10 +232,8 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
     private final FakeSlot smithingTableBaseSlot;
     private final FakeSlot smithingTableAdditionSlot;
     private final PatternTermSlot craftOutputSlot;
-    /** 空白样板槽：存盘回退时先还回这里。 */
-    final BlankPatternSlot blankPatternSlot;
-    /** 编码槽那张成品/空白样板；同包的 PatternDiskTransfer 要读写它，故不设 private。 */
-    final RestrictedInputSlot encodedPatternSlot;
+    /** 编码槽与空白样板槽，以及它们那本账；两个槽由它持有，菜单只转调。 */
+    private final PatternDock dock;
 
     private RecipeHolder<CraftingRecipe> currentRecipe;
     private EncodingMode currentMode;
@@ -376,8 +374,6 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
             IPatternDiskTerminalHost host) {
         super(menuType, id, ip, host);
         this.host = host;
-        this.transfer = new PatternDiskTransfer(this);
-        this.binder = new DiskMarkBinder(diskIndex, this::writeDiskSlot);
         this.encodingLogic = host.getLogic();
         this.encodedInputsInv = encodingLogic.getEncodedInputInv();
         this.encodedOutputsInv = encodingLogic.getEncodedOutputInv();
@@ -424,12 +420,16 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
 
         // Blank + encoded pattern slots
         // 空白样板槽是终端自己的实物缓冲：由网络补满、编码先扣它（见 BlankPatternSlot）；编码槽只收已编好的样板。
-        this.addSlot(this.blankPatternSlot = new BlankPatternSlot(encodingLogic.getBlankPatternInv(), 0),
-                SlotSemantics.BLANK_PATTERN);
-        this.addSlot(
-                this.encodedPatternSlot = new PatternOutputSlot(encodingLogic.getEncodedPatternInv(), 0),
-                SlotSemantics.ENCODED_PATTERN);
-        this.encodedPatternSlot.setStackLimit(1);
+        // 两个槽与它们那本账都交给 PatternDock；菜单只负责把它们登记给 AE2。
+        var blank = new BlankPatternSlot(encodingLogic.getBlankPatternInv(), 0);
+        this.addSlot(blank, SlotSemantics.BLANK_PATTERN);
+        var encoded = new PatternOutputSlot(encodingLogic.getEncodedPatternInv(), 0);
+        this.addSlot(encoded, SlotSemantics.ENCODED_PATTERN);
+        encoded.setStackLimit(1);
+        this.dock = new PatternDock(encoded, blank, this::getGrid, this::getActionSource,
+                () -> energySource, this::getPlayer, this::broadcastChanges);
+        this.transfer = new PatternDiskTransfer(this);
+        this.binder = new DiskMarkBinder(diskIndex, this::writeDiskSlot);
 
         // 升级槽：高级样板编码器放这儿。切忌别信「UPGRADES 槽的准入就是查登记表」——AE2 实际上只做一句
         // instanceof UpgradeCardItem，所以槽自带一层自己的判定（见 TerminalUpgradeSlot）。
@@ -557,7 +557,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
     private ItemStack encodeOverloadedPattern() {
         // 源就是输出栏那张样板：摊行读的也是它（见 seedOverloadedRowsFromPattern），两边必须同源，
         // 否则行的下标对上的是另一张样板的槽。
-        var source = this.encodedPatternSlot.getItem();
+        var source = dock.encoded();
         if (source.isEmpty() || !PatternDetailsHelper.isEncodedPattern(source)) {
             return null;
         }
@@ -606,7 +606,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
                         ? encodeChiselingPattern()
                         : patternEncodingLogic.encodePattern();
         if (encodedPattern != null) {
-            var encodeOutput = this.encodedPatternSlot.getItem();
+            var encodeOutput = dock.encoded();
             if (!encodeOutput.isEmpty()
                     && !PatternDetailsHelper.isEncodedPattern(encodeOutput)
                     && !AEItems.BLANK_PATTERN.is(encodeOutput)) {
@@ -618,7 +618,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
                     return;
                 }
             }
-            this.encodedPatternSlot.set(encodedPattern);
+            dock.setEncoded(encodedPattern);
             // 基线跟上：这一枚是本菜单按当前档位自己编出来的，不是玩家放进去的（理由见 adoptOutputPatternAsBaseline）。
             adoptOutputPatternAsBaseline();
             // 搜索栏有内容时，刚编好的样板按列表顺序顺位写进第一张能收的盘——省掉「编出一个样板再点
@@ -634,7 +634,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
             // 网格里没有可编码的东西时，如果编码槽里正停着一枚写好的样板，「编写样板」的意图就是把它写进目标
             // 磁盘（管理终端选中盘之后的快捷上传）。没有唯一目标时什么也不做：原来这里会把它清成空白样板，
             // 等于把玩家手里的样板销毁掉。
-            var existing = this.encodedPatternSlot.getItem();
+            var existing = dock.encoded();
             if (PatternDetailsHelper.isEncodedPattern(existing)) {
                 if (autoDisks.length > 0) {
                     // 走既有的写盘路径：写进去、清空编码槽、退回空白样板，一处口径。
@@ -668,82 +668,19 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
     }
 
     private void clearPattern() {
-        var encodedPattern = this.encodedPatternSlot.getItem();
-        if (PatternDetailsHelper.isEncodedPattern(encodedPattern)) {
-            this.encodedPatternSlot.set(AEItems.BLANK_PATTERN.stack(encodedPattern.getCount()));
-        }
+        dock.clearToBlank();
     }
 
-    private boolean isBlankPattern(ItemStack output) {
-        return !output.isEmpty() && AEItems.BLANK_PATTERN.is(output);
+    // ---- 空白样板：账在 PatternDock 里，这里只转调 -------------------------------------
+
+    /** 服务端每 tick 补一次料，并把「网络还剩多少」写进同步字段。 */
+    private void refillBlankPatternSlot() {
+        networkBlankPatternCount = (int) Math.min(dock.refill(), Integer.MAX_VALUE);
     }
 
-    // ---- 空白样板：槽优先，网络兜底 -----------------------------------------------------
-
-    /**
-     * 服务端：把空白样板槽补满（从网络抽，只抽差额），并返回抽完之后网络里还剩多少。
-     *
-     * <p>槽是终端自带的一格存货，不是网络库存的又一次同步——网络只是它的来源。补满放在每个 tick 的
-     * {@code broadcastChanges} 里，所以编码消耗一张、玩家拿走一张，下一 tick 都会回到一叠；网络里没那么多
-     * 就抽到多少算多少（不能凭空造）。</p>
-     *
-     * <p>返回值就是 {@link #networkBlankPatternCount} 的来源：一次模拟查询同时回答「要不要补」与「还能不能编」，
-     * 不必为同一个答案问网络两次。</p>
-     *
-     * @return 网络里现在可用的空白样板数（已扣除本次抽走的量）；网络不在时是 0
-     */
-    private long refillBlankPatternSlot() {
-        var grid = getGrid();
-        var storage = grid == null ? null : grid.getStorageService();
-        if (storage == null) {
-            return 0;
-        }
-        var key = AEItemKey.of(AEItems.BLANK_PATTERN);
-        var source = getActionSource();
-        long available = storage.getInventory().extract(key, Long.MAX_VALUE, Actionable.SIMULATE, source);
-
-        var current = blankPatternSlot.getItem();
-        int has = current.isEmpty() ? 0 : current.getCount();
-        int missing = BlankPatternSlot.CAPACITY - has;
-        if (missing <= 0 || available <= 0) {
-            return available;
-        }
-        // 走 AE2 的带能耗提取：终端从网络拿东西要付能量，与 ME 终端 Shift 取货同一口径。
-        long drawn = StorageHelper.poweredExtraction(energySource, storage.getInventory(), key,
-                Math.min(missing, available), source);
-        if (drawn <= 0) {
-            return available;
-        }
-        // 从现有栈派生而不是新建一叠：第三方给空白样板挂的组件不该被补料抹掉。
-        blankPatternSlot.set(current.isEmpty()
-                ? AEItems.BLANK_PATTERN.stack((int) drawn)
-                : current.copyWithCount(has + (int) drawn));
-        return available - drawn;
-    }
-
-    /**
-     * 取一张空白样板：先扣槽里的，槽空了才向网络要（槽本身就由网络补满，这一层让“编出来的第一张”
-     * 用玩家看得见的那一份）。两处都没有就返回 false。
-     */
+    /** 取一张空白样板给这次编码用（槽优先、网络兜底，见 {@link PatternDock}）。 */
     boolean consumeBlankPattern() {
-        var inSlot = blankPatternSlot.getItem();
-        if (isBlankPattern(inSlot)) {
-            var remaining = inSlot.copyWithCount(inSlot.getCount() - 1);
-            blankPatternSlot.set(remaining);
-            return true;
-        }
-        return consumeNetworkBlankPattern();
-    }
-
-    /** 从网络取走一个空白样板；网络里没有或能量不够则返回 false（带能耗提取，与 AE2 终端取物同口径）。 */
-    private boolean consumeNetworkBlankPattern() {
-        var grid = getGrid();
-        var storage = grid == null ? null : grid.getStorageService();
-        if (storage == null) {
-            return false;
-        }
-        return StorageHelper.poweredExtraction(energySource, storage.getInventory(),
-                AEItemKey.of(AEItems.BLANK_PATTERN), 1, getActionSource()) > 0;
+        return dock.consume();
     }
 
     /**
@@ -752,10 +689,10 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
      * 这只是提前拦住，真正的裁决仍在服务端。
      */
     public boolean canEncode() {
-        var encodedOutput = encodedPatternSlot.getItem();
-        return isBlankPattern(blankPatternSlot.getItem())
+        var encodedOutput = dock.encoded();
+        return PatternDock.isBlank(dock.blankSlot().getItem())
                 || networkBlankPatternCount > 0
-                || isBlankPattern(encodedOutput)
+                || PatternDock.isBlank(encodedOutput)
                 || PatternDetailsHelper.isEncodedPattern(encodedOutput);
     }
 
@@ -960,6 +897,11 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         binder.bind(serial, markOverride, markSource());
     }
 
+    /** 两个样板槽与它们那本账（同包的协作类要读它）。 */
+    PatternDock dock() {
+        return dock;
+    }
+
     /** 这次绑定该依据的三个值：快照出去，绑定逻辑就不必回头认菜单。 */
     private DiskMarkBinder.Source markSource() {
         return new DiskMarkBinder.Source(pendingRecipeCategory, mode, chiselingMode);
@@ -1095,58 +1037,9 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         writeDiskSlot(inv, ref.slot(), updated);
     }
 
-    /**
-     * 样板存入磁盘后，把回退产生的空白样板还回去：先进终端自己的那格空白样板槽，槽满才入网；网络不在
-     * 或满了就落玩家背包；背包也满则留在编码槽由玩家手动取走（不丢失）。
-     */
+    /** 样板存进磁盘后，把回退产生的空白样板还回去（兜底链见 {@link PatternDock}）。 */
     void returnBlankPatternToStorage() {
-        returnPatternToStorage(AEPatternRegistries.blankPattern());
-    }
-
-    /**
-     * 把一张样板交回：先回终端自己的空白样板槽（那是它的家，槽满才溢出），再网络，再背包，都放不下时退回
-     * 编码槽——调用方已经清空编码槽，那是它唯一的去处。网络只吃下了一部分时，余量接着走同一条兜底链：
-     * 不能因为「进去了一点」就把整张当作已退。
-     *
-     * <p>今天所有调用方都只退单件（编码槽本身限一件），所以「部分合入」在这些路径上不可达；这里仍按
-     * {@code count} 推导余量，免得将来有人拿它退多件时把余量吞掉。与 NEO ECO 那边「替代物要进到网络里
-     * 才允许清源」相比，这里把「已交到玩家手里」也算兑现——两边都不丢件，差别只在这条兜底链更长。</p>
-     *
-     * @param pattern 要退还的样板；空表示不退还（样板只是被搬了位置，物品并没有消失）
-     */
-    private void returnPatternToStorage(ItemStack pattern) {
-        var remaining = pattern.copy();
-        if (remaining.isEmpty()) {
-            return;
-        }
-        // 槽优先：空白样板回到终端自己那一格，网络只是后备（与快捷移动、编码消耗同一口径）。
-        if (isBlankPattern(remaining) && blankPatternSlot.mayPlace(remaining)) {
-            remaining = blankPatternSlot.safeInsert(remaining);
-            if (remaining.isEmpty()) {
-                broadcastChanges();
-                return;
-            }
-        }
-        var grid = getGrid();
-        var storage = grid == null ? null : grid.getStorageService();
-        if (storage != null) {
-            long inserted = storage.getInventory().insert(AEItemKey.of(remaining), remaining.getCount(),
-                    Actionable.MODULATE, IActionSource.ofPlayer(getPlayer()));
-            if (inserted >= remaining.getCount()) {
-                broadcastChanges();
-                return;
-            }
-            if (inserted > 0) {
-                remaining.shrink((int) inserted);
-            }
-        }
-        // 背包 add 可能只收下一部分：传进去的就是 remaining 本身，剩下的量留在它手里，不会重复给。
-        if (getPlayer().getInventory().add(remaining)) {
-            broadcastChanges();
-            return;
-        }
-        this.encodedPatternSlot.set(remaining);
-        broadcastChanges();
+        dock.returnBlank();
     }
 
     // ---- NEO ECO AE Extension upload ----------------------------------------
@@ -1171,7 +1064,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
      * @return the item in the encoded pattern slot.
      */
     public ItemStack getEncodedPatternItem() {
-        return encodedPatternSlot.getItem();
+        return dock.encoded();
     }
 
     /**
@@ -1179,14 +1072,14 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
      * {@code integration.extendedae_plus.ExtendedAEPlusUploadMenu}。
      */
     public Slot getEncodedPatternSlot() {
-        return encodedPatternSlot;
+        return dock.encodedSlot();
     }
 
     /**
      * Clears the encoded pattern slot and returns a blank pattern to storage / the player's inventory.
      */
     public void clearEncodedPatternAndReturnBlank() {
-        this.encodedPatternSlot.set(ItemStack.EMPTY);
+        dock.setEncoded(ItemStack.EMPTY);
         returnBlankPatternToStorage();
     }
 
@@ -1199,8 +1092,8 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
      * @param replacement 退还的内容；空表示不用退
      */
     public void clearEncodedPatternAfterUpload(ItemStack replacement) {
-        this.encodedPatternSlot.set(ItemStack.EMPTY);
-        returnPatternToStorage(replacement);
+        dock.setEncoded(ItemStack.EMPTY);
+        dock.returnToStorage(replacement);
     }
 
     // ---- 磁盘列表同步（服务端扫描 <-> 客户端渲染） ----
@@ -1362,8 +1255,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
             syncDiskList();
             // 槽是实物、网络只是它的来源：每 tick 把差额补齐，再把「网络还剩多少」同步给客户端。
             // 顺手取代了原先的镜像写入与旧存档搬迁——槽又能放东西了，存档里的内容就是槽的内容。
-            long networkBlanks = refillBlankPatternSlot();
-            this.networkBlankPatternCount = (int) Math.min(networkBlanks, Integer.MAX_VALUE);
+            refillBlankPatternSlot();
             this.advancedModeAvailable = hasAdvancedEncoder();
             if (!this.advancedModeAvailable && this.advancedMode) {
                 // 卡被拿走了：模式立刻退出去，否则面板会停在一个再也读不出方向的空档上。
@@ -1422,7 +1314,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         if (s == this.stonecuttingInputSlot) {
             updateStonecuttingRecipes();
         }
-        if (s == this.encodedPatternSlot && isServerSide()) {
+        if (s == dock.encodedSlot() && isServerSide()) {
             this.broadcastChanges();
         }
     }
@@ -1616,7 +1508,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
      * 编码路径自己写进输出栏那一次也会走到这里，那时档位本来就对得上，是空操作。</p>
      */
     private void syncTierWithPatternOutput() {
-        var current = this.encodedPatternSlot.getItem();
+        var current = dock.encoded();
         var item = current.isEmpty() ? null : current.getItem();
         if (!this.outputTierBaselineSet) {
             this.outputTierBaselineSet = true;
@@ -1642,7 +1534,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
      * ——高级档补面时编出的那张普通处理样板能把人踢出高级档。</p>
      */
     private void adoptOutputPatternAsBaseline() {
-        var current = this.encodedPatternSlot.getItem();
+        var current = dock.encoded();
         this.lastOutputPatternItem = current.isEmpty() ? null : current.getItem();
         this.lastOutputWasEmpty = current.isEmpty();
     }
@@ -1727,7 +1619,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
      * 做——留一个空档出来，玩家自己去选。</p>
      */
     private void seedChiselingFromPattern() {
-        var decoded = ChiselingRecipes.decode(this.encodedPatternSlot.getItem());
+        var decoded = ChiselingRecipes.decode(dock.encoded());
         if (decoded == null) {
             return;
         }
@@ -1752,7 +1644,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
      * <p>输出栏空着或不是可解码的样板时直接返回：玩家常常先切进来、再往输出栏放东西，那是正常路径。</p>
      */
     private void seedOverloadedRowsFromPattern() {
-        var details = PatternDetailsHelper.decodePattern(this.encodedPatternSlot.getItem(), getLevel());
+        var details = PatternDetailsHelper.decodePattern(dock.encoded(), getLevel());
         if (details == null) {
             return;
         }
@@ -2044,7 +1936,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         if (!on) {
             return;
         }
-        var details = PatternDetailsHelper.decodePattern(this.encodedPatternSlot.getItem(), getLevel());
+        var details = PatternDetailsHelper.decodePattern(dock.encoded(), getLevel());
         // 普通处理样板与高级样板都得收：前者是「玩家已编好、想给它补面」的那张，后者是「回来改面」的那张。
         // 注意两者**不是**同一个类——AE2 的是 AEProcessingPattern，AdvancedAE 的 AdvProcessingPattern 只
         // 实现 IPatternDetails，所以不能只判 AE2 那个类。
@@ -2254,11 +2146,11 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
      */
     protected ItemStack insertIntoPatternSlots(ItemStack input) {
         var rest = input;
-        if (blankPatternSlot.mayPlace(rest)) {
-            rest = blankPatternSlot.safeInsert(rest);
+        if (dock.blankSlot().mayPlace(rest)) {
+            rest = dock.blankSlot().safeInsert(rest);
         }
-        if (!rest.isEmpty() && encodedPatternSlot.mayPlace(rest)) {
-            rest = encodedPatternSlot.safeInsert(rest);
+        if (!rest.isEmpty() && dock.encodedSlot().mayPlace(rest)) {
+            rest = dock.encodedSlot().safeInsert(rest);
         }
         return rest;
     }
@@ -2275,11 +2167,11 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         var destinations = super.getQuickMoveDestinationSlots(stackToMove, fromPlayerSide);
         if (fromPlayerSide
                 || !PatternDetailsHelper.isEncodedPattern(stackToMove)
-                || !encodedPatternSlot.mayPlace(stackToMove)) {
+                || !dock.encodedSlot().mayPlace(stackToMove)) {
             return destinations;
         }
         var reordered = new ArrayList<Slot>(destinations.size() + 1);
-        reordered.add(encodedPatternSlot);
+        reordered.add(dock.encodedSlot());
         reordered.addAll(destinations);
         return reordered;
     }

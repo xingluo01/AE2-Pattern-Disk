@@ -41,7 +41,7 @@ final class PatternDiskTransfer {
      * @return 是否真的写进了某一张盘
      */
     boolean transferTo(long[] serials) {
-        var encoded = menu.encodedPatternSlot.getItem();
+        var encoded = menu.dock().encoded();
         if (encoded.isEmpty() || !PatternDetailsHelper.isEncodedPattern(encoded)) {
             return false;
         }
@@ -69,7 +69,7 @@ final class PatternDiskTransfer {
             if (disk.tryInsert(updated, encoded, level)) {
                 menu.writeDiskSlot(inv, ref.slot(), updated);
                 // 样板已存入磁盘：编码槽清空，原编码样板回退为空白样板，按 空白样板槽→ME网络→玩家背包→编码槽 落位
-                menu.encodedPatternSlot.set(ItemStack.EMPTY);
+                menu.dock().setEncoded(ItemStack.EMPTY);
                 menu.returnBlankPatternToStorage();
                 return true;
             }
@@ -164,7 +164,7 @@ final class PatternDiskTransfer {
         return switch (target) {
             case CURSOR -> menu.getCarried().isEmpty();
             case INVENTORY -> menu.getPlayer().getInventory().getFreeSlot() >= 0;
-            case ENCODED_SLOT -> menu.encodedPatternSlot.getItem().isEmpty();
+            case ENCODED_SLOT -> menu.dock().encoded().isEmpty();
         };
     }
 
@@ -178,7 +178,7 @@ final class PatternDiskTransfer {
                 }
             }
             // 走到这里的只能是样板：extract 已挡住「整张磁盘进编辑槽」，取出来的单张也必定是编码样板。
-            case ENCODED_SLOT -> menu.encodedPatternSlot.set(stack);
+            case ENCODED_SLOT -> menu.dock().setEncoded(stack);
         }
         // 推一次：槽位内容与光标上的东西都靠这一个包到客户端（光标的同步在 broadcastChanges 里）。
         menu.broadcastChanges();
