@@ -9,7 +9,7 @@ import appeng.menu.ISubMenu;
 import appeng.menu.MenuOpener;
 import appeng.menu.locator.MenuHostLocator;
 
-import io.github.lounode.ae2pattern.common.menu.MeteoritePatternProviderMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.MeteoritePatternProviderMenu;
 
 /**
  * 自装配样板磁盘供应器的宿主契约。

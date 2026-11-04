@@ -19,7 +19,7 @@ import appeng.client.gui.Tooltip;
 import appeng.core.localization.GuiText;
 import appeng.core.localization.InGameTooltip;
 
-import io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskProviderMenu;
 
 /**
  * Shows why crafting is currently locked, next to the lock-crafting toggle of the provider GUI.

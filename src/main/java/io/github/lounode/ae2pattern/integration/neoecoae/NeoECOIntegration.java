@@ -7,8 +7,8 @@ import cn.dancingsnow.neoecoae.api.integration.Integration;
 import cn.dancingsnow.neoecoae.api.me.provider.ECOParallelCraftingProviders;
 
 import io.github.lounode.ae2pattern.common.block.entity.BatchAssemblerBlockEntity;
-import io.github.lounode.ae2pattern.common.menu.CellBulkCutoffCompat;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
+import io.github.lounode.ae2pattern.common.menu.cell.CellBulkCutoffCompat;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskEncodingTermMenu;
 
 /**
  * Integration entry point for NEO ECO AE Extension ({@code neoecoae}).

@@ -21,7 +21,7 @@ import io.github.lounode.ae2pattern.network.CellHostUpdatePayload;
 import io.github.lounode.ae2pattern.network.CellNoticePayload;
 import io.github.lounode.ae2pattern.network.DiskHostListPayload;
 import io.github.lounode.ae2pattern.network.VisibleDisksPayload;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskManagementTermMenu;
 import io.github.lounode.ae2pattern.config.AEPDCommonConfig;
 import io.github.lounode.ae2pattern.config.AEPDConfig;
 

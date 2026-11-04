@@ -29,8 +29,9 @@ import de.mari_023.ae2wtlib.api.terminal.ItemWT;
 import de.mari_023.ae2wtlib.api.terminal.WTMenuHost;
 
 import io.github.lounode.ae2pattern.AEPatternRegistries;
-import io.github.lounode.ae2pattern.common.menu.CellDriveScanner;
-import io.github.lounode.ae2pattern.common.menu.ICellManagementHost;
+import io.github.lounode.ae2pattern.common.menu.cell.CellDriveScanner;
+import io.github.lounode.ae2pattern.common.menu.cell.ICellManagementHost;
+import io.github.lounode.ae2pattern.common.menu.cell.EncodeCellUpgrades;
 
 /**
  * 无线版元件管理终端的宿主：与面板版的 {@code CellManagementTerminalPart} 对位——同一份菜单与屏幕代码，

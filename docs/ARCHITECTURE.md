@@ -37,8 +37,11 @@
 | `api` | 14 | **对外稳定面**。给"搬运磁盘"与"供应样板"的第三方模组用，包路径与签名改动等于破坏兼容 |
 | `common` | 1 | capability 注册入口 `AEPatternDiskCapabilities` |
 | `common/logic` | 15 | 纯逻辑。不依赖菜单、屏幕、网络，可在服务端线程之外读懂 |
-| `common/menu` | 24 | 菜单与其逻辑（编码逻辑、磁盘索引、标记规则、输出运算） |
-| `common/menu/slot` | 2 | 终端里的两个特殊槽 |
+| `common/menu` | 4 | 这一层只剩共用骨架：`AbstractPatternDiskTermMenu`、`IPatternDiskTerminalHost`、`ClientActionPayload`、转存器菜单 |
+| `common/menu/cell` | 18 | 元件管理终端全套：菜单、搬运、编码槽编辑、两个管理域、驱动器扫描与用量、分区/升级库存 |
+| `common/menu/pattern` | 13 | 样板编码终端、管理终端、三个供应器菜单，以及编码状态机与磁盘索引 |
+| `common/menu/assembler` | 3 | 两个装配室的菜单 |
+| `common/menu/slot` | 3 | 终端里的几个特殊槽（样板输出、空白样板、存储元件） |
 | `common/block` | 5 | 方块类 |
 | `common/block/entity` | 9 | 方块实体（含两个带磁盘供应器的抽象基类） |
 | `common/part` | 6 | 线缆面板形态的部件（含面板基类） |
@@ -56,7 +59,7 @@
 | `client/render` | 2 | 高效分子装配室的 BEISR 与驱动器高亮 |
 | `mixin` | 1 | `KeySortersMixin`，在客户端源集，见 §7 |
 
-主源集 131 个 `.java`，客户端源集 70 个。
+主源集 182 个 `.java`，客户端源集 83 个。
 
 ### 分层规矩
 
@@ -69,6 +72,10 @@
 ### 文件规模
 
 一个类只装一件能一句话讲清的事；**目标 ≤ 650 行，超过 800 行必须按职责拆**。拆法固定：动作入口（客户端发 / 服务端做）留在菜单类，干活的那一段搬进同包的 `final class`，构造参数收菜单引用，只调用菜单的包内访问器（`gridOrNull()`、`ownerOf()`、`afterCellMoved()`、`notice()`）。不为了拆而拆——共享同一份状态、共享同一套失败回填的代码留在原地。
+
+包也按功能分区，不按「都是菜单」堆一层：`common/menu` 只留共用骨架，元件终端在 `common/menu/cell`，
+样板终端与供应器在 `common/menu/pattern`，两个装配室在 `common/menu/assembler`。子包之间可以互相 import，
+但**包内访问器不跨包**——需要跨包复用的东西提升成 public（如 `cell.CellHostSwap`），不要靠往同一个包里塞文件来省事。
 
 `CellManagementTermMenu` 是最早按这条规矩拆的样本：动作入口留在菜单，搬运 / 分区编辑 / 两个管理域 / 收藏夹 / 清单同步各一个类，菜单本体 653 行。新增功能按同一张图放位置，不要往菜单里再堆。
 

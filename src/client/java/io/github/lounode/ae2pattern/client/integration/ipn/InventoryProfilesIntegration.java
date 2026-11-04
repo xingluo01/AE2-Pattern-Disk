@@ -9,8 +9,8 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.github.lounode.ae2pattern.common.menu.CellManagementTermMenu;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
+import io.github.lounode.ae2pattern.common.menu.cell.CellManagementTermMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskEncodingTermMenu;
 
 /**
  * Inventory Profiles Next（IPN）集成：告诉它的整理器，本模组的终端属于「只有玩家背包可整理」的那一类。

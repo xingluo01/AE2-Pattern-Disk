@@ -12,7 +12,7 @@ import com.extendedae_plus.api.upload.IPatternUploadTerminal;
 
 import io.github.lounode.ae2pattern.client.gui.PatternDiskEncodingTermScreen;
 import io.github.lounode.ae2pattern.client.integration.neoecoae.NeoECOClientIntegration;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskEncodingTermMenu;
 
 /**
  * 让 EAE+ 往本终端注入它的「上传到供应器」按钮，并把按钮摆到 NEO ECO 上传按钮的正下方（间隙 0px）。

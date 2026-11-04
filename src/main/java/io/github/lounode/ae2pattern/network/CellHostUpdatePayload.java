@@ -10,7 +10,7 @@ import net.minecraft.world.entity.player.Player;
 
 import appeng.core.network.ClientboundPacket;
 
-import io.github.lounode.ae2pattern.common.menu.CellManagementTermMenu;
+import io.github.lounode.ae2pattern.common.menu.cell.CellManagementTermMenu;
 
 /** 布局不变时只同步改变的格位；菜单编号阻止上一会话的差量污染新开的终端。 */
 public record CellHostUpdatePayload(int menuId, List<CellHostListPayload.CellSlot> cells) implements ClientboundPacket {

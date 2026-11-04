@@ -20,8 +20,8 @@ import io.github.lounode.ae2pattern.client.gui.PatternDiskManagementTermScreen;
 import io.github.lounode.ae2pattern.client.integration.ae2wtlib.CellManagementWirelessTermScreen;
 import io.github.lounode.ae2pattern.client.integration.ae2wtlib.PatternDiskWirelessEncodingTermScreen;
 import io.github.lounode.ae2pattern.client.integration.ae2wtlib.PatternDiskWirelessManagementTermScreen;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskEncodingTermMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskManagementTermMenu;
 import io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessEncodingTermMenu;
 import io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessManagementTermMenu;
 

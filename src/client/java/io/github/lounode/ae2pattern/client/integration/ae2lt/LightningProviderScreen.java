@@ -35,7 +35,7 @@ import appeng.menu.SlotSemantics;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import io.github.lounode.ae2pattern.client.gui.LockReasonWidget;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskProviderMenu;
 
 /**
  * 闪电科技三台供应器共用的屏幕骨架：磁盘槽、返回库存、玩家背包与前身

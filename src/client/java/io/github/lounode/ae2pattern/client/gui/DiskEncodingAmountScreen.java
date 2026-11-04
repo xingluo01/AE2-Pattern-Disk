@@ -14,7 +14,7 @@ import appeng.client.gui.widgets.TabButton;
 import appeng.core.localization.GuiText;
 import appeng.menu.SlotSemantics;
 
-import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskEncodingTermMenu;
 
 /**
  * 精确设置处理模式过滤槽数量的子屏，外观与交互沿用 AE2 样板编码终端的同款对话框

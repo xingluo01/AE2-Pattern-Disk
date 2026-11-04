@@ -13,7 +13,8 @@ import net.minecraft.world.item.ItemStack;
 import appeng.api.config.ShowPatternProviders;
 import appeng.core.network.ClientboundPacket;
 
-import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskManagementTermMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskEncodingTermMenu;
 
 /**
  * Clientbound packet carrying the pattern disks grouped by the machine that holds them.
@@ -33,7 +34,7 @@ import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
  */
 public record DiskHostListPayload(List<HostGroup> hosts, ShowPatternProviders shownProviders,
         boolean hideEmptySlots, long selectedSerial,
-        io.github.lounode.ae2pattern.common.menu.DiskEncodingLogic.SearchScope searchScope, boolean naturalSort)
+        io.github.lounode.ae2pattern.common.menu.pattern.DiskEncodingLogic.SearchScope searchScope, boolean naturalSort)
         implements ClientboundPacket {
 
     public static final Type<DiskHostListPayload> TYPE = new Type<>(
@@ -54,13 +55,13 @@ public record DiskHostListPayload(List<HostGroup> hosts, ShowPatternProviders sh
     }
 
     /** 枚举名读不回来（协议错配）时回退到默认档，不让一个坏包把客户端带崩。 */
-    private static io.github.lounode.ae2pattern.common.menu.DiskEncodingLogic.SearchScope readSearchScope(
+    private static io.github.lounode.ae2pattern.common.menu.pattern.DiskEncodingLogic.SearchScope readSearchScope(
             RegistryFriendlyByteBuf data) {
         var name = ByteBufCodecs.STRING_UTF8.decode(data);
         try {
-            return io.github.lounode.ae2pattern.common.menu.DiskEncodingLogic.SearchScope.valueOf(name);
+            return io.github.lounode.ae2pattern.common.menu.pattern.DiskEncodingLogic.SearchScope.valueOf(name);
         } catch (IllegalArgumentException e) {
-            return io.github.lounode.ae2pattern.common.menu.DiskEncodingLogic.SearchScope.BOTH;
+            return io.github.lounode.ae2pattern.common.menu.pattern.DiskEncodingLogic.SearchScope.BOTH;
         }
     }
 

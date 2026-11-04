@@ -22,7 +22,7 @@ import cn.dancingsnow.neoecoae.api.storage.IECOBulkDisplayCell;
 import cn.dancingsnow.neoecoae.api.storage.IECOBulkMarkableCellItem;
 import cn.dancingsnow.neoecoae.api.storage.IECOStorageCell;
 
-import io.github.lounode.ae2pattern.common.menu.CellBulkCutoffCompat;
+import io.github.lounode.ae2pattern.common.menu.cell.CellBulkCutoffCompat;
 
 /**
  * NEO ECO 大宗元件的压缩截断桥，编译期用上游公开契约。

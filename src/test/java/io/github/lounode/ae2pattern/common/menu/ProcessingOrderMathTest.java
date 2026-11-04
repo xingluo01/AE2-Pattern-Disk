@@ -11,6 +11,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.neoforged.fml.loading.LoadingModList;
+import io.github.lounode.ae2pattern.common.menu.pattern.ProcessingOutputMath;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;

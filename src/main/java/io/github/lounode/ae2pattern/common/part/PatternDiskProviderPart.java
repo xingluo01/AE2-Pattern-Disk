@@ -14,7 +14,7 @@ import appeng.parts.PartModel;
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskProviderBlockEntity;
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskProviderHost;
 import io.github.lounode.ae2pattern.common.logic.PatternDiskProviderLogic;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskProviderMenu;
 
 /**
  * ME 样板磁盘供应器的面板形态：贴在线缆上的部件，带

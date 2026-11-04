@@ -7,6 +7,7 @@ import net.minecraft.world.item.ItemStack;
 
 import appeng.api.storage.ITerminalHost;
 import appeng.menu.me.common.MEStorageMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskEncodingTermMenu;
 
 /**
  * 本模组终端的公共菜单基座：快捷移动（Shift+左键）的口径只有这一份。

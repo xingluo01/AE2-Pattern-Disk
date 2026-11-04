@@ -24,7 +24,7 @@ import appeng.util.InteractionUtil;
 import appeng.util.Platform;
 
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskProviderBlockEntity;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskProviderMenu;
 
 /**
  * In-world block hosting the pattern disk provider: exposes disk contents to the ME autocrafting service.

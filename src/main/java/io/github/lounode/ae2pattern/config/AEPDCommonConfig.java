@@ -1,6 +1,7 @@
 package io.github.lounode.ae2pattern.config;
 
 import net.neoforged.neoforge.common.ModConfigSpec;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskEncodingTermMenu;
 
 /**
  * 服务端直发的聊天栏消息开关。

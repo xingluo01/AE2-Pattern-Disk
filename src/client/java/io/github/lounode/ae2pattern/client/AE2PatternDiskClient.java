@@ -24,7 +24,7 @@ import io.github.lounode.ae2pattern.client.render.DriveHighlight;
 import io.github.lounode.ae2pattern.AE2PatternDisk;
 import io.github.lounode.ae2pattern.client.gui.BatchAssemblerScreen;
 import io.github.lounode.ae2pattern.client.gui.CellManagementTermScreen;
-import io.github.lounode.ae2pattern.common.menu.CellManagementTermMenu;
+import io.github.lounode.ae2pattern.common.menu.cell.CellManagementTermMenu;
 import io.github.lounode.ae2pattern.client.gui.PatternDiskEncodingTermScreen;
 import io.github.lounode.ae2pattern.client.gui.PatternDiskManagementTermScreen;
 import io.github.lounode.ae2pattern.client.gui.PatternDiskMarkTooltip;
@@ -35,7 +35,7 @@ import io.github.lounode.ae2pattern.client.integration.ae2wtlib.PatternDiskWirel
 import io.github.lounode.ae2pattern.client.integration.ae2wtlib.PatternDiskWirelessManagementTermScreen;
 import io.github.lounode.ae2pattern.client.integration.ae2wtlib.CellManagementWirelessTermScreen;
 import io.github.lounode.ae2pattern.client.integration.ipn.InventoryProfilesIntegration;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskEncodingTermMenu;
 import io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessEncodingTermMenu;
 import io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessManagementTermMenu;
 import io.github.lounode.ae2pattern.integration.ae2wtlib.CellManagementWirelessTermMenu;
@@ -120,11 +120,11 @@ public class AE2PatternDiskClient {
         // 屏幕类多了一个接受布局文档的构造，方法引用不再能唯一定位，所以这里把两个泛型参数写实。
         event.register(AEPatternRegistries.MENU_PROVIDER.get(),
                 new net.minecraft.client.gui.screens.MenuScreens.ScreenConstructor<
-                        io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu,
-                        PatternDiskProviderScreen<io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu>>() {
+                        io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskProviderMenu,
+                        PatternDiskProviderScreen<io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskProviderMenu>>() {
                     @Override
-                    public PatternDiskProviderScreen<io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu> create(
-                            io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu menu,
+                    public PatternDiskProviderScreen<io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskProviderMenu> create(
+                            io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskProviderMenu menu,
                             net.minecraft.world.entity.player.Inventory playerInventory,
                             net.minecraft.network.chat.Component title) {
                         return new PatternDiskProviderScreen<>(menu, playerInventory, title);
@@ -132,11 +132,11 @@ public class AE2PatternDiskClient {
                 });
         event.register(AEPatternRegistries.MENU_MARKED_PROVIDER.get(),
                 new net.minecraft.client.gui.screens.MenuScreens.ScreenConstructor<
-                        io.github.lounode.ae2pattern.common.menu.MarkedPatternDiskProviderMenu,
+                        io.github.lounode.ae2pattern.common.menu.pattern.MarkedPatternDiskProviderMenu,
                         io.github.lounode.ae2pattern.client.gui.MarkedPatternDiskProviderScreen>() {
                     @Override
                     public io.github.lounode.ae2pattern.client.gui.MarkedPatternDiskProviderScreen create(
-                            io.github.lounode.ae2pattern.common.menu.MarkedPatternDiskProviderMenu menu,
+                            io.github.lounode.ae2pattern.common.menu.pattern.MarkedPatternDiskProviderMenu menu,
                             net.minecraft.world.entity.player.Inventory playerInventory,
                             net.minecraft.network.chat.Component title) {
                         return new io.github.lounode.ae2pattern.client.gui.MarkedPatternDiskProviderScreen(
@@ -224,11 +224,11 @@ public class AE2PatternDiskClient {
         }
         event.register(io.github.lounode.ae2pattern.MeteoritePatternProviderRegistrations.MENU.get(),
                 new net.minecraft.client.gui.screens.MenuScreens.ScreenConstructor<
-                        io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu,
-                        PatternDiskProviderScreen<io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu>>() {
+                        io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskProviderMenu,
+                        PatternDiskProviderScreen<io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskProviderMenu>>() {
                     @Override
-                    public PatternDiskProviderScreen<io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu> create(
-                            io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu menu,
+                    public PatternDiskProviderScreen<io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskProviderMenu> create(
+                            io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskProviderMenu menu,
                             net.minecraft.world.entity.player.Inventory playerInventory,
                             net.minecraft.network.chat.Component title) {
                         return new PatternDiskProviderScreen<>(menu, playerInventory, title,
@@ -316,7 +316,7 @@ public class AE2PatternDiskClient {
                         appeng.client.gui.style.ScreenStyle style = appeng.client.gui.style.StyleManager
                                 .loadStyleDoc("/screens/ae2_pattern_disk/pattern_disk_management_terminal.json");
                         return new io.github.lounode.ae2pattern.client.gui.PatternDiskManagementTermScreen(
-                                (io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu) menu,
+                                (io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskManagementTermMenu) menu,
                                 playerInventory, title, style);
                     }
                 });

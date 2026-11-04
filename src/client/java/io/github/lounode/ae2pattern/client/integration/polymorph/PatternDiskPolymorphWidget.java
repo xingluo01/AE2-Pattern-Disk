@@ -9,7 +9,7 @@ import appeng.parts.encoding.EncodingMode;
 import com.illusivesoulworks.polymorph.api.client.widgets.PlayerRecipesWidget;
 
 import io.github.lounode.ae2pattern.client.gui.PatternDiskEncodingTermScreen;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskEncodingTermMenu;
 
 /**
  * 合成层上的多态选择按钮：一组材料能出多个结果时，产物槽上方出现按钮，点开选一个。

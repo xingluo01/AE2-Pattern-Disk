@@ -27,7 +27,7 @@ import io.github.lounode.ae2pattern.AEPatternRegistries;
 import io.github.lounode.ae2pattern.api.IPatternDiskHost;
 import io.github.lounode.ae2pattern.api.PatternDiskApi;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
-import io.github.lounode.ae2pattern.common.menu.DiskMarkRules;
+import io.github.lounode.ae2pattern.common.menu.pattern.DiskMarkRules;
 import io.github.lounode.ae2pattern.common.pattern.DiskSlotVersions;
 
 /**

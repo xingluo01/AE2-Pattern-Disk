@@ -1,6 +1,7 @@
 package io.github.lounode.ae2pattern.common.menu;
 
 import org.junit.jupiter.api.Test;
+import io.github.lounode.ae2pattern.common.menu.pattern.DiskMarkRules;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;

@@ -2,6 +2,7 @@ package io.github.lounode.ae2pattern.common.menu;
 
 import appeng.api.storage.ITerminalHost;
 import appeng.api.upgrades.IUpgradeInventory;
+import io.github.lounode.ae2pattern.common.menu.pattern.IDiskEncodingLogicHost;
 
 /**
  * 终端的宿主契约：面板形态（部件）与无线形态（物品）都得满足的那一份。

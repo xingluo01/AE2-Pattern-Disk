@@ -14,8 +14,8 @@ import appeng.parts.encoding.EncodingMode;
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 import io.github.lounode.ae2pattern.client.integration.EmiMarkNames;
 import io.github.lounode.ae2pattern.client.integration.JeiMarkNames;
-import io.github.lounode.ae2pattern.common.menu.DiskMarkRules;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.DiskMarkRules;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskEncodingTermMenu;
 
 /**
  * Turns a disk's mark (the {@code DISK_PREFIX} component) into the line shown in its tooltip.

@@ -6,7 +6,7 @@ import appeng.menu.ISubMenu;
 import appeng.menu.MenuOpener;
 import appeng.menu.locator.MenuHostLocator;
 
-import io.github.lounode.ae2pattern.common.menu.MarkedPatternDiskProviderMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.MarkedPatternDiskProviderMenu;
 
 /**
  * 标记式样板磁盘供应器两种形态共用的宿主契约。

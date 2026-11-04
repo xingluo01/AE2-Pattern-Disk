@@ -17,7 +17,7 @@ import com.moakiee.ae2lt.blockentity.OverloadedPatternProviderBlockEntity.Wirele
 import com.moakiee.ae2lt.menu.FrequencyBindingMenu;
 
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskProviderHost;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskProviderMenu;
 
 /**
  * 过载样板磁盘供应器的菜单：槽位与样板磁盘供应器共用，设置区是闪电科技过载供应器的按钮状态。

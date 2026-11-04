@@ -5,7 +5,7 @@ import net.minecraft.world.inventory.Slot;
 
 import com.extendedae_plus.api.upload.IPatternUploadMenu;
 
-import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskEncodingTermMenu;
 import io.github.lounode.ae2pattern.common.part.PatternDiskEncodingTerminalPart;
 
 /**

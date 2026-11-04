@@ -23,7 +23,7 @@ import appeng.client.gui.widgets.Scrollbar;
 import io.github.lounode.ae2pattern.common.logic.MarkedPatternDiskProviderLogic;
 import io.github.lounode.ae2pattern.client.integration.JechPinyin;
 import io.github.lounode.ae2pattern.common.menu.ClientActionPayload;
-import io.github.lounode.ae2pattern.common.menu.MarkedPatternDiskProviderMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.MarkedPatternDiskProviderMenu;
 
 /**
  * 标记式样板磁盘供应器的屏幕：在普通供应器那套左侧工具栏之上，加一块「标记候选网格」。

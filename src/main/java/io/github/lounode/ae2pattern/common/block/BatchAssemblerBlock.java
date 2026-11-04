@@ -19,7 +19,7 @@ import appeng.menu.locator.MenuLocators;
 import appeng.util.InteractionUtil;
 
 import io.github.lounode.ae2pattern.common.block.entity.BatchAssemblerBlockEntity;
-import io.github.lounode.ae2pattern.common.menu.BatchAssemblerMenu;
+import io.github.lounode.ae2pattern.common.menu.assembler.BatchAssemblerMenu;
 
 /**
  * In-world block hosting the batch assembler (批处理装配室): buffers materials pushed by

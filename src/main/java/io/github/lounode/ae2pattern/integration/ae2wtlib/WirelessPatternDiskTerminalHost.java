@@ -14,8 +14,9 @@ import de.mari_023.ae2wtlib.api.terminal.ItemWT;
 import de.mari_023.ae2wtlib.api.terminal.WTMenuHost;
 
 import io.github.lounode.ae2pattern.AEPatternRegistries;
-import io.github.lounode.ae2pattern.common.menu.DiskEncodingLogic;
+import io.github.lounode.ae2pattern.common.menu.pattern.DiskEncodingLogic;
 import io.github.lounode.ae2pattern.common.menu.IPatternDiskTerminalHost;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskManagementTermMenu;
 
 /**
  * 无线终端的宿主：与面板版的 {@link io.github.lounode.ae2pattern.common.part.PatternDiskEncodingTerminalPart}

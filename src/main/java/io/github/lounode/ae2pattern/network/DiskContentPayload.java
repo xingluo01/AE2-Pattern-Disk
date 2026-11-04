@@ -12,7 +12,7 @@ import net.minecraft.world.item.ItemStack;
 
 import appeng.core.network.ClientboundPacket;
 
-import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskManagementTermMenu;
 
 /**
  * Clientbound packet carrying the contents of the disks the client currently shows, keyed by the serials

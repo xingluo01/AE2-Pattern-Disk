@@ -2,8 +2,9 @@ package io.github.lounode.ae2pattern.common.menu.slot;
 
 import appeng.api.inventories.InternalInventory;
 import appeng.menu.slot.AppEngSlot;
-import io.github.lounode.ae2pattern.common.menu.CellDriveScanner;
+import io.github.lounode.ae2pattern.common.menu.cell.CellDriveScanner;
 import net.minecraft.world.item.ItemStack;
+import io.github.lounode.ae2pattern.common.menu.cell.CellManagementTermMenu;
 
 /**
  * 元件编码槽：只收存储元件与存储矩阵。

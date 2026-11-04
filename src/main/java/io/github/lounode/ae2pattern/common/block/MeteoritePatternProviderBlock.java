@@ -24,7 +24,7 @@ import appeng.util.InteractionUtil;
 import appeng.util.Platform;
 
 import io.github.lounode.ae2pattern.common.block.entity.MeteoritePatternProviderBlockEntity;
-import io.github.lounode.ae2pattern.common.menu.MeteoritePatternProviderMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.MeteoritePatternProviderMenu;
 
 /**
  * 自装配样板磁盘供应器的方块：与 ME样板磁盘供应器同一套摆放与朝向手法，指向自己的菜单。

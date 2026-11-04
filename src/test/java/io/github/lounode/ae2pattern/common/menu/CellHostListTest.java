@@ -21,6 +21,7 @@ import net.neoforged.neoforge.registries.RegistryManager;
 import io.github.lounode.ae2pattern.network.CellHostListPayload.CellSlot;
 import io.github.lounode.ae2pattern.network.CellHostListPayload.HostGroup;
 import io.github.lounode.ae2pattern.network.CellHostUpdatePayload;
+import io.github.lounode.ae2pattern.common.menu.cell.CellHostList;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;

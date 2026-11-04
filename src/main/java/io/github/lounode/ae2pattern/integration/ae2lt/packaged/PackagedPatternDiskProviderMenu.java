@@ -21,7 +21,7 @@ import com.moakiee.ae2lt.packaged.patternprovider.StablePatternProviderBlockEnti
 import com.moakiee.ae2lt.packaged.patternprovider.StablePatternProviderBlockEntity.ReturnMode;
 
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskProviderHost;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskProviderMenu;
 
 /**
  * 封包样板磁盘供应器的菜单：槽位与样板磁盘供应器共用，另加闪电科技封包的适配卡槽——没有它玩家选不了

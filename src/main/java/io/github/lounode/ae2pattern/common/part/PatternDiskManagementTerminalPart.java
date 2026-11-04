@@ -10,7 +10,8 @@ import appeng.api.util.IConfigManagerBuilder;
 import appeng.items.parts.PartModels;
 import appeng.parts.PartModel;
 
-import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskManagementTermMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.DiskEncodingLogic;
 
 /**
  * The pattern disk management terminal: a cable-attached terminal that lists every pattern disk on the grid

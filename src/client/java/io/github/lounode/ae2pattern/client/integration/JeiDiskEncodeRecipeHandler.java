@@ -21,10 +21,10 @@ import appeng.api.stacks.GenericStack;
 import appeng.core.localization.ItemModText;
 
 import io.github.lounode.ae2pattern.AEPatternRegistries;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskEncodingTermMenu;
 import io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessEncodingTermMenu;
 import io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessManagementTermMenu;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskManagementTermMenu;
 
 /**
  * JEI counterpart of {@link DiskEncodePatternHandler}: fills the pattern disk encoding terminal's encoding

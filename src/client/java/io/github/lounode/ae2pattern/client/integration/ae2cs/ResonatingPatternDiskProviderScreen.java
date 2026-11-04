@@ -37,7 +37,7 @@ import net.neoforged.neoforge.network.PacketDistributor;
 
 import io.github.lounode.ae2pattern.client.gui.LockReasonWidget;
 import io.github.lounode.ae2pattern.client.gui.StatesIconButton;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskProviderMenu;
 import io.github.lounode.ae2pattern.integration.ae2cs.resonating.ResonatingPatternDiskProviderMenu;
 
 /**

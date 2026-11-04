@@ -13,7 +13,7 @@ import appeng.parts.PartModel;
 
 import io.github.lounode.ae2pattern.common.block.entity.MarkedPatternDiskProviderHost;
 import io.github.lounode.ae2pattern.common.logic.MarkedPatternDiskProviderLogic;
-import io.github.lounode.ae2pattern.common.menu.MarkedPatternDiskProviderMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.MarkedPatternDiskProviderMenu;
 
 /**
  * 标记式样板磁盘供应器的面板形态：贴在线缆上，磁盘槽数为 0。

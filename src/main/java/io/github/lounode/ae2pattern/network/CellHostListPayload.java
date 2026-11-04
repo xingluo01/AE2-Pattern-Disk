@@ -12,7 +12,7 @@ import net.minecraft.world.item.ItemStack;
 
 import appeng.core.network.ClientboundPacket;
 
-import io.github.lounode.ae2pattern.common.menu.CellManagementTermMenu;
+import io.github.lounode.ae2pattern.common.menu.cell.CellManagementTermMenu;
 
 /**
  * 元件管理终端的驱动器清单：每台驱动器一条，带它里面的存储元件与（ECO 系才有的）存储优先级。

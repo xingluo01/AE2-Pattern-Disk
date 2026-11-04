@@ -14,7 +14,7 @@ import appeng.api.stacks.GenericStack;
 import appeng.menu.slot.FakeSlot;
 
 import io.github.lounode.ae2pattern.client.gui.AbstractPatternDiskTermScreen;
-import io.github.lounode.ae2pattern.common.menu.CellManagementTermMenu;
+import io.github.lounode.ae2pattern.common.menu.cell.CellManagementTermMenu;
 
 /**
  * JEI 的幽灵物品处理器：把 JEI 里的物品拖进样板编辑区。

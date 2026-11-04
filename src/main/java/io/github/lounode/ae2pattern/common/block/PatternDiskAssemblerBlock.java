@@ -14,7 +14,7 @@ import appeng.menu.locator.MenuLocators;
 import appeng.util.InteractionUtil;
 
 import io.github.lounode.ae2pattern.common.block.entity.PatternDiskAssemblerBlockEntity;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskAssemblerMenu;
+import io.github.lounode.ae2pattern.common.menu.assembler.PatternDiskAssemblerMenu;
 
 /**
  * In-world block hosting the pattern disk assembler (高效分子装配室): executes up to

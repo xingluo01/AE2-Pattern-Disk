@@ -10,7 +10,7 @@ import appeng.menu.slot.RestrictedInputSlot;
 import de.mari_023.ae2wtlib.api.gui.AE2wtlibSlotSemantics;
 import de.mari_023.ae2wtlib.api.terminal.WTMenuHost;
 
-import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskEncodingTermMenu;
 
 /**
  * 无线版样板磁盘编码终端的菜单：内容全部继承面板版（编码区、磁盘列表、写盘动作都一样），只换宿主与类型。

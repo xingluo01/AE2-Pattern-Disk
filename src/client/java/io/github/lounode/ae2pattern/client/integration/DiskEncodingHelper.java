@@ -35,8 +35,9 @@ import appeng.menu.slot.FakeSlot;
 import appeng.parts.encoding.EncodingMode;
 import appeng.util.CraftingRecipeUtil;
 
-import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskEncodingTermMenu;
 import io.github.lounode.ae2pattern.integration.rechiseledae.ChiselingRecipes;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternEncodingLogic;
 
 /**
  * 配方填充工具：把 EMI 配方导入样板磁盘编码终端的编码网格。

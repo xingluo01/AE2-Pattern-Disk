@@ -743,7 +743,7 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
      */
     @Override
     public void returnToMainMenu(net.minecraft.world.entity.player.Player player, ISubMenu subMenu) {
-        MenuOpener.returnTo(io.github.lounode.ae2pattern.common.menu.BatchAssemblerMenu.TYPE, player,
+        MenuOpener.returnTo(io.github.lounode.ae2pattern.common.menu.assembler.BatchAssemblerMenu.TYPE, player,
                 subMenu.getLocator());
     }
 

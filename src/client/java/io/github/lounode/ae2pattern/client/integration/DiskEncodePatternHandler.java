@@ -16,7 +16,7 @@ import appeng.core.localization.ItemModText;
 import appeng.integration.modules.emi.EmiStackHelper;
 import appeng.menu.me.common.GridInventoryEntry;
 
-import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskEncodingTermMenu;
 
 /**
  * 处理样板磁盘编码终端中通过 EMI 配方页的 + 按钮导入配方（编码到网格）。

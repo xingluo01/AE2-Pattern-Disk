@@ -42,19 +42,19 @@ import io.github.lounode.ae2pattern.common.block.entity.PatternDiskProviderBlock
 import io.github.lounode.ae2pattern.common.block.entity.PatternTransfererBlockEntity;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
 import io.github.lounode.ae2pattern.integration.ae2wtlib.WirelessPatternDiskTerminalItem;
-import io.github.lounode.ae2pattern.common.menu.BatchAssemblerMenu;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskAssemblerMenu;
-import io.github.lounode.ae2pattern.common.menu.MarkedPatternDiskProviderMenu;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu;
+import io.github.lounode.ae2pattern.common.menu.assembler.BatchAssemblerMenu;
+import io.github.lounode.ae2pattern.common.menu.assembler.PatternDiskAssemblerMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.MarkedPatternDiskProviderMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskProviderMenu;
 import io.github.lounode.ae2pattern.common.menu.PatternTransfererMenu;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskEncodingTermMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskManagementTermMenu;
 import io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessEncodingTermMenu;
 import io.github.lounode.ae2pattern.integration.ae2wtlib.PatternDiskWirelessManagementTermMenu;
 import io.github.lounode.ae2pattern.integration.ae2wtlib.CellManagementWirelessTermMenu;
 import io.github.lounode.ae2pattern.common.part.PatternDiskEncodingTerminalPart;
 import io.github.lounode.ae2pattern.common.part.PatternDiskManagementTerminalPart;
-import io.github.lounode.ae2pattern.common.menu.CellManagementTermMenu;
+import io.github.lounode.ae2pattern.common.menu.cell.CellManagementTermMenu;
 import io.github.lounode.ae2pattern.common.part.CellManagementTerminalPart;
 import io.github.lounode.ae2pattern.common.part.MarkedPatternDiskProviderPart;
 import io.github.lounode.ae2pattern.common.part.PatternDiskProviderPart;
@@ -62,6 +62,7 @@ import io.github.lounode.ae2pattern.api.PatternDiskApi;
 import io.github.lounode.ae2pattern.api.PatternDiskContents;
 import io.github.lounode.ae2pattern.integration.extendedae_plus.ExtendedAEPlusCompat;
 import io.github.lounode.ae2pattern.common.pattern.PatternDiskTier;
+import io.github.lounode.ae2pattern.common.menu.cell.SlidingInventoryWindow;
 
 /**
  * Single registration entry point for the AE2 Pattern Disk addon: every {@link DeferredRegister}

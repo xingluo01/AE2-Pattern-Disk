@@ -10,7 +10,7 @@ import appeng.menu.guisync.GuiSync;
 import appeng.menu.implementations.MenuTypeBuilder;
 
 import io.github.lounode.ae2pattern.common.logic.ProviderExtractionMode;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskProviderMenu;
 
 /**
  * 谐振样板磁盘供应器的菜单：槽位布局继承 {@link PatternDiskProviderMenu}（磁盘槽 + 返回槽 + 升级槽），

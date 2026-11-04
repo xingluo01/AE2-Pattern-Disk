@@ -2,6 +2,7 @@ package io.github.lounode.ae2pattern.common.menu.slot;
 
 import appeng.api.inventories.InternalInventory;
 import appeng.menu.slot.RestrictedInputSlot;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskEncodingTermMenu;
 
 /**
  * 空白样板槽：终端自己的一格实物存货，最多 {@link #CAPACITY} 张。

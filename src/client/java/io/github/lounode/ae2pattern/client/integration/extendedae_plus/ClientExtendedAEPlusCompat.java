@@ -37,12 +37,12 @@ public final class ClientExtendedAEPlusCompat {
      * {@code IPatternUploadTerminal}.</p>
      */
     public static PatternDiskEncodingTermScreen createUploadScreen(
-            io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu menu, Inventory playerInventory,
+            io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskEncodingTermMenu menu, Inventory playerInventory,
             Component title, ScreenStyle style) {
         try {
             return (PatternDiskEncodingTermScreen) Class
                     .forName(UPLOAD_SCREEN_CLASS, true, ClientExtendedAEPlusCompat.class.getClassLoader())
-                    .getConstructor(io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu.class,
+                    .getConstructor(io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskEncodingTermMenu.class,
                             Inventory.class, Component.class, ScreenStyle.class)
                     .newInstance(menu, playerInventory, title, style);
         } catch (ReflectiveOperationException e) {

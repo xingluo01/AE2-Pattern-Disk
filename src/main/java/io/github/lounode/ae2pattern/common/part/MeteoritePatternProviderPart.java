@@ -20,7 +20,7 @@ import appeng.parts.PartModel;
 import io.github.lounode.ae2pattern.common.block.entity.MeteoritePatternProviderBlockEntity;
 import io.github.lounode.ae2pattern.common.block.entity.MeteoritePatternProviderHost;
 import io.github.lounode.ae2pattern.common.logic.SelfAssemblingPatternDiskProviderLogic;
-import io.github.lounode.ae2pattern.common.menu.MeteoritePatternProviderMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.MeteoritePatternProviderMenu;
 
 /**
  * 自装配样板磁盘供应器的面板形态：贴在线缆上的部件，带

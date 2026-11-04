@@ -6,6 +6,7 @@ import net.minecraft.network.chat.Component;
 
 import appeng.api.stacks.KeyCounter;
 import appeng.api.storage.MEStorage;
+import io.github.lounode.ae2pattern.common.menu.cell.CellUsageCache;
 
 import static org.junit.jupiter.api.Assertions.*;
 

@@ -42,7 +42,7 @@ import appeng.menu.SlotSemantics;
 import appeng.menu.me.common.MEStorageMenu;
 
 import io.github.lounode.ae2pattern.client.integration.DiskEncodingHelper;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskEncodingTermMenu;
 
 /**
  * EMI 配方转移的样板磁盘编码终端专用基类。

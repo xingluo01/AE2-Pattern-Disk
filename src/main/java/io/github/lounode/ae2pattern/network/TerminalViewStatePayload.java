@@ -6,7 +6,7 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
 
-import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskManagementTermMenu;
 
 /**
  * Serverbound：管理终端里「跟着屏幕走」的显示状态变更——是否隐藏空槽位、当前选中的磁盘。
@@ -16,7 +16,7 @@ import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
  * 「每一个按钮都被重置」——这正是这条包存在的理由。</p>
  */
 public record TerminalViewStatePayload(boolean hideEmptySlots, long selectedSerial,
-        io.github.lounode.ae2pattern.common.menu.DiskEncodingLogic.SearchScope searchScope, boolean naturalSort)
+        io.github.lounode.ae2pattern.common.menu.pattern.DiskEncodingLogic.SearchScope searchScope, boolean naturalSort)
         implements CustomPacketPayload {
 
     public static final Type<TerminalViewStatePayload> TYPE = new Type<>(
@@ -40,9 +40,9 @@ public record TerminalViewStatePayload(boolean hideEmptySlots, long selectedSeri
     public static TerminalViewStatePayload decode(RegistryFriendlyByteBuf data) {
         var hideEmptySlots = data.readBoolean();
         var selectedSerial = data.readLong();
-        var searchScope = io.github.lounode.ae2pattern.common.menu.DiskEncodingLogic.SearchScope.BOTH;
+        var searchScope = io.github.lounode.ae2pattern.common.menu.pattern.DiskEncodingLogic.SearchScope.BOTH;
         try {
-            searchScope = io.github.lounode.ae2pattern.common.menu.DiskEncodingLogic.SearchScope.valueOf(data.readUtf());
+            searchScope = io.github.lounode.ae2pattern.common.menu.pattern.DiskEncodingLogic.SearchScope.valueOf(data.readUtf());
         } catch (IllegalArgumentException ignored) {
             // 协议错配时回落默认档，不让一个坏包把连接带崩。
         }

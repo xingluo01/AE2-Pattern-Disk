@@ -7,7 +7,7 @@ import net.minecraft.world.item.ItemStack;
 
 import cn.dancingsnow.neoecoae.api.storage.ECOStorageCells;
 
-import io.github.lounode.ae2pattern.common.menu.CellDriveScanner;
+import io.github.lounode.ae2pattern.common.menu.cell.CellDriveScanner;
 
 /**
  * 用 NEO ECO 的公开 API 回答「这张栈是不是存储矩阵」。

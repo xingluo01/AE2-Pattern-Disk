@@ -17,9 +17,9 @@ import appeng.items.parts.PartModels;
 import appeng.parts.PartModel;
 import appeng.parts.reporting.AbstractTerminalPart;
 
-import io.github.lounode.ae2pattern.common.menu.DiskEncodingLogic;
+import io.github.lounode.ae2pattern.common.menu.pattern.DiskEncodingLogic;
 import io.github.lounode.ae2pattern.common.menu.IPatternDiskTerminalHost;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskEncodingTermMenu;
 
 public class PatternDiskEncodingTerminalPart extends AbstractTerminalPart
         implements IPatternDiskTerminalHost {

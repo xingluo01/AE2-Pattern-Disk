@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import net.minecraft.world.item.ItemStack;
 
 import appeng.api.stacks.AEKey;
+import io.github.lounode.ae2pattern.common.menu.cell.CellMarkDomain;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;

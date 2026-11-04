@@ -8,7 +8,7 @@ import net.minecraft.resources.ResourceLocation;
 
 import appeng.client.gui.style.Blitter;
 
-import io.github.lounode.ae2pattern.common.menu.DiskEncodingLogic.SearchScope;
+import io.github.lounode.ae2pattern.common.menu.pattern.DiskEncodingLogic.SearchScope;
 
 /**
  * 样板内容搜索栏的「搜索范围」轮换按钮：仅输出 → 仅输入 → 输入+输出，点一次换一档。

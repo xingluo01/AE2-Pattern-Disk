@@ -55,8 +55,8 @@ import guideme.PageAnchor;
 
 import io.github.lounode.ae2pattern.api.PatternDiskApi;
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskManagementTermMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskEncodingTermMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskManagementTermMenu;
 import io.github.lounode.ae2pattern.network.VisibleDisksPayload;
 
 /**
@@ -121,10 +121,10 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     private boolean lastServerHideEmptySlots = true;
     private long lastServerSelectedSerial;
     /** 样板内容搜索范围（第 4 项新搜索栏）：本地副本 + 服务端上次给的值（只在它变了时跟随）。 */
-    private io.github.lounode.ae2pattern.common.menu.DiskEncodingLogic.SearchScope searchScope = io.github.lounode
-            .ae2pattern.common.menu.DiskEncodingLogic.SearchScope.BOTH;
-    private io.github.lounode.ae2pattern.common.menu.DiskEncodingLogic.SearchScope lastServerSearchScope = io.github.lounode
-            .ae2pattern.common.menu.DiskEncodingLogic.SearchScope.BOTH;
+    private io.github.lounode.ae2pattern.common.menu.pattern.DiskEncodingLogic.SearchScope searchScope = io.github.lounode
+            .ae2pattern.common.menu.pattern.DiskEncodingLogic.SearchScope.BOTH;
+    private io.github.lounode.ae2pattern.common.menu.pattern.DiskEncodingLogic.SearchScope lastServerSearchScope = io.github.lounode
+            .ae2pattern.common.menu.pattern.DiskEncodingLogic.SearchScope.BOTH;
     /** 服务端上次给的「附加排序」开关值；它一变就说明该跟随服务端。 */
     private boolean lastServerNaturalSort = true;
     /** 服务端镜像的显示模式档位；只在它真的变了时跟随，免得本地点完那两帧被旧值拉回去。 */

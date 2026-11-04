@@ -25,7 +25,8 @@ import appeng.client.gui.widgets.AETextField;
 import appeng.client.gui.widgets.ServerSettingToggleButton;
 import appeng.client.gui.widgets.SettingToggleButton;
 import appeng.client.gui.widgets.ToggleButton;
-import appeng.client.gui.widgets.ToolboxPanel;
+import appeng.client.gui.widgets.ToolboxPanel;
+
 import appeng.client.gui.widgets.UpgradesPanel;
 import appeng.core.localization.GuiText;
 import appeng.core.network.ServerboundPacket;
@@ -37,7 +38,7 @@ import net.neoforged.neoforge.network.PacketDistributor;
 
 import io.github.lounode.ae2pattern.common.logic.ProviderBlockingMode;
 import io.github.lounode.ae2pattern.common.logic.ProviderExtractionMode;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskProviderMenu;
 
 import java.util.ArrayList;
 import java.util.List;

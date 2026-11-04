@@ -17,7 +17,7 @@ import net.minecraft.world.item.Items;
 
 import net.neoforged.fml.ModList;
 
-import io.github.lounode.ae2pattern.common.menu.DiskMarkRules;
+import io.github.lounode.ae2pattern.common.menu.pattern.DiskMarkRules;
 
 /**
  * 标记对应的「催化剂 / 工作方块」图标：JEI 与 EMI 各自存这一份数据，接口与叫法都不同，这里做一层收口。

@@ -39,9 +39,9 @@ import appeng.api.config.CopyMode;
 import appeng.api.config.Settings;
 import appeng.api.config.SortDir;
 
-import io.github.lounode.ae2pattern.common.menu.CellBulkCutoffCompat;
-import io.github.lounode.ae2pattern.common.menu.CellDriveScanner;
-import io.github.lounode.ae2pattern.common.menu.CellManagementTermMenu;
+import io.github.lounode.ae2pattern.common.menu.cell.CellBulkCutoffCompat;
+import io.github.lounode.ae2pattern.common.menu.cell.CellDriveScanner;
+import io.github.lounode.ae2pattern.common.menu.cell.CellManagementTermMenu;
 import io.github.lounode.ae2pattern.client.integration.bookmarks.BookmarkReader;
 import io.github.lounode.ae2pattern.client.integration.megacells.MegaCutoffButtonFactory;
 import io.github.lounode.ae2pattern.client.integration.neoecoae.EcoBulkCutoffButton;

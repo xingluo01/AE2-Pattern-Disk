@@ -11,7 +11,7 @@ import net.minecraft.resources.ResourceLocation;
 
 import net.neoforged.fml.ModList;
 
-import io.github.lounode.ae2pattern.common.menu.DiskMarkRules;
+import io.github.lounode.ae2pattern.common.menu.pattern.DiskMarkRules;
 
 /**
  * 标记 → 配方类别原始 id 的**隐藏对照表**。

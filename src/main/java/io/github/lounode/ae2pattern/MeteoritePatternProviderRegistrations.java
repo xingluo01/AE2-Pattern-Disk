@@ -18,7 +18,7 @@ import appeng.items.parts.PartItem;
 
 import io.github.lounode.ae2pattern.common.block.MeteoritePatternProviderBlock;
 import io.github.lounode.ae2pattern.common.block.entity.MeteoritePatternProviderBlockEntity;
-import io.github.lounode.ae2pattern.common.menu.MeteoritePatternProviderMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.MeteoritePatternProviderMenu;
 import io.github.lounode.ae2pattern.common.part.MeteoritePatternProviderPart;
 
 /**

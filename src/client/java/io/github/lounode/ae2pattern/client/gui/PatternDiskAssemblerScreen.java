@@ -18,7 +18,7 @@ import appeng.client.gui.widgets.IconButton;
 import appeng.client.gui.widgets.ProgressBar;
 import appeng.menu.slot.AppEngSlot;
 
-import io.github.lounode.ae2pattern.common.menu.PatternDiskAssemblerMenu;
+import io.github.lounode.ae2pattern.common.menu.assembler.PatternDiskAssemblerMenu;
 
 /** EAE ex_molecular_assembler-style page screen for the eight parallel CraftUnits. */
 public class PatternDiskAssemblerScreen extends UpgradeableScreen<PatternDiskAssemblerMenu> {

@@ -24,7 +24,7 @@ import appeng.util.InteractionUtil;
 import appeng.util.Platform;
 
 import io.github.lounode.ae2pattern.common.block.entity.MarkedPatternDiskProviderBlockEntity;
-import io.github.lounode.ae2pattern.common.menu.MarkedPatternDiskProviderMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.MarkedPatternDiskProviderMenu;
 
 /**
  * 标记式样板磁盘供应器的方块形态。

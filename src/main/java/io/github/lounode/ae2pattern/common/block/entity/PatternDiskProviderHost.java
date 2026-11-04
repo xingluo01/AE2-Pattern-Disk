@@ -8,7 +8,7 @@ import appeng.menu.MenuOpener;
 import appeng.menu.locator.MenuHostLocator;
 
 import io.github.lounode.ae2pattern.api.IPatternDiskHost;
-import io.github.lounode.ae2pattern.common.menu.PatternDiskProviderMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskProviderMenu;
 
 /**
  * The host contract shared by both forms of the ME pattern disk provider: the in-world block

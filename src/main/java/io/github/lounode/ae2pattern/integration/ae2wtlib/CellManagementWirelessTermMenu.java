@@ -10,7 +10,7 @@ import appeng.menu.slot.RestrictedInputSlot;
 import de.mari_023.ae2wtlib.api.gui.AE2wtlibSlotSemantics;
 import de.mari_023.ae2wtlib.api.terminal.WTMenuHost;
 
-import io.github.lounode.ae2pattern.common.menu.CellManagementTermMenu;
+import io.github.lounode.ae2pattern.common.menu.cell.CellManagementTermMenu;
 
 /**
  * 无线版元件管理终端的菜单：表格、标记区、元件编码槽与升级槽全部继承面板版，只换宿主与类型。

@@ -8,7 +8,7 @@ import appeng.client.gui.ICompositeWidget;
 import appeng.client.gui.Icon;
 import appeng.client.gui.WidgetContainer;
 
-import io.github.lounode.ae2pattern.common.menu.PatternDiskEncodingTermMenu;
+import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskEncodingTermMenu;
 
 public abstract class DiskEncodingModePanel implements ICompositeWidget {
     protected final PatternDiskEncodingTermScreen screen;

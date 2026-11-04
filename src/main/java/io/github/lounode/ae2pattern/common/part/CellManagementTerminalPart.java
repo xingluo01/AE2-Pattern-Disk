@@ -26,10 +26,10 @@ import appeng.parts.PartModel;
 import appeng.parts.reporting.AbstractTerminalPart;
 import appeng.util.inv.AppEngInternalInventory;
 
-import io.github.lounode.ae2pattern.common.menu.CellDriveScanner;
-import io.github.lounode.ae2pattern.common.menu.ICellManagementHost;
-import io.github.lounode.ae2pattern.common.menu.CellManagementTermMenu;
-import io.github.lounode.ae2pattern.common.menu.EncodeCellUpgrades;
+import io.github.lounode.ae2pattern.common.menu.cell.CellDriveScanner;
+import io.github.lounode.ae2pattern.common.menu.cell.ICellManagementHost;
+import io.github.lounode.ae2pattern.common.menu.cell.CellManagementTermMenu;
+import io.github.lounode.ae2pattern.common.menu.cell.EncodeCellUpgrades;
 
 /**
  * 元件管理终端：挂在电缆上的终端，表格每行首格是一个驱动器、后面是它里面的存储元件，

@@ -26,7 +26,7 @@ import io.github.lounode.ae2pattern.client.sort.NaturalOrder;
 import io.github.lounode.ae2pattern.client.sort.NaturalSort;
 import io.github.lounode.ae2pattern.client.sort.NumericSeries;
 import io.github.lounode.ae2pattern.client.sort.SortTiers;
-import io.github.lounode.ae2pattern.common.menu.DiskEncodingLogic.SearchScope;
+import io.github.lounode.ae2pattern.common.menu.pattern.DiskEncodingLogic.SearchScope;
 
 /**
  * 一张盘里样板的显示顺序：搜索筛掉的先出局，剩下的按终端的排序档位排，最后交回存储序号。

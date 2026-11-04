@@ -6,7 +6,7 @@ import org.slf4j.LoggerFactory;
 
 import cn.dancingsnow.neoecoae.api.storage.IECOStoragePriorityHost;
 
-import io.github.lounode.ae2pattern.common.menu.CellDriveScanner;
+import io.github.lounode.ae2pattern.common.menu.cell.CellDriveScanner;
 
 /**
  * 把 NEO ECO 的存储优先级公开契约接到元件管理终端。
