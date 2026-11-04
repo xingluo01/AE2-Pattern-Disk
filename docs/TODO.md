@@ -55,7 +55,14 @@
 ### N. 代码整理：剩余冗长文件的逐个拆分 — P2 ⬜
 - 已定规矩（`ARCHITECTURE.md`「文件规模」）：一个类只装一件能一句话讲清的事，>800 行必须拆，目标 ≤650 行；动作入口留在菜单类，干活的搬进同包 `final class`。菜单层已按功能分 `cell` / `pattern` / `assembler` 三个子包。
 - 已完成样本：`cell/CellManagementTermMenu` 1784 → 653 行 + 6 个协作类；`cell/CellHostSwap` 收掉两个管理域各写一遍的「取出 → 改副本 → 放回 → 失败回填」。
-- ⏳ `pattern/PatternDiskEncodingTermMenu`（2533 → 2299 行，148 个方法）——已抽出 `PatternDiskTransfer`（顺位写盘 / 取样板）与 `DiskMarkBinder`（标记三来源）。剩下三块：① 编码与空白样板记账（`encode`/`getAndUpdateOutput`/`refillBlankPatternSlot`/`consumeBlankPattern`）② 编码模式与超载行（`setOverloadedMode`/`seedOverloadedRowsFromPattern`/`withFlag`/`setAdvancedSide`）。③ 磁盘列表同步的 `syncDiskList()` / `refreshDiskList()`（`onDiskListRebuilt`、`diskHostOf`、`diskSlotOf`、`collectDiskHosts` 是子类覆盖点，必须留在菜单里）。
+- ⏳ `pattern/PatternDiskEncodingTermMenu`（2533 → 2148 行，148 个方法）——已抽出 `PatternDiskTransfer`（顺位写盘 / 取样板）、
+  `DiskMarkBinder`（标记三来源，对菜单零引用）、`PatternDock`（两个样板槽 + 空白样板记账）、`EncodingFlags`（过载档两张并行表）。剩下三块：
+  ① 编码主流程 `encode`（依赖 8 个菜单成员，要拆得先做 `EncodingPipeline` + 端口）；
+  ② 编码模式与超载行（`setOverloadedMode` / `seedOverloadedRowsFromPattern` / `setAdvancedSide`）；
+  ③ 磁盘列表同步 `syncDiskList()` / `refreshDiskList()`（`onDiskListRebuilt`、`diskHostOf`、`diskSlotOf`、`collectDiskHosts` 是子类覆盖点，必须留在菜单里）。
+- ⚠️ ② 与 ③ 有一个**机制上限**：`DataSynchronization.collectFields` 只扫类层次上声明 `@GuiSync` 的字段（`getDeclaredFields`），
+  雕凿/高级/过载三档那 20 多个同步字段必须留在菜单类里，而档位切换就是这批字段的状态机。要再往下拆，得先把档位权威值搬回部件 logic、
+  菜单只做镜像——那是行为改动，不是重构。
 - ⬜ `logic/PatternDiskProviderLogic`（2020 行）：推送节拍、阻挡判定、输出解析三块。
 - ⬜ `block/entity/BatchAssemblerBlockEntity`（1624 行）：配方执行、并行车道、产物投递三块。
 - ⬜ `client/gui/CellManagementTermScreen`（1388 行）：表格、标记区、按钮与面板三块。
