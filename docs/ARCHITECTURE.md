@@ -71,7 +71,7 @@
 
 ### 文件规模与拆分深度
 
-**基线来自 AE2 自己**（`D://Temp//Applied-Energistics-2`，分支 `1.21.1`，`appeng/menu` 合计 11316 行）：
+**基线来自 AE2 自己**（`D:\Temp\Applied-Energistics-2`，分支 `1.21.1`，`appeng/menu` 合计 11316 行）：
 
 | AE2 的类 | 行数 | 性质 |
 |---|---:|---|
