@@ -52,6 +52,16 @@
 - ⬜ 提取原因：本模组已有自己的 `ExtractResult`（4 值 `OK` / `EMPTY` / `LOCKED` / `REFUSED`，后两者出声、`EMPTY` 静默）；剩下的是「改用上游枚举给出更细的原因」（上游侧条件已由 ECO #119 满足，见 `UPSTREAM_API_REQUESTS.md` 的提交记录）。
 - 维护：`UPSTREAM_API_REQUESTS.md` 的提交记录表随进展更新（UTC 时间戳）。
 
+### N. 代码整理：剩余冗长文件的逐个拆分 — P2 ⬜
+- 已定规矩（`ARCHITECTURE.md`「文件规模」）：一个类只装一件能一句话讲清的事，>800 行必须拆，目标 ≤650 行；动作入口留在菜单类，干活的搬进同包 `final class`。菜单层已按功能分 `cell` / `pattern` / `assembler` 三个子包。
+- 已完成样本：`cell/CellManagementTermMenu` 1784 → 653 行 + 6 个协作类；`cell/CellHostSwap` 收掉两个管理域各写一遍的「取出 → 改副本 → 放回 → 失败回填」。
+- ⬜ `pattern/PatternDiskEncodingTermMenu`（2533 行，148 个方法）——建议四块：① 编码与空白样板记账（`encode`/`getAndUpdateOutput`/`refillBlankPatternSlot`/`consumeBlankPattern`）② 磁盘写入与取出（`transferToFirstWritable`/`handleExtractFromDisk`/`hasRoomFor`/`deliverExtracted`，抽 `PatternDiskTransfer`）③ 标记与分类导入（`bindPrefix`/`deriveMarkId`/`uploadMark`/`setPendingRecipeCategory`）④ 编码模式与超载行（`setOverloadedMode`/`seedOverloadedRowsFromPattern`/`withFlag`/`setAdvancedSide`）。拆前先给 `encodedPatternSlot`、`diskIndex`、`tell()`、`syncDiskList(true)` 这几处加包内访问器。
+- ⬜ `logic/PatternDiskProviderLogic`（2020 行）：推送节拍、阻挡判定、输出解析三块。
+- ⬜ `block/entity/BatchAssemblerBlockEntity`（1624 行）：配方执行、并行车道、产物投递三块。
+- ⬜ `client/gui/CellManagementTermScreen`（1388 行）：表格、标记区、按钮与面板三块。
+- ⬜ `cell/CellDriveScanner`（969 行）：扫描与描述、取放、优先级、格式判定四块；约 80 处调用点要跟着改，改完把「公共面」收敛成一个门面类。
+- ⬜ `block/entity/PatternDiskAssemblerBlockEntity`（923 行）。
+
 ## 二、暂缓
 
 ### 8. EAE 大型分子装配室兼容 / 容器变体 — P3 ⏸
