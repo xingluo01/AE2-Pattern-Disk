@@ -1689,28 +1689,17 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         }
         for (var stack : inputs) {
             encodedInputsInv.setStack(row, stack);
-            row = appendOverloadedRow(sides, modes, row, false);
+            row = EncodingFlags.appendRow(sides, modes, row, false);
         }
         for (var stack : outputs) {
             encodedInputsInv.setStack(row, stack);
             // 标成输出：主产物就在这一批里，不标的话编码时会把它当成又一个输入项。
-            row = appendOverloadedRow(sides, modes, row, true);
+            row = EncodingFlags.appendRow(sides, modes, row, true);
         }
         this.overloadedSides = sides.toString();
         this.overloadedMatchModes = modes.toString();
         this.encodingLogic.setOverloadedSides(this.overloadedSides);
         this.encodingLogic.setOverloadedMatchModes(this.overloadedMatchModes);
-    }
-
-    /** 追加一行：记下它是输入(0)还是输出(1)，以及该行的组件匹配（新行一律默认「启用组件匹配」）。 */
-    private static int appendOverloadedRow(StringBuilder sides, StringBuilder modes, int row, boolean output) {
-        if (sides.length() > 0) {
-            sides.append(',');
-            modes.append(',');
-        }
-        sides.append(output ? 1 : 0);
-        modes.append(0);
-        return row + 1;
     }
 
     /** 一个输入格的候选表里挑第一个；一格多个候选时挑不准，挑一个总比空着强（玩家可自己改编辑区）。 */
@@ -1727,49 +1716,12 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
 
     /** 过载档第 row 行是输出还是输入。没写过的行按输入算。 */
     public boolean overloadedRowIsOutput(int row) {
-        return flagAt(this.overloadedSides, row);
+        return EncodingFlags.flagAt(this.overloadedSides, row);
     }
 
     /** 过载档第 row 行是否忽略组件匹配。没写过的行按不忽略算——也就是开关的默认态。 */
     public boolean overloadedRowIgnoresComponents(int row) {
-        return flagAt(this.overloadedMatchModes, row);
-    }
-
-    /** 逗号分隔的 0/1 表里取第 index 位；越界或格式不对一律当 false（“没配置过”的那个默认态）。 */
-    private static boolean flagAt(String flags, int index) {
-        if (index < 0 || flags == null || flags.isEmpty()) {
-            return false;
-        }
-        var parts = flags.split(",");
-        if (index >= parts.length) {
-            return false;
-        }
-        try {
-            return Integer.parseInt(parts[index].trim()) != 0;
-        } catch (NumberFormatException e) {
-            return false;
-        }
-    }
-
-    /** 把逗号分隔的 0/1 表里的第 index 位改成 value（不够长就补齐），其余保持。 */
-    private static String withFlag(String flags, int index, boolean value) {
-        if (index < 0) {
-            return flags == null ? "" : flags;
-        }
-        var parts = flags == null || flags.isEmpty() ? new String[0] : flags.split(",");
-        var size = Math.max(index + 1, parts.length);
-        var out = new StringBuilder();
-        for (int i = 0; i < size; i++) {
-            var current = i < parts.length && "1".equals(parts[i].trim());
-            if (i == index) {
-                current = value;
-            }
-            if (out.length() > 0) {
-                out.append(',');
-            }
-            out.append(current ? 1 : 0);
-        }
-        return out.toString();
+        return EncodingFlags.flagAt(this.overloadedMatchModes, row);
     }
 
     /** 过载档某一行改了什么（物品属性 = 输入/输出，加上那个组件匹配开关）。 */
@@ -1798,8 +1750,8 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
 
     /** 改本次编辑的过载行表，并把结果交给 logic 存住（关屏重开不掉）。 */
     private void applyOverloadedRow(int row, boolean output, boolean ignoreComponents) {
-        this.overloadedSides = withFlag(this.overloadedSides, row, output);
-        this.overloadedMatchModes = withFlag(this.overloadedMatchModes, row, ignoreComponents);
+        this.overloadedSides = EncodingFlags.withFlag(this.overloadedSides, row, output);
+        this.overloadedMatchModes = EncodingFlags.withFlag(this.overloadedMatchModes, row, ignoreComponents);
         this.encodingLogic.setOverloadedSides(this.overloadedSides);
         this.encodingLogic.setOverloadedMatchModes(this.overloadedMatchModes);
     }
