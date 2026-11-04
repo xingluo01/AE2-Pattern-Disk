@@ -377,7 +377,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
         super(menuType, id, ip, host);
         this.host = host;
         this.transfer = new PatternDiskTransfer(this);
-        this.binder = new DiskMarkBinder(this);
+        this.binder = new DiskMarkBinder(diskIndex, this::writeDiskSlot);
         this.encodingLogic = host.getLogic();
         this.encodedInputsInv = encodingLogic.getEncodedInputInv();
         this.encodedOutputsInv = encodingLogic.getEncodedOutputInv();
@@ -942,7 +942,7 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
      * 自动写盘成功后顺手把标记绑成当前工作方块——只在盘上还没有标记时（理由见 {@link DiskMarkBinder}）。
      */
     private void bindMarkIfUnmarked(long serial) {
-        binder.bindIfUnmarked(serial);
+        binder.bindIfUnmarked(serial, markSource());
     }
 
     public void bindPrefix(long serial) {
@@ -957,12 +957,17 @@ public class PatternDiskEncodingTermMenu extends AbstractPatternDiskTermMenu imp
             sendClientAction(ACTION_BIND_PREFIX, serial);
             return;
         }
-        binder.bind(serial, markOverride);
+        binder.bind(serial, markOverride, markSource());
+    }
+
+    /** 这次绑定该依据的三个值：快照出去，绑定逻辑就不必回头认菜单。 */
+    private DiskMarkBinder.Source markSource() {
+        return new DiskMarkBinder.Source(pendingRecipeCategory, mode, chiselingMode);
     }
 
     /** 要绑到磁盘上的标记，口径见 {@link DiskMarkBinder}。 */
     public String deriveMarkId() {
-        return binder.deriveMarkId();
+        return binder.deriveMarkId(markSource());
     }
 
 
