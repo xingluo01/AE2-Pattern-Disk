@@ -66,6 +66,12 @@
 - `integration/<邻居>` 只写那个邻居的适配，**邻居的类型不得漏进总是加载的类**（这才是红线，见 §6）。核心代码引用 `integration` 包自己写的门禁与契约类是允许的，现在是 7 个文件共 19 处 import：入口 `AE2PatternDisk`（5，五个软依赖门禁）、`AEPatternRegistries`（4，NeoForge 延迟注册必须在物品注册处拿到无线终端的类型 + EAE+ 契约）、`PatternDiskEncodingTermMenu`（6，高级/雕凿/过载/polymorph）、`PatternEncodingLogic`、`PatternDiskProviderLogic`、`PatternDiskProviderMenu`、`SelfAssemblingPatternDiskProviderLogic` 各 1。客户端侧 `client` 核心包对 `client/integration` 是 **0 处 import**，比主源集更严。
 - `common/menu` 与 `common/logic` 的归属按内容判、不按"能不能单独测"判：`DiskEncodingLogic`、`PatternEncodingLogic`、`DiskIndex`、`DiskMarkRules`、`ProcessingOutputMath` 都不碰菜单服务，看着像 logic，但它们读写的是菜单的 `@GuiSync` 项与宿主接口，留在 `common/menu` 是和协议同位置，不要搬。
 
+### 文件规模
+
+一个类只装一件能一句话讲清的事；**目标 ≤ 650 行，超过 800 行必须按职责拆**。拆法固定：动作入口（客户端发 / 服务端做）留在菜单类，干活的那一段搬进同包的 `final class`，构造参数收菜单引用，只调用菜单的包内访问器（`gridOrNull()`、`ownerOf()`、`afterCellMoved()`、`notice()`）。不为了拆而拆——共享同一份状态、共享同一套失败回填的代码留在原地。
+
+`CellManagementTermMenu` 是最早按这条规矩拆的样本：动作入口留在菜单，搬运 / 分区编辑 / 两个管理域 / 收藏夹 / 清单同步各一个类，菜单本体 653 行。新增功能按同一张图放位置，不要往菜单里再堆。
+
 ---
 
 ## 2. 核心概念
