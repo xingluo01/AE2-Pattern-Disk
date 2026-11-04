@@ -55,7 +55,7 @@
 ### N. 代码整理：剩余冗长文件的逐个拆分 — P2 ⬜
 - 已定规矩（`ARCHITECTURE.md`「文件规模」）：一个类只装一件能一句话讲清的事，>800 行必须拆，目标 ≤650 行；动作入口留在菜单类，干活的搬进同包 `final class`。菜单层已按功能分 `cell` / `pattern` / `assembler` 三个子包。
 - 已完成样本：`cell/CellManagementTermMenu` 1784 → 653 行 + 6 个协作类；`cell/CellHostSwap` 收掉两个管理域各写一遍的「取出 → 改副本 → 放回 → 失败回填」。
-- ⬜ `pattern/PatternDiskEncodingTermMenu`（2533 行，148 个方法）——建议四块：① 编码与空白样板记账（`encode`/`getAndUpdateOutput`/`refillBlankPatternSlot`/`consumeBlankPattern`）② 磁盘写入与取出（`transferToFirstWritable`/`handleExtractFromDisk`/`hasRoomFor`/`deliverExtracted`，抽 `PatternDiskTransfer`）③ 标记与分类导入（`bindPrefix`/`deriveMarkId`/`uploadMark`/`setPendingRecipeCategory`）④ 编码模式与超载行（`setOverloadedMode`/`seedOverloadedRowsFromPattern`/`withFlag`/`setAdvancedSide`）。拆前先给 `encodedPatternSlot`、`diskIndex`、`tell()`、`syncDiskList(true)` 这几处加包内访问器。
+- ⏳ `pattern/PatternDiskEncodingTermMenu`（2533 → 2299 行，148 个方法）——已抽出 `PatternDiskTransfer`（顺位写盘 / 取样板）与 `DiskMarkBinder`（标记三来源）。剩下三块：① 编码与空白样板记账（`encode`/`getAndUpdateOutput`/`refillBlankPatternSlot`/`consumeBlankPattern`）② 编码模式与超载行（`setOverloadedMode`/`seedOverloadedRowsFromPattern`/`withFlag`/`setAdvancedSide`）。③ 磁盘列表同步的 `syncDiskList()` / `refreshDiskList()`（`onDiskListRebuilt`、`diskHostOf`、`diskSlotOf`、`collectDiskHosts` 是子类覆盖点，必须留在菜单里）。
 - ⬜ `logic/PatternDiskProviderLogic`（2020 行）：推送节拍、阻挡判定、输出解析三块。
 - ⬜ `block/entity/BatchAssemblerBlockEntity`（1624 行）：配方执行、并行车道、产物投递三块。
 - ⬜ `client/gui/CellManagementTermScreen`（1388 行）：表格、标记区、按钮与面板三块。
