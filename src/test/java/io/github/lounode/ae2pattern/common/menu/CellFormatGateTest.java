@@ -24,6 +24,7 @@ import appeng.api.storage.StorageCells;
 import appeng.api.storage.cells.CellState;
 import appeng.api.storage.cells.StorageCell;
 import io.github.lounode.ae2pattern.common.menu.cell.CellDriveScanner;
+import io.github.lounode.ae2pattern.common.menu.cell.CellFormats;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -66,11 +67,11 @@ class CellFormatGateTest {
 
     /** 探针是静态注册，用完清回「没有探针」，不污染别的用例。 */
     @AfterEach void clearProbe() {
-        CellDriveScanner.registerMatrixProbe(null);
+        CellFormats.registerMatrixProbe(null);
     }
 
     private static void probeSeesMatrix() {
-        CellDriveScanner.registerMatrixProbe(
+        CellFormats.registerMatrixProbe(
                 stack -> stack.is(matrix.getItem()) || stack.is(bothClaimed.getItem()));
     }
 
@@ -266,23 +267,23 @@ class CellFormatGateTest {
     @Test void bothFormatsAreStillStorageForDisplayAndEncodeSlot() {
         probeSeesMatrix();
 
-        assertTrue(CellDriveScanner.isStorageCell(matrix));
-        assertTrue(CellDriveScanner.isMatrixFormatCell(matrix));
-        assertFalse(CellDriveScanner.isDriveFormatCell(matrix));
-        assertFalse(CellDriveScanner.isStorageCell(new ItemStack(Items.STICK)), "木棍既不是元件也不是矩阵");
+        assertTrue(CellFormats.isStorageCell(matrix));
+        assertTrue(CellFormats.isMatrixFormatCell(matrix));
+        assertFalse(CellFormats.isDriveFormatCell(matrix));
+        assertFalse(CellFormats.isStorageCell(new ItemStack(Items.STICK)), "木棍既不是元件也不是矩阵");
 
         try (var ignored = ae2HandlesCells()) {
-            assertTrue(CellDriveScanner.isStorageCell(ae2Cell));
-            assertTrue(CellDriveScanner.isDriveFormatCell(ae2Cell));
-            assertFalse(CellDriveScanner.isMatrixFormatCell(ae2Cell));
+            assertTrue(CellFormats.isStorageCell(ae2Cell));
+            assertTrue(CellFormats.isDriveFormatCell(ae2Cell));
+            assertFalse(CellFormats.isMatrixFormatCell(ae2Cell));
         }
     }
 
     @Test void emptyStackIsNeitherFormat() {
         probeSeesMatrix();
-        assertFalse(CellDriveScanner.isStorageCell(ItemStack.EMPTY));
-        assertFalse(CellDriveScanner.isDriveFormatCell(ItemStack.EMPTY));
-        assertFalse(CellDriveScanner.isMatrixFormatCell(ItemStack.EMPTY));
+        assertFalse(CellFormats.isStorageCell(ItemStack.EMPTY));
+        assertFalse(CellFormats.isDriveFormatCell(ItemStack.EMPTY));
+        assertFalse(CellFormats.isMatrixFormatCell(ItemStack.EMPTY));
     }
 
     /** 第三方宿主读一格就抛时，扫描与取放都只丢这一台，不把异常送进点击链。 */

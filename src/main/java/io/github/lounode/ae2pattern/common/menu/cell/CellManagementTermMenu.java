@@ -335,7 +335,7 @@ public class CellManagementTermMenu extends AbstractPatternDiskTermMenu {
     @Override
     protected List<Slot> getQuickMoveDestinationSlots(ItemStack stackToMove, boolean fromPlayerSide) {
         var destinations = super.getQuickMoveDestinationSlots(stackToMove, fromPlayerSide);
-        if (!fromPlayerSide || !CellDriveScanner.isStorageCell(stackToMove)) {
+        if (!fromPlayerSide || !CellFormats.isStorageCell(stackToMove)) {
             return destinations;
         }
         var encodeSlots = slotsOf(AEPatternRegistries.CELL_ENCODE);

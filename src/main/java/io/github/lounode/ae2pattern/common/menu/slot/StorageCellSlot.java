@@ -5,6 +5,7 @@ import appeng.menu.slot.AppEngSlot;
 import io.github.lounode.ae2pattern.common.menu.cell.CellDriveScanner;
 import net.minecraft.world.item.ItemStack;
 import io.github.lounode.ae2pattern.common.menu.cell.CellManagementTermMenu;
+import io.github.lounode.ae2pattern.common.menu.cell.CellFormats;
 
 /**
  * 元件编码槽：只收存储元件与存储矩阵。
@@ -31,6 +32,6 @@ public class StorageCellSlot extends AppEngSlot {
     @Override
     public boolean mayPlace(ItemStack stack) {
         // 先走基类：它管着 wrapper 物品、槽位启用状态与库存自己的 isItemValid，别绕过。
-        return super.mayPlace(stack) && CellDriveScanner.isStorageCell(stack);
+        return super.mayPlace(stack) && CellFormats.isStorageCell(stack);
     }
 }

@@ -163,13 +163,13 @@ final class CellHostAccess {
                 // 驱动器格式只收 AE2 认得的元件。写入要用 setItemDirect（写完能原样回读），而它按定义绕过
                 // 宿主库存的 filter；ECO 的存储矩阵同样过得了 isStorageCell——不在这里挡一次，矩阵就停在
                 // ME 驱动器的格子里，两边的存储 Provider 都不认它，谁也读不出那格里放着什么。
-                return slot >= 0 && slot < drive.cellCount() && CellDriveScanner.isDriveFormatCell(stack)
+                return slot >= 0 && slot < drive.cellCount() && CellFormats.isDriveFormatCell(stack)
                         && drive.accepts(slot, stack);
             }
             // 反选：单格元件座只收它那一族认得的存储矩阵。判据落在 ECO 的公开 API 上（见 registerMatrixProbe），
             // 不靠对方恰好报了 isItemValid——青春版那条没报，而 AE2 的元件一旦停进矩阵座同样是读不出来的东西。
             // 对方报了就听它的（ECO 用它挡无限模式的成员矩阵）；问不到才放行，写完仍然要回读确认。
-            return slot == 0 && CellDriveScanner.isMatrixFormatCell(stack) && accepts(owner, stack);
+            return slot == 0 && CellFormats.isMatrixFormatCell(stack) && accepts(owner, stack);
         } catch (RuntimeException broken) {
             // 读第三方格位就会抛：抛了按「不收」处理，不把异常送进点击链，也不让预探变成一次写入的邀请。
             LOGGER.debug("[cell-mgmt] 问宿主收不收这张元件时它抛了：{}", owner.getClass().getName(), broken);

@@ -183,7 +183,7 @@ final class CellTermMoves {
             return;
         }
         ItemStack source = inventory.getItem(inventorySlot);
-        if (!CellDriveScanner.isStorageCell(source)) {
+        if (!CellFormats.isStorageCell(source)) {
             LOGGER.info("[cell-mgmt] 源格位里不是存储元件（{}），丢弃这次存入", source.getItem());
             return;
         }

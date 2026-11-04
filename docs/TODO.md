@@ -66,8 +66,7 @@
 - ⬜ `logic/PatternDiskProviderLogic`（2020 行）：推送节拍、阻挡判定、输出解析三块。
 - ⬜ `block/entity/BatchAssemblerBlockEntity`（1624 行）：配方执行、并行车道、产物投递三块。
 - ⬜ `client/gui/CellManagementTermScreen`（1388 行）：表格、标记区、按钮与面板三块。
-- ✅ `cell/CellDriveScanner`（969 → 670 行）：拆成扫描与描述（670）、取放 `CellHostAccess`（264）、优先级 `CellStoragePriority`（132）、反射探针 `CellProbe`（42）。公开面与调用点未变。
-- ⬜ `cell/CellDriveScanner` 还能再拆一层：格式判定（`isStorageCell` / `isDriveFormatCell` / `isMatrixFormatCell` / `CellFormatProbe`，约 110 行）可独立成 `CellFormats`，需要同步改 17 处调用点与 `EcoCellFormat`。
+- ✅ `cell/CellDriveScanner`（969 → 582 行）：拆成扫描与描述（582）、取放 `CellHostAccess`（264）、优先级 `CellStoragePriority`（132）、反射探针 `CellProbe`（42）、格式判定 `CellFormats`（113）。
 - ⬜ `block/entity/PatternDiskAssemblerBlockEntity`（923 行）。
 
 ## 二、暂缓

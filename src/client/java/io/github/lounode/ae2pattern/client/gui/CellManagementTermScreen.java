@@ -49,6 +49,7 @@ import io.github.lounode.ae2pattern.integration.extendedae.VoidCellCompat;
 import io.github.lounode.ae2pattern.integration.megacells.MegaCellsCompat;
 import io.github.lounode.ae2pattern.client.render.DriveHighlight;
 import io.github.lounode.ae2pattern.network.CellHostListPayload;
+import io.github.lounode.ae2pattern.common.menu.cell.CellFormats;
 
 /**
  * 元件管理终端的屏幕：一张自绘表格（存储优先级标题栏 + 驱动器行），右下角是元件编码槽、升级槽与元件标记区。
@@ -1330,7 +1331,7 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
      */
     @Override
     protected boolean onPlayerInventoryQuickMove(Slot slot) {
-        if (!CellDriveScanner.isStorageCell(slot.getItem())) {
+        if (!CellFormats.isStorageCell(slot.getItem())) {
             return false; // 不是存储元件：本屏没它的去处，交给基类
         }
         if (selectedLeaderKey.isEmpty()) {
