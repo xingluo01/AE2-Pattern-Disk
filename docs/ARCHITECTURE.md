@@ -4,7 +4,7 @@
 
 玩法说明在 `PLATFORM.md`（英文，商店页用；MCMOD 版在 `PLATFORM_MCMOD.md`），API 用法在 `../README.md`，未完成与已知欠账在 `TODO.md`，待发改动在 `../CHANGELOG_UNRELEASED.md`、已发布留档在 `../CHANGELOG.md`，发版流程与踩坑在 `RELEASE.md`，本地依赖怎么凑齐在 `LOCAL_DEPS.md`。本手册不重复它们。
 
-（本目录 `docs/` 只放文档：本手册、平台说明两份、待办、上游 API 请求、发版手册 `RELEASE.md`、编码模式注册规范 `ENCODING_MODES.md`、资产授权清单 `ASSET_LICENSES.md`，以及两份**本机本地**信息——`LOCAL_DEPS.md`（路径索引）与 `LOCAL_CLONES.md`（上游镜像基线），后两份已列入 `.gitignore`，不随仓库分发。仓库根只留 `README.md`、`CHANGELOG.md`、`CHANGELOG_UNRELEASED.md` 这三个按惯例必须在根的文件，外加给 AI 代理的入口 `AGENTS.md`。）
+（本目录 `docs/` 只放文档：本手册、平台说明两份、待办及其编写规则 `TODO_STYLE.md`、上游 API 请求、发版手册 `RELEASE.md`、编码模式注册规范 `ENCODING_MODES.md`、更新日志编写规则 `CHANGELOG_STYLE.md`、资产授权清单 `ASSET_LICENSES.md`，以及两份**本机本地**信息——`LOCAL_DEPS.md`（路径索引）与 `LOCAL_CLONES.md`（上游镜像基线），后两份已列入 `.gitignore`，不随仓库分发。仓库根只留 `README.md`、`CHANGELOG.md`、`CHANGELOG_UNRELEASED.md` 这三个按惯例必须在根的文件，外加给 AI 代理的入口 `AGENTS.md`。）
 
 版本基线：NeoForge 21.1.241 / MC 1.21.1 / AE2 19.2.18 / Java 21。取数口径是 `gradle/libs.versions.toml` 的 `ae2`（`build.gradle` 走 `libs.ae2`）；`gradle.properties` 里的 `ae2_version` 是未使用的历史键，不要把它当真相。
 
