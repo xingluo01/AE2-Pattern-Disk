@@ -86,7 +86,7 @@ import io.github.lounode.ae2pattern.network.VisibleDisksPayload;
  * <p>{@code @IPNPlayerSideOnly}：整理模组的标注，与父屏同源（它没有 {@code @Inherited}，故在此重标一份），
  * 理由见 {@code PatternDiskEncodingTermScreen} 的类注释。</p>
  *
- * <p><b>拆分</b>：表格的外观、行模型、绘制与命中测试在 {@link DiskTableWidgets}；四枚按钮、内容搜索栏与它们
+ * <p><b>拆分</b>：表格的外观、行模型、绘制与命中测试在 {@link DiskTableWidgets}；五枚按钮、内容搜索栏与它们
  * 的视图状态 / 服务端同步在 {@link DiskToolbarWidgets}。本类只留 {@code init} / {@code render} /
  * {@code drawBG} / {@code drawFG} 等 {@code @Override} 覆写与一行转调，以及鼠标 / 槽位的动作分发。</p>
  */
@@ -113,7 +113,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
                 null);
     }
 
-    /** 按钮组与它们的视图状态（显示模式 / 隐藏槽位 / 内容搜索 / 搜索范围）。 */
+    /** 按钮组与它们的视图状态（显示模式 / 隐藏槽位 / 折叠虚拟样板 / 内容搜索 / 搜索范围）。 */
     private final DiskToolbarWidgets toolbar;
 
     /** 表格本体（几何、贴图、行模型、滚动、绘制、命中测试）。 */
@@ -125,7 +125,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
             Component title, ScreenStyle style) {
         super(menu, playerInventory, title, style);
 
-        // 四枚按钮与搜索栏：顺序即控件清单顺序，不能重排（见 DiskToolbarWidgets 的构造注释）。
+        // 五枚按钮与搜索栏：顺序即控件清单顺序，不能重排（见 DiskToolbarWidgets 的构造注释）。
         this.toolbar = new DiskToolbarWidgets(menu, widgets, this::addToLeftToolbar,
                 this.naturalSortButton, this::naturalSortEnabled);
         // 表格几何、贴图与它自己的滚动条。样式读键、排序口径与父类搜索 / 候选兜底都以窄回调注入，
@@ -200,7 +200,7 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
      * 全是物品网格的项，而本屏把网格整个藏了）。
      *
      * <p>基类在它自己的 {@code init()} 里读这份清单，本屏不自己应用：父屏（编解码屏）也定义了清单，
-     * 两边各应用一次的话本屏这两枚会被父屏那份摘掉。</p>
+     * 两边各应用一次的话本屏这几枚会被父屏那份摘掉。</p>
      */
     @Override
     protected List<String> toolbarPlan() {
@@ -208,10 +208,10 @@ public class PatternDiskManagementTermScreen extends PatternDiskEncodingTermScre
     }
 
     private static final List<String> TOOLBAR = List.of(
-            "guide", "sortBy", "naturalSort", "sortOrder", "showProviders", "hideSlots",
+            "guide", "sortBy", "naturalSort", "sortOrder", "showProviders", "hideSlots", "collapsePatterns",
             "mode", "terminalSwitch", "frequencyCard", "frequencyAutoConnect");
 
-    /** 本屏多出来的两枚：显示模式（AE2 的样板访问终端开关）与隐藏槽位（本屏自己的行模型开关）。 */
+    /** 本屏多出来的三枚：显示模式（AE2 的样板访问终端开关）、隐藏槽位与折叠虚拟样板（后两枚是本屏自己的行模型开关）。 */
     @Override
     protected String toolbarSlot(Button button) {
         var slot = super.toolbarSlot(button);

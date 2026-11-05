@@ -29,6 +29,7 @@ A terminal mounted on a network cable that lists every pattern disk on the netwo
 - **Additional sort**: while sorting by mod an extra toggle appears, acting on the patterns inside each disk, with the same rule as the toggle of that name in the [ME Pattern Disk Encoding Terminal](pattern_disk_encoding_terminal.md).
 - **Scroll**: the table scrolls when it is longer than the view.
 - **Empty slots**: the slots a machine has no disk in are listed after that group's disks, one cell per row. The button in the left toolbar folds them into a single row (showing how many slots it stands for) or spreads them out again, one row per slot.
+- **Collapse virtual patterns**: the button right below "Empty slots" in the left toolbar. When on, each disk keeps only the first row of patterns after it and the rest no longer continues on the rows below; when off every row is expanded as usual. The toggle is saved with the terminal and survives reopening.
 - Patterns that cannot be decoded get a red overlay, as on the encoding terminal.
 - **Disk cell tooltip**: hovering a disk cell shows the same information as the encoding terminal's disk list - name, used and total capacity, mark (plus the raw mark ID with advanced tooltips on) - and the gestures that cell accepts.
 - The table lists every container on the network that takes pattern disks, including both forms of this mod's provider and machines from other mods, and including machines with no disk inserted, which show their slot count and how many are free; pulling a disk back out does not remove the group. While the search box has text, machines with no matching disk are left out.
@@ -70,5 +71,5 @@ The lower half matches the [ME Pattern Disk Encoding Terminal](pattern_disk_enco
 ## Notes
 
 - The table is a read-only view: it shows disk contents, and changing them takes the controls above or the encoding area. Dragging a pattern into a cell does nothing.
-- Contents are shown in full: a disk holding more takes more rows, with the disk in the first cell of its first row and 17 pattern cells on every row below.
+- Contents are shown in full by default: a disk holding more takes more rows, with the disk in the first cell of its first row and 17 pattern cells on every row below; "Collapse virtual patterns" keeps only the first row.
 - Contents come from the server on demand, so a disk just placed may show as the disk alone for a frame or two.

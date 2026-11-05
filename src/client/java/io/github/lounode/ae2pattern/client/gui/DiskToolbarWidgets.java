@@ -21,16 +21,16 @@ import net.minecraft.resources.ResourceLocation;
 import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskManagementTermMenu;
 
 /**
- * 管理终端表格的「按钮组 + 它们自己的视图状态」：显示模式、隐藏槽位、内容搜索栏与搜索范围四枚控件，
- * 以及 {@code hideEmptySlots} / {@code selectedSerial} / {@code searchScope} / {@code contentSearchText}
- * 这四个本地值和它们各自的服务端镜像。
+ * 管理终端表格的「按钮组 + 它们自己的视图状态」：显示模式、隐藏槽位、折叠虚拟样板、内容搜索栏与搜索范围
+ * 五枚控件，以及 {@code hideEmptySlots} / {@code selectedSerial} / {@code searchScope} / {@code contentSearchText}
+ * / {@code collapseVirtualPatterns} 这五个本地值和它们各自的服务端镜像。
  *
  * <p>从 {@code PatternDiskManagementTermScreen} 里整块搬出来：状态与「谁改它、谁回显它」放在同一个类里，
  * 不再让屏幕为了同步去放宽一堆 {@code private}。{@code updateBeforeRender} 里那段服务端镜像跟随、以及原先
  * 散在五个回调里的同一行 {@code sendViewStateToServer(...)}，都收在这里。</p>
  *
  * <p><b>不持有屏幕</b>：只注入菜单、控件容器、工具栏挂载回调、附加排序按钮与 {@code naturalSortEnabled}
- * 的取值回调。控件回显直接落在自己这几枚按钮字段上，不需要回调；{@code DiskTableWidgets} 只读这里四个
+ * 的取值回调。控件回显直接落在自己这几枚按钮字段上，不需要回调；{@code DiskTableWidgets} 只读这里五个
  * getter（不超过 5 个成员），随帧变化的值由这些 getter 现取。</p>
  *
  * <p><b>控件顺序即清单</b>：构造器里 {@code addToLeftToolbar} / {@code widgets.add*} 的先后与屏幕原样一致——
@@ -44,6 +44,9 @@ final class DiskToolbarWidgets {
             .parse("ae2_pattern_disk:textures/guis/states.png");
     private static final Blitter ICON_SHOW_SLOTS = Blitter.texture(STATES).src(64, 32, 16, 16);
     private static final Blitter ICON_HIDE_SLOTS = Blitter.texture(STATES).src(80, 32, 16, 16);
+    // 「折叠虚拟样板」按钮的图标：states.png (160,32) 起 32×16 两块，左半 (160,32) 是关闭、右半 (176,32) 是开启。
+    private static final Blitter ICON_COLLAPSE_PATTERNS_OFF = Blitter.texture(STATES).src(160, 32, 16, 16);
+    private static final Blitter ICON_COLLAPSE_PATTERNS_ON = Blitter.texture(STATES).src(176, 32, 16, 16);
     private static final Blitter BUTTON_BG_NORMAL = Blitter.texture(STATES).src(208, 224, 18, 20);
     private static final Blitter BUTTON_BG_HOVER = Blitter.texture(STATES).src(226, 224, 18, 20);
 
@@ -59,16 +62,22 @@ final class DiskToolbarWidgets {
     private final SettingToggleButton<ShowPatternProviders> showProvidersButton;
     /** 「隐藏槽位/显示槽位」按钮：只影响本屏的行模型，不涉服务端。按下时要回写状态，所以不是 final。 */
     private StatesToggleButton hideSlotsButton;
-    /** 样板内容搜索栏与它的搜索范围轮换按钮（第 4 项）。 */
+    /** 「折叠虚拟样板」按钮：状态随视图状态回传服务端，开屏由服务端镜像恢复。按下时要回写图标。 */
+    private StatesToggleButton collapsePatternsButton;
+    /** 样板内容搜索栏与它的搜索范围轮换按钮。 */
     private AETextField contentSearchField;
     private ContentSearchScopeButton contentSearchScopeButton;
 
     /** 当前是否收起空槽。默认收起：表的常规观感保持紧凑，想看全槽布局再展开。 */
     private boolean hideEmptySlots = true;
+    /** 当前是否折叠虚拟样板。默认关闭＝正常展开每一行；打开时每张盘只留磁盘后的第一行样板。 */
+    private boolean collapseVirtualPatterns = false;
+    /** 上一次从服务端读到的折叠开关值，只用于「服务端变了才跟随」，免得客户端刚点完被旧镜像拉回去。 */
+    private boolean lastServerCollapseVirtualPatterns = false;
     /** 上一次从服务端读到的值，只用于“服务端变了才跟随”，免得客户端刚点完就被自己的回推拉回去。 */
     private boolean lastServerHideEmptySlots = true;
     private long lastServerSelectedSerial;
-    /** 样板内容搜索范围（第 4 项新搜索栏）：本地副本 + 服务端上次给的值（只在它变了时跟随）。 */
+    /** 样板内容搜索范围（新搜索栏）：本地副本 + 服务端上次给的值（只在它变了时跟随）。 */
     private io.github.lounode.ae2pattern.common.menu.pattern.DiskEncodingLogic.SearchScope searchScope = io.github.lounode
             .ae2pattern.common.menu.pattern.DiskEncodingLogic.SearchScope.BOTH;
     private io.github.lounode.ae2pattern.common.menu.pattern.DiskEncodingLogic.SearchScope lastServerSearchScope = io.github.lounode
@@ -128,7 +137,25 @@ final class DiskToolbarWidgets {
         this.hideSlotsButton.setState(this.hideEmptySlots);
         addToLeftToolbar.accept(this.hideSlotsButton);
 
-        // 样板内容搜索栏（第 4 项）：顶部居中、与磁盘搜索栏同一行（样式 JSON 的 contentSearch 给坐标），
+        // 「折叠虚拟样板」排在「隐藏槽位」正下方：只改本屏的行模型（要不要生成续行），但状态随视图状态
+        // 回传服务端（面板存部件 NBT、无线存物品组件），关屏重开才不会回到「正常展开」。图标左半关闭、右半开启。
+        this.collapsePatternsButton = new StatesToggleButton(ICON_COLLAPSE_PATTERNS_ON,
+                ICON_COLLAPSE_PATTERNS_OFF, state -> {
+                    this.collapseVirtualPatterns = !this.collapseVirtualPatterns;
+                    this.collapsePatternsButton.setState(this.collapseVirtualPatterns);
+                    sendToServer();
+                });
+        this.collapsePatternsButton.setBackground(BUTTON_BG_NORMAL, BUTTON_BG_HOVER);
+        this.collapsePatternsButton.setTooltipOn(List.of(
+                Component.translatable("gui.ae2_pattern_disk.management_terminal.collapse_virtual_patterns"),
+                Component.translatable("gui.ae2_pattern_disk.management_terminal.collapse_virtual_patterns.on")));
+        this.collapsePatternsButton.setTooltipOff(List.of(
+                Component.translatable("gui.ae2_pattern_disk.management_terminal.collapse_virtual_patterns"),
+                Component.translatable("gui.ae2_pattern_disk.management_terminal.collapse_virtual_patterns.off")));
+        this.collapsePatternsButton.setState(this.collapseVirtualPatterns);
+        addToLeftToolbar.accept(this.collapsePatternsButton);
+
+        // 样板内容搜索栏：顶部居中、与磁盘搜索栏同一行（样式 JSON 的 contentSearch 给坐标），
         // 右侧紧跟搜索范围轮换按钮（contentSearchScope）。位置与磁盘搜索栏的附属按钮同一摆法。
         this.contentSearchField = widgets.addTextField("contentSearch");
         this.contentSearchField.setPlaceholder(Component.translatable("gui.ae2_pattern_disk.content_search"));
@@ -144,10 +171,13 @@ final class DiskToolbarWidgets {
         widgets.add("contentSearchScope", this.contentSearchScopeButton.widget());
     }
 
-    /** 本屏多出来、需要自己认领的那枚工具栏按钮：隐藏槽位。 */
+    /** 本屏多出来、需要自己认领的两枚工具栏按钮：隐藏槽位、折叠虚拟样板。 */
     @Nullable
     String toolbarSlot(Button button) {
-        return button == this.hideSlotsButton ? "hideSlots" : null;
+        if (button == this.hideSlotsButton) {
+            return "hideSlots";
+        }
+        return button == this.collapsePatternsButton ? "collapsePatterns" : null;
     }
 
     /** 把本地视图状态回传服务端（原先散在各按钮回调与点击里的同一行）。 */
@@ -158,7 +188,7 @@ final class DiskToolbarWidgets {
     /** 显示模式按钮换档时用它：末位档位传刚翻到的那个值，不取服务端镜像。 */
     private void sendToServer(ShowPatternProviders shownProviders) {
         this.menu.sendViewStateToServer(this.hideEmptySlots, this.selectedSerial, this.searchScope,
-                this.naturalSort.getAsBoolean(), shownProviders);
+                this.naturalSort.getAsBoolean(), shownProviders, this.collapseVirtualPatterns);
     }
 
     /**
@@ -175,6 +205,12 @@ final class DiskToolbarWidgets {
             this.lastServerHideEmptySlots = menu.viewHideEmptySlots();
             this.hideEmptySlots = this.lastServerHideEmptySlots;
             this.hideSlotsButton.setState(this.hideEmptySlots);
+        }
+        // 「折叠虚拟样板」同一口径：只在服务端镜像真的变了时跟随，开屏恢复上次的值，本地刚点的那两帧不被拉回。
+        if (this.lastServerCollapseVirtualPatterns != menu.viewCollapseVirtualPatterns()) {
+            this.lastServerCollapseVirtualPatterns = menu.viewCollapseVirtualPatterns();
+            this.collapseVirtualPatterns = this.lastServerCollapseVirtualPatterns;
+            this.collapsePatternsButton.setState(this.collapseVirtualPatterns);
         }
         if (this.lastServerSelectedSerial != menu.viewSelectedSerial()) {
             this.lastServerSelectedSerial = menu.viewSelectedSerial();
@@ -196,7 +232,7 @@ final class DiskToolbarWidgets {
         } else if (this.naturalSortButton != null
                 && this.naturalSortButton.isEnabled() != this.lastServerNaturalSort) {
             menu.sendViewStateToServer(this.hideEmptySlots, this.selectedSerial, this.searchScope,
-                    this.naturalSortButton.isEnabled(), menu.shownProviders());
+                    this.naturalSortButton.isEnabled(), menu.shownProviders(), this.collapseVirtualPatterns);
         }
     }
 
@@ -211,6 +247,11 @@ final class DiskToolbarWidgets {
 
     boolean hideEmptySlots() {
         return this.hideEmptySlots;
+    }
+
+    /** 是否折叠虚拟样板：打开时每张盘只显示磁盘后的第一行样板，续行不生成。 */
+    boolean collapseVirtualPatterns() {
+        return this.collapseVirtualPatterns;
     }
 
     io.github.lounode.ae2pattern.common.menu.pattern.DiskEncodingLogic.SearchScope searchScope() {

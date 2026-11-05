@@ -86,6 +86,8 @@ public class DiskEncodingLogic implements InternalInventoryHost {
     private boolean showUnmarkedDisks = true;
     /** 管理终端：隐藏没有内容的样板供应器槽位（屏幕左侧列表的显示开关）。面板与无线共用这一份状态。 */
     private boolean hideEmptySlots = true;
+    /** 管理终端：折叠虚拟样板（每张盘只显示磁盘后第一行样板，续行不生成）。默认关闭＝正常展开。 */
+    private boolean collapseVirtualPatterns;
     /** 管理终端：列表里被选中的样板磁盘序列号，0 表示未选中。跟着终端走，关屏重开不丢。 */
     private long selectedSerial;
     /** 管理终端新增搜索栏的搜索范围：只看输出、只看输入、或两者都看。 */
@@ -220,6 +222,8 @@ public class DiskEncodingLogic implements InternalInventoryHost {
     public ConfigInventory getEncodedOutputInv() { return encodedOutputInv; }
     public boolean isHideEmptySlots() { return this.hideEmptySlots; }
     public void setHideEmptySlots(boolean hide) { this.hideEmptySlots = hide; }
+    public boolean isCollapseVirtualPatterns() { return this.collapseVirtualPatterns; }
+    public void setCollapseVirtualPatterns(boolean collapse) { this.collapseVirtualPatterns = collapse; }
     public long getSelectedSerial() { return this.selectedSerial; }
     public void setSelectedSerial(long serial) { this.selectedSerial = serial; }
     public SearchScope getSearchScope() { return this.searchScope; }
@@ -263,6 +267,9 @@ public class DiskEncodingLogic implements InternalInventoryHost {
             this.showUnmarkedDisks = !data.contains("showUnmarkedDisks") || data.getBoolean("showUnmarkedDisks");
             // 同上：缺键要落到默认值（默认隐藏空槽），不能直接 getBoolean 把开关反过来。
             this.hideEmptySlots = !data.contains("hideEmptySlots") || data.getBoolean("hideEmptySlots");
+            // 后加的键：旧存档里没有，缺键落回默认「正常展开」，不能用 !contains 那套（那会把默认写成开启）。
+            this.collapseVirtualPatterns = data.contains("collapseVirtualPatterns")
+                    && data.getBoolean("collapseVirtualPatterns");
             this.selectedSerial = data.getLong("selectedSerial");
             try { this.searchScope = SearchScope.valueOf(data.getString("searchScope")); } catch (IllegalArgumentException ignored) { this.searchScope = SearchScope.BOTH; }
             // 缺键默认开（与按钮自己的默认一致），不能直接 getBoolean 把开关反过来。
@@ -295,6 +302,7 @@ public class DiskEncodingLogic implements InternalInventoryHost {
         data.putBoolean("mergeSameItems", this.mergeSameItems);
         data.putBoolean("showUnmarkedDisks", this.showUnmarkedDisks);
         data.putBoolean("hideEmptySlots", this.hideEmptySlots);
+        data.putBoolean("collapseVirtualPatterns", this.collapseVirtualPatterns);
         data.putLong("selectedSerial", this.selectedSerial);
         data.putString("searchScope", this.searchScope.name());
         data.putBoolean("naturalSort", this.naturalSort);

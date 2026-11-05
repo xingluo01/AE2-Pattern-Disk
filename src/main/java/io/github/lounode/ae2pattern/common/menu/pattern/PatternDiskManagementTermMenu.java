@@ -320,7 +320,8 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
         }
         var viewLogic = ((IPatternDiskTerminalHost) getHost()).getLogic();
         sendPacketToClient(new DiskHostListPayload(groups, mode, viewLogic.isHideEmptySlots(),
-                viewLogic.getSelectedSerial(), viewLogic.getSearchScope(), viewLogic.isNaturalSort()));
+                viewLogic.getSelectedSerial(), viewLogic.getSearchScope(), viewLogic.isNaturalSort(),
+                viewLogic.isCollapseVirtualPatterns()));
     }
 
     /**
@@ -388,8 +389,9 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
 
     public void receiveHostList(List<DiskHostListPayload.HostGroup> hosts, ShowPatternProviders shownProviders,
             boolean hideEmptySlots, long selectedSerial, DiskEncodingLogic.SearchScope searchScope,
-            boolean naturalSort) {
-        clientView.receiveHostList(hosts, shownProviders, hideEmptySlots, selectedSerial, searchScope, naturalSort);
+            boolean naturalSort, boolean collapseVirtualPatterns) {
+        clientView.receiveHostList(hosts, shownProviders, hideEmptySlots, selectedSerial, searchScope, naturalSort,
+                collapseVirtualPatterns);
     }
 
     /** 屏幕开屏时读它恢复「附加排序」开关。 */
@@ -407,50 +409,57 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
         return clientView.viewHideEmptySlots();
     }
 
+    /** 屏幕开屏时读它初始化「折叠虚拟样板」开关，保证重开回到上次的值。 */
+    public boolean viewCollapseVirtualPatterns() {
+        return clientView.viewCollapseVirtualPatterns();
+    }
+
     /** 屏幕开屏时读它恢复选中的那张盘（0 = 未选中）。 */
     public long viewSelectedSerial() {
         return clientView.viewSelectedSerial();
     }
 
     /**
-     * 服务端：客户端改动了显示状态（是否隐藏空槽位、选中了哪张盘），落到编码逻辑上。
-     * 面板版写部件 NBT、无线版写物品自己的数据组件，所以下次打开（哪怕退出游戏再进）都能恢复。
-     */
-    /**
      * 客户端：把显示状态回传。走 AE2 的 clientAction（与 insertDisk 同一通道），不再自己发 C2S 包——
      * 包注册面少一层，也不会因菜单类型判断失配而静默丢包。
      */
     public void sendViewStateToServer(boolean hideEmptySlots, long selectedSerial,
             DiskEncodingLogic.SearchScope searchScope, boolean naturalSort,
-            ShowPatternProviders shownProviders) {
+            ShowPatternProviders shownProviders, boolean collapseVirtualPatterns) {
         sendClientAction(ACTION_VIEW_STATE,
                 DiskClientView.encodeViewState(hideEmptySlots, selectedSerial, searchScope, naturalSort,
-                        shownProviders));
+                        shownProviders, collapseVirtualPatterns));
     }
 
-    /** 服务端侧：解析 {@link #sendViewStateToServer} 发来的五元组；旧口径的四元组（无显示模式）照样收。 */
+    /** 服务端侧：解析 {@link #sendViewStateToServer} 发来的六元组；旧口径的四/五元组照样收。 */
     private void applyViewStateEncoded(String encoded) {
-        var state = DiskClientView.decodeViewState(encoded, getShownProviders());
+        var state = DiskClientView.decodeViewState(encoded, getShownProviders(), currentCollapseVirtualPatterns());
         if (state == null) {
             return;
         }
         applyViewState(state.hideEmptySlots(), state.selectedSerial(), state.searchScope(),
-                state.naturalSort(), state.shownProviders());
+                state.naturalSort(), state.shownProviders(), state.collapseVirtualPatterns());
     }
 
-    /** 旧口径的入口（不发显示模式）：档位沿用服务端当前值。 */
+    /** 旧口径的入口（不发显示模式与折叠开关）：两项都沿用服务端当前值。 */
     public void applyViewState(boolean hideEmptySlots, long selectedSerial,
             DiskEncodingLogic.SearchScope searchScope, boolean naturalSort) {
-        applyViewState(hideEmptySlots, selectedSerial, searchScope, naturalSort, getShownProviders());
+        applyViewState(hideEmptySlots, selectedSerial, searchScope, naturalSort, getShownProviders(),
+                currentCollapseVirtualPatterns());
     }
 
+    /**
+     * 服务端：客户端改动了显示状态（是否隐藏空槽位、是否折叠虚拟样板、选中了哪张盘等），落到编码逻辑上。
+     * 面板版写部件 NBT、无线版写物品自己的数据组件，所以下次打开（哪怕退出游戏再进）都能恢复。
+     */
     public void applyViewState(boolean hideEmptySlots, long selectedSerial,
             DiskEncodingLogic.SearchScope searchScope, boolean naturalSort,
-            ShowPatternProviders shownProviders) {
+            ShowPatternProviders shownProviders, boolean collapseVirtualPatterns) {
         // AEBaseMenu.getHost() 的静态类型是 ITerminalHost，取逻辑得落到本模组的宿主契约上。
         var host = (IPatternDiskTerminalHost) getHost();
         var logic = host.getLogic();
         logic.setHideEmptySlots(hideEmptySlots);
+        logic.setCollapseVirtualPatterns(collapseVirtualPatterns);
         logic.setSelectedSerial(selectedSerial);
         logic.setSearchScope(searchScope);
         logic.setNaturalSort(naturalSort);
@@ -460,6 +469,11 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
         // onDiskListRebuilt——于是刚改的显示状态永远发不出去，客户端看到的还是旧值（症状就是“改了没生效”）。
         // 同 shownProviders 变化时的做法：主动把当前视图数据重推一次。
         pushHostList(lastDiskEntries);
+    }
+
+    /** 服务端当前「折叠虚拟样板」值：旧口径的视图状态没有这一段，沿用现值而不是把玩家的选择重置掉。 */
+    private boolean currentCollapseVirtualPatterns() {
+        return ((IPatternDiskTerminalHost) getHost()).getLogic().isCollapseVirtualPatterns();
     }
 
     /** 服务端最近一次筛清单用的显示模式；屏幕拿它回显按钮图标。 */

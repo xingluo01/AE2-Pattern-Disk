@@ -51,9 +51,10 @@ public final class DiskTableRowBuilder {
      * @param diskSearched    父类搜索框是否在筛磁盘
      * @param contentSearched 本屏内容搜索栏是否在筛样板
      * @param hideEmptySlots  空槽是折叠成一行还是每格一行
+     * @param collapseVirtualPatterns 是否把每张盘的样板只留磁盘后第一行（不生成续行）
      */
     public static List<Row> build(List<GroupInput> groups, boolean diskSearched, boolean contentSearched,
-            boolean hideEmptySlots) {
+            boolean hideEmptySlots, boolean collapseVirtualPatterns) {
         var out = new ArrayList<Row>();
         for (var group : groups) {
             if (diskSearched && group.disks().isEmpty()) {
@@ -83,6 +84,10 @@ public final class DiskTableRowBuilder {
                 // 一张盘的内容超过一行时往下续行：首行第 0 格占给了磁盘，续行没有磁盘格，17 格全放内容。
                 // 行数用「命中后的数量」算，不匹配的样板因此不会留下空槽位与多余空行。
                 int rowCount = disk.matchedCount() >= 0 ? disk.matchedCount() : disk.totalPatternCount();
+                // 「折叠虚拟样板」打开时只留磁盘后的第一行样板：夹到首行能装下的 16 张，续行一条也不生成。
+                if (collapseVirtualPatterns) {
+                    rowCount = Math.min(rowCount, COLUMNS - 1);
+                }
                 for (int from = COLUMNS - 1; from < rowCount; from += COLUMNS) {
                     out.add(new DiskRow(group.key(), disk.serial(), ItemStack.EMPTY, from));
                 }

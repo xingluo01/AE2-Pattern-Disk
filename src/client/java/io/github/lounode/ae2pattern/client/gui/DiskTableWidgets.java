@@ -44,7 +44,7 @@ import io.github.lounode.ae2pattern.network.VisibleDisksPayload;
 
 /**
  * 管理终端表格本体：从样式文档读来的几何与贴图切片、行模型、滚动位置、盘内显示顺序，以及绘制、命中测试、
- * 内容请求与写盘候选。屏幕上那几枚按钮与视图状态在 {@link DiskToolbarWidgets}，这里只通过四个 getter 读它们。
+ * 内容请求与写盘候选。屏幕上那几枚按钮与视图状态在 {@link DiskToolbarWidgets}，这里只通过五个 getter 读它们。
  *
  * <p>从 {@code PatternDiskManagementTermScreen}（1100 多行）里整块搬出来——屏幕同时管着行模型、表格绘制、
  * 点击分发、滚动与状态同步，这些是同一件能一句话讲清的事：这张表长什么样、玩家点到哪一格。屏幕本体只留
@@ -55,7 +55,7 @@ import io.github.lounode.ae2pattern.network.VisibleDisksPayload;
  * 注入的都是 {@code Supplier} / {@code Function} 这类单方法接口或具体对象，没有 {@code Screen} 类型的字段，
  * 也不放宽屏幕成员的可见性。</p>
  *
- * <p><b>控件顺序即清单</b>：滚动条在本类构造器里 {@code widgets.addScrollBar} 注册，排在工具栏四枚控件之后
+ * <p><b>控件顺序即清单</b>：滚动条在本类构造器里 {@code widgets.addScrollBar} 注册，排在工具栏五枚控件之后
  * （见 {@link DiskToolbarWidgets}），与屏幕原样一致——它决定渲染层级与输入命中，不能重排。</p>
  */
 final class DiskTableWidgets {
@@ -269,7 +269,8 @@ final class DiskTableWidgets {
             groupInputs.add(new DiskTableRowBuilder.GroupInput(group.key(), group.name(), group.icon(),
                     diskInputs, group.emptySlots()));
         }
-        var rebuilt = DiskTableRowBuilder.build(groupInputs, searched, contentSearched, toolbar.hideEmptySlots());
+        var rebuilt = DiskTableRowBuilder.build(groupInputs, searched, contentSearched, toolbar.hideEmptySlots(),
+                toolbar.collapseVirtualPatterns());
 
         if (!rows.equals(rebuilt)) {
             rows.clear();

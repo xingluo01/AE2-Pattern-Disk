@@ -34,7 +34,8 @@ import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskEncodingTermM
  */
 public record DiskHostListPayload(List<HostGroup> hosts, ShowPatternProviders shownProviders,
         boolean hideEmptySlots, long selectedSerial,
-        io.github.lounode.ae2pattern.common.menu.pattern.DiskEncodingLogic.SearchScope searchScope, boolean naturalSort)
+        io.github.lounode.ae2pattern.common.menu.pattern.DiskEncodingLogic.SearchScope searchScope,
+        boolean naturalSort, boolean collapseVirtualPatterns)
         implements ClientboundPacket {
 
     public static final Type<DiskHostListPayload> TYPE = new Type<>(
@@ -50,8 +51,16 @@ public record DiskHostListPayload(List<HostGroup> hosts, ShowPatternProviders sh
 
     public static DiskHostListPayload decode(RegistryFriendlyByteBuf data) {
         var hosts = HostGroup.STREAM_CODEC.apply(ByteBufCodecs.list()).decode(data);
-        return new DiskHostListPayload(hosts, readShownProviders(data), data.readBoolean(), data.readLong(),
-                readSearchScope(data), data.readBoolean());
+        var shownProviders = readShownProviders(data);
+        var hideEmptySlots = data.readBoolean();
+        var selectedSerial = data.readLong();
+        var searchScope = readSearchScope(data);
+        var naturalSort = data.readBoolean();
+        // 末尾这枚是后加的「折叠虚拟样板」：旧服务端发来的包没有这一字节，缺字节时落回默认「正常展开」，
+        // 不能让一个旧包把连接带崩。字段一律追加在末尾，前后版本的字节序因此仍然对得上。
+        var collapseVirtualPatterns = data.isReadable() && data.readBoolean();
+        return new DiskHostListPayload(hosts, shownProviders, hideEmptySlots, selectedSerial, searchScope,
+                naturalSort, collapseVirtualPatterns);
     }
 
     /** 枚举名读不回来（协议错配）时回退到默认档，不让一个坏包把客户端带崩。 */
@@ -84,6 +93,7 @@ public record DiskHostListPayload(List<HostGroup> hosts, ShowPatternProviders sh
         data.writeLong(this.selectedSerial);
         ByteBufCodecs.STRING_UTF8.encode(data, this.searchScope.name());
         data.writeBoolean(this.naturalSort);
+        data.writeBoolean(this.collapseVirtualPatterns);
     }
 
     /**
@@ -92,7 +102,8 @@ public record DiskHostListPayload(List<HostGroup> hosts, ShowPatternProviders sh
     @Override
     public void handleOnClient(Player player) {
         if (player.containerMenu instanceof PatternDiskManagementTermMenu menu) {
-            menu.receiveHostList(hosts, shownProviders, hideEmptySlots, selectedSerial, searchScope, naturalSort);
+            menu.receiveHostList(hosts, shownProviders, hideEmptySlots, selectedSerial, searchScope, naturalSort,
+                    collapseVirtualPatterns);
         }
     }
 
