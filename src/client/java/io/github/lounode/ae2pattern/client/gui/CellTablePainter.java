@@ -61,6 +61,9 @@ final class CellTablePainter {
             boolean markerAreaEditable, int markerSlotCount, int markerRowOffset) {
     }
 
+    /** 第一遍记下的占用条：物品批次刷出之后才按它补画，别在 {@code drawDriveRow} 里直接画。 */
+    private record OccupancyBar(int x, int y, CellHostListPayload.CellSlot cell) {}
+
     /** 驱动器首格的淡绿底，与样板终端的「这一格是主机」同色。 */
     private static final int DRIVE_SLOT_TINT = 0x66B9F6CA;
 
@@ -170,12 +173,20 @@ final class CellTablePainter {
                 offsetY + this.geo.headerHeight() + frame.visibleRows() * this.geo.rowHeight());
     }
 
-    /** 标题栏与元件行：物品图标、优先级文本、元件物品与两根占用条，段尾盖空白槽位。 */
+    /**
+     * 标题栏与元件行：物品图标、优先级文本、元件物品，段尾盖空白槽位；两根占用条留到最后单独补画。
+     *
+     * <p>第一遍只记下每根条的位置：{@code renderItem} 与 {@code fill} 都只往 GuiGraphics 的 bufferSource
+     * 提交顶点，屏幕拿的是 managed 的 GuiGraphics，{@code flushIfUnmanaged()} 不会真的刷出；整帧在末尾按
+     * RenderType 统一 endBatch，物品那一批会画在 {@code RenderType.gui()} 的矩形之上。所以必须先把物品刷出去
+     * 再画条，条才落在最上层。整张表只 flush 一次，不按格 endBatch。</p>
+     */
     void drawForegroundRows(GuiGraphics guiGraphics, Frame frame) {
         // renderLabels 的 pose 已平移到 (leftPos, topPos)，这里必须用裸局部坐标。
         int baseX = this.geo.listX();
         int baseY = this.geo.listY() + this.geo.headerHeight();
         var drives = frame.driveLookup();
+        var bars = new ArrayList<OccupancyBar>();
 
         for (int i = 0; i < frame.visibleRows(); i++) {
             int rowIndex = frame.scrollOffset() + i;
@@ -189,7 +200,14 @@ final class CellTablePainter {
                 case CellTableRows.HeaderRow header ->
                         drawHeaderRow(guiGraphics, baseX, rowY, header, drives, frame.font());
                 case CellTableRows.DriveRow driveRow ->
-                        drawDriveRow(guiGraphics, baseX, rowY, driveRow, drives, topRow, bottomRow, frame.font());
+                        drawDriveRow(guiGraphics, baseX, rowY, driveRow, drives, topRow, bottomRow, frame.font(), bars);
+            }
+        }
+
+        if (!bars.isEmpty()) {
+            guiGraphics.flush();
+            for (var bar : bars) {
+                drawOccupancyBars(guiGraphics, bar.x(), bar.y(), bar.cell());
             }
         }
     }
@@ -422,14 +440,16 @@ final class CellTablePainter {
     }
 
     /**
-     * 元件行：首格画那一段的图标（一台驱动器或一个主机），元件格里插了元件的画物品与两根占用条，
-     * 空着的真格按 16×16 盖元件存储槽那一层，段尾超出格数的列盖空白槽位。
+     * 元件行：首格画那一段的图标（一台驱动器或一个主机），元件格里插了元件的画物品并记下两根占用条
+     * 的位置（由调用方在物品批次刷出后补画），空着的真格按 16×16 盖元件存储槽那一层，段尾超出格数的
+     * 列盖空白槽位。
      *
      * <p>两种「空」是不同的东西：前者是那台上真实存在、可以放元件的格（盖元件槽底），后者是那一台根本没有的
      * 列（盖空白槽位，不接任何点击）。</p>
      */
     private void drawDriveRow(GuiGraphics guiGraphics, int baseX, int rowY, CellTableRows.DriveRow row,
-            Map<String, CellHostListPayload.HostGroup> drives, boolean topRow, boolean bottomRow, Font font) {
+            Map<String, CellHostListPayload.HostGroup> drives, boolean topRow, boolean bottomRow, Font font,
+            List<OccupancyBar> bars) {
         var group = drives.get(row.driveKey());
         if (group == null) {
             return;
@@ -457,7 +477,7 @@ final class CellTablePainter {
             }
             guiGraphics.renderItem(cell.stack(), cellX, cellY);
             guiGraphics.renderItemDecorations(font, cell.stack(), cellX, cellY);
-            drawOccupancyBars(guiGraphics, cellX, cellY, cell);
+            bars.add(new OccupancyBar(cellX, cellY, cell));
         }
     }
 
@@ -471,22 +491,32 @@ final class CellTablePainter {
     }
 
     /**
-     * 图标内侧底部的两根占用条：上行种类、下行数量。
+     * 物品 16×16 槽内贴左缘的两根竖直占用条：左列种类、右列数量，各占 1px 宽，自下而上填充。
      *
-     * <p>底轨先铺满再叠填充，这样空元件也看得见「这两根条在这儿」；两条都与图标同宽，画在物品下缘内侧。</p>
+     * <p>两条固定取槽内的最左两列（{@code cellX} 与 {@code cellX + 1}）：实机确认占用条必须落在物品槽内，
+     * 画到槽外那两列余量会串到相邻格。原先横着画在图标内侧底部，与存储元件物品自带的占用显示叠在同一处
+     * 看不清，竖排到左缘后避开那两行。</p>
+     *
+     * <p>底轨先铺满再叠填充，空元件也看得见这两列；高度按 contentSize 缩放，与格距同源。</p>
+     *
+     * <p>调用方必须先 {@code guiGraphics.flush()} 把物品那一批刷出去。本方法的 fill 顶点若与物品顶点同批
+     * 提交，会按 RenderType 排序后被物品盖住——这是渲染批次问题，改坐标或 z 都绕不过去。</p>
      */
     private void drawOccupancyBars(GuiGraphics guiGraphics, int cellX, int cellY,
             CellHostListPayload.CellSlot cell) {
-        int barY = cellY + this.geo.contentSize() - 2;
-        guiGraphics.fill(cellX, barY, cellX + this.geo.contentSize(), barY + 1, BAR_TRACK_COLOR);
-        guiGraphics.fill(cellX, barY + 1, cellX + this.geo.contentSize(), barY + 2, BAR_TRACK_COLOR);
-        int typeWidth = Math.round(this.geo.contentSize() * Math.clamp(cell.typeFill(), 0f, 1f));
-        int byteWidth = Math.round(this.geo.contentSize() * Math.clamp(cell.byteFill(), 0f, 1f));
-        if (typeWidth > 0) {
-            guiGraphics.fill(cellX, barY, cellX + typeWidth, barY + 1, TYPE_BAR_COLOR);
+        int size = this.geo.contentSize();
+        int bottom = cellY + size;
+        int typeX = cellX;
+        int byteX = cellX + 1;
+        guiGraphics.fill(typeX, cellY, typeX + 1, bottom, BAR_TRACK_COLOR);
+        guiGraphics.fill(byteX, cellY, byteX + 1, bottom, BAR_TRACK_COLOR);
+        int typeHeight = Math.round(size * Math.clamp(cell.typeFill(), 0f, 1f));
+        int byteHeight = Math.round(size * Math.clamp(cell.byteFill(), 0f, 1f));
+        if (typeHeight > 0) {
+            guiGraphics.fill(typeX, bottom - typeHeight, typeX + 1, bottom, TYPE_BAR_COLOR);
         }
-        if (byteWidth > 0) {
-            guiGraphics.fill(cellX, barY + 1, cellX + byteWidth, barY + 2, BYTE_BAR_COLOR);
+        if (byteHeight > 0) {
+            guiGraphics.fill(byteX, bottom - byteHeight, byteX + 1, bottom, BYTE_BAR_COLOR);
         }
     }
 }
