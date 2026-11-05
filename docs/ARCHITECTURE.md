@@ -105,8 +105,38 @@
 但**包内访问器不跨包**——需要跨包复用的东西提升成 public（如 `cell.CellHostSwap`），不要靠往同一个包里塞文件来省事。
 
 `CellManagementTermMenu` 是按这两条规矩拆的样本：动作入口留在菜单，搬运 / 分区编辑 / 两个管理域 / 收藏夹 /
-清单同步各一个类，菜单本体 653 行。编码终端（2299 行）还在拆：`PatternDiskTransfer`、`DiskMarkBinder` 已独立，
-剩编码主流程、档位状态、列表同步三块（见 `docs/TODO.md`）。
+清单同步各一个类，菜单本体 653 行。
+
+**`@GuiSync` 字段可以进父类，不能进协作对象。** AE2 的 `DataSynchronization#collectFields`
+从运行时类出发，沿继承链逐层 `getDeclaredFields()`，直到 `AbstractContainerMenu` 为止
+（`D:/Temp/Applied-Energistics-2`，分支 `1.21.1`，`appeng/menu/guisync/DataSynchronization.java:43-60`）。
+所以同步字段搬进抽象父类照常被收集，搬进菜单持有的某个协作类则根本不在扫描范围内。编码终端据此把
+雕凿 / 高级 / 过载三档的 19 个同步字段连同操作它们的状态机整体搬进 `pattern/EncodingTierMenuState`：
+父类只 `extends AbstractPatternDiskTermMenu`，**不** `implements IPatternEncodingHost`；具体菜单实现该接口，
+并继承父类给出的公开方法（因此父类里的 `advancedSidesByKey()` 不能写 `@Override`）。
+父类另外只向菜单要两样东西：`dock()` 与 `chiselingInputSlot()` 两个构造期才建好的槽。中间那一层
+`EncodingTermStateMenu` 再要 `getAndUpdateOutput()` 与 `refillBlankPatternSlot()`（依赖菜单里那份
+`PatternEncodingLogic` 与编码槽）。两层父类都不 `implements IPatternEncodingHost`，由最下面的具体菜单
+实现接口并继承公开方法。类层次：`AbstractPatternDiskTermMenu` → `EncodingTierMenuState`(769)
+→ `EncodingTermStateMenu`(789) → `PatternDiskEncodingTermMenu`(793)。
+
+2026-11-05 全仓清洗后，`src/` 下**没有 >800 行的 Java 文件**（当前最大 793）：
+
+| 原文件 | 行数变化 | 拆出的同包类（行数） |
+|---|---|---|
+| `pattern/PatternDiskEncodingTermMenu` | 2148 → 793 | `EncodingTierMenuState` 769、`EncodingTermStateMenu` 789 |
+| `logic/PatternDiskProviderLogic` | 2020 → 681 | `ProviderPendingBatches` 648、`ProviderPushTargets` 467、`ProviderExtraction` 423、`ProviderMirrorView` 148、`ProviderSettings` 139 |
+| `block/entity/BatchAssemblerBlockEntity` | 1624 → 629 | `BatchLaneRunner` 715、`BatchOutputDelivery` 277、`BatchPersistence` 189、`BatchTuning` 176、`BatchHost` 62 |
+| `client/gui/CellManagementTermScreen` | 1389 → 630 | `CellToolbar` 518、`CellTablePainter` 492 |
+| `client/gui/PatternDiskEncodingTermScreen` | 1148 → 705 | `EncodingDiskListWidgets` 298、`EncodingTierWidgets` 297 |
+| `client/gui/PatternDiskManagementTermScreen` | 1119 → 405 | `DiskTableWidgets` 740、`DiskToolbarWidgets` 243 |
+| `block/entity/PatternDiskAssemblerBlockEntity` | 923 → 307 | `AssemblerCrafting` 538、`AssemblerGridLogistics` 319 |
+| `pattern/PatternDiskManagementTermMenu` | 715 → 613 | `DiskClientView` 154、`DiskContentSync` 104 |
+
+三个新类（793 / 789 / 769）仍高于「目标 ≤650」，下一轮按「状态先行」把编码流程整体搬进逻辑对象，
+不要按行数硬切（见 `docs/TODO.md`）。本轮是纯重构，`compileJava` / `compileClientJava` / `test` 全绿；
+编码终端档位切换、标记与磁盘清单同步、三个屏幕的控件层级与拖放命中，已于 2026-11-05 经 `runClient`
+实机验收通过。
 
 **不要为了行数拆**：没有独立不变量、只是被调用几次的方法留在原地；拆到「贫血模型 + 一堆 getter」比不拆更糟。
 

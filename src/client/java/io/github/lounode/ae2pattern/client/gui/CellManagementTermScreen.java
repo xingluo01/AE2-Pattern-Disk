@@ -3,15 +3,9 @@ package io.github.lounode.ae2pattern.client.gui;
 import java.util.ArrayList;
 import java.util.List;
 
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.ChatFormatting;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
@@ -21,10 +15,7 @@ import appeng.client.gui.me.common.MEStorageScreen;
 import appeng.client.gui.style.Blitter;
 import appeng.client.gui.style.PaletteColor;
 import appeng.client.gui.style.ScreenStyle;
-import appeng.client.gui.widgets.ActionButton;
 import appeng.client.gui.widgets.Scrollbar;
-import appeng.client.gui.widgets.ToggleButton;
-import appeng.client.gui.Icon;
 import appeng.client.Point;
 
 import org.anti_ad.mc.ipn.api.IPNPlayerSideOnly;
@@ -33,21 +24,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.github.lounode.ae2pattern.AEPatternRegistries;
-import appeng.core.localization.GuiText;
-import appeng.api.config.ActionItems;
 import appeng.api.config.CopyMode;
-import appeng.api.config.Settings;
 import appeng.api.config.SortDir;
 
-import io.github.lounode.ae2pattern.common.menu.cell.CellBulkCutoffCompat;
-import io.github.lounode.ae2pattern.common.menu.cell.CellDriveScanner;
 import io.github.lounode.ae2pattern.common.menu.cell.CellManagementTermMenu;
-import io.github.lounode.ae2pattern.client.integration.bookmarks.BookmarkReader;
-import io.github.lounode.ae2pattern.client.integration.megacells.MegaCutoffButtonFactory;
-import io.github.lounode.ae2pattern.client.integration.neoecoae.EcoBulkCutoffButton;
-import io.github.lounode.ae2pattern.integration.extendedae.VoidCellCompat;
-import io.github.lounode.ae2pattern.integration.megacells.MegaCellsCompat;
-import io.github.lounode.ae2pattern.client.render.DriveHighlight;
 import io.github.lounode.ae2pattern.network.CellHostListPayload;
 import io.github.lounode.ae2pattern.common.menu.cell.CellFormats;
 
@@ -80,27 +60,6 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
     private static final int CELL_INSET = 1;
     private static final int ROW_TEXT_Y_INSET = 2;
 
-    /** 驱动器首格的淡绿底，与样板终端的「这一格是主机」同色。 */
-    private static final int DRIVE_SLOT_TINT = 0x66B9F6CA;
-
-    /** 右键选中那一格的描边：黄。左键钉住的那格用虹色，两个状态在表格里就能分开。 */
-    private static final int DRIVE_SELECTED_TINT = 0xCCFFD54F;
-
-    /**
-     * 钉住那一格的描边色（半透明虹色）：直接取世界里那套颜色，两处同色同节奏。
-     *
-     * <p>只有左键钉住用它——右键选中另有黄色。同一台同时命中两个状态时表格只画黄的那圈（选中优先），
-     * 但悬停提示里「已选中」「已钉住」两行都会在。</p>
-     */
-    private static int rainbowTint() {
-        return DriveHighlight.rainbowArgb(0xCC);
-    }
-
-    /** 两根占用条的颜色：种类用蓝、数量用绿（与 AE2 存储元件的两类占用同源）。 */
-    private static final int TYPE_BAR_COLOR = 0xFF3B6EDB;
-    private static final int BYTE_BAR_COLOR = 0xFF3FBF4F;
-    private static final int BAR_TRACK_COLOR = 0x80000000;
-
     private final Blitter headerBand;
     private final Blitter footerBand;
     private final Blitter rowTextTop;
@@ -110,64 +69,6 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
     private final Blitter rowTextBottom;
     private final Blitter rowSlotsBottom;
     private final Blitter blankCell;
-
-    /**
-     * 五张覆盖层。它们来自本模组自己的 states.png（与 AE2 同款的几格，坐标已按本模组那份复制过来），
-     * 与贴图上画好的槽框同位置：元件存储/编码槽、元件升级槽、元件标记槽各一张，加一张「放不进去的位置」，
-     * 以及一张 ECO 家族的存储矩阵座。
-     */
-    private static final Blitter CELL_SLOT_OVERLAY = states(240, 80);
-    private static final Blitter UPGRADE_SLOT_OVERLAY = states(240, 96);
-    private static final Blitter MARKER_SLOT_OVERLAY = states(240, 112);
-    /** 空白槽位覆盖层：盖在段尾那些放不进去的列上（这台/这个主机没有这么多格）。 */
-    private static final Blitter EMPTY_SLOT_OVERLAY = states(240, 128);
-    /** 存储矩阵座：表里 ECO 家族的空格用它，而不是 AE2 那只方槽。 */
-    private static final Blitter MATRIX_SLOT_OVERLAY = states(240, 160);
-
-    /**
-     * 哪些模组的存储主机用矩阵座：ECO 本体与青春版。
-     *
-     * <p>认法是第一格（首格单）那件方块物品的命名空间——清单里每组的图标就是主机的方块物品，
-     * 它跟着 {@code HostGroup} 一起同步到客户端，所以不必为「画哪种槽底」再往协议里加一个字段。</p>
-     */
-    private static final java.util.Set<String> MATRIX_SLOT_NAMESPACES = java.util.Set.of(
-            "neoecoae", "neoecoprototype");
-
-    /** 「标记收藏」的图标（states.png 16,48）。 */
-    private static final Blitter ICON_MARK_BOOKMARKS = states(16, 48);
-
-    /** 「切换压缩选择」的图标（states.png 64,48）。 */
-    private static final Blitter ICON_ECO_BULK_CUTOFF_SWITCH = states(64, 48);
-
-    /** 「压缩统一管理」的图标（states.png 80,48）。 */
-    private static final Blitter ICON_ECO_BULK_CONSOLIDATE = states(80, 48);
-
-    /** 「快捷标记」的图标：项目内 states.png 96,48，不是 ae2 那份。 */
-    private static final Blitter ICON_QUICK_MARK = states(96, 48);
-
-
-    /** 「物质聚合模式」三档的图标，从左到右：虚空 / 物质球 / 奇点（states.png 一条 48x16）。序号就是模式的枚举序号。
-     * 固定三格：EAE 将来加第四档时图标会重复最后一格（提示语仍按枚举名取键，不会指错人）——那时补一格贴图即可。 */
-    private static final Blitter[] ICON_VOID_MODES = { states(0, 80), states(16, 80), states(32, 80) };
-
-    /** 工具栏按钮底（18x20，与 AE2 自家那几枚同款），常态 / 光标选中。 */
-    private static final ResourceLocation STATES = ResourceLocation
-            .parse("ae2_pattern_disk:textures/guis/states.png");
-    private static final Blitter BUTTON_BG_NORMAL = Blitter.texture(STATES).src(208, 224, 18, 20);
-    private static final Blitter BUTTON_BG_HOVER = Blitter.texture(STATES).src(226, 224, 18, 20);
-
-    /** 标记区不可编辑时槽底的淡化比例（AE2 元件工作台里元件没插时也是这个值）。 */
-    private static final float DISABLED_SLOT_ALPHA = 0.2f;
-
-    /** 空白槽覆盖层整体左移的像素数（实测：不挪则左边界对齐格带、右边界会翻到右边框上）。 */
-    private static final int EMPTY_CELL_SHIFT = 1;
-
-    /**
-     * 最右那一列要压窄的像素：它右边没有下一格来挡，多铺的这一列 px 会压到表格外沿。
-     *
-     * <p>Blitter 是把 16×16 的源图拉伸铺满目标矩形，少铺 1 像素就是横向整体压窄一点，不是裁 UV。</p>
-     */
-    private static final int EMPTY_CELL_TRIM_RIGHT = 1;
 
     private final int headerHeight;
     private final int footerHeight;
@@ -189,43 +90,6 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
 
     private static final Logger LOGGER = LoggerFactory.getLogger("ae2_pattern_disk.cell_management_terminal");
 
-    /** 元件工作台那三个按钮：分区存储 / 清除 / 复制模式。 */
-    private ActionButton partitionButton;
-    private ActionButton clearButton;
-    private ToggleButton copyModeButton;
-    /** MEGA Cells 的大宗压缩截断钮；那个模组不在场时为 null（工厂返回 null）。 */
-    @Nullable
-    private Button megaCutoffButton;
-    /** ECO 大宗元件的截断物按钮与选择按钮；ECO 不在场时整组为 null。 */
-    @Nullable
-    private EcoBulkCutoffButton ecoBulkCutoffButton;
-    @Nullable
-    private StatesIconButton ecoBulkCutoffSwitchButton;
-    @Nullable
-    private StatesIconButton ecoBulkConsolidateButton;
-    /** 上一次算过 ECO 标记列表的编码槽内容快照；null = 还没算过。 */
-    @Nullable
-    private ItemStack lastEcoBulkCell;
-    private List<CellBulkCutoffCompat.Marker> ecoBulkMarkers = List.of();
-    /** 当前选中的 ECO 标记配置槽；-1 = 没有选中。 */
-    private int selectedEcoBulkSlot = -1;
-    /** 上一次低频重算标记的客户端 tick；压缩链数据是异步同步的，不能只按元件内容失效。 */
-    private long lastEcoBulkRefreshTick = Long.MIN_VALUE;
-    /** 「标记收藏」「快捷标记」与「物质聚合模式」；后者只在编码槽里是 EAE 虚空元件时出现。 */
-    private StatesIconButton markBookmarksButton;
-    private StatesIconButton quickMarkButton;
-    private StatesIconButton voidModeButton;
-    /** 上一次给模式按钮设的提示对应哪一档（-1 = 还没设过）；只在它变了时重设，省得每帧造 Component。 */
-    private int lastVoidMode = -1;
-    /**
-     * 上一次算过「截断状态」的编码槽内容快照；null = 还没算过。
-     *
-     * <p>截断状态只随这张元件变，而元件的任何变化（换元件、我们自己按了按钮被服务端写回、别处改了这个元件）
-     * 都会让客户端拿到一份内容不同的栈，所以按**内容**做失效判据就够。不按引用判是因为两者都不可靠：
-     * 引用可能被就地改写（那样快照内容会变、引用不会），而快照比较本身很便宜（元件就那几个组件）。</p>
-     */
-    private ItemStack lastMegaCell;
-
     private int visibleRows = 6;
     private int scrollOffset;
     private final List<CellTableRows.Row> rows = new ArrayList<>();
@@ -235,6 +99,12 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
 
     /** 选中的那一个首格单（一台 AE2 / EAE 驱动器，或一个 ECO 主机）的键；空串表示没选。 */
     private String selectedLeaderKey = "";
+
+    /** 左侧工具栏整组：按钮 + 它们的显隐/选中状态 + 按下动作。构造期连窄依赖一起注入。 */
+    private final CellToolbar toolbar;
+
+    /** 表格呈现层：把本屏每帧的状态快照画成像素与提示，几何与切片在构造期注入。 */
+    private final CellTablePainter painter;
 
     public CellManagementTermScreen(CellManagementTermMenu menu, Inventory playerInventory, Component title,
             ScreenStyle style) {
@@ -261,76 +131,33 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
         this.tableScrollbar = widgets.addScrollBar("tableScrollbar", Scrollbar.BIG);
         this.markerScrollbar = widgets.addScrollBar("cellMarkerScrollbar", Scrollbar.BIG);
 
-        // 三个按钮在构造器里就建好并上左侧工具栏：AE2 的左工具栏是在开屏时按已注册的按钮排一次位的，
-        // 放到 init() 里加会没有按钮底与图标（而且每 resize 一次会再添一套）。与 AE2 元件工作台同一个建法。
-        this.partitionButton = new ActionButton(ActionItems.COG, item -> getMenu().partition());
-        this.clearButton = new ActionButton(ActionItems.CLOSE, item -> getMenu().clearMarkerArea());
-        this.copyModeButton = new ToggleButton(Icon.COPY_MODE_ON, Icon.COPY_MODE_OFF,
-                GuiText.CopyMode.text(), GuiText.CopyModeDesc.text(),
-                enabled -> getMenu().cycleCopyMode());
-        addToLeftToolbar(this.partitionButton);
-        addToLeftToolbar(this.clearButton);
-        addToLeftToolbar(this.copyModeButton);
-
-        // MEGA Cells 的大宗压缩截断钮：那个模组不在场时工厂返回 null，这一枚就不存在。
-        // 与上面三枚同一时机建（工具栏只在开屏时按已注册的按钮排一次位，补在 init() 里不会有按钮底与图标）。
-        this.megaCutoffButton = MegaCutoffButtonFactory.create(this::onMegaCutoffPressed);
-        if (this.megaCutoffButton != null) {
-            addToLeftToolbar(this.megaCutoffButton);
+        // 工具栏整组在构造期连窄依赖（菜单动作 + 屏幕特有服务）一起注入；按钮按建好的顺序上左侧工具栏，
+        // 顺序影响渲染层级与输入命中，必须与原来逐个 addToLeftToolbar 的次序一致。
+        this.toolbar = new CellToolbar(new CellToolbar.Context(
+                getMenu()::partition,
+                getMenu()::clearMarkerArea,
+                getMenu()::cycleCopyMode,
+                getMenu()::cycleCompressionCutoff,
+                getMenu()::cycleEcoBulkCutoff,
+                getMenu()::markBookmarks,
+                getMenu()::quickMark,
+                getMenu()::cycleVoidMode,
+                getMenu()::consolidateEcoBulkMarkers,
+                () -> getMenu().getCellHost().getEncodeCellInventory().getStackInSlot(0),
+                getMenu()::isMarkerAreaEditable,
+                this::isHandlingRightClick));
+        for (var button : this.toolbar.buttons()) {
+            addToLeftToolbar(button);
         }
 
-        // ECO 大宗元件：截断物按钮 + 切换按钮。ECO 不在场时适配器不注册，这一组就不建；按钮每屏各建一次。
-        if (CellBulkCutoffCompat.isAvailable()) {
-            this.ecoBulkCutoffButton = new EcoBulkCutoffButton(this::onEcoBulkCutoffPressed);
-            this.ecoBulkCutoffButton.setVisible(false);
-            addToLeftToolbar(this.ecoBulkCutoffButton);
-
-            this.ecoBulkCutoffSwitchButton = new StatesIconButton(
-                    () -> ICON_ECO_BULK_CUTOFF_SWITCH, this::onEcoBulkCutoffSwitchPressed);
-            this.ecoBulkCutoffSwitchButton.setBackground(BUTTON_BG_NORMAL, BUTTON_BG_HOVER);
-            this.ecoBulkCutoffSwitchButton.setTooltip(List.of(
-                    Component.translatable(
-                            "gui.ae2_pattern_disk.cell_management_terminal.eco_bulk_cutoff_switch"),
-                    Component.translatable(
-                            "gui.ae2_pattern_disk.cell_management_terminal.eco_bulk_cutoff_switch.previous"),
-                    Component.translatable(
-                            "gui.ae2_pattern_disk.cell_management_terminal.eco_bulk_cutoff_switch.next")));
-            this.ecoBulkCutoffSwitchButton.setVisibility(false);
-            addToLeftToolbar(this.ecoBulkCutoffSwitchButton);
-
-            this.ecoBulkConsolidateButton = new StatesIconButton(
-                    () -> ICON_ECO_BULK_CONSOLIDATE, this::onEcoBulkConsolidatePressed);
-            this.ecoBulkConsolidateButton.setBackground(BUTTON_BG_NORMAL, BUTTON_BG_HOVER);
-            this.ecoBulkConsolidateButton.setTooltip(List.of(
-                    Component.translatable("gui.ae2_pattern_disk.cell_management_terminal.eco_bulk_consolidate"),
-                    Component.translatable("gui.ae2_pattern_disk.cell_management_terminal.eco_bulk_consolidate.desc"),
-                    Component.translatable("gui.ae2_pattern_disk.cell_management_terminal.mark_targets"),
-                    Component.translatable("gui.ae2_pattern_disk.cell_management_terminal.mark_target_eco")));
-            this.ecoBulkConsolidateButton.setVisibility(false);
-            addToLeftToolbar(this.ecoBulkConsolidateButton);
-        }
-
-        // 三枚项目自己的图标按钮（states.png）。都做成“图标每帧现取”的那种：模式那枚的图标要跟着当前模式走。
-        this.markBookmarksButton = new StatesIconButton(() -> ICON_MARK_BOOKMARKS, this::onMarkBookmarksPressed);
-        this.markBookmarksButton.setBackground(BUTTON_BG_NORMAL, BUTTON_BG_HOVER);
-        this.markBookmarksButton.setTooltip(List.of(
-                Component.translatable("gui.ae2_pattern_disk.cell_management_terminal.mark_bookmarks")));
-        addToLeftToolbar(this.markBookmarksButton);
-
-        this.quickMarkButton = new StatesIconButton(() -> ICON_QUICK_MARK, this::onQuickMarkPressed);
-        this.quickMarkButton.setBackground(BUTTON_BG_NORMAL, BUTTON_BG_HOVER);
-        this.quickMarkButton.setTooltip(List.of(
-                Component.translatable("gui.ae2_pattern_disk.cell_management_terminal.quick_mark"),
-                Component.translatable("gui.ae2_pattern_disk.cell_management_terminal.quick_mark.desc"),
-                Component.translatable("gui.ae2_pattern_disk.cell_management_terminal.mark_targets"),
-                Component.translatable("gui.ae2_pattern_disk.cell_management_terminal.mark_target_eco"),
-                Component.translatable("gui.ae2_pattern_disk.cell_management_terminal.mark_target_bigger")));
-        this.quickMarkButton.setVisibility(false);
-        addToLeftToolbar(this.quickMarkButton);
-
-        this.voidModeButton = new StatesIconButton(this::voidModeIcon, this::onVoidModePressed);
-        this.voidModeButton.setBackground(BUTTON_BG_NORMAL, BUTTON_BG_HOVER);
-        addToLeftToolbar(this.voidModeButton);
+        // 呈现层的几何与切片构造期一次注入，之后每帧只把变化的表格状态打包成 Frame / SlotFrame 传进去。
+        this.painter = new CellTablePainter(
+                new CellTablePainter.Geometry(LIST_X, LIST_Y, CELL_INSET, ROW_TEXT_Y_INSET,
+                        this.headerHeight, this.footerHeight, this.rowHeight, this.cellSize,
+                        this.contentSize, this.listWidth, this.textColor),
+                new CellTablePainter.Bands(this.headerBand, this.footerBand,
+                        this.rowTextTop, this.rowSlotsTop, this.rowTextMiddle, this.rowSlotsMiddle,
+                        this.rowTextBottom, this.rowSlotsBottom));
     }
 
     @Override
@@ -404,280 +231,15 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
         if (fromBase != null) {
             return fromBase;
         }
-        if (button == this.partitionButton) {
-            return "partition";
-        }
-        if (button == this.clearButton) {
-            return "clear";
-        }
-        if (button == this.copyModeButton) {
-            return "copyMode";
-        }
-        if (button == this.markBookmarksButton) {
-            return "markBookmarks";
-        }
-        if (button == this.quickMarkButton) {
-            return "quickMark";
-        }
-        if (button == this.voidModeButton) {
-            return "voidMode";
-        }
-        if (button == this.megaCutoffButton) {
-            return "megaCutoff";
-        }
-        if (button == this.ecoBulkCutoffButton) {
-            return "ecoBulkCutoff";
-        }
-        if (button == this.ecoBulkCutoffSwitchButton) {
-            return "ecoBulkCutoffSwitch";
-        }
-        if (button == this.ecoBulkConsolidateButton) {
-            return "ecoBulkConsolidate";
-        }
-        // 「切换终端」那枚由基类按类名认（无线屏挂上来的 AE2WTLib 按钮），这里不必再重复。
-        return null;
-    }
-
-    /**
-     * MEGA 那枚按钮按下：把它看到的元件与「是否反向」报给服务端。
-     *
-     * <p>反向就是右键（AE2 那套：右键当左键转发）。按钮自己的 {@code isHandlingRightClick()} 是受保护的、
-     * 拿不到，所以退一步用 Shift／右键的常规语义取。</p>
-     */
-    private void onMegaCutoffPressed(Button button) {
-        var stack = getMenu().getCellHost().getEncodeCellInventory().getStackInSlot(0);
-        if (stack.isEmpty()) {
-            return;
-        }
-        boolean reverse = net.minecraft.client.gui.screens.Screen.hasShiftDown();
-        getMenu().cycleCompressionCutoff(reverse);
-    }
-
-    /** ECO 截断物按钮：左键降一级、右键升一级（与 MEGA 那枚同一手势）。 */
-    private void onEcoBulkCutoffPressed(Button button) {
-        int index = indexOfSelectedEcoMarker();
-        if (index < 0) {
-            return;
-        }
-        var selected = ecoBulkMarkers.get(index);
-        if (!selected.compressible()) {
-            // 按钮只在可压缩链上出现；这里仍守住旧语义，防止选中态在刷新间隙落到单级链上。
-            return;
-        }
-        getMenu().cycleEcoBulkCutoff(selected.slot(), isHandlingRightClick() ? 1 : -1);
-    }
-
-    /** 切换当前操作的标记：左键上一个，右键下一个，首尾循环。 */
-    private void onEcoBulkCutoffSwitchPressed(Button button) {
-        var compressible = compressibleEcoBulkMarkers();
-        if (compressible.isEmpty()) {
-            return;
-        }
-        int current = -1;
-        for (int i = 0; i < compressible.size(); i++) {
-            if (compressible.get(i).slot() == this.selectedEcoBulkSlot) {
-                current = i;
-                break;
-            }
-        }
-        int delta = isHandlingRightClick() ? 1 : -1;
-        current = Math.floorMod(current < 0 ? 0 : current + delta, compressible.size());
-        this.selectedEcoBulkSlot = compressible.get(current).slot();
-        updateEcoBulkButtons();
-    }
-
-    /**
-     * 「标记收藏」：把 JEI / EMI 收藏夹里的物品追加到编码槽那张元件的标记里。
-     *
-     * <p>收藏夹只在客户端有，所以读在这儿、写在那边的服务端（见菜单的 {@code markBookmarks}）。</p>
-     */
-    private void onMarkBookmarksPressed(Button button) {
-        var bookmarks = BookmarkReader.read();
-        getMenu().markBookmarks(bookmarks.items(), bookmarks.nonItems());
-    }
-
-    /** 「快捷标记」：整个标记管理域的分配在服务端算，这里只发一个无参动作。 */
-    private void onQuickMarkPressed(Button button) {
-        getMenu().quickMark();
-    }
-
-    /** 「物质聚合模式」：往前循环，Shift 往回（与 MEGA 那枚同一手势）。 */
-    private void onVoidModePressed(Button button) {
-        getMenu().cycleVoidMode(Screen.hasShiftDown());
-    }
-
-    /** 模式按钮当前该画哪一档；EAE 不在场或取不到时回到第一档，至少不会画空。 */
-    private Blitter voidModeIcon() {
-        var stack = getMenu().getCellHost().getEncodeCellInventory().getStackInSlot(0);
-        int mode = VoidCellCompat.modeOrdinal(stack);
-        return ICON_VOID_MODES[Math.clamp(mode, 0, ICON_VOID_MODES.length - 1)];
-    }
-
-    /**
-     * 「快捷标记」的显隐：只在元件编码槽空着时出现。
-     *
-     * <p>编码槽里放着元件时，玩家是在编辑那一张；这两枚按钮动的却是网络里所有目标元件，摆在一起容易误按。
-     * 「统一压缩管理」同口径，见 {@link #updateEcoBulkButtons()}。</p>
-     */
-    private void syncQuickMarkButton() {
-        this.quickMarkButton.setVisibility(encodeSlotEmpty());
-    }
-
-    /** 元件编码槽里有没有元件：两枚全网批量按钮共用的判据。 */
-    private boolean encodeSlotEmpty() {
-        return getMenu().getCellHost().getEncodeCellInventory().getStackInSlot(0).isEmpty();
-    }
-
-    /**
-     * 「标记收藏」的显隐：编码槽里得是张带标记区的元件（与「分区存储」「清除」同一个前提），而且真有个
-     * 收藏夹模组在读——两个都没有时按下什么都不会发生，不如不显示。
-     */
-    private void syncMarkBookmarksButton() {
-        this.markBookmarksButton.setVisibility(getMenu().isMarkerAreaEditable() && BookmarkReader.available());
-    }
-
-    /**
-     * 「物质聚合模式」的显隐与提示：只在编码槽里是 EAE 的 ME 虚空元件时出现（模式本身在元件栈的组件上，
-     * 不在按钮上，所以这里只负责显隐与把当前档写进提示）。
-     */
-    private void syncVoidModeButton() {
-        var stack = getMenu().getCellHost().getEncodeCellInventory().getStackInSlot(0);
-        boolean usable = VoidCellCompat.isVoidCell(stack);
-        this.voidModeButton.setVisibility(usable);
-        if (!usable) {
-            this.lastVoidMode = -1;
-            return;
-        }
-        int mode = VoidCellCompat.modeOrdinal(stack);
-        if (mode == this.lastVoidMode) {
-            return;
-        }
-        this.lastVoidMode = mode;
-        this.voidModeButton.setTooltip(List.of(
-                Component.translatable("gui.ae2_pattern_disk.cell_management_terminal.void_mode"),
-                Component.translatable("gui.ae2_pattern_disk.cell_management_terminal.void_mode."
-                        + VoidCellCompat.modeKey(mode))));
-    }
-
-    /**
-     * 每帧把 MEGA 那枚按钮对到编码槽里那张元件上：不是大宗元件、或它没接压缩链时藏起来。
-     *
-     * <p>与 MEGA 自己在元件工作台上做的一样（它也是每帧读元件再决定显隐与图标），只是那一边读的是元件工作台
-     * 的元件槽，这边读的是本终端的元件编码槽。</p>
-     */
-    private void syncMegaCutoffButton() {
-        if (this.megaCutoffButton == null) {
-            return;
-        }
-        var stack = getMenu().getCellHost().getEncodeCellInventory().getStackInSlot(0);
-        // 快照没变 = 状态没变。省下每帧那一次 bulkInventoryOf：它会 new 一个 BulkCellInventory
-        // （构造里就要读元件组件）再走几次反射。本屏另有每帧工作（行模型重建等），这里只动这一处。
-        if (this.lastMegaCell != null && ItemStack.matches(this.lastMegaCell, stack)) {
-            return;
-        }
-        this.lastMegaCell = stack.copy();
-        var bulk = MegaCellsCompat.bulkInventoryOf(stack);
-        boolean usable = bulk != null && MegaCellsCompat.hasCompressionChain(bulk);
-        MegaCutoffButtonFactory.setVisible(this.megaCutoffButton, usable);
-        if (usable) {
-            MegaCutoffButtonFactory.setItem(this.megaCutoffButton, MegaCellsCompat.cutoffItem(bulk));
-        }
-    }
-
-    /**
-     * 每帧把 ECO 的三枚按钮对到编码槽里那张元件上。
-     *
-     * <p>标记列表随元件内容变（换元件、调级、别处改了这个元件），另外每 100 tick 重算一次：压缩链数据是
-     * 客户端异步同步的，元件不变时也要能把刚到的链补上。选中槽在列表重建后仍按配置槽号保留。</p>
-     *
-     * <p>显隐：「统一压缩管理」只在 ECO 在场且编码槽空着时出现（与「快捷标记」同口径）；截断物与切换两枚
-     * 只在编码槽那张元件有可压缩链时出现（不是大宗元件、或一条可压缩链都没有时，这两枚藏起来）。</p>
-     */
-    private void syncEcoBulkButtons() {
-        if (this.ecoBulkCutoffButton == null || this.ecoBulkCutoffSwitchButton == null
-                || this.ecoBulkConsolidateButton == null) {
-            return;
-        }
-        var stack = getMenu().getCellHost().getEncodeCellInventory().getStackInSlot(0);
-        var level = Minecraft.getInstance().level;
-        long tick = level == null ? 0L : level.getGameTime();
-        boolean periodic = tick != this.lastEcoBulkRefreshTick && tick % 100L == 0L;
-        if (!periodic && this.lastEcoBulkCell != null && ItemStack.matches(this.lastEcoBulkCell, stack)) {
-            return;
-        }
-        if (periodic) {
-            this.lastEcoBulkRefreshTick = tick;
-        }
-        this.lastEcoBulkCell = stack.copy();
-        var markers = CellBulkCutoffCompat.markers(stack.copy());
-        this.ecoBulkMarkers = markers == null ? List.of() : markers;
-        var compressible = compressibleEcoBulkMarkers();
-        int selectedIndex = indexOfSelectedEcoMarker();
-        // 选中位可能落在单级链上（链数据每 100 tick 刷新，压缩关系会变）：不在可压缩集合里就重挑。
-        if (selectedIndex < 0 || !this.ecoBulkMarkers.get(selectedIndex).compressible()) {
-            this.selectedEcoBulkSlot = compressible.isEmpty() ? -1 : compressible.get(0).slot();
-        }
-        updateEcoBulkButtons();
-    }
-
-    private int indexOfSelectedEcoMarker() {
-        for (int index = 0; index < this.ecoBulkMarkers.size(); index++) {
-            if (this.ecoBulkMarkers.get(index).slot() == this.selectedEcoBulkSlot) {
-                return index;
-            }
-        }
-        return -1;
-    }
-
-    private void updateEcoBulkButtons() {
-        if (this.ecoBulkCutoffButton == null || this.ecoBulkCutoffSwitchButton == null
-                || this.ecoBulkConsolidateButton == null) {
-            return;
-        }
-        int index = indexOfSelectedEcoMarker();
-        boolean compressible = index >= 0 && this.ecoBulkMarkers.get(index).compressible();
-        // 与「快捷标记」同口径：编码槽空着才显示。这两枚都是全网批量动作，编码槽里放着元件时
-        // 玩家是在编辑那一张，藏起来免得误按（快捷标记那枚见 syncQuickMarkButton）。
-        this.ecoBulkConsolidateButton.setVisibility(
-                CellBulkCutoffCompat.isAvailable() && encodeSlotEmpty());
-        if (!compressible) {
-            this.ecoBulkCutoffButton.setVisible(false);
-            this.ecoBulkCutoffSwitchButton.setVisibility(false);
-            return;
-        }
-        this.ecoBulkCutoffButton.setItem(this.ecoBulkMarkers.get(index).item());
-        this.ecoBulkCutoffButton.setVisible(true);
-        this.ecoBulkCutoffSwitchButton.setVisibility(true);
-    }
-
-    /** 属于多级压缩链的标记：只有这些能让截断物按钮有活干。 */
-    private List<CellBulkCutoffCompat.Marker> compressibleEcoBulkMarkers() {
-        var result = new ArrayList<CellBulkCutoffCompat.Marker>();
-        for (var marker : this.ecoBulkMarkers) {
-            if (marker.compressible()) {
-                result.add(marker);
-            }
-        }
-        return result;
-    }
-
-    /** 统一压缩管理：只整理网络里已装好的大宗矩阵，不碰元件编码槽。 */
-    private void onEcoBulkConsolidatePressed(Button button) {
-        getMenu().consolidateEcoBulkMarkers();
+        // 「切换终端」那枚由基类按类名认（无线屏挂上来的 AE2WTLib 按钮），这里不必再重复；
+        // 剩下自家这几枚交给工具栏按引用认（清单里的名字只在那里给出）。
+        return this.toolbar.slotOf(button);
     }
 
     @Override
     protected void updateBeforeRender() {
         super.updateBeforeRender();
-        // 复制模式回显：与元件工作台同一个图标、同一个极性（亮 = 取出元件时清空配置格，即 CLEAR_ON_REMOVE）。
-        this.copyModeButton.setState(getMenu().copyMode == CopyMode.CLEAR_ON_REMOVE);
-        // MEGA 那枚（装了才有）每帧对一次：显隐与图标跟着编码槽那张元件走。
-        syncMegaCutoffButton();
-        // ECO 大宗元件的两枚按钮同理。
-        syncEcoBulkButtons();
-        syncQuickMarkButton();
-        syncMarkBookmarksButton();
-        syncVoidModeButton();
+        this.toolbar.syncAll(getMenu().copyMode == CopyMode.CLEAR_ON_REMOVE);
         syncScrollbar();
         rebuildRows();
         // 行模型重建后行数可能变了，滚动条的范围得跟着重喂一次（两次调用是有意的，不是冗余）。
@@ -771,152 +333,32 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
 
     // ---- 绘制 ----
 
+    /** 每帧把本屏的表格状态打包成呈现层要的快照（行模型、滚动、选中键、字体、驱动器查表）。 */
+    private CellTablePainter.Frame tableFrame() {
+        return new CellTablePainter.Frame(this.rows, this.scrollOffset, this.visibleRows,
+                this.selectedLeaderKey, driveLookup(), this.font);
+    }
+
+    /** 每帧把三类真槽位的实坐标与标记区显隐判据打包给呈现层画覆盖层。 */
+    private CellTablePainter.SlotFrame slotFrame() {
+        var markerSlots = new ArrayList<Slot>();
+        for (var column : AEPatternRegistries.CELL_MARKER_COLUMN) {
+            markerSlots.addAll(getMenu().slotsOf(column));
+        }
+        return new CellTablePainter.SlotFrame(
+                getMenu().slotsOf(AEPatternRegistries.CELL_ENCODE),
+                getMenu().slotsOf(AEPatternRegistries.CELL_UPGRADE),
+                markerSlots,
+                getMenu().isMarkerAreaEditable(),
+                getMenu().markerSlotCount(),
+                getMenu().getMarkerRowOffset());
+    }
+
     @Override
     public void drawBG(GuiGraphics guiGraphics, int offsetX, int offsetY, int mouseX, int mouseY,
             float partialTicks) {
         // 不调 super.drawBG：理由见类注释（底图是固定高度整块贴图）。
-        blit(this.headerBand, guiGraphics, offsetX, offsetY);
-
-        int y = offsetY + this.headerHeight;
-        for (int i = 0; i < visibleRows; i++) {
-            int rowIndex = scrollOffset + i;
-            boolean firstLine = i == 0;
-            boolean lastLine = i == visibleRows - 1;
-            int rowY = y + i * this.rowHeight;
-            boolean slotsRow = rowKindAt(rowIndex) == RowKind.SLOTS;
-
-            blit(selectRowBand(false, firstLine, lastLine), guiGraphics, offsetX, rowY);
-            if (slotsRow) {
-                blit(selectRowBand(true, firstLine, lastLine), guiGraphics, offsetX, rowY);
-            }
-            if (rowIndex < rows.size() && rows.get(rowIndex) instanceof CellTableRows.DriveRow driveRow) {
-                // 每台 AE2 / EAE 驱动器、每个 ECO 主机都有自己的首格：逐格压一层绿底，选中的那一个描一圈。
-                for (int column = 0; column < driveRow.cells().size(); column++) {
-                    var entry = driveRow.cells().get(column);
-                    if (!entry.isLeader()) {
-                        continue;
-                    }
-                    int frameX = offsetX + LIST_X + column * this.cellSize;
-                    guiGraphics.fill(frameX + CELL_INSET, rowY + CELL_INSET,
-                            frameX + CELL_INSET + this.contentSize, rowY + CELL_INSET + this.contentSize,
-                            DRIVE_SLOT_TINT);
-                    // 两个状态的描边颜色不同：右键选中的黄，左键钉住的虹色（世界里只有钉住会画）。
-                    if (entry.leaderKey().equals(selectedLeaderKey)) {
-                        outlineCell(guiGraphics, frameX, rowY, DRIVE_SELECTED_TINT);
-                    } else if (isPinned(entry.leaderKey())) {
-                        outlineCell(guiGraphics, frameX, rowY, rainbowTint());
-                    }
-                }
-            }
-        }
-
-        blit(this.footerBand, guiGraphics, offsetX,
-                offsetY + this.headerHeight + visibleRows * this.rowHeight);
-    }
-
-    /** 一行在贴图上该用哪条带：标题栏用文本带，驱动器行用物品带。 */
-    private enum RowKind { TEXT, SLOTS }
-
-    private RowKind rowKindAt(int rowIndex) {
-        if (rowIndex < 0 || rowIndex >= rows.size()) {
-            return RowKind.TEXT;
-        }
-        return rows.get(rowIndex) instanceof CellTableRows.HeaderRow ? RowKind.TEXT : RowKind.SLOTS;
-    }
-
-    private Blitter selectRowBand(boolean slotsRow, boolean firstLine, boolean lastLine) {
-        if (slotsRow) {
-            return firstLine ? this.rowSlotsTop : lastLine ? this.rowSlotsBottom : this.rowSlotsMiddle;
-        }
-        return firstLine ? this.rowTextTop : lastLine ? this.rowTextBottom : this.rowTextMiddle;
-    }
-
-    /** 本模组那份 states.png 里的一格：16x16，坐标即 UV。 */
-    private static Blitter states(int u, int v) {        return Blitter.texture(net.minecraft.resources.ResourceLocation
-                .parse("ae2_pattern_disk:textures/guis/states.png")).src(u, v, 16, 16);
-    }
-
-    private static void blit(Blitter blitter, GuiGraphics guiGraphics, int destX, int destY) {
-        blitter.dest(destX, destY).blit(guiGraphics);
-    }
-
-    /** 一张槽位覆盖层（带可选透明度）：按切片原尺寸铺，用在菜单里那三批真槽位上。 */
-    private static void blitSlotOverlay(GuiGraphics guiGraphics, int destX, int destY, Blitter overlay, float alpha) {
-        overlay.dest(destX, destY).color(1f, 1f, 1f, alpha).blit(guiGraphics);
-    }
-
-    /**
-     * 给表里的一格铺空白槽位（段尾那些放不进去的列）：把 16×16 的切片铺满 18 的格距。
-     *
-     * <p>横向：左缘对齐格带左框线（减掉槽框那一像素），右缘再裁 1 像素——切片比内容区宽，不裁就压住右邻
-     * 那一格的左边框。每列同一算式，所以不会出现一列宽一列窄。</p>
-     *
-     * <p>纵向上下各 1 像素，可视区顶行不向上、末行不向下，免得溢进表头带与尾饰带。</p>
-     */
-    private void blitEmptyCell(GuiGraphics guiGraphics, int cellX, int rowY, int column, boolean topRow,
-            boolean bottomRow) {
-        // 左边界对齐格带（减 1 抵消槽框那一像素）；宽度：只有最右那一列压窄 1 像素——它右边没有下一格来挡，
-        // 多铺的那一像素会压到表格外沿；中间的列照满格宽铺，相邻两列之间才不会出现缝。
-        int x = cellX - EMPTY_CELL_SHIFT;
-        int y = topRow ? rowY + CELL_INSET : rowY;
-        int width = column == CellTableRows.COLUMNS - 1
-                ? this.cellSize - EMPTY_CELL_TRIM_RIGHT
-                : this.cellSize;
-        int height = topRow || bottomRow ? this.cellSize - CELL_INSET : this.cellSize;
-        EMPTY_SLOT_OVERLAY.dest(x, y, width, height).blit(guiGraphics);
-    }
-
-    /** 把一格的边框描出来（选中/钉住用）：画在框线上，不盖住格内内容，与样板磁盘管理终端同规格。 */
-    private void outlineCell(GuiGraphics guiGraphics, int cellX, int rowY, int tint) {
-        int size = this.cellSize;
-        guiGraphics.fill(cellX, rowY, cellX + size, rowY + 1, tint);
-        guiGraphics.fill(cellX, rowY + size - 1, cellX + size, rowY + size, tint);
-        guiGraphics.fill(cellX, rowY + 1, cellX + 1, rowY + size - 1, tint);
-        guiGraphics.fill(cellX + size - 1, rowY + 1, cellX + size, rowY + size - 1, tint);
-    }
-
-    /** 这一台钉着没有（表格描边与世界里那圈框同一个口径）。 */
-    private boolean isPinned(String leaderKey) {
-        var location = locationOf(leaderKey);
-        return location != null && DriveHighlight.isPinned(location.dimension(), location.pos());
-    }
-
-    /**
-     * 左键：钉住这一台（再左键一次取消）。
-     *
-     * <p>钉住与右键选中的分工是：右键只是 GUI 里的目标（关屏就没了，世界里不画），钉住才是「在世界里把它
-     * 显示出来」——虹色的负尺寸方框 + 一条从眼睛过去的虹色直线，关屏也还在。</p>
-     */
-    private void togglePinnedDrive(String leaderKey) {
-        var location = locationOf(leaderKey);
-        if (location == null) {
-            return;
-        }
-        DriveHighlight.togglePinned(location.dimension(), location.pos());
-    }
-
-    /** 宿主键解成「维度 + 坐标」；解不开返回 null。 */
-    @Nullable
-    private static HostLocation locationOf(String hostKey) {
-        int at = hostKey.lastIndexOf('@');
-        if (at <= 0) {
-            return null;
-        }
-        try {
-            return new HostLocation(ResourceLocation.parse(hostKey.substring(0, at)),
-                    BlockPos.of(Long.parseLong(hostKey.substring(at + 1))));
-        } catch (NumberFormatException | net.minecraft.ResourceLocationException broken) {
-            return null;
-        }
-    }
-
-    /** 一台宿主的物理位置（与 {@code CellDriveScanner.keyOf} 的编码同一口径）。 */
-    private record HostLocation(ResourceLocation dimension, BlockPos pos) {}
-
-    /** 这一台在哪：坐标串；键不是位置时原样给出键，好让人看出是协议对不上。 */
-    private static String describePosition(String hostKey) {
-        var location = locationOf(hostKey);
-        return location == null ? hostKey : location.pos().toShortString();
+        this.painter.drawBackground(guiGraphics, offsetX, offsetY, tableFrame());
     }
 
     @Override
@@ -927,160 +369,13 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
         // 第四件盖不住本屏 17 列 304 宽的格子区、还会与本屏那层叠成更深的暗斑，改由
         // renderDisconnectedOverlay 按格子区铺。（AE2 升级时复核它的 drawFG。）
 
-        // renderLabels 的 pose 已平移到 (leftPos, topPos)，这里必须用裸局部坐标。
-        int baseX = LIST_X;
-        int baseY = LIST_Y + this.headerHeight;
-        var drives = driveLookup();
-
-        for (int i = 0; i < visibleRows; i++) {
-            int rowIndex = scrollOffset + i;
-            if (rowIndex < 0 || rowIndex >= rows.size()) {
-                continue;
-            }
-            int rowY = baseY + i * this.rowHeight;
-            boolean topRow = i == 0;
-            boolean bottomRow = i == visibleRows - 1;
-            switch (rows.get(rowIndex)) {
-                case CellTableRows.HeaderRow header -> drawHeaderRow(guiGraphics, baseX, rowY, header, drives);
-                case CellTableRows.DriveRow driveRow -> drawDriveRow(guiGraphics, baseX, rowY, driveRow, drives,
-                        topRow, bottomRow);
-            }
-        }
-
-        drawSlotOverlays(guiGraphics);
+        this.painter.drawForegroundRows(guiGraphics, tableFrame());
+        this.painter.drawSlotOverlays(guiGraphics, slotFrame());
 
         // 断开时只压格子区：17 格 × 18 = 306 宽（含左右格框各 1px；实机确认只盖 304 时框线会露出 1px），
         // 高随可见行数走（两者都跟着终端尺寸变）。
         renderDisconnectedOverlay(guiGraphics, LIST_X, this.headerHeight,
                 this.listWidth, this.visibleRows * this.rowHeight);
-    }
-
-    /**
-     * 三类槽位的覆盖层：元件存储槽、元件编码槽、元件升级槽各一张切片，元件标记槽按显隐淡化。
-     *
-     * <p>贴图上这些位置没有画槽框（它们不是 AE2 那套固定布局），所以槽框得由屏幕补上。位置不写死，
-     * 直接读菜单里那批槽的实坐标——样式文档一改，覆盖层跟着走。</p>
-     *
-     * <p><b>落点用 {@code slot.x/slot.y}，不是 {@code x-1/y-1}</b>：AE2 的槽位坐标是「18x18 槽框的内侧
-     * 16x16 内容区左上角」（贴图实测：槽框占 x=181..198，内容区从 182,195 起），而覆盖层切片就是 16x16，
-     * 该点正是它要盖的那块内容区。再减 1 会整体偏左上 1 像素。</p>
-     */
-    private void drawSlotOverlays(GuiGraphics guiGraphics) {
-        for (var slot : getMenu().slotsOf(io.github.lounode.ae2pattern.AEPatternRegistries.CELL_ENCODE)) {
-            blitSlotOverlay(guiGraphics, slot.x, slot.y, CELL_SLOT_OVERLAY, 1f);
-        }
-        for (var slot : getMenu().slotsOf(io.github.lounode.ae2pattern.AEPatternRegistries.CELL_UPGRADE)) {
-            blitSlotOverlay(guiGraphics, slot.x, slot.y, UPGRADE_SLOT_OVERLAY, 1f);
-        }
-        // 标记槽：有元件且可编辑时实画，没元件（或在 CLEAR_ON_REMOVE 下元件装不下）时淡到 0.2——
-        // 与 AE2 元件工作台同一套显隐口径，槽底不消失，只变淡。
-        // 元件自己给上限的那些（格数比 63 小）多出来的格连槽底都不画：那些格永远收不下东西。
-        float markerAlpha = getMenu().isMarkerAreaEditable() ? 1f : DISABLED_SLOT_ALPHA;
-        int markerSlots = getMenu().markerSlotCount();
-        for (int column = 0; column < io.github.lounode.ae2pattern.AEPatternRegistries.CELL_MARKER_COLUMN.length; column++) {
-            for (var slot : getMenu().slotsOf(io.github.lounode.ae2pattern.AEPatternRegistries.CELL_MARKER_COLUMN[column])) {
-                if (markerIndex(slot) >= markerSlots) {
-                    continue;
-                }
-                blitSlotOverlay(guiGraphics, slot.x, slot.y, MARKER_SLOT_OVERLAY, markerAlpha);
-            }
-        }
-    }
-
-    /** 这一格标记槽在整片 63 格里的序号：窗口内序号 + 已滚过的格数。 */
-    private int markerIndex(Slot slot) {
-        return slot.getContainerSlot()
-                + getMenu().getMarkerRowOffset() * io.github.lounode.ae2pattern.AEPatternRegistries.CELL_MARKER_COLUMN.length;
-    }
-
-    /** 标题栏：驱动器物品图标 + 优先级文本 + 这一组有几个元件。 */
-    private void drawHeaderRow(GuiGraphics guiGraphics, int baseX, int rowY, CellTableRows.HeaderRow header,
-            java.util.Map<String, CellHostListPayload.HostGroup> drives) {
-        var group = drives.get(header.driveKey());
-        int textX = baseX + 4;
-        if (group != null && !group.icon().isEmpty()) {
-            // 与样板磁盘终端的标题栏同口径：图标落点 baseX+1、基线 rowY+ROW_TEXT_Y_INSET 再上移 1px（实机反馈），文字从图标右边 4 像素起。
-            guiGraphics.renderItem(group.icon(), baseX + 1, rowY + ROW_TEXT_Y_INSET - 1);
-            textX = baseX + 21;
-        }
-        String label = Component.translatable("gui.ae2_pattern_disk.cell_management_terminal.drive_header",
-                header.name(), header.priority(), header.cellCount()).getString();
-        guiGraphics.drawString(font, font.plainSubstrByWidth(label, this.listWidth - (textX - baseX) - 4),
-                textX, rowY + ROW_TEXT_Y_INSET + 4, this.textColor, false);
-    }
-
-    /**
-     * 元件行：首格画那一段的图标（一台驱动器或一个主机），元件格里插了元件的画物品与两根占用条，
-     * 空着的真格按 16×16 盖元件存储槽那一层，段尾超出格数的列盖空白槽位。
-     *
-     * <p>两种「空」是不同的东西：前者是那台上真实存在、可以放元件的格（盖元件槽底），后者是那一台根本没有的
-     * 列（盖空白槽位，不接任何点击）。</p>
-     */
-    private void drawDriveRow(GuiGraphics guiGraphics, int baseX, int rowY, CellTableRows.DriveRow row,
-            java.util.Map<String, CellHostListPayload.HostGroup> drives, boolean topRow, boolean bottomRow) {
-        var group = drives.get(row.driveKey());
-        if (group == null) {
-            return;
-        }
-        for (int column = 0; column < CellTableRows.COLUMNS; column++) {
-            int cellX = baseX + column * this.cellSize + CELL_INSET;
-            int cellY = rowY + CELL_INSET;
-            var entry = column < row.cells().size() ? row.cells().get(column) : null;
-            if (entry == null) {
-                // 段尾：这一台（主机）没有这么多格，盖一层空白槽位，并按格距铺满不留缝
-                blitEmptyCell(guiGraphics, cellX, rowY, column, topRow, bottomRow);
-                continue;
-            }
-            if (entry.isLeader()) {
-                // 首格：那一段的领物品（AE2 系是那台驱动器的方块物品，ECO 系是主机的）
-                guiGraphics.renderItem(group.icon(), cellX, cellY);
-                continue;
-            }
-            var cell = entry.cell();
-            if (cell.stack().isEmpty()) {
-                // 真实存在、还能放元件的空格：ECO 家族盖矩阵座，其余盖元件存储槽底，都按切片原尺寸 16×16 铺
-                blitSlotOverlay(guiGraphics, cellX, cellY,
-                        usesMatrixSlot(group) ? MATRIX_SLOT_OVERLAY : CELL_SLOT_OVERLAY, 1f);
-                continue;
-            }
-            guiGraphics.renderItem(cell.stack(), cellX, cellY);
-            guiGraphics.renderItemDecorations(font, cell.stack(), cellX, cellY);
-            drawOccupancyBars(guiGraphics, cellX, cellY, cell);
-        }
-    }
-
-    /** 这一段的存储格是不是 ECO 家族的矩阵座：认首格图标的命名空间。 */
-    private static boolean usesMatrixSlot(@Nullable CellHostListPayload.HostGroup group) {
-        if (group == null || group.icon().isEmpty()) {
-            return false;
-        }
-        return MATRIX_SLOT_NAMESPACES.contains(
-                BuiltInRegistries.ITEM.getKey(group.icon().getItem()).getNamespace());
-    }
-
-    /**
-     * 图标内侧底部的两根占用条：上行种类、下行数量。
-     *
-     * <p>底轨先铺满再叠填充，这样空元件也看得见「这两根条在这儿」；两条都与图标同宽，画在物品下缘内侧。</p>
-     */
-    private void drawOccupancyBars(GuiGraphics guiGraphics, int cellX, int cellY, CellHostListPayload.CellSlot cell) {
-        int barY = cellY + this.contentSize - 2;
-        guiGraphics.fill(cellX, barY, cellX + this.contentSize, barY + 1, BAR_TRACK_COLOR);
-        guiGraphics.fill(cellX, barY + 1, cellX + this.contentSize, barY + 2, BAR_TRACK_COLOR);
-        int typeWidth = Math.round(this.contentSize * Math.clamp(cell.typeFill(), 0f, 1f));
-        int byteWidth = Math.round(this.contentSize * Math.clamp(cell.byteFill(), 0f, 1f));
-        if (typeWidth > 0) {
-            guiGraphics.fill(cellX, barY, cellX + typeWidth, barY + 1, TYPE_BAR_COLOR);
-        }
-        if (byteWidth > 0) {
-            guiGraphics.fill(cellX, barY + 1, cellX + byteWidth, barY + 2, BYTE_BAR_COLOR);
-        }
-    }
-
-    /** 鼠标所在列对应的那一格；超出本行格子数（行尾余量）时返回 null。 */
-    @Nullable
-    private static CellTableRows.TableCell entryAt(CellTableRows.DriveRow row, int column) {
-        return column >= 0 && column < row.cells().size() ? row.cells().get(column) : null;
     }
 
     private java.util.Map<String, CellHostListPayload.HostGroup> driveLookup() {
@@ -1115,7 +410,7 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
             return super.mouseClicked(mouseX, mouseY, button);
         }
         if (rows.get(rowIndex) instanceof CellTableRows.DriveRow row) {
-            var entry = entryAt(row, columnAt(mouseX));
+            var entry = CellTablePainter.entryAt(row, columnAt(mouseX));
             if (entry != null) {
                 if (entry.isLeader()) {
                     onLeaderClick(entry, button);
@@ -1139,7 +434,7 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
     private void onLeaderClick(CellTableRows.TableCell entry, int button) {
         if (button == 0) {
             // 左键：钉住/取消这一台（世界里画虹色方框与连线，关掉界面也还在），并在聊天栏报一次维度与坐标。
-            togglePinnedDrive(entry.leaderKey());
+            CellTablePainter.togglePinnedDrive(entry.leaderKey());
             return;
         }
         if (button == 2) {
@@ -1211,7 +506,7 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
                     "gui.ae2_pattern_disk.cell_management_terminal.upgrade_tooltip.title"));
             var cards = getMenu().getEncodeCellUpgrades().insertableCards();
             if (cards.isEmpty()) {
-                lines.add(hint("gui.ae2_pattern_disk.cell_management_terminal.upgrade_tooltip.none"));
+                lines.add(CellTablePainter.hint("gui.ae2_pattern_disk.cell_management_terminal.upgrade_tooltip.none"));
             } else {
                 lines.addAll(cards);
             }
@@ -1236,77 +531,22 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
             return;
         }
         var driveRow = (CellTableRows.DriveRow) row;
-        var entry = entryAt(driveRow, columnAt(x));
+        var entry = CellTablePainter.entryAt(driveRow, columnAt(x));
         if (entry == null) {
             super.renderTooltip(guiGraphics, x, y);
             return;
         }
         if (entry.isLeader()) {
-            guiGraphics.renderComponentTooltip(font, leaderTooltip(driveRow, entry), x, y);
+            guiGraphics.renderComponentTooltip(font,
+                    CellTablePainter.leaderTooltip(driveLookup(), driveRow, entry), x, y);
             return;
         }
         ItemStack stack = entry.cell().stack();
         if (!stack.isEmpty()) {
-            guiGraphics.renderTooltip(font, cellTooltip(stack), stack.getTooltipImage(), x, y);
+            guiGraphics.renderTooltip(font, CellTablePainter.cellTooltip(stack), stack.getTooltipImage(), x, y);
         }
         // 空槽不再给提示：空槽与「放不进去的位置」在画面上已经分得开（前者盖元件存储槽底、后者盖空白槽位），
         // 再说一句反而像在解释看得出来的事。
-    }
-
-    /** 首格（一个首格单）的提示：哪家的、在哪、几个元件，然后一条手势一行。 */
-    private List<Component> leaderTooltip(CellTableRows.DriveRow row, CellTableRows.TableCell entry) {
-        var group = driveLookup().get(row.driveKey());
-        var lines = new ArrayList<Component>();
-        lines.add(Component.translatable("gui.ae2_pattern_disk.cell_management_terminal.drive_tooltip.host",
-                group != null ? group.name() : row.driveKey(), describePosition(entry.leaderKey())));
-        if (group != null) {
-            lines.add(Component.translatable(
-                    "gui.ae2_pattern_disk.cell_management_terminal.drive_tooltip.priority", group.priority()));
-            lines.add(Component.translatable(
-                    "gui.ae2_pattern_disk.cell_management_terminal.drive_tooltip.cell_count",
-                    filledSlotsOf(group, entry.leaderKey())));
-        }
-        // 选中与钉住的状态不另写一行：行上的高亮、世界里的方框与连线已经把它们说清楚了，tooltip 再复述
-        // 一遍只是噪音。手势行下面照旧。
-        lines.add(hint("gui.ae2_pattern_disk.cell_management_terminal.drive_tooltip.left"));
-        lines.add(hint("gui.ae2_pattern_disk.cell_management_terminal.drive_tooltip.right"));
-        lines.add(hint("gui.ae2_pattern_disk.cell_management_terminal.drive_tooltip.mid"));
-        return lines;
-    }
-
-    /**
-     * 那一个首格单里真的插了几个元件。
-     *
-     * <p>不能拿 {@code cells().size()}，也不能拿整组的：那张表是稠密的（每个物理格一条，空格也在），
-     * 而首格只对应现在那一段（一台驱动器或一个主机）——十格插三张要写成三张。</p>
-     */
-    private static int filledSlotsOf(CellHostListPayload.HostGroup group, String leaderKey) {
-        int filled = 0;
-        for (CellHostListPayload.CellSlot cell : group.cells()) {
-            if (cell.leaderKey().equals(leaderKey) && !cell.stack().isEmpty()) {
-                filled++;
-            }
-        }
-        return filled;
-    }
-
-    /**
-     * 元件格的提示：物品自己的提示在前（含 AE2 给存储元件加的自定义组件），后面只补一条不是常识的手势。
-     *
-     * <p>取到光标、放进这一格、Shift 收背包都不写：容器里最基础的操作，玩家不需要有人告诉他左键是拿、
-     * Shift 是整组搬。只有「右键会移到选中的驱动器，没有选中时进编码槽」这条不是常识，才值得占一行。</p>
-     *
-     * <p>用 {@code getTooltipFromItem} 取物品提示而不是自己拼名字：元件的信息比一个名字多得多。</p>
-     */
-    private List<Component> cellTooltip(ItemStack stack) {
-        var lines = new ArrayList<Component>(Screen.getTooltipFromItem(Minecraft.getInstance(), stack));
-        lines.add(hint("gui.ae2_pattern_disk.cell_management_terminal.cell_tooltip.to_encode"));
-        return lines;
-    }
-
-    /** 手势提示行：统一灰色，与物品自身的提示区分开。 */
-    private static Component hint(String key) {
-        return Component.translatable(key).withStyle(ChatFormatting.GRAY);
     }
 
     /** 鼠标下的元件升级槽（不在其上则 null）。 */
@@ -1368,7 +608,8 @@ public class CellManagementTermScreen extends AbstractPatternDiskTermScreen<Cell
      */
     private boolean isSlotInactive(Slot slot) {
         if (getMenu().isMarkerSlot(slot)) {
-            return !getMenu().isMarkerAreaEditable() || markerIndex(slot) >= getMenu().markerSlotCount();
+            return !getMenu().isMarkerAreaEditable()
+                    || CellTablePainter.markerIndex(slot, getMenu().getMarkerRowOffset()) >= getMenu().markerSlotCount();
         }
         return getMenu().isCellUpgradeSlot(slot) && !getMenu().hasWorkbenchCell();
     }

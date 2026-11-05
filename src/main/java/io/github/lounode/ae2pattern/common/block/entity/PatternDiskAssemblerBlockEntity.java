@@ -1,6 +1,5 @@
 package io.github.lounode.ae2pattern.common.block.entity;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 
 import org.jetbrains.annotations.Nullable;
@@ -16,20 +15,15 @@ import net.minecraft.world.level.block.state.BlockState;
 
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
-import net.neoforged.neoforge.network.PacketDistributor;
 
-import appeng.api.config.Actionable;
-import appeng.api.config.PowerMultiplier;
-import appeng.api.crafting.PatternDetailsHelper;
+import appeng.api.inventories.InternalInventory;
+import appeng.api.networking.IGrid;
 import appeng.api.networking.IGridNode;
 import appeng.api.networking.IGridNodeListener;
-import appeng.api.networking.security.IActionSource;
 import appeng.api.networking.ticking.IGridTickable;
 import appeng.api.networking.ticking.TickRateModulation;
 import appeng.api.networking.ticking.TickingRequest;
 import appeng.api.stacks.AEItemKey;
-import appeng.api.inventories.BaseInternalInventory;
-import appeng.api.inventories.InternalInventory;
 import appeng.api.stacks.KeyCounter;
 import appeng.api.upgrades.IUpgradeInventory;
 import appeng.api.upgrades.IUpgradeableObject;
@@ -37,14 +31,11 @@ import appeng.api.upgrades.UpgradeInventories;
 import appeng.api.util.AECableType;
 import appeng.blockentity.crafting.IMolecularAssemblerSupportedPattern;
 import appeng.blockentity.grid.AENetworkedBlockEntity;
-import appeng.core.definitions.AEItems;
 import appeng.me.helpers.MachineSource;
 import appeng.util.inv.AppEngInternalInventory;
 import appeng.util.inv.InternalInventoryHost;
 
-import io.github.lounode.ae2pattern.network.AssemblerAnimationPayload;
 import io.github.lounode.ae2pattern.network.AssemblerAnimationStatus;
-import io.github.lounode.ae2pattern.common.logic.ProductDelivery;
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 
 /**
@@ -54,6 +45,9 @@ import io.github.lounode.ae2pattern.AEPatternRegistries;
  * <p>Design mirrors AE2's {@code MolecularAssemblerBlockEntity} but scales the single crafting pipeline
  * into N independent execution units. Each unit owns a 3x3 grid + a progress counter; {@code pushPattern}
  * dispatches a pattern to the first idle unit; the grid tick advances all busy units.</p>
+ *
+ * <p>执行单元、产物投递、动画汇总与存档/掉落整块搬进了同包的 {@link AssemblerCrafting}；本类只留
+ * {@code @Override} 入口、网络视图状态与一格电源/动画字段，逐行转调过去。</p>
  */
 public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
         implements InternalInventoryHost, IUpgradeableObject, IGridTickable,
@@ -61,98 +55,54 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
 
     public static final int THREADS = 8;
     public static final int GRID_SIZE = 9; // 3x3
-    private static final int OUTPUT_SLOT = 9; // gridInv is 10 slots (9 grid + 1 output)
 
-    /**
-     * 每 tick 推进的进度，按已装加速卡数取：与扩展分子装配室同一档（AE2 分子装配室的两倍）。
-     * 100 进度一件，所以空卡 5 tick 一件、五卡 1 tick 一件。
-     */
-    private static final int[] SPEED_STEPS = { 20, 26, 34, 40, 50, 100 };
-
-    /** 与 {@link #SPEED_STEPS} 一一对应的税率：每推进 1 点进度要付这么多 AE。 */
-    private static final double[] SPEED_TAXES = { 1.0, 1.3, 1.7, 2.0, 2.5, 5.0 };
-
-    private final IActionSource actionSource = new MachineSource(this);
     private final IUpgradeInventory upgrades;
 
-    private final CraftUnit[] units = new CraftUnit[THREADS];
-
-    /**
-     * Read-only view of the eight output slots, handed out to external item handlers (pipes, hoppers,
-     * AE2 storage buses). AE2's molecular assembler does the same: its crafting-grid filter only lets
-     * extraction through for the output slot. Without this view a product that the neighbouring return
-     * node refuses and the ME network will not take has no way out of the machine at all.
-     */
-    private final InternalInventory exposedOutputs = new BaseInternalInventory() {
-        @Override
-        public int size() {
-            return THREADS;
-        }
-
-        @Override
-        public ItemStack getStackInSlot(int slot) {
-            if (slot < 0 || slot >= THREADS) {
-                return ItemStack.EMPTY;
-            }
-            return units[slot].grid.getStackInSlot(OUTPUT_SLOT);
-        }
-
-        @Override
-        public void setItemDirect(int slot, ItemStack stack) {
-            if (slot < 0 || slot >= THREADS) {
-                return;
-            }
-            units[slot].grid.setItemDirect(OUTPUT_SLOT, stack);
-            // Defensive redundancy: the unit grid already notifies its host on a direct set, which saves
-            // the change and nudges the ticker (see onChangeInventory). Reached only by external
-            // extraction, since insertion is refused below.
-            saveChanges();
-            alertTicker();
-        }
-
-        @Override
-        public int getSlotLimit(int slot) {
-            // The grid slots hold one item each, and the output slot is no different.
-            return slot < 0 || slot >= THREADS ? 0 : units[slot].grid.getSlotLimit(OUTPUT_SLOT);
-        }
-
-        @Override
-        public ItemStack insertItem(int slot, ItemStack stack, boolean simulate) {
-            // Nothing goes in, and refusing here also keeps a caller that assumes AE2's ten-slot crafting
-            // grid from tripping the range check in the default implementation.
-            return stack;
-        }
-
-        @Override
-        public boolean isItemValid(int slot, ItemStack stack) {
-            // Products leave through this view; letting anything in would fight the crafting grid.
-            return false;
-        }
-    };
-
-    /** 产物投递（去向选择 + 送不掉时的记账）都在 {@link ProductDelivery} 里，这里只持有它。 */
-    private final ProductDelivery delivery;
+    /** 合成执行（八个单元、投递、动画与存档/掉落）：本类只持有它并转调。 */
+    private final AssemblerCrafting crafting;
 
     /** Client-synced power state. */
     private boolean isPowered = false;
-
-    /** 本 tick 要发的合成动画（最多一条），由 {@link #tickingRequest} 在遍历完线程后统一发出。 */
-    private @Nullable AEItemKey pendingAnimation;
-    private byte pendingAnimationSpeed;
 
     @OnlyIn(Dist.CLIENT)
     private AssemblerAnimationStatus animationStatus;
 
     public PatternDiskAssemblerBlockEntity(BlockPos pos, BlockState blockState) {
         super(AEPatternRegistries.BE_ASSEMBLER.get(), pos, blockState);
-        for (int i = 0; i < THREADS; i++) {
-            units[i] = new CraftUnit(this);
-        }
-        // 网格与世界都是拿调用时刻的实况，所以给 Supplier：节点晚于构造器建立，level 则可能为空。
-        this.delivery = new ProductDelivery(() -> getMainNode().getGrid(), () -> this.level, worldPosition,
-                actionSource, this::saveChanges);
         this.upgrades = UpgradeInventories.forMachine(AEPatternRegistries.BLOCK_ASSEMBLER.get(), 5,
                 this::onUpgradesChanged);
+        // 环境全是快照与回调：网格、世界取调用时刻实况（节点晚于构造器建立、level 可能为空），位置是快照。
+        this.crafting = new AssemblerCrafting(new AssemblerCrafting.CraftingEnv() {
+            @Override
+            public IGrid grid() {
+                return PatternDiskAssemblerBlockEntity.this.getMainNode().getGrid();
+            }
+
+            @Override
+            public Level level() {
+                return PatternDiskAssemblerBlockEntity.this.level;
+            }
+
+            @Override
+            public BlockPos pos() {
+                return PatternDiskAssemblerBlockEntity.this.worldPosition;
+            }
+
+            @Override
+            public boolean isClientSide() {
+                return PatternDiskAssemblerBlockEntity.this.isClientSide();
+            }
+
+            @Override
+            public void saveChanges() {
+                PatternDiskAssemblerBlockEntity.this.saveChanges();
+            }
+
+            @Override
+            public void alertDevice() {
+                PatternDiskAssemblerBlockEntity.this.alertTicker();
+            }
+        }, this, new MachineSource(this), upgrades);
         // 与 AE2 分子装配室一致：它只做被推送的合成，不占频道（仍从网格取电）。
         this.getMainNode()
                 .setIdlePowerUsage(0)
@@ -169,27 +119,17 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
      * The output slots of all units, exposed to external item handlers. Only extraction is allowed.
      */
     public InternalInventory getExposedOutputInventory() {
-        return exposedOutputs;
+        return crafting.getExposedOutputInventory();
     }
 
     /** Total crafting progress across all threads (0..THREADS*100). */
     public int getCraftingProgressAcrossThreads() {
-        int total = 0;
-        for (var unit : units) {
-            total += (int) Math.min(unit.progress, 100);
-        }
-        return total;
+        return crafting.getCraftingProgressAcrossThreads();
     }
 
     /** Number of threads currently executing a plan (busy). */
     public int getRunningThreads() {
-        int busy = 0;
-        for (var unit : units) {
-            if (unit.plan != null || !unit.grid.isEmpty()) {
-                busy++;
-            }
-        }
-        return busy;
+        return crafting.getRunningThreads();
     }
 
     /**
@@ -198,73 +138,29 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
      * contents while the machine runs. Never modify it from the client.
      */
     public InternalInventory getUnitGrid(int index) {
-        if (index < 0 || index >= THREADS) {
-            return InternalInventory.empty();
-        }
-        return units[index].grid;
+        return crafting.getUnitGrid(index);
     }
 
     /**
      * Read-only view of one unit's manual pattern slot (encoded pattern drives this unit's execution).
      */
     public InternalInventory getUnitPatternInv(int index) {
-        if (index < 0 || index >= THREADS) {
-            return InternalInventory.empty();
-        }
-        return units[index].patternInv;
+        return crafting.getUnitPatternInv(index);
     }
 
     /** Current crafting progress of one unit, in percent (0..100). */
     public int getUnitProgress(int index) {
-        if (index < 0 || index >= THREADS) {
-            return 0;
-        }
-        return (int) Math.min(units[index].progress, 100);
+        return crafting.getUnitProgress(index);
     }
 
     /** True while a unit executes a plan; the client uses it to keep provider-driven pages undimmed. */
     public boolean isUnitExecuting(int index) {
-        if (index < 0 || index >= THREADS) {
-            return false;
-        }
-        return units[index].plan != null;
+        return crafting.isUnitExecuting(index);
     }
 
     /** Current supported crafting pattern for one unit, or {@code null} when the page is idle. */
     public @Nullable IMolecularAssemblerSupportedPattern getCurrentPattern(int index) {
-        if (index < 0 || index >= THREADS) {
-            return null;
-        }
-        var unit = units[index];
-        if (isClientSide()) {
-            // The execution plan is server-side state and is never mirrored to the client. Decode the
-            // manual pattern from the (synced) pattern slot instead, so slot validation and the
-            // disabled-slot overlay match the server-side state.
-            return decodeManualPattern(unit);
-        }
-        if (unit.plan == null && !unit.patternInv.isEmpty()) {
-            // Decode the manually inserted pattern on demand so slot validation works immediately.
-            var supported = decodeManualPattern(unit);
-            if (supported != null) {
-                unit.plan = supported;
-                unit.planSource = unit.patternInv.getStackInSlot(0).copy();
-            }
-        }
-        return unit.plan;
-    }
-
-    /** Decodes the encoded pattern manually inserted into a unit's slot, or {@code null} if unusable. */
-    private @Nullable IMolecularAssemblerSupportedPattern decodeManualPattern(CraftUnit unit) {
-        if (level == null || unit.patternInv.isEmpty()) {
-            return null;
-        }
-        var item = unit.patternInv.getStackInSlot(0);
-        if (item.isEmpty()) {
-            return null;
-        }
-        return PatternDetailsHelper.decodePattern(item, level) instanceof IMolecularAssemblerSupportedPattern supported
-                ? supported
-                : null;
+        return crafting.getCurrentPattern(index);
     }
 
     /**
@@ -273,20 +169,7 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
      * original molecular assembler's in-world item depiction.
      */
     public ItemStack getRenderedAssemblyItem() {
-        for (int i = 0; i < THREADS; i++) {
-            if (!isUnitBusy(i)) {
-                continue;
-            }
-            var pattern = units[i].plan;
-            if (pattern == null) {
-                continue;
-            }
-            var primary = pattern.getPrimaryOutput();
-            if (primary != null && primary.what() instanceof AEItemKey itemKey) {
-                return itemKey.toStack((int) Math.max(1, primary.amount()));
-            }
-        }
-        return ItemStack.EMPTY;
+        return crafting.getRenderedAssemblyItem();
     }
 
     @Override
@@ -321,10 +204,7 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
 
     /** True if one unit is currently executing a plan or holding leftover output. */
     public boolean isUnitBusy(int index) {
-        if (index < 0 || index >= THREADS) {
-            return false;
-        }
-        return units[index].plan != null || !units[index].grid.isEmpty();
+        return crafting.isUnitBusy(index);
     }
 
     @Override
@@ -343,237 +223,12 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
     @Override
     public boolean pushPattern(appeng.api.crafting.IPatternDetails patternDetails, KeyCounter[] table,
             Direction where) {
-        if (!(patternDetails instanceof IMolecularAssemblerSupportedPattern pattern)) {
-            return false;
-        }
-        for (var unit : units) {
-            // A unit holding a manually inserted pattern executes that pattern and does not
-            // accept provider-pushed jobs (mirrors AE2's pattern-inventory gating).
-            if (unit.plan == null && unit.grid.isEmpty() && unit.patternInv.isEmpty()) {
-                unit.plan = pattern;
-                unit.planSource = ItemStack.EMPTY;
-                unit.progress = 0;
-                unit.pushDirection = where;
-                fillGrid(unit, table, pattern);
-                this.getMainNode().ifPresent((grid, node) -> grid.getTickManager().alertDevice(node));
-                return true;
-            }
-        }
-        return false; // all units busy
-    }
-
-    private void fillGrid(CraftUnit unit, KeyCounter[] table, IMolecularAssemblerSupportedPattern adapter) {
-        adapter.fillCraftingGrid(table, unit.grid::setItemDirect);
-        for (var list : table) {
-            list.removeZeros();
-        }
-    }
-
-    /**
-     * Tops this unit's crafting grid up from the ME network for a self-executing page (a pattern
-     * manually inserted into the unit's pattern slot), and reports whether the grid can now be
-     * assembled.
-     *
-     * <p>The sparse 3x3 slot mapping is resolved through
-     * {@link IMolecularAssemblerSupportedPattern#fillCraftingGrid}, because the compressed input list
-     * returned by {@code IPatternDetails#getInputs()} does not expose recipe slot indices.</p>
-     *
-     * <p><b>为什么是「要么补齐、要么一格不放」.</b> AE2 的样板在 {@code assemble} 里第一件事就是拿传入
-     * 网格的裁剪尺寸与样板自己的裁剪尺寸比对，不等就返回空（{@code AECraftingPattern#assemble}），而传入的
-     * 尺寸来自网格里非空物品的最小包围盒。所以只要有一次只填进去一部分原料、或某一格被不属于样板的物品占住，
-     * 包围盒的形状就与样板不同，{@code canAssemble} 会永远为假——机器表现为「第二次把料拉进网格后就不再
-     * 合成」，而料还留在网格里。这里因此先按 key 汇总出这 9 格的真实需求（够不够只能按总量判，逐格判只会
-     * 得到「每格都有一件」这种假答案）、再一次性抽取；凑不齐时连样板自己的格子也清空，让网格回到「干净地等料」，
-     * 而不是留下一个形状不对的半成品。</p>
-     */
-    private boolean tryFillGridFromNetwork(CraftUnit unit) {
-        var plan = unit.plan;
-        if (plan == null) {
-            return false;
-        }
-        var grid = this.getMainNode().getGrid();
-        if (grid == null) {
-            return false;
-        }
-        var storage = grid.getStorageService().getInventory();
-        var inputs = plan.getInputs();
-        if (inputs.length == 0) {
-            return false;
-        }
-        // 网格已经能合成：别动它，让这一轮进度照常累完。
-        if (canAssemble(unit)) {
-            return true;
-        }
-
-        // 每个输入挑一个「网络现在就能给」的候选，按它自己的需求量判（getMultiplier 就是该输入占用的格数）；
-        // 给不了也要留一个占位候选，好知道它该落在哪一格。
-        var chosen = new AEItemKey[inputs.length];
-        var shape = new KeyCounter[inputs.length];
-        boolean allAvailable = true;
-        for (int i = 0; i < inputs.length; i++) {
-            shape[i] = new KeyCounter();
-            var input = inputs[i];
-            if (input == null) {
-                // 样板自己的空占位：不参与可用性判断。
-                continue;
-            }
-            // 预判只取 multiplier、不看候选的 amount()：流体替代样板下预判与实际装填量可能不一致（未实测）。
-            long need = Math.max(1, input.getMultiplier());
-            AEItemKey first = null;
-            for (var possible : input.getPossibleInputs()) {
-                if (possible == null || !(possible.what() instanceof AEItemKey itemKey)) {
-                    continue;
-                }
-                if (first == null) {
-                    first = itemKey;
-                }
-                if (storage.extract(itemKey, need, Actionable.SIMULATE, actionSource) >= need) {
-                    chosen[i] = itemKey;
-                    break;
-                }
-            }
-            var candidate = chosen[i] != null ? chosen[i] : first;
-            if (candidate != null) {
-                shape[i].add(candidate, GRID_SIZE);
-            }
-            allAvailable &= chosen[i] != null;
-        }
-
-        // 哪个输入落在哪一格由样板自己算（捕获它的写入即可）：我们只需要知道哪些格位属于这颗样板。
-        var needed = new boolean[GRID_SIZE];
-        var target = new ItemStack[GRID_SIZE];
-        plan.fillCraftingGrid(shape, (slot, stack) -> {
-            if (slot >= 0 && slot < GRID_SIZE) {
-                needed[slot] = true;
-                target[slot] = stack;
-            }
-        });
-
-        // 按 key 汇总一次真实需求再判：逐格判只能回答「这一格有没有一件」，回答不了「总量够不够」——配方要
-        // 两件同名材料、网络只有一件时，两格都会判通过，于是抽出前一件、后一件失败，网格里留半份料；而清料
-        // 路径优先送相邻容器，那件材料就被搬进了旁边的箱子，每 tick 一次。汇总后网络给不出整份就一格不抽。
-        var demand = new LinkedHashMap<AEItemKey, Long>();
-        for (int slot = 0; slot < GRID_SIZE; slot++) {
-            if (!needed[slot] || target[slot] == null || target[slot].isEmpty()
-                    || !unit.grid.getStackInSlot(slot).isEmpty()) {
-                continue;
-            }
-            var key = AEItemKey.of(target[slot]);
-            if (key != null) {
-                demand.merge(key, 1L, Long::sum);
-            }
-        }
-        for (var entry : demand.entrySet()) {
-            if (storage.extract(entry.getKey(), entry.getValue(), Actionable.SIMULATE, actionSource)
-                    < entry.getValue()) {
-                allAvailable = false;
-            }
-        }
-
-        // 清掉不该留在网格里的：不在样板里的格位、格位对但物品不对的；凑不齐时连样板自己的格子也清空
-        // （半成品的包围盒与样板形状不等，留着只会把这一页钉死）。
-        boolean changed = false;
-        for (int slot = 0; slot < GRID_SIZE; slot++) {
-            var current = unit.grid.getStackInSlot(slot);
-            if (current.isEmpty()) {
-                continue;
-            }
-            if (allAvailable && needed[slot] && plan.isItemValid(slot, AEItemKey.of(current), level)) {
-                continue;
-            }
-            changed |= ejectGridSlot(unit, slot);
-        }
-        if (changed) {
-            saveChanges();
-        }
-        if (!allAvailable) {
-            return false;
-        }
-
-        // 真抽：需求量已在上面按 key 核过，正常不会再失败；真失败（同一 tick 里有别的消费者）就把本 tick 已经
-        // 抽出来的原路退回 ME 网络——不能留给下一轮的清理路径，那条路也会把材料送回返回节点或网络，
-        // 等于中途换一次去向；直接退回网络才能保证「没抽成功就一格不动」。
-        var placedKeys = new AEItemKey[GRID_SIZE];
-        var placedSlots = new int[GRID_SIZE];
-        int placedCount = 0;
-        for (int slot = 0; slot < GRID_SIZE; slot++) {
-            var stack = target[slot];
-            if (stack == null || stack.isEmpty() || !unit.grid.getStackInSlot(slot).isEmpty()) {
-                continue;
-            }
-            var key = AEItemKey.of(stack);
-            if (key == null) {
-                continue;
-            }
-            // A crafting grid slot holds exactly one item, even if a third-party pattern wrote a
-            // larger stack into the probe table.
-            if (storage.extract(key, 1, Actionable.MODULATE, actionSource) <= 0) {
-                for (int back = placedCount - 1; back >= 0; back--) {
-                    if (storage.insert(placedKeys[back], 1, Actionable.MODULATE, actionSource) > 0) {
-                        unit.grid.setItemDirect(placedSlots[back], ItemStack.EMPTY);
-                    }
-                }
-                saveChanges();
-                return canAssemble(unit);
-            }
-            unit.grid.setItemDirect(slot, key.toStack(1));
-            placedKeys[placedCount] = key;
-            placedSlots[placedCount] = slot;
-            placedCount++;
-            changed = true;
-        }
-        if (changed) {
-            saveChanges();
-        }
-        return canAssemble(unit);
-    }
-
-    /**
-     * 把一格物品送出网格，走页面自己的回送契约（见 {@link #pushItemOut}）：被发配页先走相邻返回节点、
-     * 再回 ME 网络；自拉取页只回 ME 网络、不碰相邻容器。两条路都送不掉的部分才落到输出槽兜底。
-     *
-     * @return 这一格是否已经清空
-     */
-    private boolean ejectGridSlot(CraftUnit unit, int slot) {
-        var stack = unit.grid.getStackInSlot(slot);
-        if (stack.isEmpty()) {
-            return true;
-        }
-        var left = pushItemOut(unit, stack.copy());
-        if (left.isEmpty()) {
-            unit.grid.setItemDirect(slot, ItemStack.EMPTY);
-            return true;
-        }
-        if (!unit.grid.getStackInSlot(OUTPUT_SLOT).isEmpty()) {
-            // 输出槽也占着：把没送出去的部分放回原格，这一格下一轮再清（而不是把它丢掉）。
-            unit.grid.setItemDirect(slot, left);
-            return false;
-        }
-        unit.grid.setItemDirect(slot, ItemStack.EMPTY);
-        unit.grid.setItemDirect(OUTPUT_SLOT, left);
-        return true;
-    }
-
-    /** True when the unit's grid can already assemble its plan into a non-empty result. */
-    private boolean canAssemble(CraftUnit unit) {
-        var plan = unit.plan;
-        if (plan == null || level == null) {
-            return false;
-        }
-        var positioned = craftGrid(unit);
-        return !plan.assemble(positioned.input(), level).isEmpty();
+        return crafting.pushPattern(patternDetails, table, where);
     }
 
     @Override
     public boolean acceptsPlans() {
-        // A unit running a manually inserted pattern does not take provider-pushed jobs, so the
-        // machine only accepts new plans while at least one unit is completely idle.
-        for (var unit : units) {
-            if (unit.plan == null && unit.grid.isEmpty() && unit.patternInv.isEmpty()) {
-                return true;
-            }
-        }
-        return false;
+        return crafting.acceptsPlans();
     }
 
     @Override
@@ -586,252 +241,12 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
 
     @Override
     public TickingRequest getTickingRequest(IGridNode node) {
-        return new TickingRequest(1, 1, false);
+        return crafting.getTickingRequest(node);
     }
 
     @Override
     public TickRateModulation tickingRequest(IGridNode node, int ticksSinceLastCall) {
-        boolean anyBusy = false;
-        for (var unit : units) {
-            anyBusy |= advanceUnit(unit, ticksSinceLastCall);
-        }
-        // 一台机器只留一份动画状态，按线程逐次发包只会互相覆盖；每 tick 汇总成最多一个包（EAE 同做法）。
-        var animation = pendingAnimation;
-        if (animation != null) {
-            pendingAnimation = null;
-            PacketDistributor.sendToPlayersNear(
-                    node.getLevel(), null,
-                    worldPosition.getX(), worldPosition.getY(), worldPosition.getZ(),
-                    32,
-                    new AssemblerAnimationPayload(worldPosition, pendingAnimationSpeed, animation));
-        }
-        return anyBusy ? TickRateModulation.FASTER : TickRateModulation.SLEEP;
-    }
-
-    /**
-     * Advances one crafting unit; returns true if it is still busy.
-     */
-    private boolean advanceUnit(CraftUnit unit, int ticksSinceLastCall) {
-        // Keep retrying both finished output and container remainders until all leftovers are exported.
-        ItemStack output = unit.grid.getStackInSlot(OUTPUT_SLOT);
-        if (!output.isEmpty()) {
-            pushOut(unit, output);
-            if (!unit.grid.getStackInSlot(OUTPUT_SLOT).isEmpty()) {
-                return true;
-            }
-            // The output slot is free again: move any grid item that is no longer valid for the
-            // current pattern into it, so stale inputs cannot block the unit forever.
-            ejectHeldItems(unit);
-        }
-        // Keep the plan in sync with the manual pattern slot: while the slot holds an item it is
-        // authoritative, so a newly inserted or swapped pattern takes over immediately and a removed
-        // pattern releases the grid (mirrors AE2's recalculatePlan).
-        var slotPattern = unit.patternInv.getStackInSlot(0);
-        if (slotPattern.isEmpty()) {
-            if (!unit.planSource.isEmpty()) {
-                unit.plan = null;
-                unit.planSource = ItemStack.EMPTY;
-                unit.progress = 0;
-            }
-            if (unit.plan == null) {
-                boolean pending = drainRemainders(unit);
-                // Release the push direction only once the whole job is out - grid drained and the
-                // output slot empty - so a product that is still on its way cannot slip onto the
-                // network-only path. A page only counts as self-executing while the direction is null,
-                // and a stale one would keep the next manual pattern on this page on the provider
-                // return path instead of the network-only one.
-                if (!pending && unit.grid.getStackInSlot(OUTPUT_SLOT).isEmpty()) {
-                    unit.pushDirection = null;
-                }
-                return pending;
-            }
-        } else if (unit.plan == null || !ItemStack.isSameItemSameComponents(slotPattern, unit.planSource)) {
-            var supported = decodeManualPattern(unit);
-            if (supported == null) {
-                // The inserted pattern cannot be decoded: release the grid instead of stalling.
-                unit.plan = null;
-                unit.planSource = ItemStack.EMPTY;
-                unit.progress = 0;
-                return drainRemainders(unit);
-            }
-            // The manual pattern takes this page over. Whatever is still on the grid belongs to the
-            // previous job, so it goes back under that job's contract (return node first) and the push
-            // direction is released - otherwise a page that is self-executing from now on would keep
-            // returning to the neighbour instead of the network. A provider job can also be taken over
-            // while its plan is still running, which is why this is not covered by the idle branch above.
-            drainRemainders(unit);
-            unit.pushDirection = null;
-            unit.plan = supported;
-            unit.planSource = slotPattern.copy();
-            unit.progress = 0;
-        }
-
-        // Self-executing page guard: never accumulate progress unless the grid can actually be
-        // assembled, so a material shortage can not consume progress or destroy partial inputs.
-        // tryFillGridFromNetwork 的填充是原子的（要么补齐、要么一格不放），见那里的注释。
-        if (!unit.patternInv.isEmpty() && !tryFillGridFromNetwork(unit)) {
-            return true;
-        }
-
-        int speedCards = Math.min(upgrades.getInstalledUpgrades(AEItems.SPEED_CARD), SPEED_STEPS.length - 1);
-        int speed = SPEED_STEPS[speedCards];
-        double gathered = gatherPower(ticksSinceLastCall, speed, SPEED_TAXES[speedCards]);
-        if (gathered <= 0) {
-            // 没电就停在原地：进度不动，页面保持忙碌，等电网回电后接着走。
-            return true;
-        }
-        unit.progress += gathered;
-        if (unit.progress >= 100) {
-            // 只扣一件的量：余数已经付过电，tick 尖峰时留给下一 tick 继续做。
-            unit.progress -= 100;
-            var level = this.level;
-            if (level != null) {
-                var positioned = craftGrid(unit);
-                var craftInput = positioned.input();
-                var plan = unit.plan;
-                ItemStack result = plan.assemble(craftInput, level);
-                if (result.isEmpty()) {
-                    // A failed recipe must release its inputs instead of retrying forever or
-                    // treating ordinary inputs as container remainders.
-                    unit.plan = null;
-                    return drainRemainders(unit);
-                }
-
-                // 产物是样板对象内部缓存的那个 ItemStack 实例：AECraftingPattern.assemble 每次都返回
-                // 同一个实例（构造期算一次并缓存在 output 字段，普通路径直接 return 它）。不复制就放进
-                // 输出槽并回送，回送时的 shrink 会把这个共享实例削到数量 0——样板对象的产物就变成了空的，
-                // 此后 canAssemble 恒假、机器永远不再合成（且供应器/CPU 长期持有同一个样板实例，污染会跨机）。
-                // AE2 自己的分子装配室同理：它回送前先 output.copy()。
-                unit.grid.setItemDirect(OUTPUT_SLOT, result.copy());
-
-                // 动画包在这一 tick 末尾由 tickingRequest 统一发，见那里的注释。
-                var itemKey = AEItemKey.of(result);
-                if (itemKey != null && pendingAnimation == null) {
-                    pendingAnimation = itemKey;
-                    pendingAnimationSpeed = (byte) speed;
-                }
-
-                // A successful craft consumes the input grid; put container remainders back into the
-                // exact slots of the recipe bounding box inside the 3x3 grid.
-                var remainders = plan.getRemainingItems(craftInput);
-                for (int i = 0; i < GRID_SIZE; i++) {
-                    unit.grid.setItemDirect(i, ItemStack.EMPTY);
-                }
-                for (int row = 0; row < craftInput.height(); row++) {
-                    for (int col = 0; col < craftInput.width(); col++) {
-                        var remainder = remainders.get(col + row * craftInput.width());
-                        if (!remainder.isEmpty()) {
-                            unit.grid.setItemDirect(col + positioned.left() + (row + positioned.top()) * 3, remainder);
-                        }
-                    }
-                }
-                // A manually inserted pattern stays in the unit and drives the next craft; a
-                // provider-pushed plan is consumed with this craft.
-                if (unit.planSource.isEmpty()) {
-                    unit.plan = null;
-                }
-                ejectHeldItems(unit);
-                return true;
-            }
-        }
-        return true;
-    }
-
-    /**
-     * 本 tick 能推进多少进度：先按「档位速率 × 税率」向网络提电，再按税率折回进度。
-     *
-     * <p>与 AE2 分子装配室、扩展分子装配室同一口径：电不够时只推进提到的那一部分，而不是整 tick 白跑；
-     * 加速卡买的是速率，代价是每点进度更贵。单次提取封顶 5000 AE，与上游一致。</p>
-     */
-    private double gatherPower(int ticksSinceLastCall, int speed, double tax) {
-        var grid = this.getMainNode().getGrid();
-        if (grid == null) {
-            return 0;
-        }
-        var energy = grid.getEnergyService();
-        if (energy == null) {
-            return 0;
-        }
-        double wanted = Math.min(ticksSinceLastCall * speed * tax, 5000);
-        return energy.extractAEPower(wanted, Actionable.MODULATE, PowerMultiplier.CONFIG) / tax;
-    }
-
-    /**
-     * Builds a positioned crafting input from the unit's grid, reusing the unit's cached crafting container.
-     */
-    private net.minecraft.world.item.crafting.CraftingInput.Positioned craftGrid(CraftUnit unit) {
-        for (int i = 0; i < GRID_SIZE; i++) {
-            unit.craftingInv.setItem(i, unit.grid.getStackInSlot(i));
-        }
-        return unit.craftingInv.asPositionedCraftInput();
-    }
-
-    /** Keeps returning crafting containers and other remainders until the unit is empty. */
-    private boolean drainRemainders(CraftUnit unit) {
-        boolean pending = false;
-        for (int i = 0; i < GRID_SIZE; i++) {
-            ItemStack remainder = unit.grid.getStackInSlot(i);
-            if (remainder.isEmpty()) {
-                continue;
-            }
-            ItemStack left = pushItemOut(unit, remainder);
-            unit.grid.setItemDirect(i, left);
-            pending |= !left.isEmpty();
-        }
-        return pending;
-    }
-
-    /**
-     * Moves one grid item that is no longer a valid input for the unit's current pattern out of the grid,
-     * so it can not block the unit forever. Mirrors AE2's ejection of stale crafting-grid items after
-     * pattern changes and craft completion.
-     *
-     * <p>早先这里是「挪进输出槽、等下一轮回送」，但输出槽一被占住整个方法就早退，于是该清的东西永远
-     * 清不掉、网格的包围盒形状也就此定型（AE2 的样板按裁剪尺寸严格校验，见 tryFillGridFromNetwork）。
-     * 现在直接走回送路径（按页面模式：相邻返回节点或 ME 网络），输出槽只是兜底落点。</p>
-     */
-    private void ejectHeldItems(CraftUnit unit) {
-        var plan = unit.plan;
-        for (int i = 0; i < GRID_SIZE; i++) {
-            var stack = unit.grid.getStackInSlot(i);
-            if (stack.isEmpty()) {
-                continue;
-            }
-            var key = AEItemKey.of(stack);
-            if (plan != null && key != null && plan.isItemValid(i, key, level)) {
-                continue;
-            }
-            if (ejectGridSlot(unit, i)) {
-                saveChanges();
-            }
-            return;
-        }
-    }
-
-    /**
-     * Sends one item out of a unit, following that page's return contract:
-     *
-     * <ul>
-     * <li>A <b>provider-pushed page</b> ({@code pushDirection} set) returns to the neighbouring return
-     * node first - the AE2 molecular assembler contract, where the provider's return inventory hands the
-     * goods back to the network - and only what that neighbour refuses goes to ME storage directly.</li>
-     * <li>A <b>self-executing page</b> (manual pattern, no push direction) hands products and remainders
-     * straight to the ME network. It deliberately never touches adjacent containers: whatever happens to
-     * sit beside the machine is not part of the job the page started, and pushing into it would carry the
-     * results out of the network.</li>
-     * </ul>
-     */
-    private ItemStack pushItemOut(CraftUnit unit, ItemStack stack) {
-        return delivery.deliver(stack, unit.pushDirection);
-    }
-
-    /**
-     * Pushes the output slot out of the unit, following the page's return contract (see
-     * {@link #pushItemOut}).
-     */
-    private void pushOut(CraftUnit unit, ItemStack stack) {
-        ItemStack left = pushItemOut(unit, stack);
-        unit.grid.setItemDirect(OUTPUT_SLOT, left);
+        return crafting.tickingRequest(node, ticksSinceLastCall);
     }
 
     @Override
@@ -869,55 +284,24 @@ public class PatternDiskAssemblerBlockEntity extends AENetworkedBlockEntity
     @Override
     public void saveAdditional(CompoundTag tag, net.minecraft.core.HolderLookup.Provider registries) {
         super.saveAdditional(tag, registries);
-        for (int i = 0; i < THREADS; i++) {
-            units[i].grid.writeToNBT(tag, "unit" + i, registries);
-            units[i].patternInv.writeToNBT(tag, "unitPattern" + i, registries);
-            tag.putDouble("unitProgress" + i, units[i].progress);
-        }
-        upgrades.writeToNBT(tag, "upgrades", registries);
+        crafting.writeToNbt(tag, registries);
     }
 
     @Override
     public void loadTag(CompoundTag tag, net.minecraft.core.HolderLookup.Provider registries) {
         super.loadTag(tag, registries);
-        for (int i = 0; i < THREADS; i++) {
-            units[i].grid.readFromNBT(tag, "unit" + i, registries);
-            units[i].patternInv.readFromNBT(tag, "unitPattern" + i, registries);
-            units[i].progress = tag.getDouble("unitProgress" + i);
-        }
-        upgrades.readFromNBT(tag, "upgrades", registries);
+        crafting.readFromNbt(tag, registries);
     }
 
     @Override
     public void addAdditionalDrops(Level level, BlockPos pos, List<ItemStack> drops) {
         super.addAdditionalDrops(level, pos, drops);
-        for (int i = 0; i < THREADS; i++) {
-            for (int s = 0; s < units[i].grid.size(); s++) {
-                if (!units[i].grid.getStackInSlot(s).isEmpty()) {
-                    drops.add(units[i].grid.getStackInSlot(s));
-                }
-            }
-            if (!units[i].patternInv.isEmpty()) {
-                drops.add(units[i].patternInv.getStackInSlot(0));
-            }
-        }
-        for (int i = 0; i < upgrades.size(); i++) {
-            ItemStack u = upgrades.getStackInSlot(i);
-            if (!u.isEmpty()) {
-                drops.add(u);
-            }
-        }
+        crafting.addDrops(drops);
     }
 
     @Override
     public void clearContent() {
         super.clearContent();
-        for (var unit : units) {
-            unit.grid.clear();
-            unit.patternInv.clear();
-            unit.plan = null;
-            unit.progress = 0;
-        }
-        upgrades.clear();
+        crafting.clear();
     }
 }

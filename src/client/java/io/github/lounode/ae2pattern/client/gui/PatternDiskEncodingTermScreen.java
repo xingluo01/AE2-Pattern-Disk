@@ -1,22 +1,17 @@
 package io.github.lounode.ae2pattern.client.gui;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
-import java.util.function.BooleanSupplier;
-import java.util.function.Consumer;
 import java.util.Map;
+
 import org.anti_ad.mc.ipn.api.IPNPlayerSideOnly;
 import org.jetbrains.annotations.Nullable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import org.lwjgl.glfw.GLFW;
 
 import net.minecraft.ChatFormatting;
-import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -33,9 +28,8 @@ import guideme.PageAnchor;
 import appeng.api.behaviors.ContainerItemStrategies;
 import appeng.api.behaviors.EmptyingAction;
 import appeng.api.stacks.GenericStack;
-import appeng.client.gui.me.common.MEStorageScreen;
-import appeng.client.gui.me.common.StackSizeRenderer;
 import appeng.client.gui.WidgetContainer;
+import appeng.client.gui.me.common.StackSizeRenderer;
 import appeng.client.gui.style.Blitter;
 import appeng.client.gui.style.ScreenStyle;
 import appeng.client.gui.widgets.AETextField;
@@ -50,8 +44,6 @@ import appeng.parts.encoding.EncodingMode;
 
 import io.github.lounode.ae2pattern.AEPatternRegistries;
 import io.github.lounode.ae2pattern.client.sort.NaturalSort;
-import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
-import io.github.lounode.ae2pattern.common.menu.pattern.DiskMarkRules;
 import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskEncodingTermMenu;
 import io.github.lounode.ae2pattern.client.gui.DiskListPanel.DiskEntry;
 
@@ -77,7 +69,8 @@ import io.github.lounode.ae2pattern.client.gui.DiskListPanel.DiskEntry;
 public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen<PatternDiskEncodingTermMenu>
         implements NaturalSort.Provider {
 
-    // states.png (0,16,64,16) 四模式图标：合成/处理/锻造/切石
+    // states.png (16,0,16,8) 与 (208,224,36,20) 两组常量留在屏幕：前者给 init() 的显示开关用，后者给
+    // 构造期的 modeButton.setBackground 用。常规四档与三个额外档的图标已随档位组搬进 EncodingTierWidgets。
     /** NEO ECO 上传按钮的尺寸（neoecoae 的 UploadButton 构造里写死的 18×20）。 */
     static final int NEO_ECO_UPLOAD_BUTTON_WIDTH = 18;
     static final int NEO_ECO_UPLOAD_BUTTON_HEIGHT = 20;
@@ -87,33 +80,6 @@ public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen
 
     /** ExtendedAE Plus 上传按钮的尺寸：标准 1.0 缩放下的 16×16（它接在 ECO 按钮正下方，无间隙）。 */
     private static final int EXTENDED_AE_PLUS_UPLOAD_BUTTON_SIZE = 16;
-    private static final Blitter ICON_CRAFTING = Blitter
-            .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/states.png"))
-            .src(0, 16, 16, 16);
-    private static final Blitter ICON_PROCESSING = Blitter
-            .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/states.png"))
-            .src(16, 16, 16, 16);
-    private static final Blitter ICON_SMITHING = Blitter
-            .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/states.png"))
-            .src(32, 16, 16, 16);
-    private static final Blitter ICON_STONECUTTING = Blitter
-            .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/states.png"))
-            .src(48, 16, 16, 16);
-
-    // states.png (64,16,16,16)：高级编码模式的档位图标。装上高级样板编码器后，它才会进模式循环。
-    private static final Blitter ICON_ADVANCED = Blitter
-            .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/states.png"))
-            .src(64, 16, 16, 16);
-
-    // states.png (80,16,16,16)：雕凿编码模式的档位图标（紧接上一格的 16px 步长）。装上雕凿样板编码器后才会进循环。
-    private static final Blitter ICON_CHISELING = Blitter
-            .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/states.png"))
-            .src(80, 16, 16, 16);
-
-    // states.png (96,16,16,16)：过载编码模式的档位图标（同上一步长）。装上 AE2 Lightning Tech 后才会进循环。
-    private static final Blitter ICON_OVERLOADED = Blitter
-            .texture(ResourceLocation.parse("ae2_pattern_disk:textures/guis/states.png"))
-            .src(96, 16, 16, 16);
 
     // states.png (16,0,16,8)：左 8x8 = 强制列出全部磁盘（含无标记的），右 8x8 = 只列有标记的
     private static final Blitter ICON_SHOW_UNMARKED_ON = Blitter
@@ -133,8 +99,6 @@ public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen
 
     private final Map<EncodingMode, DiskEncodingModePanel> modePanels = new EnumMap<>(EncodingMode.class);
 
-    /** 额外档注册表（构造器里建好，之后只读）。加一档就在这里加一项。 */
-    private final List<ExtraTier> extraTiers;
     /** 高级编码模式面板。它不在 {@link EncodingMode} 里（那个枚举不可扩展），所以单拎一份。 */
     private final AdvancedEncodingPanel advancedPanel;
 
@@ -154,17 +118,6 @@ public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen
      */
     private final RightButtonColumn uploadColumn;
 
-    /** 上次写进模式选择钮的 tooltip 输入；变了才重建那几行文本，不必每帧新建。 */
-    private EncodingMode tooltipMode;
-
-    /**
-     * 上次提示语用的是哪个额外档（{@link #activeTier()} 的序号，-1 = 常规档）。
-     *
-     * <p>与 {@link #tooltipMode} 一起决定何时重写提示语。以前是每档一个 boolean（高/雕两个），
-     * 加第三档就得再加一个；现在收成一个序号，加档不用动这里。</p>
-     */
-    private int tooltipTier = -1;
-
     /**
      * 附加排序开关：按 mod 排序时出现的二级排序，默认开。按钮贴在 AE2 那枚「排序按」后面，只在
      * 「按 mod」那一档显示；状态与提示语由 {@link NaturalSortButton} 自己管，本屏只负责把它摆上去、
@@ -178,20 +131,17 @@ public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen
         return miniSearchField;
     }
 
-    /** 当前磁盘条目列表（含 serial，用于回调映射）。 */
-    private final List<DiskEntry> diskEntries = new ArrayList<>();
-
-    /** 已经填过的那次导入（菜单里的导入修订号）：搜索栏只在导入发生时填，见 updateBeforeRender。 */
-    private int seenImportRevision;
-
     /** 无标记磁盘的显示开关；每帧回写状态，否则点下去图标不会变。状态本体在菜单字段（服务端从宿主 logic 回读）。 */
     private StatesToggleButton showUnmarkedButton;
+
+    /** 档位 / 模式控件组：面板可见性、下拉、高亮与提示语的状态与派生都收在它里面。 */
+    private final EncodingTierWidgets tierWidgets;
+    /** 磁盘列表控件组：条目、过滤、写盘顺位与点击交互的状态都收在它里面。 */
+    private final EncodingDiskListWidgets diskWidgets;
 
     public PatternDiskEncodingTermScreen(PatternDiskEncodingTermMenu menu, Inventory playerInventory, Component title,
             ScreenStyle style) {
         super(menu, playerInventory, title, style);
-        // 与菜单对齐，不假设「新屏幕一定配新菜单」：万一菜单是复用的，开屏第一帧就不该把旧导入填回去。
-        this.seenImportRevision = menu.getCategoryImportRevision();
 
         // 注册 4 个模式面板
         for (var mode : EncodingMode.values()) {
@@ -230,34 +180,6 @@ public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen
         // 过载面板：与雕凿同款的条件挂载。它不占自己的槽位（面板上的行就是编辑区那些槽），
         // 所以没有上面那段「面板缺席就先把槽藏起来」的顾虑。
         this.overloadedPanel = createOverloadedPanel(widgets);
-
-        // 额外档注册表：图标/名称/面板/可用性/是否开/怎么开，五样各一处。下拉列表、互斥、
-        // 可见性、常规档高亮全从它派生（见 docs/ENCODING_MODES.md）。
-        // 面板在构造器里已全部建好，所以这张表可以一次定下来；表里的 available/active 是
-        // Supplier，每帧重新求值，不会因为菜单字段变化而变旧。
-        this.extraTiers = List.of(
-                new ExtraTier(ICON_ADVANCED,
-                        "gui.ae2_pattern_disk.encoding_terminal.advanced_mode",
-                        PatternDiskItem.ADVANCED_PROCESSING_PATTERN,
-                        this.advancedPanel,
-                        () -> getMenu().advancedModeAvailable,
-                        () -> getMenu().advancedMode,
-                        getMenu()::setAdvancedMode),
-                new ExtraTier(ICON_CHISELING,
-                        "gui.ae2_pattern_disk.encoding_terminal.chiseling_mode",
-                        PatternDiskItem.CHISELING_PATTERN,
-                        this.chiselingPanel,
-                        () -> getMenu().chiselingModeAvailable
-                                && PatternDiskEncodingTermMenu.CHISELING_TIER_ENABLED,
-                        () -> getMenu().chiselingMode,
-                        getMenu()::setChiselingMode),
-                new ExtraTier(ICON_OVERLOADED,
-                        "gui.ae2_pattern_disk.encoding_terminal.overloaded_mode",
-                        PatternDiskItem.OVERLOAD_PATTERN,
-                        this.overloadedPanel,
-                        () -> getMenu().overloadedModeAvailable,
-                        () -> getMenu().overloadedMode,
-                        getMenu()::setOverloadedMode));
 
         // 注册磁盘列表面板（管理终端不要这个面板：它把磁盘铺进自己的表里，复用面板只为共享搜索状态）
         this.diskListPanel = new DiskListPanel();
@@ -323,6 +245,12 @@ public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen
             menu.encode();
         });
         widgets.add("encodePattern", encodeBtn);
+
+        // 两块协作类在控件全部登记后建好：它们只收窄依赖（菜单、具体控件、一个回调），不持有本屏。
+        this.tierWidgets = new EncodingTierWidgets(menu, this.modeButton, this.modePanels,
+                this.advancedPanel, this.chiselingPanel, this.overloadedPanel);
+        this.diskWidgets = new EncodingDiskListWidgets(menu, this.diskListPanel, this.miniSearchField,
+                this.tierWidgets::currentPatternTypeId);
     }
 
     /**
@@ -498,132 +426,13 @@ public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
-    /** 常规四档的图标。 */
-    private static Blitter iconFor(EncodingMode mode) {
-        return switch (mode) {
-            case CRAFTING -> ICON_CRAFTING;
-            case PROCESSING -> ICON_PROCESSING;
-            case SMITHING_TABLE -> ICON_SMITHING;
-            case STONECUTTING -> ICON_STONECUTTING;
-        };
-    }
-
-    /**
-     * 一个额外档的全部声明。顺序 = 下拉列表里额外档的排列顺序。
-     *
-     * <p>{@code panel} 为 null 时该档不进下拉（面板缺席）；{@code available}/{@code active} 用
-     * Supplier 而不是即时值，因为它们是菜单字段，每帧都可能在变（升级槽里的卡被拿走、服务端回读等）。</p>
-     */
-    private record ExtraTier(
-            Blitter icon,
-            String nameKey,
-    /**
-     * 该档编出的样板物品 id，也就是磁盘类型锁里存的那个串（{@code PatternDiskContents.type}）。
-     *
-     * <p>用来判「这张盘固定住的类型就是当前档要编的那一类」——那比标记硬：写进去走的
-     * {@code PatternDiskContents.acceptsType} 就是同一个比较，类型锁相同就一定收得下。
-     * 三个额外档各有各的样板物品；常规四档不用填，它们的 id 由模式推得（见
-     * {@code DiskMarkRules.patternTypeForMode}）。</p>
-     *
-     * <p>值全部取自 {@code PatternDiskItem} 那组常量——那里是类型的单一事实源（“类型 ↔ tooltip
-     * 名字”那张表也用它），不要在这里另写一遍字面量。</p>
-     */
-            @Nullable String patternTypeId,
-            @Nullable DiskEncodingModePanel panel,
-            BooleanSupplier available,
-            BooleanSupplier active,
-            Consumer<Boolean> setter) {
-    }
-
-    /** 当前开着的是第几个额外档；都没开时返回 -1（即停在常规档）。 */
-    private int activeTier() {
-        for (int i = 0; i < this.extraTiers.size(); i++) {
-            if (this.extraTiers.get(i).active().getAsBoolean()) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
-    /** 模式钮上画哪个图标：停在额外档就用那一档的图标，否则用常规档的。 */
+    // 模式钮在构造期绑定的两个方法引用：实现与状态都在档位控件组里，本屏只留这一行转调。
     private Blitter currentModeIcon() {
-        var tier = activeTier();
-        return tier >= 0 ? this.extraTiers.get(tier).icon() : iconFor(getMenu().getMode());
+        return tierWidgets.currentModeIcon();
     }
 
     private List<ModeDropdownButton.Choice> modeChoices() {
-        var currentMode = getMenu().getMode();
-        // 常规档是否高亮：只要**没有任何**额外档开着。不要展开成 !a && !b && !c——加一档必漏，
-        // 漏了就不是「哪个高亮」的问题：过载档下常规档会同时显示选中，看上去像两档叠着开。
-        var regular = !anyExtraTierActive();
-
-        var choices = new ArrayList<ModeDropdownButton.Choice>();
-        for (var mode : EncodingMode.values()) {
-            choices.add(new ModeDropdownButton.Choice(
-                    iconFor(mode),
-                    modeName(mode),
-                    regular && currentMode == mode,
-                    () -> pickMode(mode)));
-        }
-        // 额外档在四个常规档后面，顺序就是 extraTiers 里的顺序；面板缺席或当前不可用的不进列表。
-        for (int i = 0; i < this.extraTiers.size(); i++) {
-            var tier = this.extraTiers.get(i);
-            if (tier.panel() == null || !tier.available().getAsBoolean()) {
-                continue;
-            }
-            var index = i;
-            choices.add(new ModeDropdownButton.Choice(
-                    tier.icon(),
-                    Component.translatable(tier.nameKey()),
-                    tier.active().getAsBoolean(),
-                    () -> pickExtraTier(index)));
-        }
-        return choices;
-    }
-
-    /**
-     * 直接点到某个常规档。
-     *
-     * <p>档位与那两个额外开关要在**同一帧内**全部落定，否则屏幕会看见一个中间态：{@code mode} 是
-     * {@code @GuiSync} 的服务端权威字段，{@code setMode} 在客户端只发包、不本地改，要等一个往返才切过去；
-     * 而 {@code advancedMode} / {@code chiselingMode} 在客户端是立即生效的。两者不同步，从额外档切到常规档
-     * 时就会先回落到上一次的常规档去（等往返才到目标），看起来像「闪了一下」。所以最后补一句本地赋值。
-     * AE2 自己不必补，是因为它四个档全走 {@code mode}，切换只是单次延迟、不存在中间态。</p>
-     *
-     * <p>赋值必须在 {@code setMode} <b>之后</b>：那个方法内部要读 {@code this.mode != mode} 来决定是否
-     * 重算切石配方，先改本地值会把那一步跳过。</p>
-     */
-    private void pickMode(EncodingMode mode) {
-        closeAllExtraTiers();
-        getMenu().setMode(mode);
-        // 等一个往返才切过去的话，从额外档回来时会先回落到上一次的常规档，中间那一下看着像「闪了一下」。
-        getMenu().mode = mode;
-    }
-
-    /**
-     * 切到某一个额外档。
-     *
-     * <p>互斥由 {@link #closeAllExtraTiers()} 统一收：**不要**在这一档里手动去清另外两个
-     * ——那是 O(n²)，加一档必漏（上一版就漏了回常规档与进高级档两处，前者让编辑区一片空白、
-     * 后者让两块同坐标的面板叠画）。</p>
-     */
-    private void pickExtraTier(int index) {
-        closeAllExtraTiers();
-        this.extraTiers.get(index).setter().accept(true);
-    }
-
-    /** 收掉所有开着的额外档。只对真正开着的那个发关闭，免得平白多发一次客户端动作。 */
-    private void closeAllExtraTiers() {
-        for (var tier : this.extraTiers) {
-            if (tier.active().getAsBoolean()) {
-                tier.setter().accept(false);
-            }
-        }
-    }
-
-    /** 当前是否停在某个额外档上（常规档的高亮与可见性都看它）。 */
-    private boolean anyExtraTierActive() {
-        return activeTier() >= 0;
+        return tierWidgets.modeChoices();
     }
 
     @Override
@@ -640,48 +449,8 @@ public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen
             this.naturalSortButton.update(getSortBy());
         }
 
-        // 模式选择钮的提示语：第一行就是它现在所处的档位，第二行说明点它会发生什么。
-        // 额外档不在 EncodingMode 里，但它们同样是一次「当前在哪儿」，所以一并跟。
-        var mode = menu.getMode();
-        var tierIndex = activeTier();
-        if (mode != this.tooltipMode || tierIndex != this.tooltipTier) {
-            this.tooltipMode = mode;
-            this.tooltipTier = tierIndex;
-            this.modeButton.setTooltip(List.of(
-                    tierIndex >= 0
-                            ? Component.translatable(this.extraTiers.get(tierIndex).nameKey())
-                            : modeName(mode),
-                    Component.translatable("gui.ae2_pattern_disk.encoding_terminal.mode_cycle")));
-        }
-
-        // 根据当前模式切换面板可见性。额外档是并列的：任一开着时四个常规面板全让位。
-        var currentMode = menu.getMode();
-        var regular = !anyExtraTierActive();
-        for (var entry : modePanels.entrySet()) {
-            entry.getValue().setVisible(regular && entry.getKey() == currentMode);
-        }
-        for (var tier : this.extraTiers) {
-            if (tier.panel() != null) {
-                tier.panel().setVisible(tier.active().getAsBoolean());
-            }
-        }
-
-        // 刷新磁盘列表（过滤 PatternDiskItem + 搜索过滤）。
-        // 搜索栏的自动填充只跟「导入配方」有关：JEI/EMI 配方页点「编写样板」那一刻在菜单里记一次修订号，
-        // 这里跟着填。绑定标记、切换模式、放样板回流同样会改掉标记的值，但它们都不该动玩家正在用的搜索
-        // 条件——判据是「发生了导入」，而不是「标记值变了」（后者曾把右键写标记也变成改写搜索框）。
-        var importRevision = menu.getCategoryImportRevision();
-        if (importRevision != seenImportRevision) {
-            seenImportRevision = importRevision;
-            // 用导入当场记下的类别，而不是此刻的「当前类别」：后者可能已被右键（光标上的工作方块）改掉，或被
-            // 切模式清空。类别为空时不填——那会退回模式标记（#mode:...），不是导入者想要的筛选词。
-            var imported = menu.getLastImportedCategory();
-            if (imported != null && !imported.isEmpty()) {
-                miniSearchField.setValue(DiskEntryFilter.markSearchTerm("#" + imported));
-            }
-        }
-
-        updateDiskEntries();
+        tierWidgets.updateBeforeRender();
+        diskWidgets.updateBeforeRender();
     }
 
     /**
@@ -693,258 +462,45 @@ public class PatternDiskEncodingTermScreen extends AbstractPatternDiskTermScreen
         return this.naturalSortButton != null && this.naturalSortButton.isEnabled();
     }
 
-    /** 当前所属的配方类型名；模式轮换按钮拿它当提示语的第一行。 */
-    private static Component modeName(EncodingMode mode) {
-        return switch (mode) {
-            case CRAFTING -> Component.translatable("ae2_pattern_disk.tooltip.type.crafting");
-            case PROCESSING -> Component.translatable("ae2_pattern_disk.tooltip.type.processing");
-            case SMITHING_TABLE -> Component.translatable("ae2_pattern_disk.tooltip.type.smithing");
-            case STONECUTTING -> Component.translatable("ae2_pattern_disk.tooltip.type.stonecutting");
-        };
-    }
-
-    // ---- 磁盘列表数据 --------------------------------------------------------
-
-    /**
-     * 从服务端同步的磁盘列表（供应器磁盘槽扫描结果）构建磁盘条目，应用配方前缀过滤与迷你搜索过滤，
-     * 并传递给磁盘列表面板。
-     */
-    private void updateDiskEntries() {
-        diskEntries.clear();
-
-        // 磁盘来自服务端扫描的供应器磁盘槽（DiskListPayload 同步）
-        for (var entry : menu.getDiskList()) {
-            var stack = entry.stack();
-            if (!(stack.getItem() instanceof PatternDiskItem disk)) continue;
-
-            var contents = disk.contents(stack);
-            diskEntries.add(new DiskEntry(
-                    stack,
-                    stack.getHoverName().getString(),
-                    contents.used(),
-                    contents.capacity(),
-                    1,
-                    entry.serial()));
-        }
-
-        // 搜索过滤：**没有搜索条件就什么都不剔除**（含无标记的空盘）——这是「常态显示」的字面意思，也是旧
-        // 实现写错的地方（它不带任何搜索条件也按标记默认剔一遍）。
-        //
-        // 一个搜索条件只筛它自己那一维：名字搜索只比名字（无标记的盘照常参与，它也有名字），`#` 标记搜索
-        // 只比标记（无标记的盘没东西可匹配，自然不出现）。开关打开 = 无标记的盘不受本次搜索约束，一律留下。
-        // 输入先 strip，免得一串空格被当成搜索条件把列表清空。
-        var query = diskSearchQuery();
-        if (query.isActive()) {
-            diskEntries.removeIf(d -> !DiskEntryFilter.keep(d, query, menu.isShowUnmarkedDisks()));
-        }
-
-        // 没有搜索条件时什么都不剔除（含无标记的空盘）——规则写在上面那段注释里。
-
-        // 按显示名排序
-        diskEntries.sort(Comparator.comparing(DiskEntry::displayName));
-
-        // 传给面板
-        diskListPanel.setDiskEntries(List.copyOf(diskEntries));
-
-        // 编码按钮要不要直接落盘。这一步必须等过滤做完：玩家点按钮时看到的就是这份列表，早一帧算出来就可能
-        // 把目标算成此刻已经看不到的那张盘。
-        // ① 写了 `@order`/`@顺位`：按列表顺序把一张填满再下一张；
-        // ② 其余：默认按剩余空间挑（大容量盘优先填）——**搜索只负责“剩哪几张”，不改变“写哪张”**。
-        //    tierGroupByUsage 遍历的就是已过滤的 diskEntries，所以“筛出两张、在这两张里挑少的”天然成立。
-        long[] autoDisks;
-        if (query.preferOrder()) {
-            autoDisks = capCandidates(diskEntries.stream().mapToLong(DiskListPanel.DiskEntry::serial).toArray());
-        } else {
-            autoDisks = tierGroupByUsage();
-        }
-        menu.setClientAutoDisks(autoDisks);
-    }
-
-    /**
-     * 这张盘是不是「当前档位编出的样板」的候选目标：可能落盘，且判断只认盘自己的东西，不猜显示名。
-     *
-     * <p><b>判据只有一条：这张盘属于的那类样板 == 当前档位编出的那类。</b>而「属于哪类」两个来源有主次：</p>
-     *
-     * <ol>
-     * <li>盘自己的标记（{@code DISK_PREFIX}）——玩家的组织意图，优先级高，按标记反查它代表哪类样板；</li>
-     * <li>没打过标记时，用它锁定的类型——类型是数据事实，这里当默认值。</li>
-     * </ol>
-     *
-     * <p><b>为什么锚点是样板类型而不是标记字面量</b>：标记是类型的一种写法（{@code #minecraft:crafting}
-     * 或 {@code #mode:crafting} 都是「合成类」），两者在 {@code DiskMarkRules} 里已经可互转。拿标记字面量
-     * 当锚点会掉进两个坑：玩家右键打标写的任意文本没有对应类型（得判无效），而高级/过载档没有专属标记
-     * （于是锁了这两类类型、却没打过标记的盘就被排除——写盘侧它们盖的只是继承来的常规档标记）。以类型为锚点，
-     * 两边都自然对上。</p>
-     *
-     * <p>判不出来的一律不算（否则每张空盘都会来抢）：空盘既没标记也没锁类型；玩家写了个认不出的标记
-     * （如「铁厂」）；万象那个类型尚未接编码，反推不出档位。</p>
-     */
-    private boolean isInCurrentTierGroup(DiskEntry entry) {
-        var type = tierTypeOf(entry);
-        return type != null && type.equals(currentPatternTypeId());
-    }
-
-    /**
-     * 这张盘归到哪一类样板：认得出的标记优先（玩家的组织意图），否则退回它锁定的类型。
-     *
-     * <p><b>退回而不是排除</b>：标记认不出（玩家自定义文本，或处理档导入的 `#<非规范类别>` 如
-     * {@code #minecraft:smelting}）时，那张盘不能因此就进不了组——它的类型锁很可能正好能收当前样板。
-     * 后果就是上面那句「盘明明对得上、点编写样板却没反应」。</p>
-     *
-     * <p>两个来源都拿不到时返回 null：空盘（既没标记也没锁类型）。反查链在
-     * {@code DiskMarkRules.patternTypeForMark}：雕凿的固定字面量、{@code #mode:<模式>} 与
-     * {@code #<配方类别>} 三种写法都认。</p>
-     */
-    @Nullable
-    private String tierTypeOf(DiskEntry entry) {
-        var raw = entry.stack().get(AEPatternRegistries.DISK_PREFIX.get());
-        if (raw != null && !raw.isEmpty()) {
-            var byMark = DiskMarkRules.patternTypeForMark(raw);
-            // 认得出的标记优先（玩家/导入留下的组织意图）；**认不出的不屏蔽类型兜底**，否则下面这种盘就没法用了：
-            // 导入一条熔炉配方会把 {@code #minecraft:smelting} 写进标记，而处理档没有规范类别（{@code
-            // categoryForMode} 返回 null），反查不出类型——那张盘类型锁明明是处理样板、却进不了处理组，
-            // 症状正是「盘明明对得上、点编写样板却没反应」。
-            if (byMark != null) {
-                return byMark;
-            }
-        }
-        // 没标记，或标记认不出：用它锁定的类型——类型是数据事实，这里当默认值。
-        return lockedTypeOf(entry);
-    }
-
-    /** 这张盘锁定的样板类型；它不是磁盘、或还是空盘（未锁定）时返回 null。 */
-    @Nullable
-    private static String lockedTypeOf(DiskEntry entry) {
-        return entry.stack().getItem() instanceof PatternDiskItem disk
-                ? disk.contents(entry.stack()).type()
-                : null;
-    }
-
-    /**
-     * 当前档位编出的样板物品 id——本档判「哪张盘属于我这一组」的锚点。
-     *
-     * <p>额外档各问自己注册表里那一格（雕凿/高级/过载各有各的样板物品，且它们的 {@code mode} 停在
-     * 进入本档之前那个常规档，直接问 {@code getMode()} 会答错）；常规四档由模式推，值与映射都在
-     * {@code DiskMarkRules}。</p>
-     */
-    private String currentPatternTypeId() {
-        // 额外档优先：雕凿/高级/过载档下 mode 仍停着「进入本档之前那个常规档」，直接问它会答错。
-        var tier = activeTier();
-        return tier >= 0
-                ? this.extraTiers.get(tier).patternTypeId()
-                : DiskMarkRules.patternTypeForMode(menu.getMode());
-    }
-
-    /**
-     * 没搜索条件时的写盘候选：当前档位那一组盘，<b>按剩余空间降序</b>全部列出。
-     *
-     * <p>写进还剩得最多的那张（大容量盘优先填），而不是要求全网只剩一张：让玩家为了写一枚样板
-     * 先去把其他盘搜掉、或点中某一张，是没有理由的负担。</p>
-     *
-     * <p><b>“逐张试”不在这里做</b>：列表交给菜单的 {@code transferToFirstWritable}，它按这个顺序逐张
-     * 试，第一张能收的就收了。所以「剩余最多」只是候选顺序，不是唯一目标——写不进自然顺位到次多的
-     * 那张，而「能不能写」由那里的 {@code PatternDiskItem.tryInsert} 说了算（容量 / 类型锁 / 主产物
-     * 互斥），不在本方法里预判：判它得先有编好的样板，而这份候选是在编码之前算的。</p>
-     *
-     * <p><b>两个终端共用</b>：管理终端的写盘目标多半来自右键选中的那张盘，但在「没选中、也没搜索」
-     * 那一格上它走的是本方法。</p>
-     */
-    protected long[] tierGroupByUsage() {
-        var matched = new ArrayList<DiskEntry>();
-        for (var entry : diskEntries) {
-            if (isInCurrentTierGroup(entry)) {
-                matched.add(entry);
-            }
-        }
-        // 剩余空间降序：还剩得多的那张先写（大容量盘优先填）。平手时保持列表原序（显示名序）——
-        // 稳定，不会每次刷新换一张盘。想改成沿列表顺序依次填满，写 {@code @order} 修饰词。
-        matched.sort(Comparator.comparingInt((DiskEntry entry) -> entry.capacity() - entry.used()).reversed());
-        var serials = new long[matched.size()];
-        for (int i = 0; i < serials.length; i++) {
-            serials[i] = matched.get(i).serial();
-        }
-        return capCandidates(serials);
-    }
-
-    // ---- 磁盘列表交互 --------------------------------------------------------
+    // 以下磁盘列表方法的实现与状态都在 EncodingDiskListWidgets；本屏只保留给子类（管理终端）复用的
+    // protected 签名，一行转调。原有各方法的说明与注释随实现一并搬到了协作类。
 
     /** 子类（管理终端）用：把「磁盘序列号」映射到本屏幕列表里的下标，好复用下面的点击交互。 */
     protected int indexOfDisk(long serial) {
-        for (int i = 0; i < diskEntries.size(); i++) {
-            if (diskEntries.get(i).serial() == serial) {
-                return i;
-            }
-        }
-        return -1;
+        return diskWidgets.indexOfDisk(serial);
     }
-
-    /** 没有写盘目标时传给服务端的哨兵（空数组 = 这次编码不自动写盘）。 */
-    private static final long[] NO_DISKS = new long[0];
-
-    /**
-     * 客户端动作的参数有 32767 字符的硬上限（AE2 的 {@code AEBaseMenu}），候选整表上传时超了会在
-     * 点击处抛异常。顺位到 {@link #MAX_AUTO_DISKS} 张早已超出实用范围，更长的候选只会变成一条超长消息。
-     */
-    private static final int MAX_AUTO_DISKS = 256;
 
     /** 把候选截到可发送的长度内。 */
     protected static long[] capCandidates(long[] serials) {
-        return serials.length <= MAX_AUTO_DISKS ? serials : java.util.Arrays.copyOf(serials, MAX_AUTO_DISKS);
+        return EncodingDiskListWidgets.capCandidates(serials);
     }
 
-    /** 磁盘搜索框里有没有内容；编码与管理的自动写盘都按它决定要不要顺位。 */
-    /**
-     * 当前搜索栏的解析结果。筛选与写入策略共用这一份，避免两处各解析一次而分叉。
-     *
-     * <p>它比 {@link #isDiskSearchActive()} 多分出一层：那边只问「有没有内容」，这边还分出
-     * 「{@code @order} 一类修饰词」（见 {@link DiskEntryFilter#stripModifiers}）。修饰词只改写入策略，
-     * 不是筛选条件——所以 {@code DiskEntryFilter.Query.isActive()} 不看它。</p>
-     */
+    /** 当前搜索栏的解析结果（说明与筛选口径见 EncodingDiskListWidgets#diskSearchQuery）。 */
     protected DiskEntryFilter.Query diskSearchQuery() {
-        return DiskEntryFilter.Query.of(diskListPanel.getSearchText());
+        return diskWidgets.diskSearchQuery();
     }
 
     protected boolean isDiskSearchActive() {
-        var search = miniSearchField().getValue();
-        return search != null && !search.isBlank();
+        return diskWidgets.isDiskSearchActive();
     }
 
     /** 子类用：过滤后列表里第 {@code index} 张盘的条目；越界返回 {@code null}。 */
     protected @Nullable DiskEntry diskEntryAt(int index) {
-        return index >= 0 && index < diskEntries.size() ? diskEntries.get(index) : null;
+        return diskWidgets.diskEntryAt(index);
     }
 
     protected void onDiskClick(int index) {
-        var entry = getDiskEntryAt(index);
-        if (entry != null) {
-            menu.transferToDisk(entry.serial());
-        }
+        diskWidgets.onDiskClick(index);
     }
 
-    /**
-     * 用搜索栏里写的那个标记覆写这张盘的标记。它不依赖“当前导入的配方类型”，所以玩家可以先搜出某类
-     * 磁盘，再把同一个标记标到别的盘上。搜索栏为空时反过来清掉这张盘的标记。
-     *
-     * <p>手势：编码终端的磁盘列表右键；管理终端磁盘格 Shift+右键。</p>
-     */
+    /** 用搜索栏里的标记覆写该盘标记（说明见 EncodingDiskListWidgets#overwriteMarkFromSearch）。 */
     protected void overwriteMarkFromSearch(int index) {
-        var entry = getDiskEntryAt(index);
-        if (entry == null) {
-            return;
-        }
-        // 搜索栏为空 = 没有标记可打，那就把这张盘已有的标记去掉。
-        // 先剥掉 `@order` 一类修饰词：它是写入策略，不该被写进磁盘标记。
-        var search = DiskEntryFilter.stripModifiers(diskListPanel.getSearchText());
-        menu.setPendingMarkText(search);
-        menu.bindSearchMark(entry.serial());
+        diskWidgets.overwriteMarkFromSearch(index);
     }
 
-    @Nullable
-    private DiskEntry getDiskEntryAt(int index) {
-        if (index < 0 || index >= diskEntries.size()) {
-            return null;
-        }
-        return diskEntries.get(index);
+    /** 没搜索条件时的写盘候选（说明见 EncodingDiskListWidgets#tierGroupByUsage）。 */
+    protected long[] tierGroupByUsage() {
+        return diskWidgets.tierGroupByUsage();
     }
 
     // ---- 过滤槽交互 ----------------------------------------------------------

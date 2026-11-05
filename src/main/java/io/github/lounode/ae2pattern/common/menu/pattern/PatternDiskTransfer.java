@@ -8,8 +8,8 @@ import appeng.api.crafting.PatternDetailsHelper;
 import org.jetbrains.annotations.Nullable;
 
 import io.github.lounode.ae2pattern.common.item.PatternDiskItem;
-import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskEncodingTermMenu.ExtractRequest;
-import io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskEncodingTermMenu.ExtractTarget;
+import io.github.lounode.ae2pattern.common.menu.pattern.EncodingTermStateMenu.ExtractRequest;
+import io.github.lounode.ae2pattern.common.menu.pattern.EncodingTermStateMenu.ExtractTarget;
 
 /**
  * 样板磁盘的写入与取出：编码槽 ↔ 网络里那些盘。

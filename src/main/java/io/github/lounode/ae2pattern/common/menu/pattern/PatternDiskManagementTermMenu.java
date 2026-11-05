@@ -70,19 +70,8 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(PatternDiskManagementTermMenu.class);
 
-    /** 客户端侧：服务端推送的分组清单（Screen 每帧读）。 */
-    private List<DiskHostListPayload.HostGroup> hostList = List.of();
-
-    /** 客户端侧：服务端最近一次是按哪种显示模式筛的清单，屏幕用它回显按钮图标。 */
-    private ShowPatternProviders shownProviders = ShowPatternProviders.VISIBLE;
-    /** 服务端下发的“是否隐藏空槽位”当前值（屏幕开关的初值，不再由客户端自行默认）。 */
-    private boolean viewHideEmptySlots = true;
-    /** 服务端下发的当前选中盘序列号，0 = 未选中。 */
-    private long viewSelectedSerial;
-    /** 服务端下发的样板内容搜索范围（新搜索栏那枚轮换按钮的当前档）。 */
-    private DiskEncodingLogic.SearchScope viewSearchScope = DiskEncodingLogic.SearchScope.BOTH;
-    /** 服务端下发的「附加排序」开关当前值。 */
-    private boolean viewNaturalSort = true;
+    /** 客户端视图状态与内容缓存：服务端下发的清单、五元组与按需内容都镜像在这里。 */
+    private final DiskClientView clientView = new DiskClientView();
 
     private static final String ACTION_INSERT_DISK = "insertDisk";
     private static final String ACTION_STORE_INVENTORY_DISK = "storeInventoryDisk";
@@ -93,14 +82,10 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
     /** 分组键（显示名）→ 该组里所有能收下盘的宿主：同名容器合成一组，存盘时要从组里挑一台还有空槽的。 */
     private final Map<String, List<IPatternDiskHost>> hostsByName = new HashMap<>();
 
-    /** 客户端侧：按序列号缓存的磁盘内容（Screen 每帧读）。 */
-    private final Long2ObjectOpenHashMap<List<ItemStack>> diskContents = new Long2ObjectOpenHashMap<>();
-
-    /** 服务端侧：客户端当前可见的磁盘，由 {@link VisibleDisksPayload} 上报。 */
-    private final LongSet visibleDisks = new LongOpenHashSet();
-
-    /** 服务端侧：上次推送内容时的指纹，用来避免滚动一下就把整盘重发一遍。 */
-    private final Long2IntOpenHashMap sentContentFingerprints = new Long2IntOpenHashMap();
+    /** 服务端侧：客户端可见集合与内容推送（状态在协作类里，菜单只给三个回调）。 */
+    private final DiskContentSync contentSync = new DiskContentSync(
+            serial -> diskHostOf(serial), serial -> diskSlotOf(serial),
+            payload -> sendPacketToClient(payload));
 
     /** 服务端侧：上次推送分组清单时的显示模式，换档就重推一次。 */
     private ShowPatternProviders lastShowPatternProviders = ShowPatternProviders.VISIBLE;
@@ -250,9 +235,9 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
         pushHostList(entries);
 
         // 清单变了（换盘、加机器）：内容指纹作废，免得新盘拿旧内容顶数。
-        sentContentFingerprints.clear();
+        contentSync.clearFingerprints();
         if (!isClientSide()) {
-            syncVisibleDiskContents();
+            contentSync.syncVisibleDiskContents();
         }
     }
 
@@ -396,7 +381,7 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
             }
         }
 
-        syncVisibleDiskContents();
+        contentSync.syncVisibleDiskContents();
     }
 
     // ---- 客户端侧：接收 ----
@@ -404,32 +389,27 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
     public void receiveHostList(List<DiskHostListPayload.HostGroup> hosts, ShowPatternProviders shownProviders,
             boolean hideEmptySlots, long selectedSerial, DiskEncodingLogic.SearchScope searchScope,
             boolean naturalSort) {
-        this.hostList = List.copyOf(hosts);
-        this.shownProviders = shownProviders;
-        this.viewHideEmptySlots = hideEmptySlots;
-        this.viewSelectedSerial = selectedSerial;
-        this.viewSearchScope = searchScope;
-        this.viewNaturalSort = naturalSort;
+        clientView.receiveHostList(hosts, shownProviders, hideEmptySlots, selectedSerial, searchScope, naturalSort);
     }
 
     /** 屏幕开屏时读它恢复「附加排序」开关。 */
     public boolean viewNaturalSort() {
-        return this.viewNaturalSort;
+        return clientView.viewNaturalSort();
     }
 
     /** 屏幕开屏时读它恢复样板内容搜索范围。 */
     public DiskEncodingLogic.SearchScope viewSearchScope() {
-        return this.viewSearchScope;
+        return clientView.viewSearchScope();
     }
 
     /** 屏幕开屏时读它初始化「隐藏空槽位」开关，保证重开回到上次的值。 */
     public boolean viewHideEmptySlots() {
-        return this.viewHideEmptySlots;
+        return clientView.viewHideEmptySlots();
     }
 
     /** 屏幕开屏时读它恢复选中的那张盘（0 = 未选中）。 */
     public long viewSelectedSerial() {
-        return this.viewSelectedSerial;
+        return clientView.viewSelectedSerial();
     }
 
     /**
@@ -444,40 +424,18 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
             DiskEncodingLogic.SearchScope searchScope, boolean naturalSort,
             ShowPatternProviders shownProviders) {
         sendClientAction(ACTION_VIEW_STATE,
-                hideEmptySlots + ";" + selectedSerial + ";" + searchScope.name() + ";" + naturalSort
-                        + ";" + shownProviders.name());
+                DiskClientView.encodeViewState(hideEmptySlots, selectedSerial, searchScope, naturalSort,
+                        shownProviders));
     }
 
     /** 服务端侧：解析 {@link #sendViewStateToServer} 发来的五元组；旧口径的四元组（无显示模式）照样收。 */
     private void applyViewStateEncoded(String encoded) {
-        var parts = encoded.split(";", -1);
-        if (parts.length < 4) {
+        var state = DiskClientView.decodeViewState(encoded, getShownProviders());
+        if (state == null) {
             return;
         }
-        var scope = DiskEncodingLogic.SearchScope.BOTH;
-        try {
-            scope = DiskEncodingLogic.SearchScope.valueOf(parts[2]);
-        } catch (IllegalArgumentException ignored) {
-            // 档位名读不回来就用默认，不让一个坏值把状态卡死。
-        }
-        long serial = 0L;
-        try {
-            serial = Long.parseLong(parts[1]);
-        } catch (NumberFormatException ignored) {
-            // 同上。
-        }
-        // 旧口径的四元组（或第 5 段是坏值）一律**沿用当前档**，不要退回写死的默认档——
-        // 否则混版时每一条视图动作都会把玩家已选的 ALL / NOT_FULL 静默重置成 VISIBLE。
-        var shownProviders = getShownProviders();
-        if (parts.length > 4) {
-            try {
-                shownProviders = ShowPatternProviders.valueOf(parts[4]);
-            } catch (IllegalArgumentException ignored) {
-                // 读不回来就继续沿用当前档。
-            }
-        }
-        applyViewState(Boolean.parseBoolean(parts[0]), serial, scope, Boolean.parseBoolean(parts[3]),
-                shownProviders);
+        applyViewState(state.hideEmptySlots(), state.selectedSerial(), state.searchScope(),
+                state.naturalSort(), state.shownProviders());
     }
 
     /** 旧口径的入口（不发显示模式）：档位沿用服务端当前值。 */
@@ -506,87 +464,27 @@ public class PatternDiskManagementTermMenu extends PatternDiskEncodingTermMenu {
 
     /** 服务端最近一次筛清单用的显示模式；屏幕拿它回显按钮图标。 */
     public ShowPatternProviders shownProviders() {
-        return shownProviders;
+        return clientView.shownProviders();
     }
 
     public List<DiskHostListPayload.HostGroup> getHostList() {
-        return hostList;
+        return clientView.getHostList();
     }
 
     public void receiveDiskContents(List<DiskContentPayload.Entry> entries) {
-        for (var entry : entries) {
-            diskContents.put(entry.serial(), List.copyOf(entry.patterns()));
-        }
-        // 清单里已经没有的盘丢掉缓存，否则一张被换走的盘会一直留着旧内容。
-        var live = new LongOpenHashSet();
-        for (var group : hostList) {
-            for (var disk : group.disks()) {
-                live.add(disk.serial());
-            }
-        }
-        diskContents.keySet().removeIf(serial -> !live.contains(serial));
+        clientView.receiveDiskContents(entries);
     }
 
     /** @return the cached patterns of {@code serial}, or {@code null} when the server has not sent them yet. */
     @Nullable
     public List<ItemStack> getDiskContents(long serial) {
-        return diskContents.get(serial);
+        return clientView.getDiskContents(serial);
     }
 
     // ---- 服务端侧：可见集合与内容推送 ----
 
     public void receiveVisibleDisks(List<Long> serials) {
-        visibleDisks.clear();
-        for (long serial : serials) {
-            if (visibleDisks.size() >= VisibleDisksPayload.MAX_SERIALS) {
-                break;
-            }
-            visibleDisks.add(serial);
-        }
-        // 不再可见的盘丢掉指纹：它再回到视野里时要重发一次，而不是拿旧内容顶数。
-        sentContentFingerprints.keySet().removeIf(serial -> !visibleDisks.contains(serial));
-    }
-
-    private void syncVisibleDiskContents() {
-        if (visibleDisks.isEmpty()) {
-            return;
-        }
-
-        var entries = new ArrayList<DiskContentPayload.Entry>();
-        for (var iterator = visibleDisks.iterator(); iterator.hasNext();) {
-            long serial = iterator.nextLong();
-            var host = diskHostOf(serial);
-            int slot = diskSlotOf(serial);
-            if (host == null || slot < 0) {
-                continue;
-            }
-
-            var stack = host.getDiskInventory().getStackInSlot(slot);
-            if (!(stack.getItem() instanceof PatternDiskItem diskItem)) {
-                continue;
-            }
-
-            var patterns = diskItem.contents(stack).patterns();
-            int fingerprint = contentFingerprint(patterns);
-            int stored = sentContentFingerprints.get(serial);
-            if (sentContentFingerprints.containsKey(serial) && stored == fingerprint) {
-                continue;
-            }
-            sentContentFingerprints.put(serial, fingerprint);
-            entries.add(new DiskContentPayload.Entry(serial, List.copyOf(patterns)));
-        }
-
-        if (!entries.isEmpty()) {
-            sendPacketToClient(new DiskContentPayload(entries));
-        }
-    }
-
-    private static int contentFingerprint(List<ItemStack> patterns) {
-        int hash = patterns.size();
-        for (var stack : patterns) {
-            hash = hash * 31 + ItemStack.hashItemAndComponents(stack) * 31 + stack.getCount();
-        }
-        return hash;
+        contentSync.receiveVisibleDisks(serials);
     }
 
     // ---- 服务端侧：宿主的显示名与图标 ----
