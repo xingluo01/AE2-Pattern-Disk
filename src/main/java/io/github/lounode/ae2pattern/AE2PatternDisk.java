@@ -11,6 +11,8 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import net.neoforged.neoforge.registries.RegisterEvent;
 
 import io.github.lounode.ae2pattern.common.AEPatternDiskCapabilities;
+import io.github.lounode.ae2pattern.integration.insaneae.InsaneAEIntegration;
+import io.github.lounode.ae2pattern.integration.insaneae.InsaneAESoftDep;
 import io.github.lounode.ae2pattern.integration.omnisequence.OmniSequenceIntegration;
 import io.github.lounode.ae2pattern.integration.omnisequence.OmniSequenceSoftDep;
 import io.github.lounode.ae2pattern.network.AssemblerAnimationPayload;
@@ -33,6 +35,8 @@ import io.github.lounode.ae2pattern.integration.ae2cs.AecsSoftDep;
 import io.github.lounode.ae2pattern.integration.ae2cs.resonating.ResonatingPatternDiskProviderBlockEntity;
 import io.github.lounode.ae2pattern.integration.ae2cs.resonating.ResonatingPatternDiskProviderRegistrations;
 import io.github.lounode.ae2pattern.integration.ae2lt.OverloadPatterns;
+import io.github.lounode.ae2pattern.integration.ae2lt.batch.ThunderboltBatchIntegration;
+import io.github.lounode.ae2pattern.integration.ae2lt.batch.ThunderboltBatchSoftDep;
 import io.github.lounode.ae2pattern.integration.advancedae.AdvancedPatternEncoder;
 import io.github.lounode.ae2pattern.integration.appflux.AppFluxInductionCard;
 import io.github.lounode.ae2pattern.integration.rechiseledae.ChiselingPatternEncoder;
@@ -68,6 +72,12 @@ public class AE2PatternDisk {
         // 同样只能在这里判定：ModList 要到 mod 构造期才可读。
         if (OmniSequenceSoftDep.isLoaded()) {
             OmniSequenceIntegration.register();
+        }
+
+        // InsaneAE：只往它的批量 provider 适配器注册表里登记批处理装配室，同样是「在场才加载集成类」。
+        // 与万象构序那条分开判定：两个邻居互不依赖，装了其中一个不该影响另一个的注册。
+        if (InsaneAESoftDep.isLoaded()) {
+            InsaneAEIntegration.register();
         }
 
         modBus.addListener(this::associateBlockEntities);
@@ -352,6 +362,13 @@ public class AE2PatternDisk {
     private void commonSetup(FMLCommonSetupEvent event) {
         event.enqueueWork(this::registerUpgrades);
         event.enqueueWork(AE2PatternDisk::verifyTickingBlockEntities);
+
+        // Thunderbolt 的全局适配器表按上游约定要登记在 commonSetup 的串行 enqueueWork 里，
+        // 不在模组构造期（构造期的万象构序 / InsaneAE 那两张表没有这个时序要求）。
+        // 缺席时方法引用不会求值，集成类也就不会被加载。
+        if (ThunderboltBatchSoftDep.isLoaded()) {
+            event.enqueueWork(ThunderboltBatchIntegration::register);
+        }
     }
 
     /**

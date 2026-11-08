@@ -305,6 +305,8 @@
 | AE2 Crystal Science | `integration/ae2cs` | `client/integration/ae2cs` | 自装配供应器 + 谐振样板磁盘供应器（方块/面板） |
 | Jade | `integration/jade` | — | 显示机器状态 |
 | Polymorph | `integration/polymorph` | `client/integration/polymorph` | 多结果配方由玩家选 |
+| InsaneAE | `integration/insaneae` | — | 量子 CPU 的整批派发：适配器注册表 + `BulkCraftingHandler`（上游 issue #19 / 1.1.3） |
+| AE2 Lightning Tech / Thunderbolt Core | `integration/ae2lt`、`integration/ae2lt/batch` | `client/integration/ae2lt` | 过载编码、封包与过载供应器；CPU 批量派发的 `BatchProviderResolver`（2.0.3 起） |
 | JEI / EMI / IPN / JECH | — | `client/integration` | 配方导入、幽灵物品、整理、拼音搜索 |
 
 客户端那边有个反复出现的写法：`ClientExtendedAEPlusCompat` 这类**把"带契约的邻居在场"变成一屏**的类。理由是编译期可选依赖的类型名一旦出现在总是加载的类里，缺那个模组的玩家就会在加载阶段炸掉；把名字关进只在门禁通过后才碰的类，缺了就只是一屏。
@@ -339,6 +341,30 @@ NEO ECO 的类型名与方法名集中在 `integration/neoecoae`：`NeoECOIntegr
 - NEO ECO：`compileOnly` / `clientCompileOnly` 与开发运行期都用 CurseForge 发布件 `curse.maven:neo-eco-ae-extension-1460639:9349859`（21.2.12，2026-10-28）。不再需要本地 jar，也没有 `-PecoApiJar` 这类快照开关。本模组在 `mods.toml` 里把它的地板写成 `[21.2.12,)`：大宗压缩链的两个查询只从这个版本起随发布件提供，而集成层是编译期直接调用，装更旧的 ECO 时整包停在加载阶段（FML 只用 systemMods 构加载列表，报错屏点名这条区间），不是某格退化回只读。运行期 `Neo ECO Prototype` 1.4.3 同样要求 `[21.2.12,)`（21.2.12 把 `impl/storage/**` 搬进 `storage/**`，青春版按新名字编译），所以这两条坐标必须同批升。21.2.11 起 `ECOFastPathFacade` 会经 `ECOParallelCraftingProviders` 发现本模组的适配器（上游 issue #134），批处理装配室的 `long` / `BigInteger` 大批量入口随之生效。
 - ExtendedAE Plus：`compileOnly` / `clientCompileOnly` / 开发运行期都用 CurseForge 发布件 `curse.maven:extendedae-plus-1337639:8998231`（1.6.3，2026-09-28）。这个版本同时解决了两件事：带本模组要的终端兼容层接口（`IPatternUploadMenu` / `IPatternUploadTerminal`，1.6.2 没有），且修掉了 1.6.2 与 JEI 19.56 的不兼容（它的 `BookmarkOverlayMixin` 改引用 `mezz.jei.common.input.handlers`）。不再需要本地 jar；`-PeaePlusJar=<路径>` 保留为应急覆盖。
 - AECS：放到 `libs/ae2cs-1.21.1-1.3.0.jar`，只作运行时。**这份仍是本地件**：CurseForge 与 Modrinth 上最新的 1.21.1 发布版都停在 1.2.1（2026-07-24），1.3.0 只存在于上游 `1.21.1-main` 分支，未发版。
+- InsaneAE：`compileOnly` 与 `localRuntime` 都用 CurseForge 发布件 `curse.maven:insaneae-1627326:9474044`（1.1.3，2026-11-06），只取 `quantum` 包的 `BulkCraftingHandler` 与 `BulkCraftingProviderAdapters` 两个类型，引用全在 `integration/insaneae`。2026-11-07 起**常驻开发运行期**（`runClient` / `runServer` 都装），用来实机验证整批派发；它对 AE2 的合成 CPU 有 mixin，而默认环境里 ECO / 万象构序 / 闪电科技同样改派发链路，共存出问题时用 `-PnoInsaneae` 摘掉做对照。注册口从 1.1.3 起才有，装更旧的 InsaneAE 时由 `InsaneAEIntegration.register()` 的 `catch` 让这一项集成安静退场，所以 `mods.toml` 写 `*` 而不是地板。
+  同批把开发运行期的 AppliedFlux 从 Modrinth `4x40hq9D`（2.1.5）换成 CurseForge
+  `curse.maven:applied-flux-965012:9288549`（2.1.7）：InsaneAE 把 appflux 列为可选
+  `[1.21-2.1.6-neoforge,)`，FML 对**已安装**的可选依赖同样查区间，2.1.5 会在 pre-loading 直接拦下整包；
+  本仓的 AppFlux 集成走反射、不绑它的类型，换件不需要改代码。
+- Thunderbolt Core：`compileOnly` / `clientCompileOnly` / `localRuntime` 同为
+  `maven.modrinth:thunderbolt-core:2.0.3`。2.0.3 起 `integration/ae2lt/batch` 编译期直接调
+  `BatchProviderAdapters` / `BatchProviderResolver` / `IBatchCraftingProvider`：CPU 自己提取并记账材料，
+  适配器只拿到单份只读模板，缩放成总量后交给机器的 `acceptPatternBatch`，返回值换成「未接受份数」。
+  门禁按 `thunderbolt` modid（API 在库里，AE2LT 本体把它列为必需前置 `[2.0.3,3.0.0)`）；
+  `mods.toml` 写 `*` 不设地板，旧版由 `ThunderboltBatchIntegration.register()` 的 `catch` 安静退场。
+  登记时机按上游约定放在 `commonSetup` 的串行 `enqueueWork`，不在模组构造期。
+- AppliedE / ProjectE：开发运行期参考件 `maven.modrinth:appliede:R5MXisky`（1.0.8-beta，2025-05-05）
+  与它的必需前置 `curse.maven:projecte-226410:6323142`（1.0.1，2025-03-19）。Thunderbolt 把 AppliedE
+  列为已接入协议：`@Pseudo` mixin 命中 `gripe._90.appliede.part.EMCModulePart`，让 EMC 模块原生成为
+  `IBatchCraftingProvider`，原本是用来验证四条批量适配与 EMC 模块在同一条 CPU 派发链上共存。
+  依赖以 jar 内 `mods.toml` 为准（AppliedE 要 `ae2 [19,)` + `projecte [1.0.1,)`；ProjectE 要
+  `minecraft [1.21.1]` + `neoforge [21.1.119,)`，并把 mekanism `[,10.7.8]` 标为 incompatible，
+  本环境 10.7.19.85 落在区间外）。Modrinth 的版本元数据只列 AE2，不能当依赖清单。
+  **2026-11-08 起默认不装，只在 `-PwithAppliedE` 时加载**：1.0.8-beta 的
+  `TransmutationPattern.equals` 对 `output == null` 的 EMC tier 样板直接 `.equals()`，
+  在 AE2 19.2.18 下给 EMC 模块设优先级、跑合成计算或 grid tick 刷新 provider 都会 NPE 崩溃
+  （`run/crash-reports/crash-2026-11-08_01.31.18-server.txt`）。上游 master 与 CF 都没有修复版，
+  这是 AppliedE 自身缺陷，与本仓适配无关。
 
 ---
 

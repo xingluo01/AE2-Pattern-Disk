@@ -1,6 +1,6 @@
 # 上游 API 请求（AE2 本体 / ECO / ECO Prototype / ExtendedAE Plus / InsaneAE）
 
-> 状态：前两份、第四份、第五份与第六份**已提交**（前两份本地 2026-10-09 02:55 / UTC `2026-10-08T18:55Z`，第四份 UTC `2026-10-25T10:10Z`，第五份 UTC `2026-10-26T16:15Z`，第六份 2026-10-27 提了 PR #141，见文末「提交记录」）；**第四份已落地**——上游 issue #134 于 2026-10-25 关闭（提交 `ce67db49`），随 ECO **21.2.11** 发布；第六份**已合并、已发布、且本模组已收口**——PR #141 于 UTC `2026-10-27T13:43Z` 并进 `main`（merge `5c8c9f2e`，维护者另补 `7919d10b` 修正截断查询与库存展示的一致性），随 ECO **21.2.12**（2026-10-28，CF 构件 `9349859`）发出，`javap` 已在 jar 里确认这两个默认方法；第三份是 2026-10 发现的兜底缺陷，**尚未提交**；**第七份已提交**（InsaneAE issue **#19**，UTC `2026-10-30T10:24Z`，待回）。下面七份草稿保留原文，便于日后追进或修订时对照。
+> 状态：前两份、第四份、第五份与第六份**已提交**（前两份本地 2026-10-09 02:55 / UTC `2026-10-08T18:55Z`，第四份 UTC `2026-10-25T10:10Z`，第五份 UTC `2026-10-26T16:15Z`，第六份 2026-10-27 提了 PR #141，见文末「提交记录」）；**第四份已落地**——上游 issue #134 于 2026-10-25 关闭（提交 `ce67db49`），随 ECO **21.2.11** 发布；第六份**已合并、已发布、且本模组已收口**——PR #141 于 UTC `2026-10-27T13:43Z` 并进 `main`（merge `5c8c9f2e`，维护者另补 `7919d10b` 修正截断查询与库存展示的一致性），随 ECO **21.2.12**（2026-10-28，CF 构件 `9349859`）发出，`javap` 已在 jar 里确认这两个默认方法；第三份是 2026-10 发现的兜底缺陷，**尚未提交**；**第七份已提交、已落地、本模组已接上**（InsaneAE issue **#19**，UTC `2026-10-30T10:24Z` 提交；维护者 UTC `2026-11-06T11:14Z` 回复，A 适配器注册口 + C 契约明文化随 **1.1.3** 发出，实机验证待做，见文末「落地结果」）。下面七份草稿保留原文，便于日后追进或修订时对照。
 > 提出方：AE2 Pattern Disks（`ae2_pattern_disk`，作者 `xingluo01`）。
 > 用例：前两份是**元件管理终端**——把网络里所有能装存储元件的东西列成一张表，并支持取出/放入元件、调整存储优先级；第三份是**样板磁盘供应器的样板上传**；第四份是**批处理装配室的极大数合成**——单次交接量被 int 容量契约封在 21.4 亿份，而 FastPath 的 long 容量面没有注册表可用；第五份是**AE2 本体的语义缺陷**——`hasComponents()` 的返回值与名字相反，会污染按物品的替换判定缓存；第六份是**ECO 大宗元件的压缩链查询**——元件管理终端要按链合并标记，现在只能反射遍历元件副本；第七份是 **InsaneAE 的批量合成入口**——它的 `IBulkCraftingProvider` 只认 `instanceof`，而我们不能把可选依赖的类型写进总是加载的类，于是批量装配室在那台 CPU 下仍被逐份驱动。
 
@@ -362,7 +362,7 @@ AE2 Pattern Disk 的元件管理终端要把 ECO 大宗元件里的标记按压�
 
 ---
 
-## 草稿 7 → `taikun24/InsaneAE`（已提交：issue #19 @ UTC `2026-10-30T10:24Z`，待回）
+## 草稿 7 → `taikun24/InsaneAE`（已提交：issue #19 @ UTC `2026-10-30T10:24Z`；已落地：1.1.3 / 本模组已接上）
 
 **标题**
 
@@ -478,7 +478,7 @@ AE2 の `getProviders()` が呼ぶオブジェクトは、当方の場合は MOD
 | `DancingSnow0517/NeoECOAEExtension` | [#134](https://github.com/DancingSnow0517/NeoECOAEExtension/issues/134) | 2026-10-25T10:10Z（本地 10-25 18:10） | **已实现并已关闭**：ECO **21.2.11**（2026-10-26 发布，提交 `ce67db49`）让 `ECOFastPathFacade` 经 `ECOParallelCraftingProviders` 发现第三方 FastPath 适配器 |
 | `DancingSnow0517/NeoECOAEExtension` | [PR #141](https://github.com/DancingSnow0517/NeoECOAEExtension/pull/141) | 2026-10-27（本地） | **已合并**（UTC `2026-10-27T13:43Z`，merge `5c8c9f2e`）：给 `IECOBulkDisplayCell` 增加默认 `getCompressionChain` 与 `getCompressionCutoff`，让元件管理终端按链合并大宗元件标记、并显示这条链真正生效的截断层；默认方法，已有实现无需改动。**维护者合并前补了 `7919d10b`**：`getCompressionCutoff` 改走库存投影（配方重载后返回历史账户的基础单位、把失效的显示配置归一到当前链），签名不变、语义更准（当时用的本地快照 jar 停在 `8d0b028e`；现在构建直接吃发布件 `9349859`，不再需要重打）。**已随 21.2.12 发布**（构件 `9349859`）并完成收口：API 适配器移进 `src/main/java`（现名 `EcoBulkCells`），反射层 `EcoBulkCellsCompat` 与 `-PecoApiJar` 开关删除，`mods.toml` 的 ECO 地板抬到 `[21.2.12,)`（2026-10-28） |
 | `AppliedEnergistics/Applied-Energistics-2` | [#9040](https://github.com/AppliedEnergistics/Applied-Energistics-2/pull/9040) | 2026-10-26T16:15Z（本地 10-27 00:15） | **待审**：`hasComponents()` 改成基于 `getComponentsPatch()`（`isComponentsPatchEmpty()`），修掉「带组件变体按 Item 共享判定缓存」与 `AEFluidKey#toString` 的同一错误；附回归测试，未本地构建（本机拿不到 Gradle 8.12 发行包） |
-| `taikun24/InsaneAE` | [#19](https://github.com/taikun24/InsaneAE/issues/19) | 2026-10-30T10:24Z（本地 10-30 18:24） | **待回**：请求给批量合成入口加**适配器注册口**（`instanceof` 失败时才查注册表，`isBusy()` 仍旧问原 provider），形制照 OmniSequence 2.0.7 的 `OmniBatchProviderAdapterRegistry`；次善是把「按 mod id 门禁换子类型注册」写成官方支持的用法；并请求把「部分受领即丢料」「一窗内两次容量询问」「fused 由实现方自限」写进接口 javadoc。正文为日英双语 |
+| `taikun24/InsaneAE` | [#19](https://github.com/taikun24/InsaneAE/issues/19) | 2026-10-30T10:24Z（本地 10-30 18:24） | **已实现并已发布**：维护者 UTC `2026-11-06T11:14Z` 回复，A（适配器注册口）与 C（契约明文化）随 **1.1.3**（提交 `82b02ba`）发出，B 视为不需要；`main` 由同一份源码同时构建 1.20.1 / 1.21.1，两条线同口。**本模组已接上**：`integration/insaneae` 按注册表登记批量适配器，实机验证待做。请求正文为日英双语 |
 
 提交账号：`xingluo01`。正文语言随各仓既有 issue 的主流：ECO 与青春版用中文，AE2 #9040 用英文，InsaneAE #19 用日英双语。
 
@@ -492,3 +492,65 @@ AE2 の `getProviders()` が呼ぶオブジェクトは、当方の場合は MOD
 |---|---|---|
 | ECO #119 | ① **`ICellHost` 不必真搬**——`api` 新增接口 + 让 `util.ICellHost` `extends` 它（改 1 处而非 4 处，且保二进制兼容）；② 我们只需要**读写存储主机上那个 int**，不需要上游提供界面；`IPriorityHost extends ISubMenuHost` 还要 `returnToMainMenu` + `getMainMenuIcon`，而它存储界面是 LDLib、无 AE2 菜单可回 ⇒ **公开 `setStoragePriority(int)` 才是真正需要的**；③ 提取原因若不愿把嵌套枚举提 `api`，中性返回（如 `@Nullable Component`）或只写进 `canExtractCell()` 的 javadoc 也够 | [comment-6067195947](https://github.com/DancingSnow0517/NeoECOAEExtension/issues/119#issuecomment-6067195947) |
 | 青春版 #5 | ECO 的 `setCellStack` 是**无条件替换**，而 `insertCell` 在占用时返回 `false` ⇒ 直接委派会变成「静默忽略替换」，第三方分不清「清掉了」与「没清掉」；请在 javadoc 写清「替换还是忽略」。另：清格我们传 `ItemStack.EMPTY`（不传 `null`） | [comment-6067195902](https://github.com/reliqwq/NeoECOPrototype/issues/5#issuecomment-6067195902) |
+
+---
+
+## 落地结果：InsaneAE issue #19（2026-11-06 / 1.1.3）
+
+维护者 UTC `2026-11-06T11:14Z` 回复：**A（适配器注册口）与 C（契约明文化）已进 `main`**（提交 `82b02ba`），
+随 **1.1.3** 发布；`main` 现在由同一份源码同时构建 1.20.1 与 1.21.1，两条线都有同一个注册口。
+**B（按 mod id 门禁重注册子类型）视为不再需要**。发布件：GitHub Release `v1.1.3` 与 CurseForge 构件
+`9474044`（1.21.1 NeoForge）/ `9474055`（1.20.1 Forge）；本仓编译面吃前者。
+
+### 上游实际给出的 API（`javap` 核对过发布 jar）
+
+- `jp.main.taikun.insaneae.quantum.BulkCraftingHandler`：
+  `long getBulkCapacity(IPatternDetails)`、`long pushPatternBulk(IPatternDetails, KeyCounter[], long)`，
+  加三个默认方法 `fusesOperations()` / `repeatsWindowsWithinTick()` / `settleCompletedOutputs()`。
+- `IBulkCraftingProvider` 改成 `ICraftingProvider + BulkCraftingHandler`，既有实现不变。
+- `BulkCraftingProviderAdapters.register(Class<T extends ICraftingProvider>, Function<? super T, ? extends BulkCraftingHandler>)`。
+  `find()` 仅在 `instanceof IBulkCraftingProvider` 落空时查表，按具体类向父类回溯（最近优先），
+  `isBusy()` 仍旧问原 provider。适配器按 provider 实例做弱键缓存、只造一次（窗口之间的清算靠对象身份认人）；
+  工厂返回 `null` 可让某台机器退出；适配器抛异常时只让该 provider 回常规路径，并只报一次 ERROR。
+
+### C 的三点答复（已写进 `BulkCraftingHandler` 的 javadoc）
+
+1. 全有或全无的受料口只答 `times` 或 `0` 就安全：`times` → `inputHolder` 剩余部分按已消费丢弃；
+   `0` → 调用方把 `inputHolder` 原样退回 CPU，所以返回 0 前不得取出任何东西；中间值 `done` 要把未用份数
+   留在 `inputHolder`，调用方按份数退料退电。
+2. `getBulkCapacity()` 一窗内多次调用是**有意**的（选 provider、算上限、同 tick 下一窗），要求无副作用
+   且轻；按 tick 记忆可以，值假定只在 `pushPatternBulk` 之后变化。
+3. `fusesOperations() == true` 时 CPU 不再按每 tick 预算掐份数，实现方必须自己给出「每 tick 操作数上限」
+   与「材料缓冲实空位」的较小值；两种模式都由调用方夹到完成品数量不溢出 long。
+
+### 本仓收口（2026-11-07）
+
+- `integration/insaneae/`：`InsaneAESoftDep`（mod id 门禁）、`InsaneAEIntegration`（登记表 + 旧版
+  `LinkageError` 兜底）、`InsaneAEBulkHandler`（容量与执行）；注册挂在 `AE2PatternDisk` 构造期，
+  与万象构序那条各自独立判定。
+- handler 只答 `times` / `0`；容量直接复用 `availableParallelSlotsFor(details)`（元件真实空位，按
+  「样板 + tick」记忆、成功收料后失效）；`fusesOperations()` 开，`repeatsWindowsWithinTick()` 保持默认关，
+  `settleCompletedOutputs()` 复用机器上给万象构序用的 `flushReturnsAfterCpuAccounting()`。
+- 依赖：`compileOnly` + `localRuntime` 同为 `curse.maven:insaneae-1627326:9474044`（2026-11-07 起常驻开发
+  运行期，可用 `-PnoInsaneae` 摘除做共存对照）；
+  `mods.toml` 写 `*` + `ordering="AFTER"`，装 1.1.2 及更早版本时注册安静退场、机器保持 AE2 逐份派发。
+- 验证：`compileJava` / `compileClientJava` / `test` / 全量 `build` 全绿（93 条测试，0 失败）；
+  `AE2PatternDisk.class` 常量池里没有 `jp/main/taikun/…` 类型名，集成红线守住。
+  **2026-11-07 实机加载已过**：InsaneAE 1.1.3 常驻开发客户端后，日志出现
+  `[AE2-Pattern-Disk] Batch assembler registered for InsaneAE bulk crafting`，与 ECO / 万象构序三条注册并存，
+  0 FATAL、0 broken-state；`-PnoInsaneae` 的依赖解析对比确认该开关能把 InsaneAE 摘出运行期。
+  为过 FML 的可选依赖检查，AppliedFlux 由 Modrinth 2.1.5 升到 CF 2.1.7（InsaneAE 要求
+  `[1.21-2.1.6-neoforge,)`，否则 pre-loading 报 `Mod insaneae only supports appflux…`）。
+  共存时另见两条 mixin WARN：InsaneAE 的 `CraftingUnitThreadLimitMixin` 被 Bigger AE2 的同点注入
+  （优先级 1000）跳过；EAE+ 与 AppFlux 的 `ScreenStyleMixin` 覆盖冲突是 2026-10 起就有的旧问题，
+  与本次升级无关。
+  **订单级实机（9 层 9:1 压缩大单、旧版与缺席、窗口清算）尚未做**，已登记进 `docs/TODO.md`。
+  上游说他们只跑过注册口单测与自家 gametest、没接过第三方机器，这部分回报留到实测之后。
+
+### 回报评论（2026-11-08 本地 / UTC `2026-11-07T16:17Z`）
+
+[comment-6709689534](https://github.com/taikun24/InsaneAE/issues/19#issuecomment-6709689534)，
+账号 `xingluo01`，日英双语（与该仓既有 issue 一致）。内容：告知兼容层已施工完成、随下一版发出；
+逐条对应 C-1 / C-2 / C-3 的实现；说明 `repeatsWindowsWithinTick()` 保持 `false` 的理由（九格元件缓冲被各层共用）；
+实机加载与三条批量集成并存、93 项测试与全量构建通过；两条共存观察（appflux 2.1.5 → 2.1.7、
+`CraftingUnitThreadLimitMixin` 被 Bigger AE2 抢先注入）；**明确 9 层压缩大单尚未实测**，实测后补报。

@@ -92,6 +92,19 @@ versionRange="*"
 ordering="AFTER"
 side="BOTH"
 
+# InsaneAE is optional and has real code on our side (integration/insaneae): the batch assembler registers
+# a BulkCraftingHandler adapter with BulkCraftingProviderAdapters, so its Quantum CPU can hand a whole batch
+# over in one call instead of one pushPattern per craft. That registry only exists from 1.1.3 (upstream
+# issue #19); versionRange stays "*" for the same reason as molecularmanipulator above - on an older build
+# the registration is skipped by a LinkageError guard and the machine keeps AE2's one-craft dispatch, and
+# a hard floor would instead stop the whole pack from loading.
+[[dependencies.${mod_id}]]
+modId="insaneae"
+type="optional"
+versionRange="*"
+ordering="AFTER"
+side="BOTH"
+
 # Jade is optional and has real code on our side (integration/jade), so the relationship is declared instead of
 # being left to the dev runtime. 15.10.6 is the API this mod compiles against. CLIENT because that plugin is a
 # display integration Jade discovers on its own; a server that happens to run Jade is not checked (AE2 declares
@@ -176,6 +189,19 @@ side="BOTH"
 # 逻辑、方块与菜单。Floor 2.1.2 / 1.2.2：封包的样板栏大小从 1.2.2 起改由 host.getPatternSlotCount()
 # 提供，低于这个版本的封包无法把磁盘容量接进样板栏。装了低版本时 FML 会整包拒载，这是有意的地板，
 # 与 NEO ECO 那条同一口径。
+# Thunderbolt Core is optional and now has real code on our side (integration/ae2lt/batch): the batch
+# assembler registers a BatchProviderResolver with its global adapter table, so Thunderbolt's CPU-side
+# batch dispatcher can hand the machine a whole batch in one call. AE2LT declares it as a required
+# dependency [2.0.3,3.0.0), but the library can also be installed on its own. No version floor of our own:
+# on an older build the registration is skipped by a LinkageError guard and the machine keeps AE2's
+# ordinary one-craft dispatch. AFTER because we reach into its registry during common setup.
+[[dependencies.${mod_id}]]
+modId="thunderbolt"
+type="optional"
+versionRange="*"
+ordering="AFTER"
+side="BOTH"
+
 [[dependencies.${mod_id}]]
 modId="ae2lt"
 type="optional"

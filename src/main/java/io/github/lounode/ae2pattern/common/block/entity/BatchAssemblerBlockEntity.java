@@ -384,11 +384,12 @@ public class BatchAssemblerBlockEntity extends AENetworkedBlockEntity
     }
 
     // ---- batch intake (optional integrations) --------------------------------
-    // Neither contract interface is on this class. Both are supplied by registration entry points instead:
-    // NEO ECO's ({@code integration.neoecoae.BatchAssemblerParallelIntake}) and OmniSequence's
-    // ({@code integration.omnisequence.OmniBatchAdapter}). That is what keeps this class free of both mods'
-    // types - in a pack without either, nothing is registered and the methods below are just this machine's
-    // own bookkeeping entry points.
+    // No neighbour's contract interface is on this class. All three are supplied by registration entry points
+    // instead: NEO ECO's ({@code integration.neoecoae.BatchAssemblerParallelIntake}), OmniSequence's
+    // ({@code integration.omnisequence.OmniBatchAdapter}), and InsaneAE's
+    // ({@code integration.insaneae.InsaneAEBulkHandler}, handed to its adapter registry). That is what keeps
+    // this class free of all three mods' types - in a pack without them, nothing is registered and the methods
+    // below are just this machine's own bookkeeping entry points.
 
     // 类型条目的容量换算在 {@link CellBuffer#typeEntryUnits}，含「为什么按每个槽位各预留一份」的取舍。
 

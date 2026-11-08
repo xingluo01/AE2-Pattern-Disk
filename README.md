@@ -67,6 +67,10 @@ against can differ and is listed in `gradle/libs.versions.toml`.
 - `neoecoae` — `*`; its smart pattern bus takes these disks, and its upload button is installed here
 - `extendedae_plus` — `*`; its terminal upload contract is implemented here
 - `ae2cs` — `*`; with it installed, the self-assembling pattern disk provider is registered
+- `insaneae` — `*`; its Quantum CPU drives the batch assembler with one bulk hand-over instead of one craft
+  at a time (needs 1.1.3 or newer for the adapter registry; older versions silently keep AE2's normal dispatch)
+- `thunderbolt` — `*`; its CPU-side batch dispatcher drives the batch assembler with one bulk hand-over
+  (needs 2.0.3 or newer for the global adapter table; older versions silently keep AE2's normal dispatch)
 
 **Detected at runtime, not declared**
 

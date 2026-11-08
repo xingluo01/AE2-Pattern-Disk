@@ -287,7 +287,15 @@ dependencies {
     // providers and interfaces, and that slot is what both of this mod's provider forms have to show and
     // register a card limit for. Without it in the runtime the integration cannot be exercised at all.
     // Its three required dependencies (AE2, Glodium, GuideME) are already in this block or above it.
-    localRuntime 'maven.modrinth:appflux:4x40hq9D'
+    //
+    // 2026-11-07 升到 **2.1.7**（CF 构件 9288549，2026-10-22；原 Modrinth 4x40hq9D = 2.1.5）：
+    // InsaneAE 1.1.3 把 appflux 列为可选依赖 [1.21-2.1.6-neoforge,)，而 Modrinth 的 1.21.1 线最新只到
+    // 2.1.5。FML 对**已安装的**可选依赖同样查区间，两者同时装会在 pre-loading 直接拦下整个包（实测报
+    // "Mod insaneae only supports appflux 1.21-2.1.6-neoforge or above / Currently, appflux is
+    // 1.21-2.1.5-neoforge"）。2.1.7 落在区间内；本仓的 AppFlux 集成走反射、不绑它的类型，换件不用改代码。
+    // 它自己的必需地板（neoforge [21.1.113,) / ae2 [19.2.2-beta,) / glodium [1.21-2.0-neoforge,) /
+    // guideme）本环境都满足，可选件里已装的 mekanism [10.6.6,) 也满足。
+    localRuntime 'curse.maven:applied-flux-965012:9288549'
 
     // 雕凿编码面板要在编译期读 Rechiseled 的配方表（ChiselingRecipeManager），所以这里要 compileOnly；
     // 运行期在不在场由 mod 壳自己决定。Rechiseled 是软依赖：它缺席时那个面板不注册，终端行为与从前一样
@@ -462,6 +470,45 @@ dependencies {
     compileOnly 'curse.maven:omnisequence-transfinite-1624558:9107363'
     localRuntime 'curse.maven:omnisequence-transfinite-1624558:9107363'    // 2.0.8（构件 9107363；原 2.0.7 = 9043224）
     localRuntime 'curse.maven:applied-enhancements-1665696:9043227'        // 1.1.0（随 omnisequence 的地板一起升）
+
+    // InsaneAE 1.1.3（CF 构件 9474044，2026-11-06；GitHub Release 同源）：本模组提的 issue #19 在这一版
+    // 落地——BulkCraftingProviderAdapters.register(Class<T>, Function<... -> BulkCraftingHandler>) 让不能
+    // implements IBulkCraftingProvider 的第三方机器也能接上 Quantum CPU 的整批派发。编译面只用到 quantum
+    // 包这两个类型，引用全部收在 integration/insaneae，且由 mod id 门禁后才加载（见 InsaneAESoftDep）。
+    //
+    // 2026-11-07 起**常驻开发运行期**：要在这里实机验证 issue #19 的整批派发（runClient / runServer 都装）。
+    // 它对 AE2 的 CraftingCPUCluster 等内部类有 mixin，而默认环境里 ECO / 万象构序 / 闪电科技同样改派发链路，
+    // 共存若有冲突用 -PnoInsaneae 临时摘掉做对照（照 -Pemi 的口径）。两条必需前置
+    // ae2 [19.2.15,20) 与 megacells [4.11,5) 本环境均满足（19.2.18 / 4.11.0）。
+    // 装旧版 InsaneAE 时注册口缺失：mods.toml 写 `*`，由 InsaneAEIntegration.register() 的 catch 安静退场。
+    compileOnly 'curse.maven:insaneae-1627326:9474044'
+    if (!project.hasProperty('noInsaneae')) {
+        localRuntime 'curse.maven:insaneae-1627326:9474044'
+    }
+
+    // AppliedE 1.0.8-beta（Modrinth 构件 R5MXisky，2025-05-05）+ 必需前置 ProjectE 1.0.1
+    // （CF 构件 6323142，2025-03-19）：Thunderbolt 的
+    // `docs/global-batch-provider-adapters.zh-CN.md` 把 AppliedE 列为已接入协议——`@Pseudo` mixin
+    // 命中 `gripe._90.appliede.part.EMCModulePart`，让它原生成为 `IBatchCraftingProvider`。
+    // 装上是为了验证「四条批量适配 + EMC 模块」在同一条 CPU 派发链上共存。
+    //
+    // 依赖以两个 jar 的 `neoforge.mods.toml` 为准：AppliedE 要 ae2 `[19,)`（19.2.18）与
+    // projecte `[1.0.1,)`，可选 ae2wtlib `[19,)`（19.5.1）已在环境里；ProjectE 自己只要
+    // minecraft `[1.21.1]` 与 neoforge `[21.1.119,)`（21.1.241），并把 mekanism `[,10.7.8]`
+    // 标为 incompatible —— 本环境是 10.7.19.85，落在区间外，不触发。
+    // Modrinth 的版本元数据只写了 AE2，别拿它当依赖清单。
+    //
+    // **2026-11-08 起默认不装，要专门测这一对才用 -PwithAppliedE**：1.0.8-beta 在 AE2 19.2.18 下必崩。
+    // `TransmutationPattern.equals` 对 `output == null` 的 EMC tier 样板直接调 `.equals()`
+    // （`getOutputs()` 明明允许 output 为 null），玩家给 EMC 模块设优先级、跑合成计算、
+    // 或 grid tick 刷新 provider 时都会 NPE。见
+    // `run/crash-reports/crash-2026-11-08_01.31.18-server.txt`。上游 master（2025-05-05）与 CF
+    // 都停在这个版本、源码里也没有判空修复，没有可换的修复版，与本仓四条批量适配无关。
+    // 默认口径回到没有这一对的稳定组合；要复现/验证就显式加 -PwithAppliedE。
+    if (project.hasProperty('withAppliedE')) {
+        localRuntime 'maven.modrinth:appliede:R5MXisky'
+        localRuntime 'curse.maven:projecte-226410:6323142'
+    }
     // 试装后又摘掉的：**Mek Energistics（mekenergistics）**。它与 ECO 双向集成（ECO 侧有
     // compat/mekenergistics），但代价太大：每次启动会刷约 335 条 "Unknown registry key … item:
     // mekenergistics:me_*" 的 ERROR —— 它为 Mekanism 系可选集成镜像的 me_* 机器方块只在对应 mod
