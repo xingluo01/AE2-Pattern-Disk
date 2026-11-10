@@ -2,6 +2,8 @@ package io.github.lounode.ae2pattern.common.menu.cell;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.LinkedHashMap;
 
@@ -357,14 +359,24 @@ public final class CellDriveScanner {
     private static final class SubsystemAccumulator {
         private final Object subsystem;
         private final List<CellHostListPayload.CellSlot> cells = new ArrayList<>();
+        /** 与 cells 一一对应：ECO 界面槽位序号，整份拿不到时退回坐标数值序。 */
+        private final List<Long> positions = new ArrayList<>();
 
         SubsystemAccumulator(Object subsystem, @Nullable CellUsageCache usage) {
             this.subsystem = subsystem;
             // 一个主机就是一个首格单：它旗下那些单格元件座只当格，不再各占一个首格。
             String leaderKey = keyOf(subsystem);
-            for (Object drive : drivesOfSubsystem(subsystem)) {
+            var drives = drivesOfSubsystem(subsystem);
+            var uiOrder = uiOrderOf(subsystem);
+            var hostKeys = new ArrayList<String>(drives.size());
+            var coordinates = new ArrayList<Long>(drives.size());
+            for (Object drive : drives) {
                 appendCellOf(cells, drive, leaderKey, usage);
+                // appendCellOf 每次恰好追加一格；顺序键跟着同一下标存。
+                hostKeys.add(keyOf(drive));
+                coordinates.add(positionKeyOf(drive));
             }
+            positions.addAll(subsystemOrderKeys(hostKeys, uiOrder, coordinates));
         }
 
         void merge(Object drive) {
@@ -376,13 +388,100 @@ public final class CellDriveScanner {
             if (cells.isEmpty() && drivesOfSubsystem(subsystem).isEmpty()) {
                 return null;
             }
-            // 同上：驱动器在簇里的返回顺序不保证稳定，按宿主键排一次。
-            cells.sort(java.util.Comparator
-                    .comparing(CellHostListPayload.CellSlot::hostKey)
-                    .thenComparingInt(CellHostListPayload.CellSlot::hostSlot));
             return new DriveEntry(keyOf(subsystem), nameOf(subsystem), iconOf(subsystem),
-                    storagePriority(subsystem), List.copyOf(cells), readStoragePriority(subsystem), true);
+                    storagePriority(subsystem), orderSubsystemCells(cells, positions),
+                    readStoragePriority(subsystem), true);
         }
+    }
+
+    /**
+     * ECO 主机界面的格位顺序：{@code getStorageUiDrives()} 是 21.2.12 起公开的入口，返回列表按
+     * 「三行 × N 列」的行优先排列（上游 {@code StorageDriveLayout} 外层 row、内层 column）。
+     *
+     * <p>终端要的是玩家在界面上的阅读顺序——先左列自上而下、再往右一列，即列优先。这里把列表下标
+     * 转置成阅读序号，而不是照搬列表顺序；照搬会变成「一行一行从左到右」，与界面对不上。</p>
+     *
+     * <p>按方法名反射，不引入 ECO 类型名；缺方法或未成型时返回空表，由 {@link #subsystemOrderKeys}
+     * 退回坐标序。列表长度不是 3 的倍数时同样退回原始下标。空缺不进映射但仍占下标。</p>
+     */
+    private static Map<String, Long> uiOrderOf(Object subsystem) {
+        Object value = CellProbe.invoke(subsystem, "getStorageUiDrives");
+        if (!(value instanceof List<?> list) || list.isEmpty()) {
+            return Map.of();
+        }
+        boolean transpose = list.size() % 3 == 0;
+        int columns = transpose ? list.size() / 3 : 1;
+        var order = new HashMap<String, Long>();
+        for (int index = 0; index < list.size(); index++) {
+            Object drive = list.get(index);
+            if (drive != null) {
+                order.putIfAbsent(keyOf(drive),
+                        transpose ? columnMajorOrder(index, columns) : (long) index);
+            }
+        }
+        return order;
+    }
+
+    /**
+     * 把「三行 × columns 列」的行优先下标换成玩家阅读顺序：先左列自上而下三格，再往右一列。
+     *
+     * @param index   行优先列表下标（{@code row = index / columns}，{@code column = index % columns}）
+     * @param columns 界面列数，等于列表长度除以 3
+     */
+    static long columnMajorOrder(int index, int columns) {
+        int row = index / columns;
+        int column = index % columns;
+        return (long) column * 3 + row;
+    }
+
+    /** 顺序键：优先 ECO 界面槽位序号；整份拿不到时退回坐标数值序；个别缺席的排最后。 */
+    static List<Long> subsystemOrderKeys(List<String> hostKeys, Map<String, Long> uiOrder,
+            List<Long> coordinates) {
+        var keys = new ArrayList<Long>(hostKeys.size());
+        for (int index = 0; index < hostKeys.size(); index++) {
+            Long slot = uiOrder.get(hostKeys.get(index));
+            if (slot != null) {
+                keys.add(slot);
+            } else if (uiOrder.isEmpty()) {
+                keys.add(index < coordinates.size() ? coordinates.get(index) : Long.MAX_VALUE);
+            } else {
+                keys.add(Long.MAX_VALUE);
+            }
+        }
+        return List.copyOf(keys);
+    }
+
+    /**
+     * ECO 主机下矩阵座的显示顺序：按 {@link #subsystemOrderKeys} 给的顺序键升序，与上游界面同源。
+     *
+     * <p>不能拿 {@code BlockPos.asLong()} 数值序代替：上游主机界面按控制器相对的行列布局排
+     * （从上到下、每行沿扩展方向），常见朝向下与坐标数值序整批相反；也不能拿 {@link #keyOf(Object)}
+     * 的字符串字典序排（{@code @100} 会在 {@code @20} 前）。两边错开时终端第 N 格不是界面的第 N 格。</p>
+     *
+     * <p>探不到顺序的宿主一律排最后，同级再按格位与宿主键稳定兜底。每格仍自带 hostKey / hostSlot，
+     * 取放按身份定位，重排只影响显示。</p>
+     */
+    static List<CellHostListPayload.CellSlot> orderSubsystemCells(List<CellHostListPayload.CellSlot> cells,
+            List<Long> positions) {
+        var order = new ArrayList<Integer>(cells.size());
+        for (int i = 0; i < cells.size(); i++) {
+            order.add(i);
+        }
+        order.sort(java.util.Comparator
+                .comparingLong((Integer i) -> i < positions.size() ? positions.get(i) : Long.MAX_VALUE)
+                .thenComparingInt(i -> cells.get(i).hostSlot())
+                .thenComparing(i -> cells.get(i).hostKey()));
+        var sorted = new ArrayList<CellHostListPayload.CellSlot>(cells.size());
+        for (int i : order) {
+            sorted.add(cells.get(i));
+        }
+        return List.copyOf(sorted);
+    }
+
+    /** 坐标数值序：只在 ECO 没给出 UI 顺序时兜底；探不到坐标的排最后。 */
+    private static long positionKeyOf(Object owner) {
+        return owner instanceof net.minecraft.world.level.block.entity.BlockEntity blockEntity
+                ? blockEntity.getBlockPos().asLong() : Long.MAX_VALUE;
     }
 
     /**
