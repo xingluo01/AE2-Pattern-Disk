@@ -6,7 +6,7 @@
 
 （本目录 `docs/` 只放文档：本手册、平台说明两份、待办及其编写规则 `TODO_STYLE.md`、上游 API 请求、发版手册 `RELEASE.md`、编码模式注册规范 `ENCODING_MODES.md`、更新日志编写规则 `CHANGELOG_STYLE.md`、资产授权清单 `ASSET_LICENSES.md`，以及两份**本机本地**信息——`LOCAL_DEPS.md`（路径索引）与 `LOCAL_CLONES.md`（上游镜像基线），后两份已列入 `.gitignore`，不随仓库分发。仓库根只留 `README.md`、`CHANGELOG.md`、`CHANGELOG_UNRELEASED.md` 这三个按惯例必须在根的文件，外加给 AI 代理的入口 `AGENTS.md`。）
 
-版本基线：NeoForge 21.1.241 / MC 1.21.1 / AE2 19.2.18 / Java 21。取数口径是 `gradle/libs.versions.toml` 的 `ae2`（`build.gradle` 走 `libs.ae2`）；`gradle.properties` 里的 `ae2_version` 是未使用的历史键，不要把它当真相。
+版本基线：NeoForge 21.1.241 / MC 1.21.1 / AE2 19.2.19 / Java 21。取数口径是 `gradle/libs.versions.toml` 的 `ae2`（`build.gradle` 走 `libs.ae2`）；`gradle.properties` 里的 `ae2_version` 是未使用的历史键，不要把它当真相。
 
 三条工程约束：
 
@@ -353,18 +353,6 @@ NEO ECO 的类型名与方法名集中在 `integration/neoecoae`：`NeoECOIntegr
   门禁按 `thunderbolt` modid（API 在库里，AE2LT 本体把它列为必需前置 `[2.0.3,3.0.0)`）；
   `mods.toml` 写 `*` 不设地板，旧版由 `ThunderboltBatchIntegration.register()` 的 `catch` 安静退场。
   登记时机按上游约定放在 `commonSetup` 的串行 `enqueueWork`，不在模组构造期。
-- AppliedE / ProjectE：开发运行期参考件 `maven.modrinth:appliede:R5MXisky`（1.0.8-beta，2025-05-05）
-  与它的必需前置 `curse.maven:projecte-226410:6323142`（1.0.1，2025-03-19）。Thunderbolt 把 AppliedE
-  列为已接入协议：`@Pseudo` mixin 命中 `gripe._90.appliede.part.EMCModulePart`，让 EMC 模块原生成为
-  `IBatchCraftingProvider`，原本是用来验证四条批量适配与 EMC 模块在同一条 CPU 派发链上共存。
-  依赖以 jar 内 `mods.toml` 为准（AppliedE 要 `ae2 [19,)` + `projecte [1.0.1,)`；ProjectE 要
-  `minecraft [1.21.1]` + `neoforge [21.1.119,)`，并把 mekanism `[,10.7.8]` 标为 incompatible，
-  本环境 10.7.19.85 落在区间外）。Modrinth 的版本元数据只列 AE2，不能当依赖清单。
-  **2026-11-08 起默认不装，只在 `-PwithAppliedE` 时加载**：1.0.8-beta 的
-  `TransmutationPattern.equals` 对 `output == null` 的 EMC tier 样板直接 `.equals()`，
-  在 AE2 19.2.18 下给 EMC 模块设优先级、跑合成计算或 grid tick 刷新 provider 都会 NPE 崩溃
-  （`run/crash-reports/crash-2026-11-08_01.31.18-server.txt`）。上游 master 与 CF 都没有修复版，
-  这是 AppliedE 自身缺陷，与本仓适配无关。
 
 ---
 

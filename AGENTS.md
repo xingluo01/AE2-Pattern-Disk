@@ -8,7 +8,7 @@
 AE2（应用能源 2）的附属模组 `ae2_pattern_disk`：样板磁盘、磁盘驱动的样板供应器与转存器、两种装配室、
 样板磁盘编码终端 / 管理终端、元件管理终端。
 
-**基线：Minecraft 1.21.1 · NeoForge 21.1.241 · AE2 19.2.18 · Java 21**
+**基线：Minecraft 1.21.1 · NeoForge 21.1.241 · AE2 19.2.19 · Java 21**
 权威来源是 `gradle/libs.versions.toml` 与 `gradle.properties`，这一行只是速览。
 
 ## 一、规则类文档（进 git，改代码前必读）

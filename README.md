@@ -4,7 +4,7 @@ An addon for [Applied Energistics 2](https://github.com/AppliedEnergistics/Appli
 
 - **Loader / MC**: NeoForge 1.21.1
 - **NeoForge**: 21.1.241 up to 21.2.0
-- **AE2**: 19 or newer (built against 19.2.18)
+- **AE2**: 19 or newer (built against 19.2.19)
 - **Java**: 21
 
 ## API

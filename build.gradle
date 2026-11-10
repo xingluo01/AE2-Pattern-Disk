@@ -49,7 +49,7 @@ configurations {
     // **保留版本更高**的那份当 mod（另一份只因坐标不同而作为普通 classpath 条目存在）——同版时无差别，
     // 版本一拉开就变成「加载哪份取决于谁更高」。
     // 2026-10-16 随 AE2 运行期升 19.2.18 加这条：按版本目录把 maven 那份钉到同一版本。两件现为同一份字节
-    // （AE2 19.2.18 的 CF 件与 maven 件 sha1 相同，`bcd04bc7…`）。
+    // （AE2 19.2.19 的 CF 件与 maven 件 sha1 相同，`aa28d9d9…`；2026-11-09 复核三渠道一致）。
     // 注意：FML 取高版本的语义意味着「libs.versions.toml 抬了版本、而 CF 件坐标没跟着换」时，被当 mod 加载的
     // 会从 CF 件切到 maven 件（发行渠道无声切换）——两个坐标要一起动。
     configureEach {
@@ -208,7 +208,7 @@ dependencies {
     // ECOPreparedPattern / IECOPatternStorageService / api.integration.Integration /
     // ECOParallelCraftingProvider(s) / IECOStoragePriorityHost / gui.widget.UploadButton——公开签名与 21.2.6
     // 逐字相同（javap -public 逐类 diff），集成层不用改。它的必需地板仍是 ae2 [19.2.17,) 与
-    // ldlib2 [2.2.40,)，本环境分别是 19.2.18 与 2.2.40，都在区间内。
+    // ldlib2 [2.2.40,)，本环境分别是 19.2.19 与 2.2.40，都在区间内。
     //
     // 2026-10-27 升到 21.2.11（构件 9336076）：issue #134 落地后 ECOFastPathFacade 会经
     // ECOParallelCraftingProviders 发现本模组的 FastPath 适配器，long/BigInteger 入口开始生效。
@@ -243,7 +243,11 @@ dependencies {
     // ae2lt 是 [19.2.17,19.3)、ae2wtlib [19.2.17,20.0.0)、MEGA Cells / AE Omni Cells [19.2.15,)、
     // NEO ECO AE Extension 与 Neo ECO Prototype 均 [19.2.17,)，其余（AE2CS / ExtendedAE / ae2addonlib /
     // OmniSequence 等）为下界或通配。
-    localRuntime 'curse.maven:applied-energistics-2-223794:8992605'
+    // 2026-11-09：运行期与编译基线同批升到 **19.2.19**（CF 9519988，1.21.1 线最新 release）。
+    // 触发点是本仓提的 AE2 PR #9040（hasComponents 反转修复）随该版发布；改动只碰方法体与一个私有
+    // 字段，无公开签名变化。CF / Modrinth / Maven 三渠道 jar sha1 同为 `aa28d9d9…`，仍满足上方
+    // 「两个坐标一起动」的纪律。19.2.19 未把任何 mod 的 ae2 区间排除在外（[19.2.17,19.3) 尤其留有余量）。
+    localRuntime 'curse.maven:applied-energistics-2-223794:9519988'
     localRuntime 'maven.modrinth:guideme:21.1.15'
 
     // AECS development integration: the jar sits in libs/, so the dev runtime - and the
@@ -396,14 +400,14 @@ dependencies {
     // registered only when the matching mod is present, and every reference lives in integration/ae2lt.
     //
     // Version choice: Thunderbolt Core 2.0.1 declares AE2 19.2.17-19.2.x, which covers both the AE2 we
-    // compile against and the latest 1.21.1 release (19.2.18). All three shipped 2026-10-01.
+    // compile against and the latest 1.21.1 release (19.2.19). All three shipped 2026-10-01.
     //
     // CAUTION: Thunderbolt Core replaces/auges AE2's autocrafting internals, so this is a deep-coupling
     // mod family (same risk shape as the Rechiseled JEI mixin that broke JEI pages - note above). After
     // any AE2 version bump, smoke test: AE2 terminal -> autocrafting panels -> a JEI recipe page.
     // Note the AE2 lower bound is exactly 19.2.17 for ae2lt/thunderbolt, so dropping the runtime AE2
     // below that (or touching the AE2 localRuntime coordinate) trips the same FML dependency check.
-    // 运行期 AE2 现为 19.2.18（升它的原因见上方 "Runtime-only development mods" 注释）：仍在 [19.2.17,19.3) 内。
+    // 运行期 AE2 现为 19.2.19（升它的原因见上方 "Runtime-only development mods" 注释）：仍在 [19.2.17,19.3) 内。
     compileOnly 'maven.modrinth:ae2-lightning-tech:2.1.2'
     clientCompileOnly 'maven.modrinth:ae2-lightning-tech:2.1.2'
     localRuntime 'maven.modrinth:ae2-lightning-tech:2.1.2'
@@ -479,36 +483,13 @@ dependencies {
     // 2026-11-07 起**常驻开发运行期**：要在这里实机验证 issue #19 的整批派发（runClient / runServer 都装）。
     // 它对 AE2 的 CraftingCPUCluster 等内部类有 mixin，而默认环境里 ECO / 万象构序 / 闪电科技同样改派发链路，
     // 共存若有冲突用 -PnoInsaneae 临时摘掉做对照（照 -Pemi 的口径）。两条必需前置
-    // ae2 [19.2.15,20) 与 megacells [4.11,5) 本环境均满足（19.2.18 / 4.11.0）。
+    // ae2 [19.2.15,20) 与 megacells [4.11,5) 本环境均满足（19.2.19 / 4.11.0）。
     // 装旧版 InsaneAE 时注册口缺失：mods.toml 写 `*`，由 InsaneAEIntegration.register() 的 catch 安静退场。
     compileOnly 'curse.maven:insaneae-1627326:9474044'
     if (!project.hasProperty('noInsaneae')) {
         localRuntime 'curse.maven:insaneae-1627326:9474044'
     }
 
-    // AppliedE 1.0.8-beta（Modrinth 构件 R5MXisky，2025-05-05）+ 必需前置 ProjectE 1.0.1
-    // （CF 构件 6323142，2025-03-19）：Thunderbolt 的
-    // `docs/global-batch-provider-adapters.zh-CN.md` 把 AppliedE 列为已接入协议——`@Pseudo` mixin
-    // 命中 `gripe._90.appliede.part.EMCModulePart`，让它原生成为 `IBatchCraftingProvider`。
-    // 装上是为了验证「四条批量适配 + EMC 模块」在同一条 CPU 派发链上共存。
-    //
-    // 依赖以两个 jar 的 `neoforge.mods.toml` 为准：AppliedE 要 ae2 `[19,)`（19.2.18）与
-    // projecte `[1.0.1,)`，可选 ae2wtlib `[19,)`（19.5.1）已在环境里；ProjectE 自己只要
-    // minecraft `[1.21.1]` 与 neoforge `[21.1.119,)`（21.1.241），并把 mekanism `[,10.7.8]`
-    // 标为 incompatible —— 本环境是 10.7.19.85，落在区间外，不触发。
-    // Modrinth 的版本元数据只写了 AE2，别拿它当依赖清单。
-    //
-    // **2026-11-08 起默认不装，要专门测这一对才用 -PwithAppliedE**：1.0.8-beta 在 AE2 19.2.18 下必崩。
-    // `TransmutationPattern.equals` 对 `output == null` 的 EMC tier 样板直接调 `.equals()`
-    // （`getOutputs()` 明明允许 output 为 null），玩家给 EMC 模块设优先级、跑合成计算、
-    // 或 grid tick 刷新 provider 时都会 NPE。见
-    // `run/crash-reports/crash-2026-11-08_01.31.18-server.txt`。上游 master（2025-05-05）与 CF
-    // 都停在这个版本、源码里也没有判空修复，没有可换的修复版，与本仓四条批量适配无关。
-    // 默认口径回到没有这一对的稳定组合；要复现/验证就显式加 -PwithAppliedE。
-    if (project.hasProperty('withAppliedE')) {
-        localRuntime 'maven.modrinth:appliede:R5MXisky'
-        localRuntime 'curse.maven:projecte-226410:6323142'
-    }
     // 试装后又摘掉的：**Mek Energistics（mekenergistics）**。它与 ECO 双向集成（ECO 侧有
     // compat/mekenergistics），但代价太大：每次启动会刷约 335 条 "Unknown registry key … item:
     // mekenergistics:me_*" 的 ERROR —— 它为 Mekanism 系可选集成镜像的 me_* 机器方块只在对应 mod
