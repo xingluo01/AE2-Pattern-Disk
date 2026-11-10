@@ -135,6 +135,7 @@ final class CellTermMoves {
         // 只交一份：元件不可堆叠，但对方若在内部 copyWithCount(1)，整栈交过去会让多出来的份数静默消失。
         if (!CellDriveScanner.insertCell(owner, driveSlot, carried.copyWithCount(1))) {
             // 失败原因就四种（格式不符 / 宿主过滤拒收 / 格位已占 / 回读没生效），AE2 原生驱动器槽也是静默拒收。
+            // ECO 设计上存储元件与存储矩阵不等价，跨格式被拒是正确结果，不加提示。
             LOGGER.debug("[cell-mgmt] 放入被拒：宿主 {} 格 {}，丢弃这次放入", driveKey, driveSlot);
             return;
         }

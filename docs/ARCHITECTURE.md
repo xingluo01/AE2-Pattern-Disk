@@ -133,8 +133,9 @@
 | `block/entity/PatternDiskAssemblerBlockEntity` | 923 → 307 | `AssemblerCrafting` 538、`AssemblerGridLogistics` 319 |
 | `pattern/PatternDiskManagementTermMenu` | 715 → 613 | `DiskClientView` 154、`DiskContentSync` 104 |
 
-三个新类（793 / 789 / 769）仍高于「目标 ≤650」，下一轮按「状态先行」把编码流程整体搬进逻辑对象，
-不要按行数硬切（见 `docs/TODO.md`）。本轮是纯重构，`compileJava` / `compileClientJava` / `test` 全绿；
+三个新类（793 / 789 / 769）仍高于「目标 ≤650」，后续按「状态先行」把编码流程整体搬进逻辑对象，
+不要按行数硬切；`SourceSizeGuardTest` 钉住这三份不再变长，以及全仓 800 行硬线。本轮是纯重构，
+`compileJava` / `compileClientJava` / `test` 全绿；
 编码终端档位切换、标记与磁盘清单同步、三个屏幕的控件层级与拖放命中，已于 2026-11-05 经 `runClient`
 实机验收通过。
 
@@ -312,6 +313,10 @@
 客户端那边有个反复出现的写法：`ClientExtendedAEPlusCompat` 这类**把"带契约的邻居在场"变成一屏**的类。理由是编译期可选依赖的类型名一旦出现在总是加载的类里，缺那个模组的玩家就会在加载阶段炸掉；把名字关进只在门禁通过后才碰的类，缺了就只是一屏。
 
 NEO ECO 的类型名与方法名集中在 `integration/neoecoae`：`NeoECOIntegration` 只做门禁与注册，带类型的桥各自成类。大宗元件的截断调级由 `EcoBulkCells` 一个适配器实现 `CellBulkCutoffCompat.Adapter`，编译期直接调上游的 `getCompressionChain` / `getCompressionCutoff`（21.2.12 起随发布件提供，故 `mods.toml` 把地板抬到 `[21.2.12,)`；装更旧的 ECO 时整包停在加载阶段）；终端只认中立接口，判定只看契约不看物品 id，所以 ECO 的大宗盘（含 MEGA 联动那批）与 21.2.12 新出的数字奇点物品存储矩阵走同一条路——后者要 Bigger AE2 在场才注册；MEGA Cells 自己那枚截断按钮仍走 `MegaCellsCompat`，不经过这条链。中立接口按「一张元件一个 `Site`」收口：聚合要看名单、格数与库存，句柄把这三样落在同一次解析上，读一律走 `stack.copy()`——上游查生效截断时会顺带做历史账户恢复并落盘，客户端算按钮状态不能写进真元件。元件管理终端的准入闸门另有一条桥 `EcoCellFormat`：它把「这张栈是不是存储矩阵」交给 ECO 自己的 `ECOStorageCells.isCellHandled` 回答，扫描器（总是加载的 common 代码）只认注册进来的中立探针，缺 ECO 时留在按接口名的兜底上。
+
+AE2 Lightning Tech 的封包与过载供应器**不做面板形态**：源项目两个 `Logic` 的构造写死具体方块实体类型，Part 无法复用，上游也不发行面板版本。本仓跟随这个形态取舍，不另起一套实现。
+
+EAE 大型分子装配室**不做兼容**（含容器变体）：它的矩阵 Pattern 槽是硬过滤，磁盘配方只能经高难度 IAECluster 间接进矩阵。这条适配已归档，后续不再考虑。
 
 ---
 

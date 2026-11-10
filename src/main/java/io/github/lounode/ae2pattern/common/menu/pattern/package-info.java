@@ -2,7 +2,7 @@
  * 样板终端这一套：编码终端、管理终端、供应器菜单，以及它们共用的编码逻辑与磁盘索引。
  *
  * <p>{@link io.github.lounode.ae2pattern.common.menu.pattern.PatternDiskEncodingTermMenu} 是这一层的中枢
- * （编码、空白样板记账、磁盘写入与取出、标记与分类导入都在它身上，见 {@code docs/TODO.md} 的拆分条目）。
+ * （编码、空白样板记账、磁盘写入与取出、标记与分类导入都在它身上，拆分口径见 {@code docs/ARCHITECTURE.md}「文件规模」）。
  * {@link io.github.lounode.ae2pattern.common.menu.pattern.PatternEncodingLogic} 与
  * {@link io.github.lounode.ae2pattern.common.menu.pattern.DiskEncodingLogic} 是它的两块状态机，
  * {@link io.github.lounode.ae2pattern.common.menu.pattern.DiskIndex} 管磁盘清单与序列号。</p>
